@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <ImageButton
+        android:id="@+id/btnBack"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_btn_dark"
+        android:src="@android:drawable/ic_media_previous"
+        android:tint="@color/text_secondary"
+        android:contentDescription="Volver" />
+
+    <TextView
+        android:id="@+id/titleRoles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="24dp"
+        android:text="LOS ROLES"
+        android:textColor="@color/accent_gold"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:fontFamily="serif"
+        android:letterSpacing="0.15" />
+
+    <TextView
+        android:id="@+id/subtitleRoles"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/titleRoles"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="4dp"
+        android:text="Cada jugador recibe un rol secreto"
+        android:textColor="@color/text_muted"
+        android:textSize="12sp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rolesRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/subtitleRoles"
+        android:layout_marginTop="16dp"
+        android:paddingHorizontal="16dp"
+        android:paddingBottom="16dp"
+        android:clipToPadding="false" />
+
+</RelativeLayout>

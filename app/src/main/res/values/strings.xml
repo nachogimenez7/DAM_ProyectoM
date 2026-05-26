@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Traidores</string>
+    <string name="app_title">TRAIDORES</string>
+    <string name="app_subtitle">JUEGO DE DEDUCCIÓN SOCIAL</string>
+    <string name="btn_play">JUGAR</string>
+    <string name="btn_roles">ROLES</string>
+    <string name="btn_help">AYUDA</string>
+    <string name="btn_options">OPCIONES</string>
+    <string name="btn_local">JUEGO LOCAL</string>
+    <string name="btn_online">JUGAR EN LÍNEA</string>
+    <string name="btn_back">VOLVER</string>
+    <string name="version">v0.1.0-alpha</string>
+</resources>
