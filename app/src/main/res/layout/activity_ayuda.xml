@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg_dark">
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/fondo_menu" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#C40C0906" />
 
     <ImageButton
         android:id="@+id/btnBack"
@@ -10,17 +21,17 @@
         android:layout_height="44dp"
         android:layout_margin="16dp"
         android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Volver"
         android:src="@android:drawable/ic_media_previous"
-        android:tint="@color/text_secondary"
-        android:contentDescription="Volver" />
+        android:tint="@color/text_secondary" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/btnBack"
+        android:clipToPadding="false"
         android:paddingHorizontal="24dp"
-        android:paddingBottom="32dp"
-        android:clipToPadding="false">
+        android:paddingBottom="32dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -30,109 +41,102 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="❓"
-                android:textSize="40sp"
                 android:layout_gravity="center"
-                android:layout_marginBottom="8dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
+                android:layout_marginBottom="24dp"
+                android:fontFamily="@font/cinzel"
+                android:letterSpacing="0.04"
                 android:text="AYUDA"
                 android:textColor="@color/accent_gold"
                 android:textSize="24sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:letterSpacing="0.15"
-                android:layout_marginBottom="24dp" />
+                android:textStyle="bold" />
 
-            <!-- CÓMO JUGAR -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="📖 ¿Cómo se juega?"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/cinzel"
+                android:text="COMO SE JUEGA"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_btn_dark"
-                android:padding="16dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
+                android:fontFamily="@font/cormorant_garamond"
                 android:lineSpacingExtra="4dp"
-                android:text="Traidores es un juego de deducción social para 5 a 15 jugadores. Cada jugador recibe un rol secreto que pertenece a uno de tres bandos:\n\n• Pueblo: Deben descubrir y eliminar a los Asesinos.\n• Asesinos: Deben sobrevivir e igualar en número al pueblo.\n• Neutrales: Tienen objetivos propios.\n\nEl juego alterna entre fases de Noche (acciones secretas) y Día (debate y votación)."
-                android:layout_marginBottom="20dp" />
+                android:padding="16dp"
+                android:text="Traidores es un juego de deduccion social para 5 a 15 jugadores. Cada jugador recibe un rol secreto que pertenece a uno de tres bandos: Pueblo, Asesinos o Neutrales. La partida alterna entre Noche, con acciones secretas, y Dia, con debate y votacion."
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
-            <!-- CONSEJOS -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="💡 Consejos para jugar"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/cinzel"
+                android:text="CONSEJOS"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_btn_dark"
-                android:padding="16dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
+                android:fontFamily="@font/cormorant_garamond"
                 android:lineSpacingExtra="4dp"
-                android:text="🔹 No reveles tu rol demasiado pronto, ni siquiera si sos del Pueblo.\n\n🔹 Prestá atención a las reacciones de los demás durante el debate.\n\n🔹 Si sos Detective, no digas todo lo que sabés. Podrías convertirte en el próximo objetivo.\n\n🔹 Si sos Asesino, votá estratégicamente. No siempre defiendas a tus compañeros.\n\n🔹 El silencio también es sospechoso. Participá del debate para no levantar sospechas.\n\n🔹 Usá la lógica: ¿quién acusó a quién? ¿Quién cambió de opinión?"
-                android:layout_marginBottom="20dp" />
+                android:padding="16dp"
+                android:text="No reveles tu rol demasiado pronto. Presta atencion a las reacciones durante el debate. Si sos Detective, guarda informacion clave; si sos Asesino, no defiendas siempre a tus companeros. El silencio tambien puede ser sospechoso."
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
-            <!-- FASES -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🌙 La Noche"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/cinzel"
+                android:text="LA NOCHE"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_btn_dark"
-                android:padding="16dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
+                android:fontFamily="@font/cormorant_garamond"
                 android:lineSpacingExtra="4dp"
-                android:text="Durante la noche, los Asesinos eligen a su víctima en secreto. Los roles especiales actúan: el Detective investiga, el Médico protege. Nadie sabe quién es quién."
-                android:layout_marginBottom="20dp" />
+                android:padding="16dp"
+                android:text="Durante la noche, los Asesinos eligen a su victima en secreto. Los roles especiales actuan: el Detective investiga y el Medico protege. Nadie sabe quien es quien."
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="☀️ El Día"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/cinzel"
+                android:text="EL DIA"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
-                android:textStyle="bold"
-                android:fontFamily="serif"
-                android:layout_marginBottom="8dp" />
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_btn_dark"
-                android:padding="16dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
+                android:fontFamily="@font/cormorant_garamond"
                 android:lineSpacingExtra="4dp"
-                android:text="Al amanecer se revela quién cayó. Comienza el debate: acusaciones, defensas y alianzas. Los jugadores votan para eliminar al sospechoso. ¡Pero cuidado, los Asesinos también votan!"
-                android:layout_marginBottom="20dp" />
+                android:padding="16dp"
+                android:text="Al amanecer se revela quien cayo. Empieza el debate con acusaciones, defensas y alianzas. Luego se vota para eliminar al sospechoso, pero los Asesinos tambien votan."
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
         </LinearLayout>
     </ScrollView>
