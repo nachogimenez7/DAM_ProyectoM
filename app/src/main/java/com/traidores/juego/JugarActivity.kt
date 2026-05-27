@@ -1,9 +1,9 @@
 package com.traidores.juego
 
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
 import android.widget.ImageButton
-import android.widget.Toast
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 
 class JugarActivity : AppCompatActivity() {
@@ -17,25 +17,15 @@ class JugarActivity : AppCompatActivity() {
             finish()
         }
 
-        val btnLocal: Button = findViewById(R.id.btnLocal)
-        val btnQuick: Button = findViewById(R.id.btnQuick)
-        val btnSearch: Button = findViewById(R.id.btnSearch)
-        val btnCreate: Button = findViewById(R.id.btnCreate)
+        val cardLocal: LinearLayout = findViewById(R.id.cardLocal)
+        val cardOnline: LinearLayout = findViewById(R.id.cardOnline)
 
-        btnLocal.setOnClickListener {
-            Toast.makeText(this, "Ingresar codigo estara disponible pronto.", Toast.LENGTH_LONG).show()
+        cardLocal.setOnClickListener {
+            startActivity(Intent(this, LocalModeActivity::class.java))
         }
 
-        btnQuick.setOnClickListener {
-            Toast.makeText(this, "Buscando partida rapida...", Toast.LENGTH_LONG).show()
-        }
-
-        btnSearch.setOnClickListener {
-            Toast.makeText(this, "Buscar partida estara disponible pronto.", Toast.LENGTH_LONG).show()
-        }
-
-        btnCreate.setOnClickListener {
-            Toast.makeText(this, "Crear partida estara disponible pronto.", Toast.LENGTH_LONG).show()
+        cardOnline.setOnClickListener {
+            startActivity(Intent(this, OnlineModeActivity::class.java))
         }
     }
 }

@@ -25,85 +25,84 @@
         android:src="@android:drawable/ic_media_previous"
         android:tint="@color/text_secondary" />
 
-    <ScrollView
+    <TextView
+        android:id="@+id/titlePlayMode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="28dp"
+        android:fontFamily="@font/rye"
+        android:letterSpacing="0"
+        android:text="SELECCIONAR MODO"
+        android:textColor="@color/accent_gold"
+        android:textSize="23sp" />
+
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_below="@id/btnBack"
-        android:clipToPadding="false"
-        android:paddingHorizontal="28dp"
-        android:paddingBottom="32dp">
+        android:layout_height="wrap_content"
+        android:layout_below="@id/titlePlayMode"
+        android:layout_marginTop="24dp"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp">
 
         <LinearLayout
+            android:id="@+id/cardLocal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:layout_height="190dp"
+            android:layout_marginBottom="18dp"
+            android:background="@drawable/bg_btn_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:padding="10dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="22dp"
-                android:fontFamily="@font/metamorphous"
-                android:letterSpacing="0.02"
-                android:text="SELECCIONAR MODO"
-                android:textColor="@color/accent_gold"
-                android:textSize="23sp"
-                android:textStyle="bold" />
+            <ImageView
+                android:id="@+id/imgLocalMode"
+                android:layout_width="match_parent"
+                android:layout_height="132dp"
+                android:background="@drawable/placeholder_local"
+                android:contentDescription="Imagen de juego local"
+                android:scaleType="centerCrop" />
 
             <TextView
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/metamorphous"
-                android:text="JUEGO LOCAL"
-                android:textColor="@color/accent_gold"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="14dp"
-                android:background="@drawable/bg_btn_dark"
-                android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="3dp"
-                android:padding="14dp"
-                android:text="Entra a una sala privada mediante un codigo compartido por el anfitrion."
-                android:textColor="@color/text_secondary"
-                android:textSize="15sp" />
-
-            <Button
-                android:id="@+id/btnLocal"
-                style="@style/BtnGold"
-                android:text="INGRESAR CODIGO" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/metamorphous"
-                android:text="JUGAR EN LINEA"
-                android:textColor="@color/accent_gold"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-
-            <Button
-                android:id="@+id/btnQuick"
-                style="@style/BtnDark"
-                android:text="PARTIDA RAPIDA" />
-
-            <Button
-                android:id="@+id/btnSearch"
-                style="@style/BtnDark"
-                android:text="BUSCAR PARTIDA" />
-
-            <Button
-                android:id="@+id/btnCreate"
-                style="@style/BtnDark"
-                android:text="CREAR PARTIDA" />
-
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fontFamily="@font/rye"
+                android:gravity="center"
+                android:text="JUGAR LOCAL"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp" />
         </LinearLayout>
-    </ScrollView>
+
+        <LinearLayout
+            android:id="@+id/cardOnline"
+            android:layout_width="match_parent"
+            android:layout_height="190dp"
+            android:background="@drawable/bg_btn_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <ImageView
+                android:id="@+id/imgOnlineMode"
+                android:layout_width="match_parent"
+                android:layout_height="132dp"
+                android:background="@drawable/placeholder_online"
+                android:contentDescription="Imagen de juego online"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fontFamily="@font/rye"
+                android:gravity="center"
+                android:text="JUGAR EN LINEA"
+                android:textColor="@color/text_primary"
+                android:textSize="19sp" />
+        </LinearLayout>
+    </LinearLayout>
 
 </RelativeLayout>

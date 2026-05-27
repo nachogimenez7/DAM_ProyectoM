@@ -19,7 +19,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:fontFamily="@font/metamorphous"
+        android:fontFamily="@font/rye"
         android:letterSpacing="0.02"
         android:textColor="@color/accent_gold"
         android:textSize="18sp"
@@ -30,7 +30,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:fontFamily="@font/metamorphous"
+        android:fontFamily="@font/rye"
         android:letterSpacing="0.04"
         android:textColor="@color/text_muted"
         android:textSize="10sp"
@@ -51,10 +51,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:fontFamily="@font/metamorphous"
+        android:fontFamily="@font/rye"
         android:letterSpacing="0.03"
         android:textColor="@color/accent_green"
         android:textSize="11sp"
         android:textStyle="bold" />
 </LinearLayout>
+
 

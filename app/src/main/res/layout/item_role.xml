@@ -29,7 +29,7 @@
             android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:fontFamily="@font/metamorphous"
+            android:fontFamily="@font/rye"
             android:letterSpacing="0.02" />
 
         <TextView
@@ -38,7 +38,7 @@
             android:layout_height="wrap_content"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:fontFamily="@font/metamorphous"
+            android:fontFamily="@font/rye"
             android:letterSpacing="0.04"
             android:layout_marginTop="2dp"
             android:layout_marginBottom="6dp" />
@@ -54,4 +54,5 @@
 
     </LinearLayout>
 </LinearLayout>
+
 

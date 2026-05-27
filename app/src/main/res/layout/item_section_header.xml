@@ -5,9 +5,10 @@
     android:layout_height="wrap_content"
     android:layout_marginTop="10dp"
     android:layout_marginBottom="10dp"
-    android:fontFamily="@font/metamorphous"
+    android:fontFamily="@font/rye"
     android:letterSpacing="0.04"
     android:textColor="@color/accent_gold"
     android:textSize="17sp"
     android:textStyle="bold" />
+
 

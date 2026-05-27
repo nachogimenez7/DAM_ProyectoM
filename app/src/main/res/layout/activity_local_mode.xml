@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/fondo_menu" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#BB0C0906" />
+
+    <ImageButton
+        android:id="@+id/btnBack"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Volver"
+        android:src="@android:drawable/ic_media_previous"
+        android:tint="@color/text_secondary" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="32dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:fontFamily="@font/rye"
+            android:text="JUEGO LOCAL"
+            android:textColor="@color/accent_gold"
+            android:textSize="24sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="28dp"
+            android:background="@drawable/bg_btn_dark"
+            android:fontFamily="@font/cormorant_garamond"
+            android:gravity="center"
+            android:lineSpacingExtra="3dp"
+            android:padding="16dp"
+            android:text="Crea una sala para tus amigos o ingresa con el codigo de un anfitrion."
+            android:textColor="@color/text_secondary"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btnCreateLocal"
+            style="@style/BtnGold"
+            android:text="CREAR SALA LOCAL" />
+
+        <Button
+            android:id="@+id/btnJoinCode"
+            style="@style/BtnDark"
+            android:text="INGRESAR CODIGO" />
+    </LinearLayout>
+</RelativeLayout>
