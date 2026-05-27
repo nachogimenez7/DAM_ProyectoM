@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -32,7 +32,7 @@
             android:text="TRAIDORES"
             android:textColor="@color/text_primary"
             android:textSize="11sp"
-            android:fontFamily="@font/cinzel"
+            android:fontFamily="@font/metamorphous"
             android:letterSpacing="0.04" />
 
     </LinearLayout>
@@ -57,7 +57,7 @@
             android:textColor="@color/accent_gold"
             android:textSize="44sp"
             android:textStyle="bold"
-            android:fontFamily="@font/cinzel"
+            android:fontFamily="@font/metamorphous"
             android:letterSpacing="0"
             android:shadowColor="#CC000000"
             android:shadowDx="2"
@@ -135,3 +135,4 @@
     </LinearLayout>
 
 </RelativeLayout>
+

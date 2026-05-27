@@ -18,14 +18,24 @@ class JugarActivity : AppCompatActivity() {
         }
 
         val btnLocal: Button = findViewById(R.id.btnLocal)
-        val btnOnline: Button = findViewById(R.id.btnOnline)
+        val btnQuick: Button = findViewById(R.id.btnQuick)
+        val btnSearch: Button = findViewById(R.id.btnSearch)
+        val btnCreate: Button = findViewById(R.id.btnCreate)
 
         btnLocal.setOnClickListener {
-            Toast.makeText(this, "Modo Local: Iniciando partida rápida...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Ingresar codigo estara disponible pronto.", Toast.LENGTH_LONG).show()
         }
 
-        btnOnline.setOnClickListener {
-            Toast.makeText(this, "Modo Online estará disponible en la próxima versión beta.", Toast.LENGTH_LONG).show()
+        btnQuick.setOnClickListener {
+            Toast.makeText(this, "Buscando partida rapida...", Toast.LENGTH_LONG).show()
+        }
+
+        btnSearch.setOnClickListener {
+            Toast.makeText(this, "Buscar partida estara disponible pronto.", Toast.LENGTH_LONG).show()
+        }
+
+        btnCreate.setOnClickListener {
+            Toast.makeText(this, "Crear partida estara disponible pronto.", Toast.LENGTH_LONG).show()
         }
     }
 }

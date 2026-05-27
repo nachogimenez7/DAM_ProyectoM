@@ -6,12 +6,27 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.SeekBar
 import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
 
 class OpcionesActivity : AppCompatActivity() {
+
+    private lateinit var labelMusic: TextView
+    private lateinit var labelVoices: TextView
+    private lateinit var titleOptions: TextView
+    private lateinit var titleAudio: TextView
+    private lateinit var titleLanguage: TextView
+    private lateinit var labelLanguage: TextView
+    private lateinit var titleAccount: TextView
+    private lateinit var titleLogin: TextView
+    private lateinit var etUsername: EditText
+    private lateinit var etPassword: EditText
+    private lateinit var btnLogin: Button
+    private lateinit var btnRegister: Button
+    private var currentLanguage = "Espanol (ES)"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,64 +37,68 @@ class OpcionesActivity : AppCompatActivity() {
             finish()
         }
 
-        // Sound Switch
-        val switchSound: SwitchCompat = findViewById(R.id.switchSound)
         val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-        val isSoundOn = sharedPref.getBoolean("sound_on", true)
-        switchSound.isChecked = isSoundOn
 
-        switchSound.setOnCheckedChangeListener { _, isChecked ->
-            sharedPref.edit().putBoolean("sound_on", isChecked).apply()
-            val msg = if (isChecked) "Sonido Activado" else "Sonido Silenciado"
-            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-        }
+        titleOptions = findViewById(R.id.titleOptions)
+        titleAudio = findViewById(R.id.titleAudio)
+        titleLanguage = findViewById(R.id.titleLanguage)
+        labelLanguage = findViewById(R.id.labelLanguage)
+        titleAccount = findViewById(R.id.titleAccount)
+        titleLogin = findViewById(R.id.titleLogin)
+        labelMusic = findViewById(R.id.labelMusic)
+        labelVoices = findViewById(R.id.labelVoices)
+        etUsername = findViewById(R.id.etUsername)
+        etPassword = findViewById(R.id.etPassword)
+        btnLogin = findViewById(R.id.btnLogin)
+        btnRegister = findViewById(R.id.btnRegister)
 
-        // Language Spinner
+        val seekMusic: SeekBar = findViewById(R.id.seekMusic)
+        val seekVoices: SeekBar = findViewById(R.id.seekVoices)
+        seekMusic.progress = sharedPref.getInt("music_volume", 80)
+        seekVoices.progress = sharedPref.getInt("voice_volume", 80)
+        updateVolumeLabels(seekMusic.progress, seekVoices.progress)
+
+        seekMusic.setOnSeekBarChangeListener(volumeListener("music_volume", seekMusic, seekVoices, sharedPref))
+        seekVoices.setOnSeekBarChangeListener(volumeListener("voice_volume", seekMusic, seekVoices, sharedPref))
+
         val spinnerLanguage: Spinner = findViewById(R.id.spinnerLanguage)
-        val languages = arrayOf("Español (ES)", "English (EN)")
+        val languages = arrayOf("Espanol (ES)", "English (EN)")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, languages)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinnerLanguage.adapter = adapter
 
-        // Set default selection
-        val selectedLang = sharedPref.getString("language", "Español (ES)")
-        val defaultPos = languages.indexOf(selectedLang)
-        if (defaultPos >= 0) {
-            spinnerLanguage.setSelection(defaultPos)
-        }
+        val selectedLang = sharedPref.getString("language", "Espanol (ES)") ?: "Espanol (ES)"
+        val defaultPos = if (selectedLang.contains("English", ignoreCase = true)) 1 else 0
+        currentLanguage = languages[defaultPos]
+        spinnerLanguage.setSelection(defaultPos)
+        updateOptionTexts()
 
-        // Handle item selection without firing toast during initialization
         var isInit = true
         spinnerLanguage.post {
-            spinnerLanguage.setOnItemSelectedListener(object : android.widget.AdapterView.OnItemSelectedListener {
+            spinnerLanguage.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                    val lang = languages[position]
-                    sharedPref.edit().putString("language", lang).apply()
+                    currentLanguage = languages[position]
+                    sharedPref.edit().putString("language", currentLanguage).apply()
+                    updateOptionTexts()
                     if (!isInit) {
-                        Toast.makeText(this@OpcionesActivity, "Idioma cambiado a: $lang", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@OpcionesActivity, languageChangedMessage(), Toast.LENGTH_SHORT).show()
                     }
                     isInit = false
                 }
 
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-            })
+            }
         }
-
-        // Account Logic
-        val etUsername: EditText = findViewById(R.id.etUsername)
-        val etPassword: EditText = findViewById(R.id.etPassword)
-        val btnLogin: Button = findViewById(R.id.btnLogin)
-        val btnRegister: Button = findViewById(R.id.btnRegister)
 
         btnLogin.setOnClickListener {
             val username = etUsername.text.toString().trim()
             val password = etPassword.text.toString().trim()
 
             if (username.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Por favor, ingresá usuario y contraseña.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, emptyLoginMessage(), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "¡Bienvenido/a, $username!", Toast.LENGTH_LONG).show()
-                finish() // simulated login success
+                Toast.makeText(this, welcomeMessage(username), Toast.LENGTH_LONG).show()
+                finish()
             }
         }
 
@@ -88,19 +107,111 @@ class OpcionesActivity : AppCompatActivity() {
             val password = etPassword.text.toString().trim()
 
             if (username.isEmpty() || password.isEmpty()) {
-                Toast.makeText(this, "Por favor, ingresá usuario y contraseña para registrarte.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, emptyRegisterMessage(), Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Registro exitoso para $username. ¡Ya podés iniciar sesión!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, registerMessage(username), Toast.LENGTH_LONG).show()
             }
         }
 
-        // Focus navigation from shortcuts
         if (intent.getBooleanExtra("focus_language", false)) {
             spinnerLanguage.requestFocus()
-            Toast.makeText(this, "Seleccioná tu idioma preferido", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, focusLanguageMessage(), Toast.LENGTH_SHORT).show()
         } else if (intent.getBooleanExtra("focus_account", false)) {
             etUsername.requestFocus()
-            Toast.makeText(this, "Iniciá sesión o registrate para jugar en línea", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, focusAccountMessage(), Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun volumeListener(
+        key: String,
+        seekMusic: SeekBar,
+        seekVoices: SeekBar,
+        sharedPref: android.content.SharedPreferences
+    ): SeekBar.OnSeekBarChangeListener {
+        return object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                sharedPref.edit().putInt(key, progress).putBoolean("sound_on", seekMusic.progress > 0 || seekVoices.progress > 0).apply()
+                updateVolumeLabels(seekMusic.progress, seekVoices.progress)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        }
+    }
+
+    private fun updateVolumeLabels(music: Int, voices: Int) {
+        if (currentLanguage == "English (EN)") {
+            labelMusic.text = "Music: $music%"
+            labelVoices.text = "Voices: $voices%"
+        } else {
+            labelMusic.text = "Musica: $music%"
+            labelVoices.text = "Voces: $voices%"
+        }
+    }
+
+    private fun updateOptionTexts() {
+        if (currentLanguage == "English (EN)") {
+            titleOptions.text = "OPTIONS"
+            titleAudio.text = "SOUND AND AUDIO"
+            titleLanguage.text = "GAME LANGUAGE"
+            labelLanguage.text = "Select language"
+            titleAccount.text = "PLAYER ACCOUNT"
+            titleLogin.text = "LOGIN / REGISTER"
+            etUsername.hint = "Username"
+            etPassword.hint = "Password"
+            btnLogin.text = "LOGIN"
+            btnRegister.text = "REGISTER"
+        } else {
+            titleOptions.text = "OPCIONES"
+            titleAudio.text = "SONIDO Y AUDIO"
+            titleLanguage.text = "IDIOMA DEL JUEGO"
+            labelLanguage.text = "Seleccionar idioma"
+            titleAccount.text = "CUENTA DEL JUGADOR"
+            titleLogin.text = "INICIAR SESION / REGISTRARSE"
+            etUsername.hint = "Nombre de usuario"
+            etPassword.hint = "Contrasena"
+            btnLogin.text = "INGRESAR"
+            btnRegister.text = "REGISTRARSE"
+        }
+
+        val seekMusic: SeekBar = findViewById(R.id.seekMusic)
+        val seekVoices: SeekBar = findViewById(R.id.seekVoices)
+        updateVolumeLabels(seekMusic.progress, seekVoices.progress)
+    }
+
+    private fun languageChangedMessage(): String {
+        return if (currentLanguage == "English (EN)") "Language changed to: English" else "Idioma cambiado a: Espanol"
+    }
+
+    private fun emptyLoginMessage(): String {
+        return if (currentLanguage == "English (EN)") "Please enter username and password." else "Por favor, ingresa usuario y contrasena."
+    }
+
+    private fun emptyRegisterMessage(): String {
+        return if (currentLanguage == "English (EN)") {
+            "Please enter username and password to register."
+        } else {
+            "Por favor, ingresa usuario y contrasena para registrarte."
+        }
+    }
+
+    private fun welcomeMessage(username: String): String {
+        return if (currentLanguage == "English (EN)") "Welcome, $username!" else "Bienvenido/a, $username!"
+    }
+
+    private fun registerMessage(username: String): String {
+        return if (currentLanguage == "English (EN)") {
+            "Registration complete for $username. You can now log in."
+        } else {
+            "Registro exitoso para $username. Ya podes iniciar sesion."
+        }
+    }
+
+    private fun focusLanguageMessage(): String {
+        return if (currentLanguage == "English (EN)") "Choose your preferred language" else "Selecciona tu idioma preferido"
+    }
+
+    private fun focusAccountMessage(): String {
+        return if (currentLanguage == "English (EN)") "Log in or register to play online" else "Inicia sesion o registrate para jugar en linea"
     }
 }

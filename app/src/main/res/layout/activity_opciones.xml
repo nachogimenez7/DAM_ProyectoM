@@ -39,22 +39,24 @@
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/titleOptions"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginBottom="24dp"
-                android:fontFamily="@font/cinzel"
-                android:letterSpacing="0.04"
+                android:fontFamily="@font/metamorphous"
+                android:letterSpacing="0.02"
                 android:text="OPCIONES"
                 android:textColor="@color/accent_gold"
                 android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
+                android:id="@+id/titleAudio"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/cinzel"
+                android:fontFamily="@font/metamorphous"
                 android:text="SONIDO Y AUDIO"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -65,31 +67,53 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="20dp"
                 android:background="@drawable/bg_btn_dark"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
+                android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
-                    android:layout_width="0dp"
+                    android:id="@+id/labelMusic"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Efectos de sonido y musica"
+                    android:text="Musica: 80%"
                     android:textColor="@color/text_primary"
                     android:textSize="15sp" />
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchSound"
-                    android:layout_width="wrap_content"
+                <SeekBar
+                    android:id="@+id/seekMusic"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:checked="true" />
+                    android:max="100"
+                    android:progress="80"
+                    android:progressTint="@color/accent_gold"
+                    android:thumbTint="@color/accent_gold" />
+
+                <TextView
+                    android:id="@+id/labelVoices"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:text="Voces: 80%"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+
+                <SeekBar
+                    android:id="@+id/seekVoices"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:max="100"
+                    android:progress="80"
+                    android:progressTint="@color/accent_gold"
+                    android:thumbTint="@color/accent_gold" />
             </LinearLayout>
 
             <TextView
+                android:id="@+id/titleLanguage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/cinzel"
+                android:fontFamily="@font/metamorphous"
                 android:text="IDIOMA DEL JUEGO"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -105,6 +129,7 @@
                 android:padding="12dp">
 
                 <TextView
+                    android:id="@+id/labelLanguage"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="4dp"
@@ -123,11 +148,12 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/titleAccount"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/cinzel"
-                android:text="CUENTA DE JUGADOR"
+                android:fontFamily="@font/metamorphous"
+                android:text="CUENTA DEL JUGADOR"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
                 android:textStyle="bold" />
@@ -141,10 +167,11 @@
                 android:padding="16dp">
 
                 <TextView
+                    android:id="@+id/titleLogin"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
-                    android:fontFamily="@font/cinzel"
+                    android:fontFamily="@font/metamorphous"
                     android:text="INICIAR SESION / REGISTRARSE"
                     android:textColor="@color/text_primary"
                     android:textSize="14sp"
@@ -193,7 +220,7 @@
                         android:layout_marginEnd="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_gold"
-                        android:fontFamily="@font/cinzel"
+                        android:fontFamily="@font/metamorphous"
                         android:text="INGRESAR"
                         android:textColor="@color/bg_dark"
                         android:textStyle="bold" />
@@ -206,7 +233,7 @@
                         android:layout_marginStart="6dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_btn_dark"
-                        android:fontFamily="@font/cinzel"
+                        android:fontFamily="@font/metamorphous"
                         android:text="REGISTRARSE"
                         android:textColor="@color/text_primary"
                         android:textStyle="bold" />

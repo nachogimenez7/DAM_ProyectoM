@@ -15,77 +15,95 @@
         android:layout_height="match_parent"
         android:background="#BB0C0906" />
 
-    <!-- Back button top left -->
     <ImageButton
         android:id="@+id/btnBack"
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_margin="16dp"
         android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Volver"
         android:src="@android:drawable/ic_media_previous"
-        android:tint="@color/text_secondary"
-        android:contentDescription="Volver" />
+        android:tint="@color/text_secondary" />
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingHorizontal="40dp">
+        android:layout_height="match_parent"
+        android:layout_below="@id/btnBack"
+        android:clipToPadding="false"
+        android:paddingHorizontal="28dp"
+        android:paddingBottom="32dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="⚔"
-            android:textColor="@color/accent_gold"
-            android:textSize="48sp"
-            android:layout_marginBottom="16dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="SELECCIONAR MODO"
-            android:textColor="@color/accent_gold"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:fontFamily="@font/cinzel"
-            android:letterSpacing="0.04"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="¿Cómo querés jugar?"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:fontFamily="@font/cormorant_garamond"
-            android:layout_marginBottom="48dp" />
-
-        <!-- LOCAL -->
-        <Button
-            android:id="@+id/btnLocal"
-            style="@style/BtnGold"
-            android:text="🏠  JUEGO LOCAL" />
-
-        <!-- ONLINE -->
-        <Button
-            android:id="@+id/btnOnline"
-            style="@style/BtnDark"
-            android:text="🌐  JUGAR EN LÍNEA" />
-
-        <!-- Description local -->
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Juego Local: todos los jugadores comparten un mismo dispositivo. Ideal para reuniones presenciales."
-            android:textColor="@color/text_muted"
-            android:textSize="12sp"
-            android:fontFamily="@font/cormorant_garamond"
-            android:gravity="center"
-            android:layout_marginTop="24dp"
-            android:paddingHorizontal="8dp" />
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
-    </LinearLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="22dp"
+                android:fontFamily="@font/metamorphous"
+                android:letterSpacing="0.02"
+                android:text="SELECCIONAR MODO"
+                android:textColor="@color/accent_gold"
+                android:textSize="23sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/metamorphous"
+                android:text="JUEGO LOCAL"
+                android:textColor="@color/accent_gold"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="14dp"
+                android:background="@drawable/bg_btn_dark"
+                android:fontFamily="@font/cormorant_garamond"
+                android:lineSpacingExtra="3dp"
+                android:padding="14dp"
+                android:text="Entra a una sala privada mediante un codigo compartido por el anfitrion."
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnLocal"
+                style="@style/BtnGold"
+                android:text="INGRESAR CODIGO" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/metamorphous"
+                android:text="JUGAR EN LINEA"
+                android:textColor="@color/accent_gold"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnQuick"
+                style="@style/BtnDark"
+                android:text="PARTIDA RAPIDA" />
+
+            <Button
+                android:id="@+id/btnSearch"
+                style="@style/BtnDark"
+                android:text="BUSCAR PARTIDA" />
+
+            <Button
+                android:id="@+id/btnCreate"
+                style="@style/BtnDark"
+                android:text="CREAR PARTIDA" />
+
+        </LinearLayout>
+    </ScrollView>
 
 </RelativeLayout>
