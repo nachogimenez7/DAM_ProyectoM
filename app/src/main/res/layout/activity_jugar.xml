@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -31,7 +31,7 @@
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="28dp"
-        android:fontFamily="@font/rye"
+        android:fontFamily="@font/grenze"
         android:letterSpacing="0"
         android:text="SELECCIONAR MODO"
         android:textColor="@color/accent_gold"
@@ -68,7 +68,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:text="JUGAR LOCAL"
                 android:textColor="@color/text_primary"
@@ -97,7 +97,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:text="JUGAR EN LINEA"
                 android:textColor="@color/text_primary"
@@ -106,3 +106,4 @@
     </LinearLayout>
 
 </RelativeLayout>
+

@@ -31,7 +31,7 @@
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="24dp"
-        android:fontFamily="@font/rye"
+        android:fontFamily="@font/grenze"
         android:letterSpacing="0.02"
         android:text="LOS ROLES"
         android:textColor="@color/accent_gold"
@@ -76,7 +76,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:ellipsize="end"
-                    android:fontFamily="@font/rye"
+                    android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:maxLines="1"
                     android:text="Feudo"
@@ -108,7 +108,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:ellipsize="end"
-                    android:fontFamily="@font/rye"
+                    android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:maxLines="1"
                     android:text="Grecia"
@@ -139,7 +139,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:ellipsize="end"
-                    android:fontFamily="@font/rye"
+                    android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:maxLines="1"
                     android:text="Pampa"
@@ -156,7 +156,7 @@
         android:layout_height="wrap_content"
         android:layout_below="@id/mapScroller"
         android:layout_marginTop="14dp"
-        android:fontFamily="@font/rye"
+        android:fontFamily="@font/grenze"
         android:gravity="center"
         android:letterSpacing="0.02"
         android:textColor="@color/accent_gold"
@@ -187,4 +187,5 @@
         android:paddingBottom="16dp" />
 
 </RelativeLayout>
+
 

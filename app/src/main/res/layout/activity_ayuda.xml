@@ -43,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginBottom="24dp"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:letterSpacing="0.04"
                 android:text="AYUDA"
                 android:textColor="@color/accent_gold"
@@ -54,7 +54,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:text="COMO SE JUEGA"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -76,7 +76,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:text="CONSEJOS"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -98,7 +98,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:text="LA NOCHE"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -120,7 +120,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
-                android:fontFamily="@font/rye"
+                android:fontFamily="@font/grenze"
                 android:text="EL DIA"
                 android:textColor="@color/accent_gold"
                 android:textSize="16sp"
@@ -141,5 +141,6 @@
         </LinearLayout>
     </ScrollView>
 </RelativeLayout>
+
 
 

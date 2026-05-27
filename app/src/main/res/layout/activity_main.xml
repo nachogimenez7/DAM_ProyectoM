@@ -32,7 +32,7 @@
             android:text="TRAIDORES"
             android:textColor="@color/text_primary"
             android:textSize="11sp"
-            android:fontFamily="@font/rye"
+            android:fontFamily="@font/grenze"
             android:letterSpacing="0.04" />
 
     </LinearLayout>
@@ -57,7 +57,7 @@
             android:textColor="@color/accent_gold"
             android:textSize="44sp"
             android:textStyle="bold"
-            android:fontFamily="@font/rye"
+            android:fontFamily="@font/grenze"
             android:letterSpacing="0"
             android:shadowColor="#CC000000"
             android:shadowDx="2"
@@ -135,5 +135,6 @@
     </LinearLayout>
 
 </RelativeLayout>
+
 
 
