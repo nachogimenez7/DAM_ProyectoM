@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/mapBackground"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/mapa_medieval" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#660C0906" />
+
+    <ImageButton
+        android:id="@+id/btnBack"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_margin="12dp"
+        android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Volver"
+        android:src="@android:drawable/ic_media_previous"
+        android:tint="@color/text_secondary" />
+
+    <LinearLayout
+        android:id="@+id/topStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="58dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_game_panel"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/phaseTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.02"
+            android:text="NOCHE 1"
+            android:textColor="@color/accent_gold"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/phaseSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/cormorant_garamond"
+            android:gravity="center"
+            android:text="El Detective puede investigar a un jugador."
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/leftPlayers"
+        android:layout_width="86dp"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_centerVertical="true"
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
+
+        <include layout="@layout/item_mock_player_left" android:id="@+id/playerL1" />
+        <include layout="@layout/item_mock_player_left" android:id="@+id/playerL2" />
+        <include layout="@layout/item_mock_player_left" android:id="@+id/playerL3" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/rightPlayers"
+        android:layout_width="86dp"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_centerVertical="true"
+        android:layout_marginEnd="10dp"
+        android:orientation="vertical">
+
+        <include layout="@layout/item_mock_player_right" android:id="@+id/playerR1" />
+        <include layout="@layout/item_mock_player_right" android:id="@+id/playerR2" />
+        <include layout="@layout/item_mock_player_right" android:id="@+id/playerR3" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/actionPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/playerCardArea"
+        android:layout_marginHorizontal="96dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_game_panel"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/actionTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/grenze"
+            android:text="OBJETIVO"
+            android:textColor="@color/accent_gold"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/targetName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/cormorant_garamond"
+            android:text="Selecciona un jugador"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/playerCardArea"
+        android:layout_width="match_parent"
+        android:layout_height="250dp"
+        android:layout_alignParentBottom="true"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="18dp"
+        android:paddingBottom="12dp">
+
+        <LinearLayout
+            android:id="@+id/roleCard"
+            android:layout_width="132dp"
+            android:layout_height="218dp"
+            android:background="@drawable/bg_role_card"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="7dp">
+
+            <ImageView
+                android:id="@+id/roleImage"
+                android:layout_width="match_parent"
+                android:layout_height="154dp"
+                android:background="@drawable/bg_card_back"
+                android:contentDescription="Carta de rol"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:id="@+id/roleName"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fontFamily="@font/grenze"
+                android:gravity="center"
+                android:text="ROL OCULTO"
+                android:textColor="@color/bg_dark"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_game_panel"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/currentPlayerName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/grenze"
+                android:text="Nacho"
+                android:textColor="@color/accent_gold"
+                android:textSize="22sp" />
+
+            <TextView
+                android:id="@+id/currentPlayerHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/cormorant_garamond"
+                android:lineSpacingExtra="2dp"
+                android:text="Tu carta esta oculta. Revelala solo cuando una regla lo permita."
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnRevealCard"
+                style="@style/BtnGold"
+                android:layout_marginTop="10dp"
+                android:text="REVELAR CARTA" />
+
+            <Button
+                android:id="@+id/btnVote"
+                style="@style/BtnDark"
+                android:text="VOTAR OBJETIVO" />
+        </LinearLayout>
+    </LinearLayout>
+
+</RelativeLayout>

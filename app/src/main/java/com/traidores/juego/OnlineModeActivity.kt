@@ -1,5 +1,6 @@
 ﻿package com.traidores.juego
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
@@ -19,15 +20,18 @@ class OnlineModeActivity : BaseActivity() {
         btnBack.setOnClickListener { finish() }
 
         btnQuick.setOnClickListener {
-            Toast.makeText(this, "Buscando partida rapida...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Abriendo mock de partida rapida.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GameplayMockActivity::class.java))
         }
 
         btnSearch.setOnClickListener {
-            Toast.makeText(this, "Buscar partida estara disponible pronto.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Simulando busqueda de lobby.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GameplayMockActivity::class.java))
         }
 
         btnCreate.setOnClickListener {
-            Toast.makeText(this, "Crear partida estara disponible pronto.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Abriendo mock de lobby creado.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GameplayMockActivity::class.java))
         }
     }
 }

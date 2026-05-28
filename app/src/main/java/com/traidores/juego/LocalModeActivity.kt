@@ -1,5 +1,6 @@
 ﻿package com.traidores.juego
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
@@ -18,11 +19,13 @@ class LocalModeActivity : BaseActivity() {
         btnBack.setOnClickListener { finish() }
 
         btnCreateLocal.setOnClickListener {
-            Toast.makeText(this, "Creando sala local...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Abriendo mock de partida local.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GameplayMockActivity::class.java))
         }
 
         btnJoinCode.setOnClickListener {
-            Toast.makeText(this, "Ingresar codigo estara disponible pronto.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Simulando union por codigo.", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, GameplayMockActivity::class.java))
         }
     }
 }
