@@ -39,69 +39,73 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:layout_below="@id/titlePlayMode"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="18dp"
+        android:layout_alignParentBottom="true"
         android:orientation="vertical"
-        android:paddingHorizontal="24dp">
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="24dp">
 
         <LinearLayout
             android:id="@+id/cardLocal"
             android:layout_width="match_parent"
-            android:layout_height="190dp"
-            android:layout_marginBottom="18dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginBottom="16dp"
             android:background="@drawable/bg_btn_dark"
             android:clickable="true"
             android:focusable="true"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="12dp">
 
             <ImageView
                 android:id="@+id/imgLocalMode"
                 android:layout_width="match_parent"
-                android:layout_height="132dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:background="@drawable/placeholder_local"
                 android:contentDescription="Imagen de juego local"
                 android:scaleType="centerCrop" />
 
             <TextView
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
+                android:layout_height="54dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:text="JUGAR LOCAL"
                 android:textColor="@color/text_primary"
-                android:textSize="19sp" />
+                android:textSize="21sp" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/cardOnline"
             android:layout_width="match_parent"
-            android:layout_height="190dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:background="@drawable/bg_btn_dark"
             android:clickable="true"
             android:focusable="true"
             android:orientation="vertical"
-            android:padding="10dp">
+            android:padding="12dp">
 
             <ImageView
                 android:id="@+id/imgOnlineMode"
                 android:layout_width="match_parent"
-                android:layout_height="132dp"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:background="@drawable/placeholder_online"
                 android:contentDescription="Imagen de juego online"
                 android:scaleType="centerCrop" />
 
             <TextView
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
+                android:layout_height="54dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:text="JUGAR EN LINEA"
                 android:textColor="@color/text_primary"
-                android:textSize="19sp" />
+                android:textSize="21sp" />
         </LinearLayout>
     </LinearLayout>
 

@@ -1,4 +1,4 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
 import android.content.Context
 import android.os.Bundle
@@ -10,9 +10,8 @@ import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 
-class OpcionesActivity : AppCompatActivity() {
+class OpcionesActivity : BaseActivity() {
 
     private lateinit var labelMusic: TextView
     private lateinit var labelVoices: TextView
@@ -132,6 +131,7 @@ class OpcionesActivity : AppCompatActivity() {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 sharedPref.edit().putInt(key, progress).putBoolean("sound_on", seekMusic.progress > 0 || seekVoices.progress > 0).apply()
                 updateVolumeLabels(seekMusic.progress, seekVoices.progress)
+                MusicManager.refresh(this@OpcionesActivity)
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -215,3 +215,4 @@ class OpcionesActivity : AppCompatActivity() {
         return if (currentLanguage == "English (EN)") "Log in or register to play online" else "Inicia sesion o registrate para jugar en linea"
     }
 }
+

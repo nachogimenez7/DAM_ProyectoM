@@ -1,12 +1,11 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 
-class LocalModeActivity : AppCompatActivity() {
+class LocalModeActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,3 +26,4 @@ class LocalModeActivity : AppCompatActivity() {
         }
     }
 }
+

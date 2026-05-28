@@ -1,14 +1,13 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
 import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
-class RolesActivity : AppCompatActivity() {
+class RolesActivity : BaseActivity() {
 
     private lateinit var recyclerView: RecyclerView
     private lateinit var selectedMapTitle: TextView
@@ -171,3 +170,4 @@ class RolesActivity : AppCompatActivity() {
         PAMPA
     }
 }
+

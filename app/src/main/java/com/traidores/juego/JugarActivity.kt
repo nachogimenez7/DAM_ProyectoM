@@ -1,12 +1,11 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
 import android.content.Intent
 import android.os.Bundle
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import androidx.appcompat.app.AppCompatActivity
 
-class JugarActivity : AppCompatActivity() {
+class JugarActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,3 +28,4 @@ class JugarActivity : AppCompatActivity() {
         }
     }
 }
+
