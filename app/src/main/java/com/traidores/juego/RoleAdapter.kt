@@ -11,7 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 
 class RoleAdapter(
     private val context: Context,
-    private val items: List<RoleListItem>
+    private val items: List<RoleListItem>,
+    private val onRoleClick: (Role) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private companion object {
@@ -90,6 +91,7 @@ class RoleAdapter(
 
         val resId = context.resources.getIdentifier(role.imageResName, "drawable", context.packageName)
         holder.roleImage.setImageResource(if (resId != 0) resId else android.R.drawable.ic_menu_gallery)
+        holder.itemView.setOnClickListener { onRoleClick(role) }
     }
 
     override fun getItemCount(): Int = items.size
