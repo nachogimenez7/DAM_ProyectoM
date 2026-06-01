@@ -69,7 +69,7 @@ class RolesActivity : BaseActivity() {
 
         closeButton.setOnClickListener { dialog.dismiss() }
         dialog.show()
-        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     private fun buildRoleItems(mapKey: MapKey): List<RoleListItem> {
