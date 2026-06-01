@@ -2,10 +2,10 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="18dp"
+    android:layout_margin="12dp"
     android:background="@drawable/bg_btn_dark"
     android:orientation="vertical"
-    android:padding="18dp">
+    android:padding="14dp">
 
     <RelativeLayout
         android:layout_width="match_parent"
@@ -20,7 +20,7 @@
             android:fontFamily="@font/grenze"
             android:letterSpacing="0.02"
             android:textColor="@color/accent_gold"
-            android:textSize="24sp"
+            android:textSize="21sp"
             android:textStyle="bold" />
 
         <ImageButton
@@ -41,47 +41,47 @@
         android:layout_marginTop="2dp"
         android:fontFamily="@font/grenze"
         android:letterSpacing="0.04"
-        android:textSize="12sp"
+        android:textSize="11sp"
         android:textStyle="bold" />
 
     <ImageView
         android:id="@+id/detailRoleImage"
         android:layout_width="match_parent"
-        android:layout_height="360dp"
-        android:layout_marginTop="14dp"
+        android:layout_height="178dp"
+        android:layout_marginTop="10dp"
         android:adjustViewBounds="true"
         android:contentDescription="Imagen del rol"
-        android:scaleType="fitCenter" />
+        android:scaleType="centerCrop" />
 
     <TextView
         android:id="@+id/detailRoleFantasy"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="10dp"
         android:fontFamily="@font/cormorant_garamond"
-        android:lineSpacingExtra="3dp"
+        android:lineSpacingExtra="1dp"
         android:textColor="@color/text_primary"
-        android:textSize="15sp" />
+        android:textSize="13sp" />
 
     <TextView
         android:id="@+id/detailGameplayTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="10dp"
         android:fontFamily="@font/grenze"
         android:letterSpacing="0.02"
         android:text="EN PARTIDA"
         android:textColor="@color/accent_gold"
-        android:textSize="15sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/detailRoleGameplay"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:fontFamily="@font/cormorant_garamond"
-        android:lineSpacingExtra="3dp"
+        android:lineSpacingExtra="1dp"
         android:textColor="@color/text_secondary"
-        android:textSize="14sp" />
+        android:textSize="13sp" />
 </LinearLayout>
