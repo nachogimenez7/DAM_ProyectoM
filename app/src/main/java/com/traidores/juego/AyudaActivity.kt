@@ -1,10 +1,9 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
 import android.os.Bundle
 import android.widget.ImageButton
-import androidx.appcompat.app.AppCompatActivity
 
-class AyudaActivity : AppCompatActivity() {
+class AyudaActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -16,3 +15,4 @@ class AyudaActivity : AppCompatActivity() {
         }
     }
 }
+

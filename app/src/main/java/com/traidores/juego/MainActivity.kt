@@ -6,9 +6,8 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private var isSoundOn = true
 
@@ -22,9 +21,7 @@ class MainActivity : AppCompatActivity() {
         val btnHelp: Button = findViewById(R.id.btnHelp)
         val btnOptions: Button = findViewById(R.id.btnOptions)
 
-        // Bind top-bar and bottom-bar actions
-        val btnLanguage: ImageButton = findViewById(R.id.btnLanguage)
-        val btnProfile: ImageButton = findViewById(R.id.btnProfile)
+        // Bind bottom-bar action
         val btnSound: ImageButton = findViewById(R.id.btnSound)
 
         // Load sound preference
@@ -49,27 +46,21 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, OpcionesActivity::class.java))
         }
 
-        btnLanguage.setOnClickListener {
-            // Shortcut to Options Activity for language setting
-            val intent = Intent(this, OpcionesActivity::class.java)
-            intent.putExtra("focus_language", true)
-            startActivity(intent)
-        }
-
-        btnProfile.setOnClickListener {
-            // Shortcut to Options Activity for login setting
-            val intent = Intent(this, OpcionesActivity::class.java)
-            intent.putExtra("focus_account", true)
-            startActivity(intent)
-        }
-
         btnSound.setOnClickListener {
             isSoundOn = !isSoundOn
             sharedPref.edit().putBoolean("sound_on", isSoundOn).apply()
             updateSoundButtonIcon(btnSound)
+            MusicManager.refresh(this)
             val msg = if (isSoundOn) "Sonido Activado" else "Sonido Silenciado"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+        isSoundOn = sharedPref.getBoolean("sound_on", true)
+        MusicManager.refresh(this)
     }
 
     private fun updateSoundButtonIcon(btnSound: ImageButton) {
@@ -79,4 +70,5 @@ class MainActivity : AppCompatActivity() {
             btnSound.setImageResource(android.R.drawable.ic_lock_silent_mode)
         }
     }
+
 }

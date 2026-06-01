@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Traidores" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/bg_dark</item>
@@ -24,8 +24,8 @@
         <item name="android:textColor">@color/bg_dark</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:fontFamily">serif</item>
-        <item name="android:letterSpacing">0.15</item>
+        <item name="android:fontFamily">@font/grenze</item>
+        <item name="android:letterSpacing">0.04</item>
     </style>
 
     <style name="BtnDark">
@@ -36,7 +36,9 @@
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">16sp</item>
         <item name="android:textStyle">bold</item>
-        <item name="android:fontFamily">serif</item>
-        <item name="android:letterSpacing">0.15</item>
+        <item name="android:fontFamily">@font/grenze</item>
+        <item name="android:letterSpacing">0.04</item>
     </style>
 </resources>
+
+

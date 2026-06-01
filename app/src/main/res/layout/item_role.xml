@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -6,13 +6,13 @@
     android:background="@drawable/bg_btn_dark"
     android:padding="16dp"
     android:layout_marginBottom="10dp"
-    android:gravity="top">
+    android:gravity="center_vertical">
 
     <ImageView
         android:id="@+id/roleImage"
-        android:layout_width="92dp"
-        android:layout_height="122dp"
-        android:scaleType="centerCrop"
+        android:layout_width="72dp"
+        android:layout_height="92dp"
+        android:scaleType="fitCenter"
         android:contentDescription="Rol"
         android:layout_marginEnd="16dp" />
 
@@ -29,16 +29,8 @@
             android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:fontFamily="serif" />
-
-        <TextView
-            android:id="@+id/roleMap"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/accent_gold"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:layout_marginTop="2dp" />
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.02" />
 
         <TextView
             android:id="@+id/roleBadge"
@@ -46,37 +38,22 @@
             android:layout_height="wrap_content"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:letterSpacing="0.15"
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.04"
             android:layout_marginTop="2dp"
             android:layout_marginBottom="6dp" />
 
         <TextView
-            android:id="@+id/roleStory"
+            android:id="@+id/roleDesc"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/text_secondary"
             android:textSize="12sp"
-            android:lineSpacingExtra="3dp" />
-
-        <TextView
-            android:id="@+id/roleFunctionLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="FUNCIÓN"
-            android:textColor="@color/accent_gold"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.12"
-            android:layout_marginTop="10dp"
-            android:layout_marginBottom="2dp" />
-
-        <TextView
-            android:id="@+id/roleFunction"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_muted"
-            android:textSize="12sp"
+            android:fontFamily="@font/cormorant_garamond"
             android:lineSpacingExtra="3dp" />
 
     </LinearLayout>
 </LinearLayout>
+
+
+
