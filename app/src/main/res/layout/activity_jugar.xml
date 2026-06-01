@@ -1,83 +1,113 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg_dark">
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/fondo_menu" />
 
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#88000000" />
+        android:background="#BB0C0906" />
 
-    <!-- Back button top left -->
     <ImageButton
         android:id="@+id/btnBack"
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_margin="16dp"
         android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Volver"
         android:src="@android:drawable/ic_media_previous"
-        android:tint="@color/text_secondary"
-        android:contentDescription="Volver" />
+        android:tint="@color/text_secondary" />
+
+    <TextView
+        android:id="@+id/titlePlayMode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="28dp"
+        android:fontFamily="@font/grenze"
+        android:letterSpacing="0"
+        android:text="SELECCIONAR MODO"
+        android:textColor="@color/accent_gold"
+        android:textSize="23sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
+        android:layout_height="match_parent"
+        android:layout_below="@id/titlePlayMode"
+        android:layout_marginTop="18dp"
+        android:layout_alignParentBottom="true"
         android:orientation="vertical"
-        android:gravity="center"
-        android:paddingHorizontal="40dp">
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="24dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="⚔"
-            android:textColor="@color/accent_gold"
-            android:textSize="48sp"
-            android:layout_marginBottom="16dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="SELECCIONAR MODO"
-            android:textColor="@color/accent_gold"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:fontFamily="serif"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="¿Cómo querés jugar?"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp"
-            android:layout_marginBottom="48dp" />
-
-        <!-- LOCAL -->
-        <Button
-            android:id="@+id/btnLocal"
-            style="@style/BtnGold"
-            android:text="🏠  JUEGO LOCAL" />
-
-        <!-- ONLINE -->
-        <Button
-            android:id="@+id/btnOnline"
-            style="@style/BtnDark"
-            android:text="🌐  JUGAR EN LÍNEA" />
-
-        <!-- Description local -->
-        <TextView
+        <LinearLayout
+            android:id="@+id/cardLocal"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Juego Local: todos los jugadores comparten un mismo dispositivo. Ideal para reuniones presenciales."
-            android:textColor="@color/text_muted"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:layout_marginTop="24dp"
-            android:paddingHorizontal="8dp" />
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_btn_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:padding="12dp">
 
+            <ImageView
+                android:id="@+id/imgLocalMode"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/placeholder_local"
+                android:contentDescription="Imagen de juego local"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:fontFamily="@font/grenze"
+                android:gravity="center"
+                android:text="JUGAR LOCAL"
+                android:textColor="@color/text_primary"
+                android:textSize="21sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/cardOnline"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_btn_dark"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <ImageView
+                android:id="@+id/imgOnlineMode"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/placeholder_online"
+                android:contentDescription="Imagen de juego online"
+                android:scaleType="centerCrop" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:fontFamily="@font/grenze"
+                android:gravity="center"
+                android:text="JUGAR EN LINEA"
+                android:textColor="@color/text_primary"
+                android:textSize="21sp" />
+        </LinearLayout>
     </LinearLayout>
 
 </RelativeLayout>
+

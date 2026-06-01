@@ -29,7 +29,8 @@
             android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:fontFamily="serif" />
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.02" />
 
         <TextView
             android:id="@+id/roleMap"
@@ -46,7 +47,8 @@
             android:layout_height="wrap_content"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:letterSpacing="0.15"
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.04"
             android:layout_marginTop="2dp"
             android:layout_marginBottom="6dp" />
 
@@ -56,13 +58,14 @@
             android:layout_height="wrap_content"
             android:textColor="@color/text_secondary"
             android:textSize="12sp"
+            android:fontFamily="@font/cormorant_garamond"
             android:lineSpacingExtra="3dp" />
 
         <TextView
             android:id="@+id/roleFunctionLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="FUNCIÓN"
+            android:text="FUNCION"
             android:textColor="@color/accent_gold"
             android:textSize="10sp"
             android:textStyle="bold"
@@ -76,6 +79,7 @@
             android:layout_height="wrap_content"
             android:textColor="@color/text_muted"
             android:textSize="12sp"
+            android:fontFamily="@font/cormorant_garamond"
             android:lineSpacingExtra="3dp" />
 
     </LinearLayout>

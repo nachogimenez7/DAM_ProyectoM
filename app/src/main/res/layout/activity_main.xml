@@ -1,8 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/fondo_menu">
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/fondo_menu" />
 
     <!-- Gradient overlay for depth -->
     <View
@@ -26,27 +32,9 @@
             android:text="TRAIDORES"
             android:textColor="@color/text_primary"
             android:textSize="11sp"
-            android:fontFamily="serif"
-            android:letterSpacing="0.25" />
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0.04" />
 
-        <ImageButton
-            android:id="@+id/btnLanguage"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_compass"
-            android:contentDescription="Idioma"
-            android:tint="@color/text_secondary"
-            android:layout_marginEnd="8dp" />
-
-        <ImageButton
-            android:id="@+id/btnProfile"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_myplaces"
-            android:contentDescription="Perfil"
-            android:tint="@color/text_secondary" />
     </LinearLayout>
 
     <!-- CENTER CONTENT -->
@@ -60,14 +48,17 @@
 
         <!-- TITLE -->
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="none"
+            android:gravity="center"
+            android:maxLines="1"
             android:text="TRAIDORES"
             android:textColor="@color/accent_gold"
-            android:textSize="52sp"
+            android:textSize="44sp"
             android:textStyle="bold"
-            android:fontFamily="serif"
-            android:letterSpacing="0.15"
+            android:fontFamily="@font/grenze"
+            android:letterSpacing="0"
             android:shadowColor="#CC000000"
             android:shadowDx="2"
             android:shadowDy="4"
@@ -78,11 +69,11 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="JUEGO DE DEDUCCIÓN SOCIAL"
+            android:text="Desconfia de todos."
             android:textColor="@color/text_secondary"
-            android:textSize="11sp"
-            android:fontFamily="serif"
-            android:letterSpacing="0.25"
+            android:textSize="16sp"
+            android:fontFamily="@font/cormorant_garamond"
+            android:letterSpacing="0"
             android:layout_marginBottom="48dp" />
 
         <!-- JUGAR (gold) -->
@@ -140,7 +131,10 @@
             android:text="@string/version"
             android:textColor="@color/text_muted"
             android:textSize="11sp"
-            android:fontFamily="serif" />
+            android:fontFamily="@font/cormorant_garamond" />
     </LinearLayout>
 
 </RelativeLayout>
+
+
+

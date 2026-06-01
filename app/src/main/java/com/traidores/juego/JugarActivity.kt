@@ -1,12 +1,11 @@
-package com.traidores.juego
+﻿package com.traidores.juego
 
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
 import android.widget.ImageButton
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import android.widget.LinearLayout
 
-class JugarActivity : AppCompatActivity() {
+class JugarActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -17,15 +16,16 @@ class JugarActivity : AppCompatActivity() {
             finish()
         }
 
-        val btnLocal: Button = findViewById(R.id.btnLocal)
-        val btnOnline: Button = findViewById(R.id.btnOnline)
+        val cardLocal: LinearLayout = findViewById(R.id.cardLocal)
+        val cardOnline: LinearLayout = findViewById(R.id.cardOnline)
 
-        btnLocal.setOnClickListener {
-            Toast.makeText(this, "Modo Local: Iniciando partida rápida...", Toast.LENGTH_LONG).show()
+        cardLocal.setOnClickListener {
+            startActivity(Intent(this, LocalModeActivity::class.java))
         }
 
-        btnOnline.setOnClickListener {
-            Toast.makeText(this, "Modo Online estará disponible en la próxima versión beta.", Toast.LENGTH_LONG).show()
+        cardOnline.setOnClickListener {
+            startActivity(Intent(this, OnlineModeActivity::class.java))
         }
     }
 }
+
