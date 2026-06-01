@@ -6,12 +6,12 @@
     android:background="@drawable/bg_btn_dark"
     android:padding="16dp"
     android:layout_marginBottom="10dp"
-    android:gravity="center_vertical">
+    android:gravity="top">
 
     <ImageView
         android:id="@+id/roleImage"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
+        android:layout_width="92dp"
+        android:layout_height="122dp"
         android:scaleType="centerCrop"
         android:contentDescription="Rol"
         android:layout_marginEnd="16dp" />
@@ -32,6 +32,15 @@
             android:fontFamily="serif" />
 
         <TextView
+            android:id="@+id/roleMap"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/accent_gold"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp" />
+
+        <TextView
             android:id="@+id/roleBadge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -42,10 +51,30 @@
             android:layout_marginBottom="6dp" />
 
         <TextView
-            android:id="@+id/roleDesc"
+            android:id="@+id/roleStory"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:lineSpacingExtra="3dp" />
+
+        <TextView
+            android:id="@+id/roleFunctionLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FUNCIÓN"
+            android:textColor="@color/accent_gold"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.12"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="2dp" />
+
+        <TextView
+            android:id="@+id/roleFunction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_muted"
             android:textSize="12sp"
             android:lineSpacingExtra="3dp" />
 

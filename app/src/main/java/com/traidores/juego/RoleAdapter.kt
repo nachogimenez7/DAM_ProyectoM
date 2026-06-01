@@ -17,8 +17,10 @@ class RoleAdapter(
     class RoleViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val roleImage: ImageView = view.findViewById(R.id.roleImage)
         val roleName: TextView = view.findViewById(R.id.roleName)
+        val roleMap: TextView = view.findViewById(R.id.roleMap)
         val roleBadge: TextView = view.findViewById(R.id.roleBadge)
-        val roleDesc: TextView = view.findViewById(R.id.roleDesc)
+        val roleStory: TextView = view.findViewById(R.id.roleStory)
+        val roleFunction: TextView = view.findViewById(R.id.roleFunction)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RoleViewHolder {
@@ -29,7 +31,9 @@ class RoleAdapter(
     override fun onBindViewHolder(holder: RoleViewHolder, position: Int) {
         val role = roles[position]
         holder.roleName.text = role.name
-        holder.roleDesc.text = role.description
+        holder.roleMap.text = role.mapName
+        holder.roleStory.text = role.story
+        holder.roleFunction.text = role.function
         holder.roleBadge.text = role.team.uppercase()
 
         // Set badge color based on team
