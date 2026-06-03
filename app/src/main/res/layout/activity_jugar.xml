@@ -64,9 +64,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:background="@drawable/placeholder_local"
                 android:contentDescription="Imagen de juego local"
-                android:scaleType="centerCrop" />
+                android:scaleType="centerCrop"
+                android:src="@drawable/modo_juego_local" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -94,9 +94,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:background="@drawable/placeholder_online"
                 android:contentDescription="Imagen de juego online"
-                android:scaleType="centerCrop" />
+                android:scaleType="centerCrop"
+                android:src="@drawable/modo_jugar_online" />
 
             <TextView
                 android:layout_width="match_parent"
