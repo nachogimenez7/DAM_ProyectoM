@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -11,34 +12,29 @@
         android:scaleType="centerCrop"
         android:src="@drawable/mapa_pampa" />
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#730C0906" />
-
     <ImageButton
-        android:id="@+id/btnBack"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_margin="10dp"
+        android:id="@+id/btnSettings"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="8dp"
         android:background="@drawable/bg_btn_dark"
-        android:contentDescription="Volver"
-        android:padding="8dp"
-        android:src="@android:drawable/ic_media_previous"
-        android:tint="@color/text_secondary" />
+        android:contentDescription="Opciones"
+        android:padding="7dp"
+        android:src="@android:drawable/ic_menu_manage"
+        app:tint="@color/text_secondary" />
 
     <LinearLayout
         android:id="@+id/topStatus"
-        android:layout_width="match_parent"
+        android:layout_width="420dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="62dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="62dp"
-        android:background="@drawable/bg_game_panel"
-        android:gravity="center"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_translucent_game_panel"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp">
+        android:paddingVertical="6dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -51,10 +47,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="@font/grenze"
-                android:letterSpacing="0.02"
-                android:text="NOCHE 1"
+                android:text="REPARTO"
                 android:textColor="@color/accent_gold"
-                android:textSize="20sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -63,203 +58,304 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:fontFamily="@font/cormorant_garamond"
-                android:maxLines="1"
-                android:text="El Detective puede investigar a un jugador."
+                android:maxLines="2"
+                android:text="Mira tu rol. La noche empieza enseguida."
                 android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btnNextPhase"
-            style="@style/BtnDark"
-            android:layout_width="150dp"
-            android:layout_height="44dp"
-            android:layout_marginBottom="0dp"
-            android:text="SIGUIENTE" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/leftPlayers"
-        android:layout_width="84dp"
-        android:layout_height="match_parent"
-        android:layout_alignParentStart="true"
-        android:layout_below="@id/topStatus"
-        android:layout_above="@id/bottomPanel"
-        android:layout_marginStart="10dp"
-        android:layout_marginTop="8dp"
-        android:gravity="center_vertical"
-        android:orientation="vertical">
-
-        <include
-            android:id="@+id/playerL1"
-            layout="@layout/item_mock_player_left" />
-
-        <include
-            android:id="@+id/playerL2"
-            layout="@layout/item_mock_player_left" />
-
-        <include
-            android:id="@+id/playerL3"
-            layout="@layout/item_mock_player_left" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/rightPlayers"
-        android:layout_width="84dp"
-        android:layout_height="match_parent"
-        android:layout_alignParentEnd="true"
-        android:layout_below="@id/topStatus"
-        android:layout_above="@id/bottomPanel"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="10dp"
-        android:gravity="center_vertical"
-        android:orientation="vertical">
-
-        <include
-            android:id="@+id/playerR1"
-            layout="@layout/item_mock_player_right" />
-
-        <include
-            android:id="@+id/playerR2"
-            layout="@layout/item_mock_player_right" />
-
-        <include
-            android:id="@+id/playerR3"
-            layout="@layout/item_mock_player_right" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/centerPanel"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_below="@id/topStatus"
-        android:layout_above="@id/bottomPanel"
-        android:layout_marginStart="104dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginEnd="104dp"
-        android:gravity="center"
-        android:orientation="vertical">
-
-        <LinearLayout
-            android:id="@+id/actionPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_game_panel"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="10dp">
-
-            <TextView
-                android:id="@+id/actionTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/grenze"
-                android:text="OBJETIVO"
-                android:textColor="@color/accent_gold"
-                android:textSize="15sp" />
-
-            <TextView
-                android:id="@+id/targetName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/cormorant_garamond"
-                android:text="Selecciona un jugador"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp" />
+                android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/bottomPanel"
+        android:id="@+id/gameplayBody"
         android:layout_width="match_parent"
-        android:layout_height="138dp"
+        android:layout_height="match_parent"
         android:layout_alignParentBottom="true"
-        android:layout_marginStart="112dp"
-        android:layout_marginEnd="112dp"
-        android:layout_marginBottom="10dp"
-        android:background="@drawable/bg_game_panel"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="10dp">
+        android:layout_below="@id/topStatus"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal">
+
+        <ScrollView
+            android:id="@+id/leftPlayersScroll"
+            android:layout_width="76dp"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:fillViewport="false"
+            android:overScrollMode="ifContentScrolls"
+            android:scrollbarStyle="outsideOverlay">
+
+            <LinearLayout
+                android:id="@+id/leftPlayersContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:gravity="top|center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp" />
+        </ScrollView>
 
         <LinearLayout
-            android:id="@+id/roleCard"
-            android:layout_width="84dp"
-            android:layout_height="118dp"
-            android:background="@drawable/bg_role_card"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:padding="5dp">
+            android:id="@+id/centerColumn"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="8dp"
+            android:layout_weight="1"
+            android:animateLayoutChanges="true"
+            android:orientation="vertical">
 
-            <ImageView
-                android:id="@+id/roleImage"
+            <LinearLayout
+                android:id="@+id/eventLogPanel"
                 android:layout_width="match_parent"
-                android:layout_height="82dp"
-                android:background="@drawable/bg_card_back"
-                android:contentDescription="Carta de rol"
-                android:scaleType="fitCenter" />
+                android:layout_height="160dp"
+                android:animateLayoutChanges="true"
+                android:background="@drawable/bg_translucent_game_panel"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/roleName"
+                <LinearLayout
+                    android:id="@+id/eventLogHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="28dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="8dp">
+
+                    <TextView
+                        android:id="@+id/eventLogTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/grenze"
+                        android:maxLines="1"
+                        android:text="EVENTOS"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnToggleEventLog"
+                        style="@style/BtnDark"
+                        android:layout_width="82dp"
+                        android:layout_height="22dp"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:padding="0dp"
+                        android:text="&#9650; ocultar"
+                        android:textSize="8sp" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:id="@+id/eventLogContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+
+                    <ImageView
+                        android:id="@+id/eventLogBackground"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@null"
+                        android:scaleType="fitXY"
+                        android:src="@drawable/log_gaucho" />
+
+                    <ScrollView
+                        android:id="@+id/eventLogScroll"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:fillViewport="false"
+                        android:overScrollMode="ifContentScrolls"
+                        android:scrollbarStyle="outsideOverlay">
+
+                        <LinearLayout
+                            android:id="@+id/eventLogContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="8dp"
+                            android:paddingTop="6dp"
+                            android:paddingBottom="8dp" />
+                    </ScrollView>
+                </FrameLayout>
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <LinearLayout
+                android:id="@+id/bottomPlayerPanel"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_hud_parchment"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="6dp">
+
+                <LinearLayout
+                    android:id="@+id/roleCard"
+                    android:layout_width="48dp"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_role_card"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="3dp">
+
+                    <ImageView
+                        android:id="@+id/roleImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:adjustViewBounds="true"
+                        android:background="@android:color/transparent"
+                        android:contentDescription="Carta de rol"
+                        android:scaleType="fitCenter" />
+
+                    <TextView
+                        android:id="@+id/roleName"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:text="OCULTO"
+                        android:textColor="@color/bg_dark"
+                        android:textSize="7sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="9dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/currentPlayerName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/grenze"
+                        android:maxLines="1"
+                        android:text="Nacho"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="15sp" />
+
+                    <TextView
+                        android:id="@+id/currentPlayerHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:lineSpacingExtra="1dp"
+                        android:maxLines="2"
+                        android:text="Tu carta esta oculta."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="92dp"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <Button
+                        android:id="@+id/btnRevealCard"
+                        style="@style/BtnGold"
+                        android:layout_height="29dp"
+                        android:layout_marginBottom="4dp"
+                        android:text="REVELAR"
+                        android:textSize="10sp" />
+
+                    <Button
+                        android:id="@+id/btnVote"
+                        style="@style/BtnDark"
+                        android:layout_height="29dp"
+                        android:layout_marginBottom="0dp"
+                        android:text="ACELERAR"
+                        android:textSize="9sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/rightColumn"
+            android:layout_width="76dp"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ScrollView
+                android:id="@+id/rightPlayersScroll"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:fontFamily="@font/grenze"
-                android:gravity="center"
-                android:text="OCULTO"
-                android:textColor="@color/bg_dark"
-                android:textSize="12sp" />
-        </LinearLayout>
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:fillViewport="false"
+                android:overScrollMode="ifContentScrolls"
+                android:scrollbarStyle="outsideOverlay">
 
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:orientation="vertical">
+                <LinearLayout
+                    android:id="@+id/rightPlayersContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:gravity="top|center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingTop="0dp"
+                    android:paddingBottom="0dp" />
+            </ScrollView>
 
-            <TextView
-                android:id="@+id/currentPlayerName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="@font/grenze"
-                android:text="Nacho"
-                android:textColor="@color/accent_gold"
-                android:textSize="21sp" />
+            <FrameLayout
+                android:id="@+id/chatButtonFrame"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginTop="4dp"
+                android:clipChildren="false"
+                android:clipToPadding="false">
 
-            <TextView
-                android:id="@+id/currentPlayerHint"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="2dp"
-                android:maxLines="2"
-                android:text="Tu carta esta oculta. Revelala solo cuando una regla lo permita."
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp" />
-        </LinearLayout>
+                <ImageButton
+                    android:id="@+id/btnToggleChat"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_chat_fab"
+                    android:contentDescription="Abrir chat"
+                    android:padding="7dp"
+                    android:src="@android:drawable/ic_menu_myplaces"
+                    app:tint="@color/bg_dark" />
 
-        <LinearLayout
-            android:layout_width="156dp"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <Button
-                android:id="@+id/btnRevealCard"
-                style="@style/BtnGold"
-                android:layout_height="48dp"
-                android:layout_marginBottom="8dp"
-                android:text="REVELAR" />
-
-            <Button
-                android:id="@+id/btnVote"
-                style="@style/BtnDark"
-                android:layout_height="48dp"
-                android:layout_marginBottom="0dp"
-                android:text="VOTAR" />
+                <TextView
+                    android:id="@+id/chatUnreadBadge"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="-3dp"
+                    android:layout_marginEnd="-3dp"
+                    android:background="@drawable/bg_chat_badge"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="1"
+                    android:textColor="@android:color/white"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </FrameLayout>
         </LinearLayout>
     </LinearLayout>
 

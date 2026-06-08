@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="92dp"
-    android:layout_marginBottom="8dp"
+    android:layout_height="66dp"
+    android:layout_marginBottom="5dp"
     android:background="@drawable/bg_player_chip"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="6dp">
+    android:padding="4dp">
 
     <TextView
         android:id="@+id/playerAvatar"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="25dp"
+        android:layout_height="25dp"
         android:background="@drawable/bg_player_avatar"
         android:fontFamily="@font/grenze"
         android:gravity="center"
         android:text="?"
         android:textColor="@color/bg_dark"
-        android:textSize="18sp" />
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/playerName"
@@ -28,7 +28,7 @@
         android:gravity="center"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="12sp" />
+        android:textSize="9sp" />
 
     <TextView
         android:id="@+id/playerStatus"
@@ -40,5 +40,5 @@
         android:maxLines="1"
         android:text="En juego"
         android:textColor="@color/accent_green"
-        android:textSize="10sp" />
+        android:textSize="8sp" />
 </LinearLayout>

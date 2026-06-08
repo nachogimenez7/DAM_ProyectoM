@@ -2,7 +2,7 @@
 <resources>
     <color name="bg_dark">#1a1510</color>
     <color name="bg_card">#2a2318</color>
-    <color name="bg_overlay">#CC1a1510</color>
+    <color name="bg_overlay">#CC000000</color>
     <color name="btn_gold_start">#e8b84b</color>
     <color name="btn_gold_end">#8b6914</color>
     <color name="btn_dark">#2a2318</color>
@@ -11,7 +11,7 @@
     <color name="text_secondary">#c4b69c</color>
     <color name="text_muted">#8a7a62</color>
     <color name="accent_gold">#d4a24e</color>
-    <color name="accent_red">#a83232</color>
+    <color name="accent_red">#8F2633</color>
     <color name="accent_blue">#4a7fb5</color>
     <color name="accent_green">#5a8a3c</color>
     <color name="accent_purple">#8a5fbf</color>

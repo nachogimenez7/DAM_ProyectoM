@@ -1,5 +1,6 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -11,10 +12,6 @@
         android:src="@drawable/fondo_menu" />
 
     <!-- Gradient overlay for depth -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#88000000" />
 
     <!-- TOP BAR -->
     <LinearLayout
@@ -84,7 +81,7 @@
             android:letterSpacing="0"
             android:layout_marginBottom="48dp" />
 
-        <!-- JUGAR (gold) -->
+        <!-- JUGAR -->
         <Button
             android:id="@+id/btnPlay"
             style="@style/BtnGold"
@@ -125,7 +122,7 @@
             android:layout_height="44dp"
             android:background="@drawable/bg_btn_dark"
             android:src="@android:drawable/ic_lock_silent_mode_off"
-            android:tint="@color/text_secondary"
+            app:tint="@color/text_secondary"
             android:contentDescription="Sonido" />
 
         <View

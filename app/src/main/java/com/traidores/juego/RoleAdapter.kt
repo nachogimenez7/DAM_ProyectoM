@@ -87,7 +87,7 @@ class RoleAdapter(
         val badgeColor = when (role.team.lowercase()) {
             "pueblo" -> Color.parseColor("#4a7fb5")
             "asesino" -> Color.parseColor("#a83232")
-            "neutral" -> Color.parseColor("#d4a24e")
+            "neutral" -> Color.parseColor("#d7dee8")
             "rol de mapa" -> Color.parseColor("#5a8a3c")
             else -> Color.parseColor("#c4b69c")
         }

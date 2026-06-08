@@ -1,61 +1,68 @@
 ---
 last_mapped: 2026-06-03
 focus: concerns
+scope: Android app source, Gradle config, manifest, unit tests
 ---
 
 # Concerns
 
 ## Summary
-The project is a functional prototype with strong visual assets, but core gameplay and navigation are still implemented directly inside Activities. The largest risks are maintainability of `GameplayMockActivity.kt`, lack of automated tests, and mocked online/account functionality that can be mistaken for real behavior.
+The app has moved past a pure mock: `GameEngine` and `GameEngineTest` now cover core local-game rules. The remaining risks are concentrated around prototype infrastructure, Activity-heavy runtime flow, simulated online/account features, and release/security defaults.
 
-## Gameplay Logic Concentration
-- `GameplayMockActivity.kt` contains UI wiring, state transitions, AI choices, voting, winner checks, and rendering.
-- This makes local rules harder to test or reuse.
-- A future `GameEngine` or reducer class would make state transitions easier to unit test.
+## High Priority
 
-## Random Role Assignment
-- `LocalGameFactory.assignRoles` uses `roles.shuffled()`.
-- This is good for gameplay variety but makes repeatable tests harder.
-- A seedable random source or injectable shuffler would help test deterministic scenarios.
+### Prototype online and account flows
+- `OnlineModeActivity.kt` still routes quick play, lobby search, and lobby creation into `GameplayMockActivity` with Toasts that explicitly describe mock behavior.
+- `LocalModeActivity.kt` accepts a mock join code and creates local sessions without validation or persistence.
+- `OpcionesActivity.kt` simulates login/register messages locally; there is no backend, credential persistence, or authenticated online state.
+- Risk: users can mistake UI affordances for real multiplayer/account support.
 
-## Serializable State Passing
-- `GameSession` is passed as `Serializable` through intents.
-- This is simple but can become fragile as session state grows.
-- Large or complex game state may eventually need a shared repository, parcelable model, or persistence layer.
+### Activity-owned game runtime
+- `GameplayMockActivity.kt` still owns rendering, target selection, chat UI, timers, auto-advance scheduling, and session mutation around the extracted `GameEngine`.
+- Handler-based auto-advance is lifecycle-sensitive and only in-memory; leaving/recreating the Activity can reset or lose game state.
+- Risk: UI regressions or lifecycle events can affect game progression even when engine rules are correct.
 
-## Dynamic Resource Lookup
-- `getIdentifier` is used in `RolesActivity.kt`, `RoleAdapter.kt`, and `GameplayMockActivity.kt`.
-- Misspelled resource names degrade to generic gallery icons.
-- Compile-time resource references would catch more mistakes.
+### Intent-passed Serializable session state
+- `GameSession`, players, roles, chat messages, and phases implement `Serializable`; Activities pass sessions with deprecated `getSerializableExtra`.
+- This is acceptable for a small prototype, but the session now contains growing lists and gameplay history.
+- Risk: fragile navigation contracts, possible performance cost, and no durable recovery after process death.
 
-## Missing Tests
-- There are no unit or instrumentation tests.
-- Current gameplay rules are not protected against regression.
-- Role assignment, muted players, public/private information separation, and winner checks are high-priority test targets.
+## Medium Priority
 
-## Mocked Online and Account Features
-- `OnlineModeActivity.kt` opens mocked gameplay after Toasts.
-- `OpcionesActivity.kt` simulates login/register without backend persistence.
-- These flows should be clearly marked as mock until real networking/auth exists.
-
-## Permissions and Security
-- `INTERNET` is declared in `app/src/main/AndroidManifest.xml` despite no current network code.
+### Release and security defaults need review
+- `AndroidManifest.xml` declares `INTERNET` while current app behavior is still local/mock.
 - `android:allowBackup="true"` is enabled.
-- Neither is necessarily wrong for a prototype, but both should be reviewed before release.
+- `app/build.gradle` has release `minifyEnabled false`.
+- Risk: release builds may expose unnecessary platform surface or ship without shrink/obfuscation review.
 
-## Music Lifecycle
-- `MusicManager.kt` maintains a singleton `MediaPlayer`.
-- It pauses after a delay when all screens stop.
-- There is no explicit release path for the player.
-- Long-running sessions should be monitored for lifecycle or resource leaks.
+### Test coverage is useful but narrow
+- `GameEngineTest.kt` covers role assignment, night actions, voting, chat permissions, mute behavior, and win conditions.
+- Coverage does not yet exercise Activity navigation, lifecycle/timer behavior, XML layout rendering, account/options behavior, or online-mode handoffs.
+- Verification in this environment is blocked because `JAVA_HOME` is not set and `java` is missing from `PATH`.
 
-## Localization
-- Many strings are hardcoded in Kotlin/XML.
-- `OpcionesActivity.kt` simulates language changes manually.
-- Real localization would require moving copy to resource files and using locale-specific `values-*` folders.
+### Random role assignment is nondeterministic
+- `LocalGameFactory.assignRoles` uses `roles.shuffled()` directly.
+- Existing tests validate role counts but cannot reproduce a specific assignment order without controlling randomness.
+- Risk: future tests for role-specific UI and private information may become flaky or require brittle workarounds.
 
-## Git/Project Hygiene
-- The current working tree includes `.idea` changes and new untracked files.
-- Generated IDE state should be reviewed separately from app changes.
-- The Gradle wrapper appears incomplete because `gradlew.bat` and wrapper jar were not observed.
+## Lower Priority
 
+### Dynamic drawable lookup
+- Role/map images still use resource-name strings and `resources.getIdentifier` in role-related UI paths.
+- Missing or renamed assets silently fall back to generic gallery icons in several places.
+- Risk: asset regressions are detected late instead of at compile time.
+
+### Hardcoded copy and manual language handling
+- Gameplay, lobby, options, and navigation strings are largely hardcoded in Kotlin/XML.
+- `OpcionesActivity.kt` manually changes visible labels instead of using Android locale resources.
+- Risk: localization will require broad UI rewrites and manual copy synchronization.
+
+### Shared music singleton lifecycle
+- `MusicManager.kt` owns a singleton `MediaPlayer` and delayed pause behavior.
+- There is no explicit release path for long idle sessions or app shutdown.
+- Risk: low for prototype, but worth monitoring before release or broader device testing.
+
+## Watchlist
+- `GameEngine.humanPlayer` falls back to `session.players.first()`, so empty sessions can crash if a future flow creates one.
+- `GameSession.phaseIndex` exists but is not part of observed phase progression.
+- The working tree contains many modified/untracked IDE, wrapper, screenshot, layout, and Kotlin files; treat source-control cleanup separately from app concerns.

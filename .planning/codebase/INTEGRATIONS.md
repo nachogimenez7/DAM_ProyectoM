@@ -6,55 +6,52 @@ focus: tech
 # Integrations
 
 ## Summary
-The current app has no real backend, database, authentication provider, webhooks, or external API integration. The codebase is primarily a local Android game prototype with mocked local and online flows.
+The app currently has no real backend, database, authentication provider, matchmaking service, analytics, ads, push notifications, or external API client. Integrations are Android-platform local services plus mocked online/game flows.
 
-## Android Platform Integrations
-- The app declares `android.permission.INTERNET` in `app/src/main/AndroidManifest.xml`.
-- No HTTP client dependency is present in `app/build.gradle`.
-- No network code was observed in `app/src/main/java/com/traidores/juego`.
-- The `INTERNET` permission appears reserved for future online play rather than active use.
+## Android Manifest
+- Permission declared: `android.permission.INTERNET`.
+- No network client dependency or network call was observed, so this appears reserved for future online play.
+- Launcher activity: `.MainActivity`.
+- App theme: `@style/Theme.Traidores`.
+- Backup is enabled with `android:allowBackup="true"`.
+- Activities are explicitly registered and screen orientation is fixed per screen.
 
-## Media Integration
-- `MusicManager.kt` uses Android `MediaPlayer`.
-- The music asset is `app/src/main/res/raw/menu_music.mp3`.
-- `BaseActivity.kt` starts/stops music lifecycle tracking for every screen by calling `MusicManager.onActivityStarted(this)` and `MusicManager.onActivityStopped()`.
-- `MusicManager.refresh(context)` reads preferences and starts/pauses looping menu music.
+## Activity Navigation
+- Navigation uses explicit `Intent` launches.
+- Main flow: `MainActivity` -> `JugarActivity` -> local/online mode screens.
+- Local flow: `LocalModeActivity` -> `LobbyActivity` -> `AssigningRolesActivity` -> `GameplayMockActivity`.
+- Online buttons currently show `Toast` feedback and open `GameplayMockActivity`.
+- `RolesActivity`, `AyudaActivity`, and `OpcionesActivity` are standalone menu destinations.
+
+## Game State Passing
+- `GameSession`, `GamePlayer`, `GameRole`, and `GameChatMessage` implement `Serializable`.
+- `LobbyActivity.EXTRA_SESSION` is the primary intent extra key for local game session transfer.
+- `LocalGameFactory` creates local sessions, selects maps, changes mock players, and assigns roles.
+- There is no persistent game-state store; session state is passed in memory between activities.
 
 ## Local Preferences
 - Preferences file: `TraidoresPrefs`.
-- `MainActivity.kt` reads and writes `sound_on`.
-- `MusicManager.kt` reads `sound_on` and `music_volume`.
-- `OpcionesActivity.kt` manages `music_volume`, `voice_volume`, `language`, and simulated account form interactions.
-- Preferences are stored with Android `SharedPreferences`, not a database.
+- `MainActivity` reads/writes `sound_on`.
+- `MusicManager` reads `sound_on` and `music_volume`.
+- `OpcionesActivity` manages `music_volume`, `voice_volume`, `language`, and simulated account form values.
+- Preferences use Android `SharedPreferences`; no Room, SQLite wrapper, DataStore, or remote sync is present.
 
-## Game Session Passing
-- Local game state is passed between activities using `Serializable` extras.
-- `LobbyActivity.EXTRA_SESSION` is used as the intent key.
-- `LocalModeActivity.kt` creates a `GameSession` and sends it to `LobbyActivity.kt`.
-- `LobbyActivity.kt` assigns roles and sends the session to `AssigningRolesActivity.kt`.
-- `AssigningRolesActivity.kt` forwards the session to `GameplayMockActivity.kt`.
+## Media
+- `MusicManager` uses Android `MediaPlayer` to loop `R.raw.menu_music`.
+- `BaseActivity` calls `MusicManager.onActivityStarted` and `onActivityStopped` for all screens that inherit from it.
+- Playback is controlled by `SharedPreferences` and delayed pause handling via `Handler`.
 
-## Mocked Online Flow
-- `OnlineModeActivity.kt` contains buttons for quick match, search, and create.
-- Each online action currently displays a `Toast` and opens `GameplayMockActivity`.
-- There is no matchmaking service, websocket, REST API, Firebase, or local network integration yet.
+## Resource Lookup
+- The app uses generated `R` references for most layouts, drawables, raw assets, strings, colors, and fonts.
+- Some role/map images are resolved dynamically from resource names with `Resources.getIdentifier`.
+- Dynamic lookup is used in roles and gameplay rendering, so missing drawable names may fail at runtime rather than compile time.
 
-## Authentication
-- `OpcionesActivity.kt` includes simulated login/register UI.
-- No auth backend exists.
-- Username/password fields only trigger local Toast messages.
-- No credentials are persisted or transmitted.
+## Mocked Online and Auth
+- `OnlineModeActivity` has quick match, search, and create actions, but all are local mocks.
+- `OpcionesActivity` includes simulated login/register UI.
+- No credentials are stored or transmitted.
+- No Firebase, OAuth, REST, websocket, or local-network integration was observed.
 
-## Resource Lookup Integration
-- Several components use `Resources.getIdentifier`.
-- `RolesActivity.kt`, `RoleAdapter.kt`, and `GameplayMockActivity.kt` resolve drawable names dynamically from role/map metadata.
-- This reduces explicit resource references but can hide missing-resource errors until runtime.
-
-## External Services
-- None currently integrated.
-- No analytics, crash reporting, ads, payment, push notification, or cloud storage integrations were observed.
-
-## Security Notes
-- Because no external API keys or tokens are present, no secret-bearing integration surface was observed.
-- `android:allowBackup="true"` is enabled in `app/src/main/AndroidManifest.xml`; that may be acceptable for a prototype but should be reviewed before production.
-
+## External Service Surface
+- No API keys, tokens, service config files, analytics SDKs, crash reporters, ads, payments, cloud storage, or push notification setup were observed.
+- Security-sensitive external integration surface is currently minimal, with `INTERNET` and `allowBackup` as the main production-readiness review points.

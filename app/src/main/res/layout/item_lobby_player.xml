@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/bg_player_chip"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="10dp">
+
+    <TextView
+        android:id="@+id/playerAvatar"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:background="@drawable/bg_player_avatar"
+        android:fontFamily="@font/grenze"
+        android:gravity="center"
+        android:text="?"
+        android:textColor="@color/bg_dark"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/playerName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:fontFamily="@font/grenze"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textSize="17sp" />
+
+    <TextView
+        android:id="@+id/playerStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/cormorant_garamond"
+        android:textColor="@color/accent_green"
+        android:textSize="13sp" />
+</LinearLayout>

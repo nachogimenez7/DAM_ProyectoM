@@ -27,5 +27,9 @@ class JugarActivity : BaseActivity() {
             startActivity(Intent(this, OnlineModeActivity::class.java))
         }
     }
-}
 
+    override fun onResume() {
+        super.onResume()
+        MusicManager.playMenuMusic(this)
+    }
+}

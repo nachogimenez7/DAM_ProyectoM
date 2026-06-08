@@ -6,59 +6,48 @@ focus: quality
 # Testing
 
 ## Summary
-No automated test framework or test source set is currently configured beyond default Android build support. Validation has been done manually and through `assembleDebug`.
+The project now has a JVM unit-test source set with JUnit 4 coverage for the local game engine. There are still no instrumented UI tests, so Activity navigation, XML rendering, media lifecycle, and device-specific behavior remain manually verified.
 
-## Test Directories
-- No `app/src/test` directory was observed.
+## Test Setup
+- Unit tests live in `app/src/test/java/com/traidores/juego`.
+- `app/build.gradle` includes `testImplementation 'junit:junit:4.13.2'`.
 - No `app/src/androidTest` directory was observed.
-- No unit test files were found under `app/src/main/java`.
+- No Espresso, Robolectric, Mockito, Compose test, or AndroidX test dependencies are configured.
+- The Gradle wrapper is present, so the normal local command is `.\gradlew.bat test`.
 
-## Test Dependencies
-- `app/build.gradle` has no `testImplementation` dependencies.
-- `app/build.gradle` has no `androidTestImplementation` dependencies.
-- No JUnit, Espresso, Mockito, Robolectric, or Compose test dependencies are configured.
+## Existing Coverage
+- `GameEngineTest.kt` contains 17 JUnit tests.
+- Current tests cover role assignment, assassin kills, medic protection, private police hints, muted-player restrictions, bot debate privacy, auto-advance gating, target action labels, voting resolution, chat permissions, and win conditions.
+- Tests exercise pure Kotlin/domain behavior through `GameEngine`, `LocalGameFactory`, and `GameSession` fixtures.
 
-## Current Verification Command
-- Debug build command used in this environment:
-  - Set `JAVA_HOME` to Android Studio JBR.
-  - Run cached Gradle 8.5 `gradle.bat assembleDebug`.
-- Build output confirms compile, resource processing, dexing, and APK packaging.
-- APK output path: `app/build/outputs/apk/debug/app-debug.apk`.
+## Current Verification Commands
+- Run JVM unit tests:
+  - `.\gradlew.bat test`
+- Build a debug APK:
+  - `.\gradlew.bat assembleDebug`
+- Useful output paths:
+  - Unit test reports: `app/build/reports/tests/testDebugUnitTest/index.html`
+  - Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
 
-## Manual Test Scenarios
-- Main menu opens and routes to play, roles, help, and options.
-- Sound toggle updates `TraidoresPrefs.sound_on` and `MusicManager`.
-- Local flow:
-  - `MainActivity` -> `JugarActivity` -> `LocalModeActivity` -> `LobbyActivity`
-  - Choose map in lobby.
-  - Add/remove mock players.
-  - Expel non-host participant.
-  - Start role assignment.
-  - Transition through `AssigningRolesActivity` to `GameplayMockActivity`.
-- Gameplay:
-  - Reveal/hide human card.
-  - Resolve AI phases.
-  - Select valid active targets.
-  - Handle muted/dead players.
-  - Advance dawn/day/voting/result.
-  - Detect Pueblo or Traidores winner.
+## Manual Scenarios Still Needed
+- Main menu routes to play, roles, help, options, and back navigation.
+- Sound toggle and options sliders update `TraidoresPrefs` and affect `MusicManager`.
+- Local flow from `MainActivity` to lobby to role assignment to gameplay.
+- Lobby map selector updates visible map, selected map key, and role image suffix.
+- Add/remove mock players, including host removal protection and min/max player limits.
+- Gameplay renders readable player seats across 5 to 15 players.
+- Chat panel opens/closes, respects muted/read-only states, and does not overlap critical gameplay controls.
+- Role card reveal/hide behavior works across phase transitions.
 
-## High-Value Future Unit Tests
-- `LocalGameFactory.assignRoles` should always assign exactly one assassin, one police role, one medic, and remaining aldeanos.
-- `assignRoles` should preserve one human player and reset `alive/muted` flags.
-- `removePlayer` should not remove host index `0`.
-- `addMockPlayer` should not duplicate player names.
-- Game winner logic should handle zero assassins, assassin parity, and ongoing states.
+## High-Value Next Tests
+- Add unit tests for `LocalGameFactory.selectMap`, `addMockPlayer`, `removeLastPlayer`, and `removePlayer`.
+- Add deterministic role-assignment testing by injecting or controlling shuffle behavior if rules become more complex.
+- Add instrumented tests for Activity navigation and lobby/gameplay smoke flows.
+- Add UI assertions for chat visibility, card action buttons, and muted-player controls.
+- Add regression tests around dynamic drawable names for each map/role suffix.
 
-## High-Value Future Instrumented Tests
-- Activity navigation from menu to local game.
-- Lobby map selector updates displayed map and session map key.
-- Gameplay blocks selection of muted players.
-- Public announcement does not reveal protected player or vote breakdown.
-- Police private hint is visible only in the lower HUD text.
-
-## Risks Without Tests
-- Gameplay state machine lives in Activity code, making it hard to unit test directly.
-- Random role assignment can make manual verification inconsistent unless seedable logic is introduced.
-- Dynamic resource lookup failures may only appear during manual runtime tests.
-
+## Known Gaps
+- Activity code, XML layout behavior, timers, Toast messages, and `SharedPreferences` integration are not covered by automated tests.
+- Media playback lifecycle in `MusicManager` is untested.
+- No coverage report or minimum coverage threshold is configured.
+- No CI workflow was observed in the workspace.

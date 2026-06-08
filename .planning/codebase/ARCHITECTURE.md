@@ -6,63 +6,62 @@ focus: arch
 # Architecture
 
 ## Summary
-The app is a classic Android Activity-based prototype. It uses Kotlin classes as screen controllers, XML layouts for presentation, and a local in-memory `GameSession` model passed between screens. There is no repository layer, persistence layer, service layer, or navigation framework.
+`TraidoresMenu` is a single-module Android app built as an Activity/XML prototype. The current shape is still screen-driven, but local match rules have been separated into a small Kotlin domain layer: Activities own Android lifecycle, navigation, and rendering, while `GameEngine.kt` resolves game phases and `GameModels.kt` holds immutable serializable state.
 
-## Entry Point
-- Launcher activity: `MainActivity.kt`.
-- Manifest declaration: `app/src/main/AndroidManifest.xml`.
-- `MainActivity` is portrait and exported with `MAIN`/`LAUNCHER`.
-- `MainActivity` routes to play, roles, help, and options.
+## Runtime Pattern
+- Android application module: `app`.
+- Package and namespace: `com.traidores.juego`.
+- UI controllers are `AppCompatActivity` subclasses under `app/src/main/java/com/traidores/juego`.
+- Layouts and visual assets are XML/PNG resources under `app/src/main/res`.
+- There is no Compose, ViewModel, repository, Room database, dependency injection, or navigation component.
+
+## Entry Points
+- Launcher screen: `app/src/main/java/com/traidores/juego/MainActivity.kt`.
+- Activity registry and orientation policy: `app/src/main/AndroidManifest.xml`.
+- Main menu routes to play mode selection, roles catalog, help, and options.
+- All Activities extend `app/src/main/java/com/traidores/juego/BaseActivity.kt`, which delegates global music lifecycle to `MusicManager.kt`.
 
 ## Screen Flow
-- Main menu: `MainActivity.kt` with `activity_main.xml`.
-- Mode select: `JugarActivity.kt` with `activity_jugar.xml`.
-- Local setup: `LocalModeActivity.kt` with `activity_local_mode.xml`.
-- Local lobby: `LobbyActivity.kt` with `activity_lobby.xml`.
-- Assigning roles transition: `AssigningRolesActivity.kt` with `activity_assigning_roles.xml`.
-- Gameplay: `GameplayMockActivity.kt` with `activity_gameplay_mock.xml`.
-- Roles catalog: `RolesActivity.kt`, `RoleAdapter.kt`, `RoleListItem.kt`, `Role.kt`, `MapInfo.kt`.
-- Help/options: `AyudaActivity.kt`, `OpcionesActivity.kt`.
-- Online mode: `OnlineModeActivity.kt`, currently mocked.
+- `MainActivity.kt` -> `JugarActivity.kt` for play mode selection.
+- `JugarActivity.kt` -> `LocalModeActivity.kt` or `OnlineModeActivity.kt`.
+- Local path: `LocalModeActivity.kt` creates or joins a mock local session, then opens `LobbyActivity.kt`.
+- Lobby path: `LobbyActivity.kt` selects map, changes mock player count, assigns roles, then opens `AssigningRolesActivity.kt`.
+- Transition path: `AssigningRolesActivity.kt` waits briefly with a `Handler`, then opens `GameplayMockActivity.kt`.
+- Gameplay path: `GameplayMockActivity.kt` renders the table, role card, chat, phase status, and player actions.
+- Reference/catalog path: `RolesActivity.kt` uses `RoleAdapter.kt` plus role/map data classes to render map-specific role descriptions.
+
+## Domain Layer
+- `app/src/main/java/com/traidores/juego/GameModels.kt` defines `GameSession`, `GamePlayer`, `GameRole`, `GameChatMessage`, `GamePhase`, `GameMap`, and `LocalGameFactory`.
+- `LocalGameFactory` owns demo setup: maps, default players, player limits, map selection, player removal, and role assignment.
+- `app/src/main/java/com/traidores/juego/GameEngine.kt` owns rule transitions: night start, assassin/police/medic resolution, dawn, debate, voting, results, chat permissions, auto-advance timing, and winner checks.
+- The engine mostly returns copied `GameSession` values rather than mutating Android objects, which keeps rule behavior testable outside Activities.
+
+## UI State And Data Flow
+- `GameSession` is passed between screens as a `Serializable` extra using `LobbyActivity.EXTRA_SESSION`.
+- `GameplayMockActivity` keeps the active session in a private field, calls `GameEngine`, then re-renders all relevant views manually.
+- Rendering uses imperative Android APIs: `findViewById`, `TextView.text`, `ImageView.setImageResource`, visibility, alpha, and view animations.
+- Player seats in gameplay are generated programmatically inside `GameplayMockActivity` instead of inflated from a repeated XML row.
+- Chat history, public history, private hints, votes, and winner state are stored in `GameSession`; there is no persistence after process death.
+
+## Resource Architecture
+- Screen layout XML files live in `app/src/main/res/layout/activity_*.xml`.
+- Repeated rows/cards use `item_*.xml`; role detail uses `dialog_role_detail.xml`.
+- UI backgrounds and selectors are drawable XML resources such as `bg_btn_gold.xml`, `bg_game_panel.xml`, `bg_chat_panel.xml`, and `bg_player_seat.xml`.
+- Map and role art lives in `app/src/main/res/drawable`, with source/reference art also present in top-level `roles_gauchos`, `roles_griegos`, and `roles_medievales`.
+- Role images are resolved by name convention, for example `rol_asesino_gaucho` or `rol_medico_medieval`.
 
 ## Orientation Boundary
-- Menu and setup screens are portrait in `app/src/main/AndroidManifest.xml`.
+- Menu, setup, roles, help, options, and online screens are portrait.
 - Lobby, assigning roles, and gameplay are landscape.
-- This boundary is important: local match flow becomes landscape once the player enters the lobby.
+- This makes the match flow a clear presentation boundary, but state still depends on Activity memory and serialized extras.
 
-## Game Domain Model
-- Domain models live in `GameModels.kt`.
-- `GameSession` stores map, players, phase, round, night actions, investigation data, votes, public/private messaging, history, and winner.
-- `GamePlayer` stores name, initial, role, alive/muted state, and whether the player is human.
-- `GameRole` stores key, display name, team, and drawable resource name.
-- `GamePhase` enumerates local match phases.
-- `GameMap` maps a map key to display name, image resource, and role image suffix.
+## Testing Boundary
+- `app/src/test/java/com/traidores/juego/GameEngineTest.kt` tests the engine/domain layer with plain JUnit.
+- Coverage focuses on role assignment, night actions, voting, chat permissions, auto-advance behavior, target action labels, and win conditions.
+- There are no Android instrumentation tests or UI interaction tests in the observed tree.
 
-## Local Game State Flow
-- `LocalGameFactory.createSession()` creates a deterministic player list and default map.
-- `LobbyActivity` can select map, add/remove mock players, and expel participants.
-- `LocalGameFactory.assignRoles(session)` creates one police role, one assassin, one medic, and aldeanos, then shuffles them.
-- `GameplayMockActivity` resolves the local state machine from `GamePhase.REPARTO` through night, dawn, day debate, voting, and result.
-
-## UI State Pattern
-- Screen state is managed directly in each Activity.
-- Views are stored as Activity fields only where needed, for example `GameplayMockActivity`.
-- UI updates are manual through `TextView.text`, `ImageView.setImageResource`, and visibility changes.
-- There is no ViewModel, LiveData, Flow, or lifecycle-aware state holder.
-
-## Shared Behavior
-- `BaseActivity.kt` centralizes music lifecycle behavior for all screens.
-- Every Activity extends `BaseActivity`, so music behavior is applied globally.
-- `MusicManager.kt` is a singleton object controlling one `MediaPlayer`.
-
-## Roles Catalog Architecture
-- `RolesActivity.kt` builds map-specific role lists in code.
-- `RoleAdapter.kt` renders map, section, and role card item types.
-- Role descriptions and map stories are hardcoded in Kotlin maps inside `RolesActivity.kt`.
-- Role images are chosen through naming convention suffixes.
-
-## Data Flow Concerns
-- `Serializable` intent extras carry full game session state between activities.
-- Once `GameplayMockActivity` starts, state is in-memory only and not persisted across process death.
-- Orientation is fixed for gameplay, reducing configuration change churn but not eliminating lifecycle risk.
-
+## Architectural Constraints
+- Navigation is manual `Intent` chaining, so back stack/session behavior is encoded per Activity.
+- `Serializable` extras are acceptable for a prototype but are fragile for larger sessions and Android lifecycle recovery.
+- `GameEngine` is testable, but role catalogs and many text strings remain hardcoded in Activities.
+- The manifest requests `INTERNET`, but the online flow is currently mocked and does not define a network/service boundary.

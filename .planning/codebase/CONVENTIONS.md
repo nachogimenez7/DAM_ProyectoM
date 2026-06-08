@@ -6,60 +6,45 @@ focus: quality
 # Conventions
 
 ## Summary
-The codebase follows pragmatic Android Activity conventions with direct view binding via `findViewById`, hardcoded local data, and XML-driven UI. The style is simple and prototype-oriented.
+The app is a Kotlin Android prototype built around XML layouts, Activity-driven screens, and a small extracted game-domain layer. UI code remains imperative and direct, while local game rules now live mostly in `GameEngine` and immutable model copies.
 
-## Activity Pattern
-- Activities extend `BaseActivity`, not directly `AppCompatActivity`.
-- Activity setup happens in `onCreate`.
-- Layouts are assigned using `setContentView(R.layout.activity_...)`.
-- Click handlers are attached inline with `setOnClickListener`.
+## Kotlin and Activity Style
+- Activities live under `app/src/main/java/com/traidores/juego`.
+- Screen classes extend `BaseActivity`, which centralizes music lifecycle hooks.
+- `onCreate` usually calls `setContentView`, resolves views with `findViewById`, then wires inline `setOnClickListener` handlers.
 - Navigation uses explicit `Intent(this, TargetActivity::class.java)`.
+- Long-running UI timers use `Handler(Looper.getMainLooper())` and remove callbacks in lifecycle cleanup.
+- There is no ViewBinding, DataBinding, Jetpack Compose, dependency injection, or MVVM layer.
 
-## View Access
-- Views are accessed with `findViewById`.
-- There is no Android ViewBinding or DataBinding.
-- Local one-off views are often `val` variables in `onCreate`.
-- Reused gameplay views are Activity fields in `GameplayMockActivity.kt`.
+## Domain and State
+- Core local game state is represented by immutable `data class` models: `GameSession`, `GamePlayer`, `GameRole`, `GameChatMessage`, and `GameMap`.
+- Game progression is expressed with the `GamePhase` enum.
+- `GameEngine` owns phase resolution, winner checks, target validation, chat permissions, auto-advance decisions, and private/public announcement logic.
+- `LocalGameFactory` owns mock session creation, map selection, player add/remove, and random role assignment.
+- Activity state is still stored in mutable Activity fields, especially in `GameplayMockActivity`.
+- Cross-screen session transfer uses `Serializable` extras through `LobbyActivity.EXTRA_SESSION`.
 
-## State Management
-- Simple screen state is stored in Activity fields.
-- Game state is represented by immutable Kotlin data classes in `GameModels.kt`.
-- State transitions are implemented by `session = session.copy(...)`.
-- There is no separate state reducer or domain service yet.
+## UI and Resources
+- Layouts are XML-first and mostly use `RelativeLayout` with nested `LinearLayout`; gameplay also builds player cards programmatically in a `FrameLayout`.
+- Shared visual identity comes from XML drawable backgrounds, custom fonts, image assets, and centralized colors in `res/values/colors.xml`.
+- Button and theme styling is in `res/values/themes.xml` and drawable shape resources such as `bg_btn_gold.xml`.
+- Role/map image lookup is partly dynamic via `resources.getIdentifier`, with Android fallback drawables when a resource name is missing.
+- Text is predominantly Spanish, but many strings are hardcoded in Kotlin or layout XML rather than centralized in `strings.xml`.
 
-## Data Modeling
-- `GameSession`, `GamePlayer`, `GameRole`, and `GameMap` are data classes.
-- `GamePhase` is an enum.
-- Intent payloads use `Serializable`.
-- Role identities use string keys such as `asesino`, `policia`, `medico`, and `aldeano`.
+## Persistence and Integrations
+- Sound/music settings use `SharedPreferences` named `TraidoresPrefs` with keys such as `sound_on`, `music_volume`, and `voices_volume`.
+- `MusicManager` owns menu music playback and observes Activity start/stop events through `BaseActivity`.
+- Online mode and login/register flows are currently mock UI flows; no remote API, database, or auth provider is wired.
 
-## Resource Conventions
-- UI colors are centralized in `app/src/main/res/values/colors.xml`.
-- Button styles are in `app/src/main/res/values/themes.xml`.
-- Drawable backgrounds are XML shapes under `app/src/main/res/drawable`.
-- Image resources are referenced directly in XML or dynamically by resource name.
+## Error Handling and Validation
+- Invalid local-game actions are usually blocked by guards and surfaced with `Toast` messages.
+- Engine methods return the unchanged `GameSession` for invalid target/action inputs.
+- Dynamic image lookup falls back to a generic gallery drawable.
+- There is no structured logging, crash reporting, or app-wide error boundary.
 
-## Text and Localization
-- Some global strings live in `app/src/main/res/values/strings.xml`.
-- Many gameplay, roles, and Toast strings are hardcoded in Kotlin or layout XML.
-- `OpcionesActivity.kt` simulates language selection but does not use Android resource localization.
-- Current copy generally uses Spanish text, often ASCII-only without accents.
-
-## Error Handling
-- Missing dynamic drawables fall back to `android.R.drawable.ic_menu_gallery`.
-- Invalid local game selections show Toast messages.
-- There is no structured logging or exception handling strategy.
-- No runtime validation exists for every possible impossible `GameSession` state.
-
-## UI Layout Style
-- Layouts mostly use `RelativeLayout` and nested `LinearLayout`.
-- Landscape gameplay uses side player columns, a top status banner, and a compact bottom HUD.
-- Menu/setup screens use full-screen background images plus overlays.
-- Shared visual identity is implemented through fonts, drawable backgrounds, and image assets.
-
-## Code Organization
-- Domain models and game factory are grouped in `GameModels.kt`.
-- Gameplay logic is currently concentrated in `GameplayMockActivity.kt`.
-- Role catalog content is concentrated in `RolesActivity.kt`.
-- This organization is acceptable for prototype scale but creates large files as behavior grows.
-
+## Quality Risks
+- `GameplayMockActivity` is large and mixes rendering, timers, input routing, and state mutation.
+- `LocalGameFactory.assignRoles` uses unseeded `shuffled()`, so role assignment is intentionally random and not deterministic.
+- Hardcoded user-facing strings make localization and copy review difficult.
+- `Serializable` is simple for the prototype but can become fragile as model shape changes.
+- No lint/style configuration beyond Android/Gradle defaults is visible.

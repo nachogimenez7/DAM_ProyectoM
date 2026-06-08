@@ -19,14 +19,24 @@ class LocalModeActivity : BaseActivity() {
         btnBack.setOnClickListener { finish() }
 
         btnCreateLocal.setOnClickListener {
-            Toast.makeText(this, "Abriendo mock de partida local.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, GameplayMockActivity::class.java))
+            Toast.makeText(this, "Sala local creada.", Toast.LENGTH_SHORT).show()
+            startActivity(
+                Intent(this, LobbyActivity::class.java)
+                    .putExtra(LobbyActivity.EXTRA_SESSION, LocalGameFactory.createSession())
+            )
         }
 
         btnJoinCode.setOnClickListener {
-            Toast.makeText(this, "Simulando union por codigo.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, GameplayMockActivity::class.java))
+            Toast.makeText(this, "Codigo mock aceptado.", Toast.LENGTH_SHORT).show()
+            startActivity(
+                Intent(this, LobbyActivity::class.java)
+                    .putExtra(LobbyActivity.EXTRA_SESSION, LocalGameFactory.createSession(joinedByCode = true))
+            )
         }
     }
-}
 
+    override fun onResume() {
+        super.onResume()
+        MusicManager.playMenuMusic(this)
+    }
+}

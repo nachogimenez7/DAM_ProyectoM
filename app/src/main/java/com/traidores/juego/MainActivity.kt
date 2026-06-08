@@ -60,7 +60,7 @@ class MainActivity : BaseActivity() {
         super.onResume()
         val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         isSoundOn = sharedPref.getBoolean("sound_on", true)
-        MusicManager.refresh(this)
+        MusicManager.playMenuMusic(this)
     }
 
     private fun updateSoundButtonIcon(btnSound: ImageButton) {
