@@ -22,6 +22,14 @@ data class GameSession(
     val chatHistory: List<GameChatMessage> = emptyList(),
     val godHistory: List<String> = emptyList(),
     val actionHistory: List<GameAction> = emptyList(),
+    val payadorUsed: Boolean = false,
+    val contrapuntoPlayers: List<String> = emptyList(),
+    val contrapuntoSuspicion: String = "",
+    val alcaldeRevealed: Boolean = false,
+    val alcaldeTieCandidates: List<String> = emptyList(),
+    val desertorTeam: String = "",
+    val desertorChangedTeam: Boolean = false,
+    val initialPlayerCount: Int = players.size,
     val winner: String = "",
     val phaseIndex: Int = 0
 ) : Serializable
@@ -73,8 +81,51 @@ enum class GamePhase : Serializable {
     NOCHE_MEDICO,
     AMANECER,
     DIA_DEBATE,
+    CONTRAPUNTO,
     VOTACION,
+    ALCALDE_DESEMPATE,
     RESULTADO
+}
+
+object GameRules {
+    const val TOWN_WINNER = "Pueblo"
+    const val TRAITOR_WINNER = "Traidores"
+
+    val traitorRoleKeys = setOf("asesino", "mercenario", "espia")
+
+    fun isTraitorRole(role: GameRole?): Boolean {
+        return role != null &&
+            (role.key in traitorRoleKeys || role.team == TRAITOR_WINNER || role.team == "Asesino")
+    }
+
+    fun winnerFor(session: GameSession): String {
+        val alive = session.players.filter { it.alive }
+        val desertor = alive.firstOrNull { it.role?.key == "desertor" }
+        val desertorSupportsTraitors = desertor != null && session.desertorTeam == TRAITOR_WINNER
+        val desertorSupportsTown = desertor != null && session.desertorTeam == TOWN_WINNER
+        val traitors = alive.count { isTraitorRole(it.role) } + if (desertorSupportsTraitors) 1 else 0
+        val town = alive.count { it.role?.team == TOWN_WINNER } + if (desertorSupportsTown) 1 else 0
+        return when {
+            traitors == 0 -> TOWN_WINNER
+            traitors >= town -> TRAITOR_WINNER
+            else -> ""
+        }
+    }
+
+    fun winnerFor(players: List<GamePlayer>): String {
+        return winnerFor(
+            GameSession(
+                code = "RULES",
+                mapKey = "",
+                mapName = "",
+                players = players
+            )
+        )
+    }
+
+    fun desertorSwitchThreshold(initialPlayerCount: Int): Int {
+        return kotlin.math.ceil(initialPlayerCount * 2.0 / 3.0).toInt()
+    }
 }
 
 object LocalGameFactory {
@@ -137,14 +188,31 @@ object LocalGameFactory {
         return session.copy(players = session.players.filterIndexed { playerIndex, _ -> playerIndex != index })
     }
 
-    fun assignRoles(session: GameSession): GameSession {
+    fun minimumPlayersForRole(roleKey: String): Int {
+        return when (roleKey) {
+            "mercenario" -> 7
+            "alcalde" -> 8
+            "payador" -> 8
+            "desertor" -> 9
+            "espia" -> 10
+            else -> MIN_PLAYERS
+        }
+    }
+
+    fun assignRoles(session: GameSession, forcedHumanRoleKey: String = ""): GameSession {
         val suffix = maps.firstOrNull { it.key == session.mapKey }?.roleSuffix ?: "gaucho"
-        val roles = roleDeckFor(session.players.size, suffix)
+        val effectiveForcedRole = if (forcedHumanRoleKey == "payador" && suffix != "gaucho") {
+            ""
+        } else {
+            forcedHumanRoleKey
+        }
+        val roles = roleDeckFor(session.players.size, suffix, effectiveForcedRole)
 
         val shuffledRoles = roles.shuffled()
-        val assignedPlayers = session.players.mapIndexed { index, player ->
+        val randomlyAssignedPlayers = session.players.mapIndexed { index, player ->
             player.copy(role = shuffledRoles[index], alive = true, muted = false)
         }
+        val assignedPlayers = forceHumanRole(randomlyAssignedPlayers, effectiveForcedRole)
         val human = assignedPlayers.firstOrNull { it.isHuman } ?: assignedPlayers.first()
         val publicStart = "Dios preparo una partida local con roles ocultos."
         val privateStart = "Tu rol: ${human.role?.name ?: "desconocido"}."
@@ -165,30 +233,103 @@ object LocalGameFactory {
             chatHistory = emptyList(),
             godHistory = listOf(publicStart),
             actionHistory = emptyList(),
+            payadorUsed = false,
+            contrapuntoPlayers = emptyList(),
+            contrapuntoSuspicion = "",
+            alcaldeRevealed = false,
+            alcaldeTieCandidates = emptyList(),
+            desertorTeam = initialDesertorTeam(assignedPlayers, session.code),
+            desertorChangedTeam = false,
+            initialPlayerCount = assignedPlayers.size,
             winner = "",
             phaseIndex = 0
         )
     }
 
-    private fun roleDeckFor(playerCount: Int, suffix: String): List<GameRole> {
+    private fun roleDeckFor(
+        playerCount: Int,
+        suffix: String,
+        forcedHumanRoleKey: String
+    ): List<GameRole> {
         val roles = mutableListOf(
-            GameRole("policia", if (suffix == "gaucho") "Comisario" else "Detective", "Pueblo", "rol_detective_$suffix"),
-            GameRole("asesino", "Asesino", "Traidores", "rol_asesino_$suffix"),
-            GameRole("medico", "Medico", "Pueblo", "rol_medico_$suffix")
+            roleForKey("policia", suffix),
+            roleForKey("asesino", suffix),
+            roleForKey("medico", suffix)
         )
         if (playerCount >= 7) {
-            roles += GameRole("mercenario", "Mercenario", "Traidores", "rol_mercenario_$suffix")
+            roles += roleForKey("mercenario", suffix)
         }
         if (playerCount >= 8) {
-            roles += GameRole("alcalde", "Alcalde", "Pueblo", "rol_alcalde_$suffix")
+            roles += roleForKey("alcalde", suffix)
+        }
+        if (playerCount >= 8 && suffix == "gaucho") {
+            // El Payador es exclusivo del mapa gaucho.
+            roles += roleForKey("payador", suffix)
+        }
+        if (playerCount >= 9) {
+            roles += roleForKey("desertor", suffix)
         }
         if (playerCount >= 10) {
-            roles += GameRole("espia", "Espia", "Traidores", "rol_espia_$suffix")
+            roles += roleForKey("espia", suffix)
         }
         roles += List((playerCount - roles.size).coerceAtLeast(0)) {
-            GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_$suffix")
+            roleForKey("aldeano", suffix)
+        }
+
+        if (forcedHumanRoleKey.isNotBlank() && roles.none { it.key == forcedHumanRoleKey }) {
+            val replaceIndex = roles.indexOfLast { it.key == "aldeano" }
+                .takeIf { it >= 0 }
+                ?: roles.lastIndex
+            roles[replaceIndex] = roleForKey(forcedHumanRoleKey, suffix)
         }
         return roles.take(playerCount)
+    }
+
+    private fun forceHumanRole(players: List<GamePlayer>, forcedHumanRoleKey: String): List<GamePlayer> {
+        if (forcedHumanRoleKey.isBlank()) return players
+        val humanIndex = players.indexOfFirst { it.isHuman }
+        val roleIndex = players.indexOfFirst { it.role?.key == forcedHumanRoleKey }
+        if (humanIndex < 0 || roleIndex < 0 || humanIndex == roleIndex) return players
+
+        val humanRole = players[humanIndex].role
+        val forcedRole = players[roleIndex].role
+        return players.mapIndexed { index, player ->
+            when (index) {
+                humanIndex -> player.copy(role = forcedRole)
+                roleIndex -> player.copy(role = humanRole)
+                else -> player
+            }
+        }
+    }
+
+    private fun initialDesertorTeam(players: List<GamePlayer>, sessionCode: String): String {
+        val desertor = players.firstOrNull { it.role?.key == "desertor" } ?: return ""
+        if (desertor.isHuman) return ""
+        return if (sessionCode.hashCode() and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
+    }
+
+    private fun roleForKey(key: String, suffix: String): GameRole {
+        return when (key) {
+            "policia" -> GameRole(
+                "policia",
+                if (suffix == "gaucho") "Comisario" else "Detective",
+                "Pueblo",
+                "rol_detective_$suffix"
+            )
+            "asesino" -> GameRole("asesino", "Asesino", "Traidores", "rol_asesino_$suffix")
+            "medico" -> GameRole("medico", "Medico", "Pueblo", "rol_medico_$suffix")
+            "mercenario" -> GameRole("mercenario", "Mercenario", "Traidores", "rol_mercenario_$suffix")
+            "alcalde" -> GameRole("alcalde", "Alcalde", "Pueblo", "rol_alcalde_$suffix")
+            "payador" -> GameRole("payador", "Payador", "Pueblo", "rol_payador_$suffix")
+            "desertor" -> GameRole(
+                "desertor",
+                if (suffix == "gaucho") "Desertora" else "Desertor",
+                "Neutral",
+                "rol_desertor_$suffix"
+            )
+            "espia" -> GameRole("espia", "Espia", "Traidores", "rol_espia_$suffix")
+            else -> GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_$suffix")
+        }
     }
 }
 

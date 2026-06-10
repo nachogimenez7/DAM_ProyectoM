@@ -40,8 +40,209 @@ class GameEngineTest {
         assertEquals(1, roleCounts["medico"])
         assertEquals(1, roleCounts["mercenario"])
         assertEquals(1, roleCounts["alcalde"])
+        assertEquals(1, roleCounts["payador"])
+        assertEquals(1, roleCounts["desertor"])
         assertEquals(1, roleCounts["espia"])
-        assertEquals(session.players.size - 6, roleCounts["aldeano"])
+        assertEquals(session.players.size - 8, roleCounts["aldeano"])
+    }
+
+    @Test
+    fun debugRoleSelectionForcesHumanRoleWithoutDuplicatingIt() {
+        var setup = LocalGameFactory.createSession()
+        repeat(2) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        val session = LocalGameFactory.assignRoles(
+            setup,
+            forcedHumanRoleKey = "mercenario"
+        )
+        val roleCounts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+
+        assertEquals("mercenario", GameEngine.humanPlayer(session).role?.key)
+        assertEquals(1, roleCounts["mercenario"])
+        assertEquals(1, roleCounts["asesino"])
+        assertEquals(1, roleCounts["policia"])
+        assertEquals(1, roleCounts["medico"])
+        assertEquals(session.players.size, roleCounts.values.sum())
+    }
+
+    @Test
+    fun debugAdvancedRolesRequireBalancedTableSizes() {
+        assertEquals(5, LocalGameFactory.minimumPlayersForRole("asesino"))
+        assertEquals(7, LocalGameFactory.minimumPlayersForRole("mercenario"))
+        assertEquals(8, LocalGameFactory.minimumPlayersForRole("alcalde"))
+        assertEquals(8, LocalGameFactory.minimumPlayersForRole("payador"))
+        assertEquals(9, LocalGameFactory.minimumPlayersForRole("desertor"))
+        assertEquals(10, LocalGameFactory.minimumPlayersForRole("espia"))
+    }
+
+    @Test
+    fun desertorCanReconsiderAtTwoThirdsOfInitialPlayers() {
+        assertEquals(6, GameRules.desertorSwitchThreshold(9))
+        assertEquals(7, GameRules.desertorSwitchThreshold(10))
+        assertEquals(8, GameRules.desertorSwitchThreshold(12))
+        assertEquals(10, GameRules.desertorSwitchThreshold(15))
+    }
+
+    @Test
+    fun desertorIsAssignedFromNinePlayersAndChoosesTeam() {
+        var setup = LocalGameFactory.createSession()
+        repeat(4) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        val assigned = LocalGameFactory.assignRoles(setup, forcedHumanRoleKey = "desertor")
+
+        assertEquals("desertor", GameEngine.humanPlayer(assigned).role?.key)
+        assertTrue(GameEngine.needsInitialDesertorChoice(assigned))
+
+        val townDesertor = GameEngine.chooseDesertorTeam(assigned, GameRules.TOWN_WINNER)
+
+        assertEquals(GameRules.TOWN_WINNER, townDesertor.desertorTeam)
+        assertFalse(GameEngine.needsInitialDesertorChoice(townDesertor))
+    }
+
+    @Test
+    fun desertorCanReconsiderOnlyOnceAtThreshold() {
+        var setup = LocalGameFactory.createSession()
+        repeat(4) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        val assigned = LocalGameFactory.assignRoles(setup, forcedHumanRoleKey = "desertor")
+        val initial = GameEngine.chooseDesertorTeam(assigned, GameRules.TOWN_WINNER)
+        val threshold = initial.copy(
+            players = initial.players.mapIndexed { index, player ->
+                if (index >= 6) player.copy(alive = false, muted = true) else player
+            }
+        )
+
+        assertTrue(GameEngine.canDesertorReconsider(threshold))
+        val switched = GameEngine.chooseDesertorTeam(threshold, GameRules.TRAITOR_WINNER)
+        assertEquals(GameRules.TRAITOR_WINNER, switched.desertorTeam)
+        assertTrue(switched.desertorChangedTeam)
+        assertFalse(GameEngine.canDesertorReconsider(switched))
+    }
+
+    @Test
+    fun payadorIsExclusiveToPampaMap() {
+        var setup = LocalGameFactory.createSession()
+        repeat(3) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+
+        val pampa = LocalGameFactory.assignRoles(LocalGameFactory.selectMap(setup, "pampa"))
+        val greece = LocalGameFactory.assignRoles(LocalGameFactory.selectMap(setup, "grecia"))
+        val medieval = LocalGameFactory.assignRoles(LocalGameFactory.selectMap(setup, "medieval"))
+        val forcedGreekPayador = LocalGameFactory.assignRoles(
+            LocalGameFactory.selectMap(setup, "grecia"),
+            forcedHumanRoleKey = "payador"
+        )
+
+        assertTrue(pampa.players.any { it.role?.key == "payador" })
+        assertFalse(greece.players.any { it.role?.key == "payador" })
+        assertFalse(medieval.players.any { it.role?.key == "payador" })
+        assertFalse(forcedGreekPayador.players.any { it.role?.key == "payador" })
+    }
+
+    @Test
+    fun onlySpyInheritsKillWhenAssassinIsDead() {
+        val assassinDead = advancedPlayers().map {
+            if (it.role?.key == "asesino") it.copy(alive = false, muted = true) else it
+        }
+        val mercenaryHuman = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = assassinDead.map { it.copy(isHuman = it.role?.key == "mercenario") },
+            phase = GamePhase.NOCHE_ASESINO
+        )
+        val spyHuman = mercenaryHuman.copy(
+            players = assassinDead.map { it.copy(isHuman = it.role?.key == "espia") }
+        )
+
+        assertFalse(GameEngine.requiresHumanInput(mercenaryHuman))
+        assertTrue(GameEngine.requiresHumanInput(spyHuman))
+    }
+
+    @Test
+    fun revealedAlcaldeCanResolveTwoPlayerTie() {
+        val session = sessionWithHumanAdvancedRole("alcalde").copy(phase = GamePhase.DIA_DEBATE)
+        val revealed = GameEngine.revealAlcalde(session)
+        val tied = revealed.copy(
+            phase = GamePhase.ALCALDE_DESEMPATE,
+            alcaldeTieCandidates = listOf("Asesino", "Policia")
+        )
+
+        val resolved = GameEngine.chooseAlcaldeTie(tied, "Asesino")
+
+        assertTrue(revealed.alcaldeRevealed)
+        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals("Asesino", resolved.dayEliminationTarget)
+    }
+
+    @Test
+    fun revealedAlcaldeVoteCountsDouble() {
+        val session = sessionWithHumanAdvancedRole("alcalde").copy(alcaldeRevealed = true)
+        val leaders = GameEngine.weightedVoteLeaders(
+            session,
+            mapOf(
+                "Humano" to "Asesino",
+                "Policia" to "Medico",
+                "Medico" to "Policia"
+            )
+        )
+
+        assertEquals(listOf("Asesino"), leaders)
+    }
+
+    @Test
+    fun deadPlayersAreNotAnnouncedAsTemporarilyMuted() {
+        val session = baseSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            players = basePlayers().map {
+                if (it.name == "Aldeano1") it.copy(alive = false, muted = true) else it
+            }
+        )
+
+        val voting = GameEngine.resolveDayDebate(session)
+
+        assertFalse(voting.publicAnnouncement.contains("Aldeano1"))
+    }
+
+    @Test
+    fun payadorSelectsTwoPlayersAndRestrictsContrapuntoChat() {
+        val base = sessionWithHumanAdvancedRole("payador").copy(phase = GamePhase.DIA_DEBATE)
+
+        val first = GameEngine.chooseContrapuntoPlayer(base, "Asesino")
+        val active = GameEngine.chooseContrapuntoPlayer(first, "Policia")
+
+        assertEquals(listOf("Asesino"), first.contrapuntoPlayers)
+        assertEquals(GamePhase.CONTRAPUNTO, active.phase)
+        assertTrue(active.payadorUsed)
+        assertTrue(GameEngine.canHumanChat(active))
+
+        val outsiderSession = active.copy(
+            players = active.players.map {
+                it.copy(isHuman = it.name == "Medico")
+            }
+        )
+        assertFalse(GameEngine.canHumanChat(outsiderSession))
+    }
+
+    @Test
+    fun payadorSuspicionAddsOneVote() {
+        val active = sessionWithHumanAdvancedRole("payador").copy(
+            phase = GamePhase.CONTRAPUNTO,
+            payadorUsed = true,
+            contrapuntoPlayers = listOf("Asesino", "Policia")
+        )
+
+        val voting = GameEngine.resolveContrapunto(active, "Asesino")
+
+        assertEquals(GamePhase.VOTACION, voting.phase)
+        assertEquals("Asesino", voting.contrapuntoSuspicion)
     }
 
     @Test
@@ -363,14 +564,13 @@ class GameEngineTest {
     }
 
     @Test
-    fun traitorHumanCanWriteAtNight() {
+    fun traitorHumanCannotWriteInSharedLocalNightChat() {
         val session = sessionWithHumanRole("asesino").copy(phase = GamePhase.NOCHE_ASESINO)
 
         val resolved = GameEngine.addHumanChatMessage(session, "Avanzo en silencio.")
 
-        assertTrue(GameEngine.canHumanChat(session))
-        assertEquals("Humano", resolved.chatHistory.last().speaker)
-        assertEquals("Avanzo en silencio.", resolved.chatHistory.last().message)
+        assertFalse(GameEngine.canHumanChat(session))
+        assertEquals(session.chatHistory, resolved.chatHistory)
     }
 
     @Test
@@ -405,6 +605,74 @@ class GameEngineTest {
         val resolved = GameEngine.resolveDawn(session)
 
         assertEquals("Traidores", resolved.winner)
+    }
+
+    @Test
+    fun gameContinuesAcrossRoundsUntilAWinConditionIsMet() {
+        val roundTwo = GameEngine.resolveResult(
+            baseSession().copy(
+                phase = GamePhase.RESULTADO,
+                dayEliminationTarget = "",
+                round = 1
+            )
+        )
+        val secondDawn = GameEngine.resolveDawn(
+            roundTwo.copy(
+                phase = GamePhase.AMANECER,
+                nightKillTarget = "Aldeano1",
+                protectedPlayer = ""
+            )
+        )
+        val roundThree = GameEngine.resolveResult(
+            secondDawn.copy(
+                phase = GamePhase.RESULTADO,
+                dayEliminationTarget = ""
+            )
+        )
+
+        assertEquals(2, roundTwo.round)
+        assertEquals(GamePhase.NOCHE_ASESINO, roundTwo.phase)
+        assertEquals("", roundTwo.winner)
+        assertEquals("", secondDawn.winner)
+        assertEquals(3, roundThree.round)
+        assertEquals(GamePhase.NOCHE_ASESINO, roundThree.phase)
+        assertEquals("", roundThree.winner)
+    }
+
+    @Test
+    fun townMustEliminateEveryTraitorRoleToWin() {
+        val players = advancedPlayers()
+        val assassinOnlyDead = players.map {
+            if (it.role?.key == "asesino") it.copy(alive = false, muted = true) else it
+        }
+        val allTraitorsDead = players.map {
+            if (it.role?.key in GameRules.traitorRoleKeys) {
+                it.copy(alive = false, muted = true)
+            } else {
+                it
+            }
+        }
+
+        assertEquals("", GameRules.winnerFor(assassinOnlyDead))
+        assertEquals("Pueblo", GameRules.winnerFor(allTraitorsDead))
+    }
+
+    @Test
+    fun traitorRolesWinTogetherAtExactParity() {
+        val parityPlayers = advancedPlayers().map {
+            if (
+                it.name == "Aldeano1" ||
+                it.name == "Aldeano2" ||
+                it.name == "Payador" ||
+                it.name == "Alcalde"
+            ) {
+                it.copy(alive = false, muted = true)
+            } else {
+                it
+            }
+        }
+
+        assertEquals("Traidores", GameRules.winnerFor(parityPlayers))
     }
 
     private fun sessionWithHumanRole(roleKey: String): GameSession {
@@ -481,6 +749,8 @@ class GameEngineTest {
             GamePlayer("Espia", "E", role = role("espia", "Espia", "Traidores")),
             GamePlayer("Policia", "P", role = role("policia", "Comisario", "Pueblo")),
             GamePlayer("Medico", "M", role = role("medico", "Medico", "Pueblo")),
+            GamePlayer("Alcalde", "L", role = role("alcalde", "Alcalde", "Pueblo")),
+            GamePlayer("Payador", "Y", role = role("payador", "Payador", "Pueblo")),
             GamePlayer("Aldeano1", "1", role = role("aldeano", "Aldeano", "Pueblo")),
             GamePlayer("Aldeano2", "2", role = role("aldeano", "Aldeano", "Pueblo"))
         )

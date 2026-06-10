@@ -1,12 +1,20 @@
 package com.traidores.juego
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.app.Dialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import android.media.MediaPlayer
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -23,6 +31,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 
 class GameplayMockActivity : BaseActivity() {
 
@@ -33,16 +45,35 @@ class GameplayMockActivity : BaseActivity() {
     private var lastRenderedPhase: GamePhase? = null
     private var lastSeenChatCount = 0
     private var selectedTarget = ""
+    private var desertorDialogOpen = false
+    private var isDayNightTransitionRunning = false
+    private var isTraitorRevealDismissing = false
+    private var isTraitorRevealRunning = false
+    private var lastPresentedTransitionKey: String? = null
+    private var lastActionAttentionKey: String? = null
+    private var presentedPeriod: GameplayPeriod? = null
+    private var traitorRevealCompleted = false
+    private var knownDeadPlayers = emptySet<String>()
     private lateinit var session: GameSession
     private var unreadChatCount = 0
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val narratorCollapseRunnable = Runnable { collapseNarrator() }
+    private val traitorRevealDismissRunnable = Runnable { dismissTraitorReveal() }
+    private val transitionMusicRunnable = Runnable {
+        if (isDayNightTransitionRunning) {
+            MusicManager.resumeGamePhaseAfterTransition(this, session)
+        }
+    }
 
     private var chatDialog: Dialog? = null
+    private var actionPulseAnimator: AnimatorSet? = null
     private var dialogChatInput: EditText? = null
     private var dialogChatMessages: TextView? = null
     private var dialogSendButton: Button? = null
+    private var dayNightAnimator: AnimatorSet? = null
+    private var traitorRevealAnimator: AnimatorSet? = null
+    private var transitionSoundPlayer: MediaPlayer? = null
 
     private lateinit var btnAction: Button
     private lateinit var btnRevealCard: Button
@@ -61,11 +92,21 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var phaseTitle: TextView
     private lateinit var phaseSubtitle: TextView
     private lateinit var rightPlayersContainer: LinearLayout
+    private lateinit var roleCard: LinearLayout
     private lateinit var roleImage: ImageView
     private lateinit var roleName: TextView
     private lateinit var topStatus: LinearLayout
+    private lateinit var dayNightTransitionOverlay: FrameLayout
+    private lateinit var transitionFromBackground: ImageView
+    private lateinit var transitionMoon: ImageView
+    private lateinit var transitionShade: View
+    private lateinit var transitionSun: ImageView
+    private lateinit var transitionTitle: TextView
+    private lateinit var transitionToBackground: ImageView
+    private lateinit var traitorRevealCards: LinearLayout
+    private lateinit var traitorRevealContent: LinearLayout
+    private lateinit var traitorRevealOverlay: FrameLayout
     private lateinit var themeKey: String
-    private var initialNight = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,7 +114,12 @@ class GameplayMockActivity : BaseActivity() {
 
         session = readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         themeKey = themeFromIntentOrSession()
-        initialNight = intent.getBooleanExtra(EXTRA_ES_NOCHE, false)
+        lastPresentedTransitionKey = savedInstanceState?.getString(STATE_TRANSITION_KEY)
+        presentedPeriod = savedInstanceState
+            ?.getString(STATE_PRESENTED_PERIOD)
+            ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
+        traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
+        knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
         lastSeenChatCount = session.chatHistory.size
 
         val btnSettings: ImageButton = findViewById(R.id.btnSettings)
@@ -84,6 +130,7 @@ class GameplayMockActivity : BaseActivity() {
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
+        dayNightTransitionOverlay = findViewById(R.id.dayNightTransitionOverlay)
         eventLogBackground = findViewById(R.id.eventLogBackground)
         eventLogContent = findViewById(R.id.eventLogContent)
         eventLogContainer = findViewById(R.id.eventLogContainer)
@@ -94,9 +141,19 @@ class GameplayMockActivity : BaseActivity() {
         phaseTitle = findViewById(R.id.phaseTitle)
         phaseSubtitle = findViewById(R.id.phaseSubtitle)
         rightPlayersContainer = findViewById(R.id.rightPlayersContainer)
+        roleCard = findViewById(R.id.roleCard)
         roleImage = findViewById(R.id.roleImage)
         roleName = findViewById(R.id.roleName)
         topStatus = findViewById(R.id.topStatus)
+        transitionFromBackground = findViewById(R.id.transitionFromBackground)
+        transitionMoon = findViewById(R.id.transitionMoon)
+        transitionShade = findViewById(R.id.transitionShade)
+        transitionSun = findViewById(R.id.transitionSun)
+        transitionTitle = findViewById(R.id.transitionTitle)
+        transitionToBackground = findViewById(R.id.transitionToBackground)
+        traitorRevealCards = findViewById(R.id.traitorRevealCards)
+        traitorRevealContent = findViewById(R.id.traitorRevealContent)
+        traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
 
         btnSettings.setOnClickListener {
             startActivity(Intent(this, OpcionesActivity::class.java))
@@ -105,16 +162,49 @@ class GameplayMockActivity : BaseActivity() {
         btnRevealCard.setOnClickListener { toggleHumanCard() }
         btnToggleChat.setOnClickListener { toggleChatDialog() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
+        traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
         renderGame()
     }
 
     override fun onDestroy() {
+        settleDayNightTransition(resumeMusic = false)
+        cancelTraitorReveal()
+        cancelActionPulse()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
+        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
+        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        releaseTransitionSound()
         chatDialog?.dismiss()
         super.onDestroy()
+    }
+
+    override fun onPause() {
+        settleDayNightTransition(resumeMusic = false)
+        cancelTraitorReveal()
+        cancelActionPulse()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
+        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
+        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::session.isInitialized && !isDayNightTransitionRunning) {
+            MusicManager.playGamePhase(this, session)
+            resumeGameFlowAfterBlockingUi()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_TRANSITION_KEY, lastPresentedTransitionKey)
+        outState.putString(STATE_PRESENTED_PERIOD, presentedPeriod?.name)
+        outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
+        super.onSaveInstanceState(outState)
     }
 
     private fun handleCurrentPhase() {
@@ -126,6 +216,22 @@ class GameplayMockActivity : BaseActivity() {
 
         if (GameplayTableUi.canHumanMedicSelfProtect(session)) {
             performTargetAction(GameEngine.humanPlayer(session).name)
+            return
+        }
+
+        if (GameEngine.needsInitialDesertorChoice(session) || GameEngine.canDesertorReconsider(session)) {
+            showDesertorTeamDialog()
+            return
+        }
+
+        val human = GameEngine.humanPlayer(session)
+        if (
+            session.phase == GamePhase.DIA_DEBATE &&
+            human.role?.key == "alcalde" &&
+            !session.alcaldeRevealed
+        ) {
+            session = GameEngine.revealAlcalde(session)
+            renderGame()
             return
         }
 
@@ -147,7 +253,9 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
             GamePhase.AMANECER -> GameEngine.resolveDawn(session)
             GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
+            GamePhase.CONTRAPUNTO -> GameEngine.resolveContrapunto(session, "")
             GamePhase.VOTACION -> GameEngine.resolveVoting(session, "")
+            GamePhase.ALCALDE_DESEMPATE -> session
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
         }
         clearSelection()
@@ -170,16 +278,31 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun renderGame() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        val transitionSpec = GameplayTableUi.transitionSpec(session)
+        val shouldStartTransition = !isDayNightTransitionRunning &&
+            GameplayTableUi.shouldPresentTransition(transitionSpec, lastPresentedTransitionKey)
+        if (shouldStartTransition) {
+            isDayNightTransitionRunning = true
+            lastPresentedTransitionKey = transitionSpec.key
+            MusicManager.pauseForTransition()
+        } else if (!isDayNightTransitionRunning) {
+            MusicManager.playGamePhase(this, session)
+        }
+
         val phaseText = phaseText(session.phase)
         val publicMessage = if (session.winner.isNotBlank()) {
             "Fin de partida. Gano ${session.winner}."
         } else {
             session.publicAnnouncement.ifBlank { phaseText.subtitle }
         }
-        MusicManager.playGamePhase(this, session.phase, session.winner.isNotBlank())
         val eventChanged = lastRenderedPhase != session.phase || lastRenderedAnnouncement != publicMessage
         updateUnreadChatCount()
-        renderThemedBackground()
+        val visiblePeriod = if (isDayNightTransitionRunning) {
+            presentedPeriod ?: transitionSpec.period
+        } else {
+            transitionSpec.period
+        }
+        renderThemedBackground(visiblePeriod)
         renderNarrator(phaseText, publicMessage, eventChanged)
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
@@ -192,7 +315,11 @@ class GameplayMockActivity : BaseActivity() {
         renderChatBadge()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = publicMessage
-        scheduleAutoAdvanceIfNeeded()
+        if (shouldStartTransition) {
+            startDayNightTransition(transitionSpec)
+        } else if (!isDayNightTransitionRunning) {
+            resumeGameFlowAfterBlockingUi()
+        }
     }
 
     private fun renderNarrator(phaseText: PhaseText, publicMessage: String, eventChanged: Boolean) {
@@ -302,25 +429,138 @@ class GameplayMockActivity : BaseActivity() {
         btnAction.text = when {
             session.winner.isNotBlank() -> "FINAL"
             canSelfProtect -> "SALVARME"
+            GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
+            GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
+            session.phase == GamePhase.DIA_DEBATE &&
+                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
+                !session.alcaldeRevealed -> "REVELARME"
             waitsForTarget -> "ELIGE CARTA"
             session.phase == GamePhase.REPARTO -> "NOCHE"
+            session.phase == GamePhase.DIA_DEBATE &&
+                GameEngine.humanPlayer(session).role?.key == "payador" &&
+                !session.payadorUsed -> "VOTAR SIN USAR"
             else -> phaseText(session.phase).actionLabel
         }
-        btnAction.isEnabled = session.winner.isBlank() && (!waitsForTarget || canSelfProtect)
-        btnAction.alpha = if (btnAction.isEnabled) 1f else 0.55f
+        val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
+            GameEngine.canDesertorReconsider(session) ||
+            (session.phase == GamePhase.DIA_DEBATE &&
+                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
+                !session.alcaldeRevealed)
+        val requiresAttention = session.winner.isBlank() &&
+            (waitsForTarget || canSelfProtect || specialDecision)
+        btnAction.isEnabled = session.winner.isBlank() && (!waitsForTarget || canSelfProtect || specialDecision)
+        btnAction.setBackgroundResource(
+            if (requiresAttention) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
+        )
+        btnAction.setTextColor(
+            getColor(if (requiresAttention) R.color.bg_dark else R.color.text_primary)
+        )
+        btnAction.alpha = when {
+            btnAction.isEnabled -> 1f
+            requiresAttention -> 0.92f
+            else -> 0.55f
+        }
+        updateActionAttentionPulse(requiresAttention)
+    }
+
+    private fun updateActionAttentionPulse(requiresAttention: Boolean) {
+        val attentionKey = if (requiresAttention) {
+            "${session.phase.name}:${session.round}:${btnAction.text}"
+        } else {
+            null
+        }
+        if (attentionKey == lastActionAttentionKey) return
+
+        cancelActionPulse()
+        lastActionAttentionKey = attentionKey
+        if (attentionKey == null) return
+
+        val grow = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(btnAction, View.SCALE_X, 1f, 1.05f),
+                ObjectAnimator.ofFloat(btnAction, View.SCALE_Y, 1f, 1.05f)
+            )
+            duration = 180L
+        }
+        val settle = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(btnAction, View.SCALE_X, 1.05f, 1f),
+                ObjectAnimator.ofFloat(btnAction, View.SCALE_Y, 1.05f, 1f)
+            )
+            duration = 240L
+        }
+        actionPulseAnimator = AnimatorSet().apply {
+            interpolator = AccelerateDecelerateInterpolator()
+            playSequentially(grow, settle)
+            start()
+        }
+    }
+
+    private fun cancelActionPulse() {
+        actionPulseAnimator?.cancel()
+        actionPulseAnimator = null
+        if (::btnAction.isInitialized) {
+            btnAction.scaleX = 1f
+            btnAction.scaleY = 1f
+        }
     }
 
     private fun renderPlayerColumns() {
+        val currentDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
+        val newlyDeadPlayers = currentDeadPlayers - knownDeadPlayers
+        knownDeadPlayers = currentDeadPlayers
         leftPlayersContainer.removeAllViews()
         rightPlayersContainer.removeAllViews()
 
         val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(session.players)
         val totalPlayers = session.players.size.coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
         leftPlayers.forEach { player ->
-            leftPlayersContainer.addView(createSidePlayerCard(player, totalPlayers))
+            val playerView = createSidePlayerCard(player, totalPlayers)
+            leftPlayersContainer.addView(playerView)
+            if (player.name in newlyDeadPlayers) {
+                animatePlayerDeath(playerView)
+            }
         }
         rightPlayers.forEach { player ->
-            rightPlayersContainer.addView(createSidePlayerCard(player, totalPlayers))
+            val playerView = createSidePlayerCard(player, totalPlayers)
+            rightPlayersContainer.addView(playerView)
+            if (player.name in newlyDeadPlayers) {
+                animatePlayerDeath(playerView)
+            }
+        }
+    }
+
+    private fun animatePlayerDeath(view: View) {
+        view.alpha = 1f
+        view.background = ColorDrawable(Color.argb(92, 150, 24, 24))
+
+        val shake = ObjectAnimator.ofFloat(
+            view,
+            View.TRANSLATION_X,
+            0f,
+            -dp(7).toFloat(),
+            dp(7).toFloat(),
+            -dp(4).toFloat(),
+            dp(4).toFloat(),
+            0f
+        ).apply {
+            duration = 320L
+        }
+        val fade = ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0.4f).apply {
+            startDelay = 150L
+            duration = 650L
+            interpolator = AccelerateInterpolator()
+        }
+        AnimatorSet().apply {
+            playTogether(shake, fade)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    view.background = null
+                    view.translationX = 0f
+                    view.alpha = 0.4f
+                }
+            })
+            start()
         }
     }
 
@@ -339,7 +579,7 @@ class GameplayMockActivity : BaseActivity() {
         item.setPadding(dp(2), dp(2), dp(2), dp(1))
 
         val avatar = TextView(this)
-        avatar.text = if (isActive) player.initial else "\u2620"
+        avatar.text = if (isActive) GameplayTableUi.playerInitial(player) else "\u2620"
         avatar.gravity = Gravity.CENTER
         avatar.setBackgroundResource(R.drawable.bg_player_avatar)
         avatar.setTextColor(getColor(R.color.accent_gold))
@@ -353,6 +593,10 @@ class GameplayMockActivity : BaseActivity() {
         val cardFace = FrameLayout(this)
         cardFace.clipChildren = false
         cardFace.clipToPadding = false
+        if (actionLabel.isNotBlank()) {
+            cardFace.setBackgroundResource(R.drawable.bg_card_actionable)
+            cardFace.setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
         val cardBack = ImageView(this)
         cardBack.setImageResource(R.drawable.card_back_traidores)
         cardBack.scaleType = ImageView.ScaleType.FIT_CENTER
@@ -463,7 +707,17 @@ class GameplayMockActivity : BaseActivity() {
             )
             GamePhase.AMANECER -> PhaseText("AMANECER", "La mesa despierta y escucha lo ocurrido.", "AMANECER")
             GamePhase.DIA_DEBATE -> PhaseText("DIA ${session.round}", "La mesa debate antes de votar.", "VOTAR")
+            GamePhase.CONTRAPUNTO -> PhaseText(
+                "CONTRAPUNTO",
+                "Solo el Payador y los dos participantes pueden hablar.",
+                "SENALAR"
+            )
             GamePhase.VOTACION -> PhaseText("VOTACION", "Toca una carta para emitir tu voto.", "VOTAR")
+            GamePhase.ALCALDE_DESEMPATE -> PhaseText(
+                "DESEMPATE",
+                "El Alcalde decide entre los jugadores empatados.",
+                "DECIDIR"
+            )
             GamePhase.RESULTADO -> PhaseText(
                 "RESULTADO",
                 "La mesa recibe el resultado publico.",
@@ -646,6 +900,8 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun scheduleAutoAdvanceIfNeeded() {
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        if (isDayNightTransitionRunning || isTraitorRevealRunning || desertorDialogOpen) return
         if (!GameEngine.shouldAutoAdvance(session)) return
         autoAdvanceHandler.postDelayed(autoAdvanceRunnable, GameEngine.autoAdvanceDelayMs(session))
     }
@@ -659,6 +915,22 @@ class GameplayMockActivity : BaseActivity() {
     private fun renderHumanCardIfVisible() {
         val role = GameEngine.humanPlayer(session).role
         val showRole = isCardRevealed || session.phase == GamePhase.REPARTO
+        val borderColor = if (showRole) {
+            when (role?.team) {
+                GameRules.TRAITOR_WINNER -> Color.parseColor("#A83A36")
+                GameRules.TOWN_WINNER -> Color.parseColor("#3F7D4A")
+                "Neutral" -> Color.parseColor("#9A7520")
+                else -> getColor(R.color.accent_gold)
+            }
+        } else {
+            getColor(R.color.accent_gold)
+        }
+        roleCard.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#F0E6D2"))
+            setStroke(dp(3), borderColor)
+            cornerRadius = dp(8).toFloat()
+        }
         if (showRole) {
             roleImage.setImageResource(roleImageFor(role))
             roleName.text = role?.name?.uppercase() ?: "SIN ROL"
@@ -691,9 +963,406 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MERCENARIO -> "Toca una carta con SILENCIAR para callar a alguien durante el dia."
             GamePhase.NOCHE_POLICIA -> "Toca una carta con INVESTIGAR para pedir una pista privada."
             GamePhase.NOCHE_MEDICO -> "Toca una carta con SALVAR para proteger a alguien."
+            GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o continuar a la votacion."
+            GamePhase.CONTRAPUNTO -> "Toca SENALAR sobre uno de los participantes."
             GamePhase.VOTACION -> "Toca una carta con VOTAR para acusar publicamente."
+            GamePhase.ALCALDE_DESEMPATE -> "Toca DECIDIR sobre uno de los jugadores empatados."
             else -> "Toca una carta valida."
         }
+    }
+
+    private fun resumeGameFlowAfterBlockingUi() {
+        if (isDayNightTransitionRunning) return
+        if (maybeShowTraitorReveal()) return
+        maybeShowDesertorChoice()
+        if (!desertorDialogOpen) {
+            scheduleAutoAdvanceIfNeeded()
+        }
+    }
+
+    private fun maybeShowTraitorReveal(): Boolean {
+        if (isTraitorRevealRunning) return true
+        if (!GameplayTableUi.shouldShowTraitorReveal(session, traitorRevealCompleted)) {
+            if (session.phase == GamePhase.REPARTO) {
+                traitorRevealCompleted = true
+            }
+            return false
+        }
+
+        val teammates = GameplayTableUi.traitorTeammatesForReveal(session)
+        showTraitorReveal(teammates)
+        return true
+    }
+
+    private fun showTraitorReveal(teammates: List<GamePlayer>) {
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        chatDialog?.dismiss()
+        isTraitorRevealDismissing = false
+        isTraitorRevealRunning = true
+        traitorRevealCards.removeAllViews()
+
+        val cardViews = teammates.map { teammate ->
+            createTraitorRevealCard(teammate).also { card ->
+                card.alpha = 0f
+                card.translationY = dp(42).toFloat()
+                traitorRevealCards.addView(card)
+            }
+        }
+
+        traitorRevealOverlay.alpha = 0f
+        traitorRevealContent.scaleX = 0.96f
+        traitorRevealContent.scaleY = 0.96f
+        traitorRevealOverlay.visibility = View.VISIBLE
+
+        val animators = mutableListOf<Animator>(
+            ObjectAnimator.ofFloat(traitorRevealOverlay, View.ALPHA, 0f, 1f).apply {
+                duration = 260L
+            },
+            ObjectAnimator.ofFloat(traitorRevealContent, View.SCALE_X, 0.96f, 1f).apply {
+                duration = 320L
+            },
+            ObjectAnimator.ofFloat(traitorRevealContent, View.SCALE_Y, 0.96f, 1f).apply {
+                duration = 320L
+            }
+        )
+        cardViews.forEachIndexed { index, card ->
+            animators += ObjectAnimator.ofFloat(card, View.ALPHA, 0f, 1f).apply {
+                startDelay = 120L + index * 150L
+                duration = 320L
+            }
+            animators += ObjectAnimator.ofFloat(card, View.TRANSLATION_Y, card.translationY, 0f).apply {
+                startDelay = 120L + index * 150L
+                duration = 350L
+            }
+        }
+        traitorRevealAnimator = AnimatorSet().apply {
+            interpolator = DecelerateInterpolator()
+            playTogether(animators)
+            start()
+        }
+        autoAdvanceHandler.postDelayed(traitorRevealDismissRunnable, TRAITOR_REVEAL_DURATION_MS)
+    }
+
+    private fun createTraitorRevealCard(player: GamePlayer): View {
+        val container = LinearLayout(this)
+        container.orientation = LinearLayout.VERTICAL
+        container.gravity = Gravity.CENTER
+        container.setPadding(dp(12), 0, dp(12), 0)
+
+        val card = ImageView(this)
+        card.setImageResource(roleImageFor(player.role))
+        card.scaleType = ImageView.ScaleType.FIT_CENTER
+        container.addView(card, LinearLayout.LayoutParams(dp(80), dp(100)))
+
+        val playerName = TextView(this)
+        playerName.text = player.name
+        playerName.gravity = Gravity.CENTER
+        playerName.maxLines = 1
+        playerName.ellipsize = TextUtils.TruncateAt.END
+        playerName.setTextColor(getColor(R.color.accent_gold))
+        playerName.textSize = 13f
+        playerName.setTypeface(null, Typeface.BOLD)
+        val nameParams = LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
+        nameParams.topMargin = dp(5)
+        container.addView(playerName, nameParams)
+
+        val roleLabel = TextView(this)
+        roleLabel.text = player.role?.name?.uppercase() ?: ""
+        roleLabel.gravity = Gravity.CENTER
+        roleLabel.maxLines = 1
+        roleLabel.setTextColor(getColor(R.color.text_secondary))
+        roleLabel.textSize = 10f
+        container.addView(
+            roleLabel,
+            LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
+        )
+        return container
+    }
+
+    private fun dismissTraitorReveal() {
+        if (!isTraitorRevealRunning || isTraitorRevealDismissing) return
+        isTraitorRevealDismissing = true
+        traitorRevealCompleted = true
+        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        traitorRevealAnimator?.removeAllListeners()
+        traitorRevealAnimator?.cancel()
+
+        val fade = ObjectAnimator.ofFloat(traitorRevealOverlay, View.ALPHA, traitorRevealOverlay.alpha, 0f)
+        fade.duration = 220L
+        traitorRevealAnimator = AnimatorSet().apply {
+            playTogether(fade)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    isTraitorRevealDismissing = false
+                    isTraitorRevealRunning = false
+                    traitorRevealAnimator = null
+                    traitorRevealOverlay.visibility = View.GONE
+                    traitorRevealOverlay.alpha = 1f
+                    traitorRevealCards.removeAllViews()
+                    resumeGameFlowAfterBlockingUi()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun cancelTraitorReveal() {
+        if (!::traitorRevealOverlay.isInitialized) return
+        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        traitorRevealAnimator?.removeAllListeners()
+        traitorRevealAnimator?.cancel()
+        traitorRevealAnimator = null
+        isTraitorRevealDismissing = false
+        isTraitorRevealRunning = false
+        traitorRevealOverlay.visibility = View.GONE
+        traitorRevealOverlay.alpha = 1f
+        traitorRevealCards.removeAllViews()
+    }
+
+    private fun startDayNightTransition(spec: GameplayTransitionSpec) {
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
+        chatDialog?.dismiss()
+
+        val fromPeriod = presentedPeriod ?: spec.period
+        transitionFromBackground.setImageResource(
+            backgroundDrawableFor(themeKey, fromPeriod == GameplayPeriod.NIGHT)
+        )
+        transitionToBackground.setImageResource(
+            backgroundDrawableFor(themeKey, spec.period == GameplayPeriod.NIGHT)
+        )
+        transitionToBackground.alpha = if (fromPeriod == spec.period) 1f else 0f
+        transitionShade.alpha = if (spec.period == GameplayPeriod.NIGHT) 0.48f else 0.26f
+        transitionTitle.text = spec.title
+        transitionTitle.alpha = 0f
+        transitionTitle.scaleX = 0.86f
+        transitionTitle.scaleY = 0.86f
+        dayNightTransitionOverlay.alpha = 1f
+        dayNightTransitionOverlay.visibility = View.VISIBLE
+
+        playTransitionSound(spec.period)
+        autoAdvanceHandler.postDelayed(transitionMusicRunnable, TRANSITION_MUSIC_DELAY_MS)
+        dayNightTransitionOverlay.post {
+            if (isDayNightTransitionRunning) {
+                animateDayNightTransition(spec, fromPeriod)
+            }
+        }
+    }
+
+    private fun animateDayNightTransition(
+        spec: GameplayTransitionSpec,
+        fromPeriod: GameplayPeriod
+    ) {
+        val width = dayNightTransitionOverlay.width.toFloat()
+        val height = dayNightTransitionOverlay.height.toFloat()
+        if (width <= 0f || height <= 0f) {
+            finishDayNightTransition(spec)
+            return
+        }
+
+        val sunTopX = width * 0.70f - transitionSun.width / 2f
+        val moonTopX = width * 0.20f - transitionMoon.width / 2f
+        val topY = height * 0.10f
+        val lowerY = height + maxOf(transitionSun.height, transitionMoon.height) * 0.12f
+        val animators = mutableListOf<Animator>()
+
+        if (spec.period == GameplayPeriod.NIGHT) {
+            if (fromPeriod == GameplayPeriod.DAY) {
+                transitionSun.alpha = 1f
+                transitionMoon.alpha = 0f
+                animators += arcAnimator(
+                    transitionSun,
+                    sunTopX,
+                    topY,
+                    width * 0.90f,
+                    height * 0.48f,
+                    width + transitionSun.width * 0.15f,
+                    lowerY
+                )
+                animators += fadeAnimator(transitionSun, 1f, 0f, 1180L, 520L)
+            } else {
+                transitionSun.alpha = 0f
+            }
+            animators += risingAnimator(
+                transitionMoon,
+                startX = -transitionMoon.width.toFloat(),
+                startY = lowerY,
+                controlX = width * 0.05f,
+                controlY = height * 0.42f,
+                endX = moonTopX,
+                endY = topY
+            )
+        } else {
+            if (fromPeriod == GameplayPeriod.NIGHT) {
+                transitionMoon.alpha = 1f
+                transitionSun.alpha = 0f
+                animators += arcAnimator(
+                    transitionMoon,
+                    moonTopX,
+                    topY,
+                    width * 0.05f,
+                    height * 0.48f,
+                    -transitionMoon.width.toFloat(),
+                    lowerY
+                )
+                animators += fadeAnimator(transitionMoon, 1f, 0f, 1180L, 520L)
+            } else {
+                transitionMoon.alpha = 0f
+            }
+            animators += risingAnimator(
+                transitionSun,
+                startX = width + transitionSun.width * 0.15f,
+                startY = lowerY,
+                controlX = width * 0.88f,
+                controlY = height * 0.42f,
+                endX = sunTopX,
+                endY = topY
+            )
+        }
+
+        animators += ObjectAnimator.ofFloat(transitionToBackground, View.ALPHA, transitionToBackground.alpha, 1f)
+            .apply { duration = 1450L }
+        animators += fadeAnimator(transitionTitle, 0f, 1f, 480L, 420L)
+        animators += ObjectAnimator.ofFloat(transitionTitle, View.SCALE_X, 0.86f, 1f).apply {
+            startDelay = 480L
+            duration = 420L
+        }
+        animators += ObjectAnimator.ofFloat(transitionTitle, View.SCALE_Y, 0.86f, 1f).apply {
+            startDelay = 480L
+            duration = 420L
+        }
+        animators += fadeAnimator(transitionTitle, 1f, 0f, 1600L, 360L)
+        animators += fadeAnimator(dayNightTransitionOverlay, 1f, 0f, 1850L, 350L)
+
+        dayNightAnimator = AnimatorSet().apply {
+            interpolator = AccelerateDecelerateInterpolator()
+            playTogether(animators)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (isDayNightTransitionRunning) {
+                        finishDayNightTransition(spec)
+                    }
+                }
+            })
+            start()
+        }
+    }
+
+    private fun risingAnimator(
+        view: View,
+        startX: Float,
+        startY: Float,
+        controlX: Float,
+        controlY: Float,
+        endX: Float,
+        endY: Float
+    ): Animator {
+        view.alpha = 0f
+        val motion = arcAnimator(view, startX, startY, controlX, controlY, endX, endY)
+        val fade = fadeAnimator(view, 0f, 1f, 120L, 560L)
+        return AnimatorSet().apply { playTogether(motion, fade) }
+    }
+
+    private fun arcAnimator(
+        view: View,
+        startX: Float,
+        startY: Float,
+        controlX: Float,
+        controlY: Float,
+        endX: Float,
+        endY: Float
+    ): ObjectAnimator {
+        val path = Path().apply {
+            moveTo(startX, startY)
+            quadTo(controlX, controlY, endX, endY)
+        }
+        return ObjectAnimator.ofFloat(view, View.X, View.Y, path).apply {
+            duration = 1800L
+        }
+    }
+
+    private fun fadeAnimator(
+        view: View,
+        from: Float,
+        to: Float,
+        delayMs: Long,
+        durationMs: Long
+    ): ObjectAnimator {
+        return ObjectAnimator.ofFloat(view, View.ALPHA, from, to).apply {
+            startDelay = delayMs
+            duration = durationMs
+        }
+    }
+
+    private fun finishDayNightTransition(spec: GameplayTransitionSpec) {
+        if (!isDayNightTransitionRunning) return
+        isDayNightTransitionRunning = false
+        dayNightAnimator = null
+        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
+        releaseTransitionSound()
+        presentedPeriod = spec.period
+        renderThemedBackground(spec.period)
+        dayNightTransitionOverlay.visibility = View.GONE
+        dayNightTransitionOverlay.alpha = 1f
+        MusicManager.resumeGamePhaseAfterTransition(this, session)
+        resumeGameFlowAfterBlockingUi()
+    }
+
+    private fun settleDayNightTransition(resumeMusic: Boolean) {
+        if (!isDayNightTransitionRunning) return
+        isDayNightTransitionRunning = false
+        dayNightAnimator?.removeAllListeners()
+        dayNightAnimator?.cancel()
+        dayNightAnimator = null
+        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
+        releaseTransitionSound()
+
+        val spec = GameplayTableUi.transitionSpec(session)
+        lastPresentedTransitionKey = spec.key
+        presentedPeriod = spec.period
+        if (::dayNightTransitionOverlay.isInitialized) {
+            dayNightTransitionOverlay.visibility = View.GONE
+            dayNightTransitionOverlay.alpha = 1f
+            renderThemedBackground(spec.period)
+        }
+        if (resumeMusic) {
+            MusicManager.resumeGamePhaseAfterTransition(this, session)
+        } else {
+            MusicManager.prepareGamePhaseWithoutPlayback(session)
+        }
+    }
+
+    private fun playTransitionSound(period: GameplayPeriod) {
+        releaseTransitionSound()
+        val sharedPref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val soundOn = sharedPref.getBoolean("sound_on", true)
+        val volume = sharedPref.getInt("voice_volume", 80) / 100f
+        if (!soundOn || volume <= 0f) return
+
+        val soundRes = if (period == GameplayPeriod.NIGHT) {
+            R.raw.transition_night
+        } else {
+            R.raw.transition_day
+        }
+        transitionSoundPlayer = MediaPlayer.create(this, soundRes)?.apply {
+            setVolume(volume, volume)
+            setOnCompletionListener { completed ->
+                if (transitionSoundPlayer === completed) {
+                    transitionSoundPlayer = null
+                }
+                completed.release()
+            }
+            start()
+        }
+    }
+
+    private fun releaseTransitionSound() {
+        transitionSoundPlayer?.runCatching {
+            stop()
+            release()
+        }
+        transitionSoundPlayer = null
     }
 
     private fun roleImageFor(role: GameRole?): Int {
@@ -702,13 +1371,10 @@ class GameplayMockActivity : BaseActivity() {
         return if (resId != 0) resId else android.R.drawable.ic_menu_gallery
     }
 
-    private fun renderThemedBackground() {
-        val isNight = if (lastRenderedPhase == null) {
-            initialNight || GameplayTableUi.isNightPhase(session.phase)
-        } else {
-            GameplayTableUi.isNightPhase(session.phase)
-        }
-        mapBackground.setImageResource(backgroundDrawableFor(themeKey, isNight))
+    private fun renderThemedBackground(period: GameplayPeriod) {
+        mapBackground.setImageResource(
+            backgroundDrawableFor(themeKey, period == GameplayPeriod.NIGHT)
+        )
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
     }
 
@@ -740,9 +1406,47 @@ class GameplayMockActivity : BaseActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    @Suppress("DEPRECATION")
     private fun readSession(): GameSession? {
-        return intent.getSerializableExtra(LobbyActivity.EXTRA_SESSION) as? GameSession
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getSerializableExtra(LobbyActivity.EXTRA_SESSION, GameSession::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getSerializableExtra(LobbyActivity.EXTRA_SESSION) as? GameSession
+        }
+    }
+
+    private fun maybeShowDesertorChoice() {
+        if (isDayNightTransitionRunning) return
+        if (GameEngine.needsInitialDesertorChoice(session) || GameEngine.canDesertorReconsider(session)) {
+            showDesertorTeamDialog()
+        }
+    }
+
+    private fun showDesertorTeamDialog() {
+        if (desertorDialogOpen || isFinishing) return
+        desertorDialogOpen = true
+        val isInitial = GameEngine.needsInitialDesertorChoice(session)
+        val title = if (isInitial) "Elegi tu bando" else "Queres cambiar de bando?"
+        val message = if (isInitial) {
+            "Tu eleccion es secreta. Para ganar tenes que sobrevivir y lograr que venza tu bando."
+        } else {
+            "Esta es tu unica oportunidad de reconsiderarlo. Tambien podes mantener el mismo bando."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("PUEBLO") { _, _ ->
+                desertorDialogOpen = false
+                session = GameEngine.chooseDesertorTeam(session, GameRules.TOWN_WINNER)
+                renderGame()
+            }
+            .setNegativeButton("TRAIDORES") { _, _ ->
+                desertorDialogOpen = false
+                session = GameEngine.chooseDesertorTeam(session, GameRules.TRAITOR_WINNER)
+                renderGame()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private data class PhaseText(
@@ -752,6 +1456,13 @@ class GameplayMockActivity : BaseActivity() {
     )
 
     companion object {
+        private const val PREFS_NAME = "TraidoresPrefs"
+        private const val STATE_PRESENTED_PERIOD = "presented_period"
+        private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
+        private const val STATE_TRANSITION_KEY = "day_night_transition_key"
+        private const val TRAITOR_REVEAL_DURATION_MS = 8000L
+        private const val TRANSITION_MUSIC_DELAY_MS = 1600L
+
         const val EXTRA_TEMA = "tema"
         const val EXTRA_ES_NOCHE = "es_noche"
     }

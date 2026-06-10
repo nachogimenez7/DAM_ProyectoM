@@ -19,9 +19,40 @@ enum class PublicEventType(val colorHex: String) {
     PHASE_START("#5a8a3c")
 }
 
+enum class GameplayPeriod {
+    DAY,
+    NIGHT
+}
+
+data class GameplayTransitionSpec(
+    val period: GameplayPeriod,
+    val title: String,
+    val key: String
+)
+
 object GameplayTableUi {
 
     const val SIDE_COLUMN_WIDTH_DP = 76
+
+    fun playerInitial(player: GamePlayer): String {
+        val initial = player.initial.trim().firstOrNull { it.isLetter() }
+        val fallback = player.name.trim().firstOrNull { it.isLetter() }
+        return (initial ?: fallback)?.uppercaseChar()?.toString() ?: "?"
+    }
+
+    fun traitorTeammatesForReveal(session: GameSession): List<GamePlayer> {
+        val human = GameEngine.humanPlayer(session)
+        if (human.role?.key !in GameRules.traitorRoleKeys) return emptyList()
+        return session.players.filter { player ->
+            !player.isHuman && player.role?.key in GameRules.traitorRoleKeys
+        }
+    }
+
+    fun shouldShowTraitorReveal(session: GameSession, completed: Boolean): Boolean {
+        return !completed &&
+            session.phase == GamePhase.REPARTO &&
+            traitorTeammatesForReveal(session).isNotEmpty()
+    }
 
     fun splitCompanions(players: List<GamePlayer>): Pair<List<GamePlayer>, List<GamePlayer>> {
         val companions = players.filterNot { it.isHuman }
@@ -42,6 +73,25 @@ object GameplayTableUi {
             phase == GamePhase.NOCHE_MERCENARIO ||
             phase == GamePhase.NOCHE_POLICIA ||
             phase == GamePhase.NOCHE_MEDICO
+    }
+
+    fun transitionSpec(session: GameSession): GameplayTransitionSpec {
+        val period = if (isNightPhase(session.phase)) GameplayPeriod.NIGHT else GameplayPeriod.DAY
+        val visualNumber = when {
+            period == GameplayPeriod.NIGHT -> session.round
+            session.phase == GamePhase.REPARTO -> 1
+            else -> session.round + 1
+        }
+        val label = if (period == GameplayPeriod.NIGHT) "NOCHE" else "DÍA"
+        return GameplayTransitionSpec(
+            period = period,
+            title = "$label $visualNumber",
+            key = "${period.name}_$visualNumber"
+        )
+    }
+
+    fun shouldPresentTransition(spec: GameplayTransitionSpec, lastPresentedKey: String?): Boolean {
+        return spec.key != lastPresentedKey
     }
 
     fun canHumanMedicSelfProtect(session: GameSession): Boolean {

@@ -8,6 +8,53 @@ import org.junit.Test
 class GameplayTableUiTest {
 
     @Test
+    fun playerInitialUsesValidLetterAndFallsBackToName() {
+        assertEquals("M", GameplayTableUi.playerInitial(GamePlayer("Martina", "m")))
+        assertEquals("T", GameplayTableUi.playerInitial(GamePlayer("Tomas", "0:450")))
+        assertEquals("?", GameplayTableUi.playerInitial(GamePlayer("123", "0:610")))
+    }
+
+    @Test
+    fun traitorRevealIncludesOnlyExplicitTraitorRoles() {
+        val assassin = GameRole("asesino", "Asesino", "Traidores", "rol_asesino_gaucho")
+        val mercenary = GameRole("mercenario", "Mercenario", "Traidores", "rol_mercenario_gaucho")
+        val spy = GameRole("espia", "Espia", "Traidores", "rol_espia_gaucho")
+        val desertor = GameRole("desertor", "Desertora", "Neutral", "rol_desertor_gaucho")
+        val villager = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
+        val players = listOf(
+            GamePlayer("Humano", "H", role = assassin, isHuman = true),
+            GamePlayer("Mercenario", "M", role = mercenary),
+            GamePlayer("Espia", "E", role = spy),
+            GamePlayer("Desertora", "D", role = desertor),
+            GamePlayer("Aldeano", "A", role = villager)
+        )
+        val session = GameSession("TEST", "pampa", "Pampa", players, desertorTeam = GameRules.TRAITOR_WINNER)
+
+        assertEquals(
+            listOf("Mercenario", "Espia"),
+            GameplayTableUi.traitorTeammatesForReveal(session).map { it.name }
+        )
+        assertTrue(GameplayTableUi.shouldShowTraitorReveal(session, completed = false))
+        assertFalse(GameplayTableUi.shouldShowTraitorReveal(session, completed = true))
+        assertFalse(
+            GameplayTableUi.shouldShowTraitorReveal(
+                session.copy(phase = GamePhase.NOCHE_ASESINO),
+                completed = false
+            )
+        )
+        assertTrue(
+            GameplayTableUi.traitorTeammatesForReveal(
+                session.copy(players = players.map { it.copy(isHuman = it.name == "Aldeano") })
+            ).isEmpty()
+        )
+        assertTrue(
+            GameplayTableUi.traitorTeammatesForReveal(
+                session.copy(players = players.filterNot { it.name == "Mercenario" || it.name == "Espia" })
+            ).isEmpty()
+        )
+    }
+
+    @Test
     fun splitCompanionsExcludesHumanAndPutsOddExtraOnRight() {
         val fivePlayers = players(5)
         val eightPlayers = players(8)
@@ -59,6 +106,61 @@ class GameplayTableUiTest {
         assertFalse(GameplayTableUi.isNightPhase(GamePhase.DIA_DEBATE))
         assertFalse(GameplayTableUi.isNightPhase(GamePhase.VOTACION))
         assertFalse(GameplayTableUi.isNightPhase(GamePhase.RESULTADO))
+    }
+
+    @Test
+    fun transitionTitlesUseVisualDayAndNightSequence() {
+        val base = transitionSession(GamePhase.REPARTO, round = 1)
+
+        assertEquals(
+            GameplayTransitionSpec(GameplayPeriod.DAY, "DÍA 1", "DAY_1"),
+            GameplayTableUi.transitionSpec(base)
+        )
+        assertEquals(
+            GameplayTransitionSpec(GameplayPeriod.NIGHT, "NOCHE 1", "NIGHT_1"),
+            GameplayTableUi.transitionSpec(base.copy(phase = GamePhase.NOCHE_ASESINO))
+        )
+        assertEquals(
+            GameplayTransitionSpec(GameplayPeriod.DAY, "DÍA 2", "DAY_2"),
+            GameplayTableUi.transitionSpec(base.copy(phase = GamePhase.AMANECER))
+        )
+        assertEquals(
+            GameplayTransitionSpec(GameplayPeriod.NIGHT, "NOCHE 2", "NIGHT_2"),
+            GameplayTableUi.transitionSpec(base.copy(phase = GamePhase.NOCHE_MEDICO, round = 2))
+        )
+    }
+
+    @Test
+    fun subphasesInSamePeriodDoNotRepeatTransition() {
+        val nightSpecs = listOf(
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO
+        ).map { phase ->
+            GameplayTableUi.transitionSpec(transitionSession(phase, round = 1))
+        }
+        val daySpecs = listOf(
+            GamePhase.AMANECER,
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO,
+            GamePhase.VOTACION,
+            GamePhase.ALCALDE_DESEMPATE,
+            GamePhase.RESULTADO
+        ).map { phase ->
+            GameplayTableUi.transitionSpec(transitionSession(phase, round = 1))
+        }
+
+        assertEquals(setOf("NIGHT_1"), nightSpecs.map { it.key }.toSet())
+        assertEquals(setOf("DAY_2"), daySpecs.map { it.key }.toSet())
+        assertTrue(GameplayTableUi.shouldPresentTransition(nightSpecs.first(), null))
+        nightSpecs.drop(1).forEach { spec ->
+            assertFalse(GameplayTableUi.shouldPresentTransition(spec, nightSpecs.first().key))
+        }
+        assertTrue(GameplayTableUi.shouldPresentTransition(daySpecs.first(), nightSpecs.first().key))
+        daySpecs.drop(1).forEach { spec ->
+            assertFalse(GameplayTableUi.shouldPresentTransition(spec, daySpecs.first().key))
+        }
     }
 
     @Test
@@ -134,5 +236,16 @@ class GameplayTableUiTest {
                 isHuman = index == 0
             )
         }
+    }
+
+    private fun transitionSession(phase: GamePhase, round: Int): GameSession {
+        return GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = players(5),
+            phase = phase,
+            round = round
+        )
     }
 }

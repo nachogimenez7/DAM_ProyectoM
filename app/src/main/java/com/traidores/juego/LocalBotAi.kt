@@ -37,7 +37,7 @@ internal object LocalBotAi {
         return candidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
-                    .thenBy { stableNoise("${session.round}:${assassin.name}:${it.name}:kill") }
+                    .thenBy { stableNoise("${session.code}:${session.round}:${assassin.name}:${it.name}:kill") }
                     .thenBy { it.name }
             )
             .firstOrNull()
@@ -50,7 +50,7 @@ internal object LocalBotAi {
         return candidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
-                    .thenBy { stableNoise("${session.round}:${mercenary.name}:${it.name}:silence") }
+                    .thenBy { stableNoise("${session.code}:${session.round}:${mercenary.name}:${it.name}:silence") }
                     .thenBy { it.name }
             )
             .firstOrNull()
@@ -76,7 +76,7 @@ internal object LocalBotAi {
         return GameEngine.activePlayers(session)
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) + if (it.name == medic.name) 1 else 0 }
-                    .thenBy { stableNoise("${session.round}:${medic.name}:${it.name}:save") }
+                    .thenBy { stableNoise("${session.code}:${session.round}:${medic.name}:${it.name}:save") }
                     .thenBy { it.name }
             )
             .firstOrNull()
@@ -101,28 +101,57 @@ internal object LocalBotAi {
             val target = read?.let { safeName(it.player, session) } ?: "alguien"
             val reason = read?.reason() ?: "su postura todavia no cierra"
             val muted = mutedNames.lastOrNull()
-            val line = when {
+            val lines = when {
                 muted != null && index == 0 ->
-                    "$muted ya no puede responder. Quiero ver si $target sostiene su version."
+                    listOf(
+                        "$muted ya no puede responder. Quiero ver si $target sostiene su version.",
+                        "Como $muted no puede hablar, necesito que $target aclare su postura."
+                    )
                 noDeath && index == 1 ->
-                    "Que no haya caido nadie no limpia la mesa. $target me hace ruido porque $reason."
+                    listOf(
+                        "Que no haya caido nadie no limpia la mesa. $target me hace ruido porque $reason.",
+                        "La noche sin muerte no prueba inocencia. $target sigue bajo duda porque $reason."
+                    )
                 index % 3 == 0 ->
-                    "$target, explica tu recorrido. Me hace ruido que $reason."
+                    listOf(
+                        "$target, explica tu recorrido. Me hace ruido que $reason.",
+                        "Empiezo por $target porque $reason. Quiero escuchar su defensa.",
+                        "Antes de cambiar de tema, $target tiene que aclarar por que $reason."
+                    )
                 index % 3 == 1 ->
-                    "No me alcanza el silencio. Estoy mirando a $target porque $reason."
+                    listOf(
+                        "No me alcanza el silencio. Estoy mirando a $target porque $reason.",
+                        "Todavia no cierro con $target: $reason.",
+                        "Pondria el foco en $target porque $reason."
+                    )
                 else ->
-                    "Antes de votar quiero contrastar a $target con lo que se dijo."
+                    listOf(
+                        "Antes de votar quiero contrastar a $target con lo que se dijo.",
+                        "Quiero que $target responda antes de cerrar la discusion.",
+                        "No votaria sin volver sobre la postura de $target."
+                    )
             }
+            val line = lines[
+                stableNoise("${session.code}:${session.round}:${bot.name}:opening:$index") % lines.size
+            ]
             bot.name to sanitizeBotSpeech(line, session)
         }
     }
 
     fun votingIntentMessages(session: GameSession, limit: Int = 2): List<Pair<String, String>> {
-        return messageBots(session, limit).map { bot ->
+        return messageBots(session, limit).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot).firstOrNull()
             val target = read?.let { safeName(it.player, session) } ?: "alguien"
             val reason = read?.reason() ?: "su postura todavia no cierra"
-            val line = "Si nada cambia, mi voto va por $target porque $reason."
+            val templates = listOf(
+                "Si nada cambia, mi voto va por $target porque $reason.",
+                "Hoy estoy mas cerca de votar a $target: $reason.",
+                "Mi principal duda es $target porque $reason.",
+                "Antes del cierre, $target sigue siendo mi opcion por que $reason."
+            )
+            val line = templates[
+                stableNoise("${session.code}:${session.round}:${bot.name}:vote:$index") % templates.size
+            ]
             bot.name to sanitizeBotSpeech(line, session)
         }
     }
@@ -165,7 +194,7 @@ internal object LocalBotAi {
             .map { candidate -> scoreCandidate(session, voter, candidate, focusNames) }
             .sortedWith(
                 compareByDescending<SuspectRead> { it.score }
-                    .thenBy { stableNoise("${session.round}:${voter.name}:${it.player.name}:suspect") }
+                    .thenBy { stableNoise("${session.code}:${session.round}:${voter.name}:${it.player.name}:suspect") }
                     .thenBy { it.player.name }
             )
     }
@@ -178,7 +207,7 @@ internal object LocalBotAi {
     ): SuspectRead {
         val recent = recentPublicMessages(session)
         val reasons = mutableListOf<String>()
-        var score = stableNoise("${session.round}:${voter.name}:${candidate.name}:base") % 3
+        var score = stableNoise("${session.code}:${session.round}:${voter.name}:${candidate.name}:base") % 3
 
         if (candidate.name in focusNames) {
             score += 8
@@ -231,17 +260,17 @@ internal object LocalBotAi {
         val accusedCount = recent.count {
             mentionsName(it.message, candidate.name) && hasAnySignal(it.message, accusationWords)
         }
-        return (if (candidate.isHuman) 4 else 0) +
+        return (if (candidate.isHuman && session.round > 1) 2 else 0) +
             spokeCount * 3 +
             namedCount -
             accusedCount * 2 +
-            stableNoise("${session.round}:${candidate.name}:night") % 2
+            stableNoise("${session.code}:${session.round}:${candidate.name}:night") % 2
     }
 
     private fun messageBots(session: GameSession, limit: Int): List<GamePlayer> {
         return GameEngine.activePlayers(session)
             .filterNot { it.isHuman }
-            .sortedBy { stableNoise("${session.round}:${session.chatHistory.size}:${it.name}:talk") }
+            .sortedBy { stableNoise("${session.code}:${session.round}:${session.chatHistory.size}:${it.name}:talk") }
             .take(limit)
     }
 
@@ -259,12 +288,7 @@ internal object LocalBotAi {
     }
 
     private fun isTraitor(player: GamePlayer): Boolean {
-        val role = player.role ?: return false
-        return role.team == "Traidores" ||
-            role.team == "Asesino" ||
-            role.key == "asesino" ||
-            role.key == "mercenario" ||
-            role.key == "espia"
+        return GameRules.isTraitorRole(player.role)
     }
 
     private fun recentPublicMessages(session: GameSession): List<GameChatMessage> {
@@ -293,7 +317,13 @@ internal object LocalBotAi {
         var safe = raw
         forbiddenTerms(session).forEach { term ->
             if (term.length > 2) {
-                safe = safe.replace(Regex("\\b${Regex.escape(term)}\\b", RegexOption.IGNORE_CASE), "esa carta")
+                safe = safe.replace(
+                    Regex(
+                        "(?<![\\wáéíóúüñÁÉÍÓÚÜÑ])${Regex.escape(term)}(?![\\wáéíóúüñÁÉÍÓÚÜÑ])",
+                        RegexOption.IGNORE_CASE
+                    ),
+                    "esa carta"
+                )
             }
         }
         return safe.replace(Regex("\\s+"), " ").trim().take(140)

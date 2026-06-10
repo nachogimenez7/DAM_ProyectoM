@@ -14,6 +14,7 @@ object MusicManager {
     private var activeScreens = 0
     private var currentTrackRes = R.raw.menu_music
     private var player: MediaPlayer? = null
+    private var transitionPaused = false
 
     private val pauseIfBackground = Runnable {
         if (activeScreens == 0) {
@@ -48,7 +49,7 @@ object MusicManager {
 
         player?.setVolume(volume, volume)
 
-        if (activeScreens > 0 && soundOn && volume > 0f) {
+        if (activeScreens > 0 && soundOn && volume > 0f && !transitionPaused) {
             if (player?.isPlaying == false) {
                 player?.start()
             }
@@ -61,20 +62,69 @@ object MusicManager {
         switchTrack(context, R.raw.menu_music)
     }
 
-    fun playGameIntro(context: Context) {
-        switchTrack(context, R.raw.game_intro_music)
+    fun playGameIntro(context: Context, session: GameSession) {
+        switchTrack(context, dayTrackForMap(session.mapKey))
     }
 
-    fun playGamePhase(context: Context, phase: GamePhase, isGameOver: Boolean) {
-        val trackRes = when {
-            isGameOver -> R.raw.decisive_moment_music
-            phase == GamePhase.REPARTO -> R.raw.game_intro_music
-            phase == GamePhase.DIA_DEBATE || phase == GamePhase.VOTACION || phase == GamePhase.RESULTADO ->
-                R.raw.day_phase_music
-            phase == GamePhase.AMANECER -> R.raw.day_phase_music
-            else -> R.raw.night_phase_music
+    fun playGamePhase(context: Context, session: GameSession) {
+        switchTrack(context, trackForSession(session))
+    }
+
+    fun pauseForTransition() {
+        transitionPaused = true
+        player?.pause()
+    }
+
+    fun resumeGamePhaseAfterTransition(context: Context, session: GameSession) {
+        transitionPaused = false
+        switchTrack(context, trackForSession(session))
+    }
+
+    fun prepareGamePhaseWithoutPlayback(session: GameSession) {
+        transitionPaused = false
+        player?.pause()
+        val trackRes = trackForSession(session)
+        if (currentTrackRes != trackRes) {
+            currentTrackRes = trackRes
+            player?.release()
+            player = null
         }
-        switchTrack(context, trackRes)
+    }
+
+    private fun trackForSession(session: GameSession): Int {
+        return when {
+            session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
+            session.winner.isNotBlank() || isDecisiveDebate(session) -> R.raw.decisive_debate_music
+            isNightPhase(session.phase) -> R.raw.night_phase_music
+            else -> dayTrackForMap(session.mapKey)
+        }
+    }
+
+    private fun dayTrackForMap(mapKey: String): Int {
+        return when (mapKey) {
+            "grecia" -> R.raw.day_music_greece
+            "medieval" -> R.raw.day_music_medieval
+            else -> R.raw.day_music_pampa
+        }
+    }
+
+    private fun isNightPhase(phase: GamePhase): Boolean {
+        return phase == GamePhase.NOCHE_ASESINO ||
+            phase == GamePhase.NOCHE_MERCENARIO ||
+            phase == GamePhase.NOCHE_POLICIA ||
+            phase == GamePhase.NOCHE_MEDICO
+    }
+
+    private fun isDecisiveDebate(session: GameSession): Boolean {
+        val isDebatePhase = session.phase == GamePhase.DIA_DEBATE ||
+            session.phase == GamePhase.VOTACION ||
+            session.phase == GamePhase.RESULTADO
+        if (!isDebatePhase) return false
+
+        val alivePlayers = session.players.filter { it.alive }
+        val traitors = alivePlayers.count { GameRules.isTraitorRole(it.role) }
+        val town = alivePlayers.size - traitors
+        return alivePlayers.size <= 4 && traitors > 0 && town > 0
     }
 
     private fun switchTrack(context: Context, trackRes: Int) {

@@ -23,7 +23,8 @@ class AssigningRolesActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_assigning_roles)
-        MusicManager.playGameIntro(this)
+        val session = readSession() ?: LocalGameFactory.createSession()
+        MusicManager.playGameIntro(this, session)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
             handler.removeCallbacks(openGameRunnable)

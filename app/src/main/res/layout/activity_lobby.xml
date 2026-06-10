@@ -189,6 +189,33 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
 
+                <LinearLayout
+                    android:id="@+id/debugRoleSection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:text="PRUEBA: ROL HUMANO"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnDebugRole"
+                        style="@style/BtnDark"
+                        android:layout_height="34dp"
+                        android:layout_marginBottom="0dp"
+                        android:text="ROL: AZAR"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
                 <Button
                     android:id="@+id/btnAddPlayer"
                     style="@style/BtnDark"

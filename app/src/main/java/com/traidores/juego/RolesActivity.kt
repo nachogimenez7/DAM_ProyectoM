@@ -139,7 +139,7 @@ class RolesActivity : BaseActivity() {
                 map.name,
                 "Pueblo",
                 story(mapKey, "alcalde"),
-                "Puede revelar su identidad durante el debate. Desde ese momento, su voto vale doble.",
+                "Puede revelar su identidad durante el debate. Desde ese momento su voto vale doble y decide entre los dos participantes mas votados si hay empate.",
                 "rol_alcalde_$suffix"
             ),
             Role(
@@ -147,7 +147,7 @@ class RolesActivity : BaseActivity() {
                 map.name,
                 "Asesino",
                 story(mapKey, "asesino"),
-                "Forma parte del bando traidor. Cada noche participa en la eleccion de la victima.",
+                "Los asesinos eligen en conjunto una victima durante la noche. Si queda uno solo, decide por su cuenta.",
                 "rol_asesino_$suffix"
             ),
             Role(
@@ -171,7 +171,7 @@ class RolesActivity : BaseActivity() {
                 map.name,
                 "Neutral",
                 story(mapKey, "desertor"),
-                "No pertenece al pueblo ni a los traidores. Su objetivo es sobrevivir hasta el final de la partida.",
+                "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
                 "rol_desertor_$suffix"
             )
         )
@@ -201,7 +201,7 @@ class RolesActivity : BaseActivity() {
                 map.name,
                 "Rol de Mapa",
                 story(mapKey, "rolMapa"),
-                "Abre el debate de forma exclusiva, decide cuando inicia la votacion y en caso de empate usa el Voto de Gracia.",
+                "Una vez por partida elige dos participantes para un Contrapunto. Solo ellos y el Payador pueden hablar; al terminar senala a uno, que recibe un voto adicional.",
                 "rol_payador_gaucho"
             )
         }

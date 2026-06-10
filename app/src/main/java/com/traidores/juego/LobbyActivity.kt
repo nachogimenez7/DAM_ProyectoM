@@ -1,6 +1,7 @@
 package com.traidores.juego
 
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.Button
@@ -8,6 +9,7 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.view.View
 import androidx.appcompat.app.AlertDialog
 
 class LobbyActivity : BaseActivity() {
@@ -19,6 +21,21 @@ class LobbyActivity : BaseActivity() {
     private lateinit var startButton: Button
     private lateinit var mapName: TextView
     private lateinit var mapCards: List<ImageView>
+    private lateinit var debugRoleButton: Button
+    private var debugRoleIndex = 0
+
+    private val debugRoles = listOf(
+        "" to "AZAR",
+        "asesino" to "ASESINO",
+        "mercenario" to "MERCENARIO",
+        "policia" to "COMISARIO",
+        "medico" to "MEDICO",
+        "alcalde" to "ALCALDE",
+        "payador" to "PAYADOR",
+        "desertor" to "DESERTOR",
+        "espia" to "ESPIA",
+        "aldeano" to "ALDEANO"
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +47,8 @@ class LobbyActivity : BaseActivity() {
         val headerLabel: TextView = findViewById(R.id.headerLabel)
         val btnAddPlayer: Button = findViewById(R.id.btnAddPlayer)
         val btnRemovePlayer: Button = findViewById(R.id.btnRemovePlayer)
+        val debugRoleSection: LinearLayout = findViewById(R.id.debugRoleSection)
+        debugRoleButton = findViewById(R.id.btnDebugRole)
         lobbyMapBackground = findViewById(R.id.lobbyMapBackground)
         mapName = findViewById(R.id.mapName)
         startButton = findViewById(R.id.btnStartGame)
@@ -44,6 +63,12 @@ class LobbyActivity : BaseActivity() {
         btnBack.setOnClickListener { finish() }
         headerLabel.text = "MAPA"
         setupMapSelector()
+        val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        debugRoleSection.visibility = if (isDebugBuild) View.VISIBLE else View.GONE
+        debugRoleButton.setOnClickListener {
+            debugRoleIndex = (debugRoleIndex + 1) % debugRoles.size
+            renderDebugRole()
+        }
 
         btnAddPlayer.setOnClickListener {
             val updated = LocalGameFactory.addMockPlayer(session)
@@ -64,10 +89,22 @@ class LobbyActivity : BaseActivity() {
         }
 
         startButton.setOnClickListener {
-            if (session.players.size < LocalGameFactory.MIN_PLAYERS) {
-                Toast.makeText(this, "Faltan jugadores: minimo ${LocalGameFactory.MIN_PLAYERS}.", Toast.LENGTH_SHORT).show()
+            val selectedRoleKey = debugRoles[debugRoleIndex].first
+            val minimumPlayers = LocalGameFactory.minimumPlayersForRole(selectedRoleKey)
+            if (selectedRoleKey == "payador" && session.mapKey != "pampa") {
+                Toast.makeText(
+                    this,
+                    "El Payador solo aparece en el mapa Pampa.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else if (session.players.size < minimumPlayers) {
+                Toast.makeText(
+                    this,
+                    "Ese rol necesita al menos $minimumPlayers jugadores.",
+                    Toast.LENGTH_SHORT
+                ).show()
             } else {
-                val assigned = LocalGameFactory.assignRoles(session)
+                val assigned = LocalGameFactory.assignRoles(session, selectedRoleKey)
                 Toast.makeText(this, "Iniciando partida local.", Toast.LENGTH_SHORT).show()
                 startActivity(
                     Intent(this, AssigningRolesActivity::class.java)
@@ -96,6 +133,7 @@ class LobbyActivity : BaseActivity() {
             imageView.setBackgroundResource(if (selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
         }
         playersContainer.removeAllViews()
+        renderDebugRole()
 
         session.players.forEachIndexed { index, player ->
             val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
@@ -116,6 +154,13 @@ class LobbyActivity : BaseActivity() {
                 renderLobby()
             }
         }
+    }
+
+    private fun renderDebugRole() {
+        val (roleKey, label) = debugRoles[debugRoleIndex]
+        val minimumPlayers = LocalGameFactory.minimumPlayersForRole(roleKey)
+        val requirement = if (minimumPlayers > LocalGameFactory.MIN_PLAYERS) " ($minimumPlayers+)" else ""
+        debugRoleButton.text = "ROL: $label$requirement"
     }
 
     private fun onPlayerClicked(index: Int, player: GamePlayer) {
