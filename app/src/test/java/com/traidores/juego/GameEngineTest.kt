@@ -632,6 +632,72 @@ class GameEngineTest {
     }
 
     @Test
+    fun botConversationUsesLooseArgentineStyle() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Amanecer: no murio nadie."
+        )
+
+        val messages = LocalBotAi.openingDebateMessages(session, limit = 5)
+            .joinToString(" ") { it.second }
+
+        assertTrue(messages.isNotBlank())
+        assertTrue(messages == messages.lowercase())
+        assertTrue(
+            listOf("che", "dale", "igual", "pq", "q ", "nose", "posta", "jaja", "jsjs", "kjjj")
+                .any { messages.contains(it) }
+        )
+        assertTrue(messages.contains("?") || messages.contains("me hace ruido"))
+    }
+
+    @Test
+    fun botFollowsUpWhenItsQuestionWasIgnored() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Ana", "dina pq cambiaste de tema?"),
+                GameChatMessage("Beto", "dina entonces pq lo defendiste?"),
+                GameChatMessage("Ciro", "dina vas a responder?"),
+                GameChatMessage("Ema", "dina q paso ahi?"),
+                GameChatMessage("Humano", "para mi hay que mirar a ema")
+            )
+        )
+
+        val replies = LocalBotAi.reactionsToHumanMessage(session, "yo sigo dudando de ema")
+            .joinToString(" ") { it.second }
+
+        assertTrue(
+            "Respuestas: $replies",
+            replies.contains("no respondiste") ||
+                replies.contains("responde eso") ||
+                replies.contains("esquivando") ||
+                replies.contains("sigo esperando")
+        )
+    }
+
+    @Test
+    fun botsCanReactWithDifferentEmotionalTones() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "ana estas re rara y no respondes"),
+                GameChatMessage("Beto", "ana contesta de una vez"),
+                GameChatMessage("Ciro", "jajaja se esta regalando sola")
+            )
+        )
+
+        val replies = LocalBotAi.reactionsToHumanMessage(session, "ana por que no contestas?")
+            .joinToString(" ") { it.second }
+
+        assertTrue(replies.isNotBlank())
+        assertTrue(
+            "Respuestas: $replies",
+            listOf("dale", "para", "jaja", "amigo", "no inventes", "decime", "q hice", "posta", "nose", "mmm")
+                .any { replies.contains(it) }
+        )
+    }
+
+    @Test
     fun botVotesFollowPublicSuspicionInsteadOfSecretInvestigation() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,

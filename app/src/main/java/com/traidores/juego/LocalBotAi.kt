@@ -1,6 +1,33 @@
 package com.traidores.juego
 
 internal object LocalBotAi {
+    private enum class Personality {
+        TRANQUI,
+        PICANTE,
+        JODON,
+        DESCONFIADO,
+        IMPULSIVO,
+        ANALITICO
+    }
+
+    private enum class Mood {
+        CALM,
+        AMUSED,
+        ANNOYED,
+        DEFENSIVE,
+        SUSPICIOUS
+    }
+
+    private enum class Intent {
+        ASK,
+        FOLLOW_UP,
+        ACCUSE,
+        DEFEND,
+        TEASE,
+        CALM_DOWN,
+        ADMIT_DOUBT
+    }
+
     private val accusationWords = listOf(
         "sospe",
         "raro",
@@ -97,42 +124,17 @@ internal object LocalBotAi {
             val read = rankedPublicSuspects(session, bot).getOrNull(index)
                 ?: rankedPublicSuspects(session, bot).firstOrNull()
             val target = read?.let { safeName(it.player, session) } ?: "alguien"
-            val reason = read?.reason() ?: "su postura todavia no cierra"
+            val reason = informalReason(read?.reason())
             val muted = mutedNames.lastOrNull()
-            val lines = when {
+            val intent = openingIntent(session, bot, index)
+            val line = when {
                 muted != null && index == 0 ->
-                    listOf(
-                        "$muted ya no puede responder. Quiero ver si $target sostiene su version.",
-                        "Como $muted no puede hablar, necesito que $target aclare su postura."
-                    )
+                    "bueno $muted no puede contestar, $target vos q onda? bancas lo q dijiste?"
                 noDeath && index == 1 ->
-                    listOf(
-                        "Que no haya caido nadie no limpia la mesa. $target me hace ruido porque $reason.",
-                        "La noche sin muerte no prueba inocencia. $target sigue bajo duda porque $reason."
-                    )
-                index % 3 == 0 ->
-                    listOf(
-                        "$target, explica tu recorrido. Me hace ruido que $reason.",
-                        "Empiezo por $target porque $reason. Quiero escuchar su defensa.",
-                        "Antes de cambiar de tema, $target tiene que aclarar por que $reason."
-                    )
-                index % 3 == 1 ->
-                    listOf(
-                        "No me alcanza el silencio. Estoy mirando a $target porque $reason.",
-                        "Todavia no cierro con $target: $reason.",
-                        "Pondria el foco en $target porque $reason."
-                    )
-                else ->
-                    listOf(
-                        "Antes de votar quiero contrastar a $target con lo que se dijo.",
-                        "Quiero que $target responda antes de cerrar la discusion.",
-                        "No votaria sin volver sobre la postura de $target."
-                    )
+                    "igual q no haya muerto nadie no limpia a nadie eh, $target me hace ruido pq $reason"
+                else -> lineForIntent(session, bot, intent, target, reason)
             }
-            val line = lines[
-                stableNoise("${session.code}:${session.round}:${bot.name}:opening:$index") % lines.size
-            ]
-            bot.name to sanitizeBotSpeech(line, session)
+            bot.name to finishSpeech(line, session, bot, "opening:$index")
         }
     }
 
@@ -140,17 +142,17 @@ internal object LocalBotAi {
         return messageBots(session, limit).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot).firstOrNull()
             val target = read?.let { safeName(it.player, session) } ?: "alguien"
-            val reason = read?.reason() ?: "su postura todavia no cierra"
+            val reason = informalReason(read?.reason())
             val templates = listOf(
-                "Si nada cambia, mi voto va por $target porque $reason.",
-                "Hoy estoy mas cerca de votar a $target: $reason.",
-                "Mi principal duda es $target porque $reason.",
-                "Antes del cierre, $target sigue siendo mi opcion por que $reason."
+                "si no cambia nada voto a $target, $reason",
+                "yo hoy estoy para votar a $target pq $reason",
+                "para mi es $target eh, $reason",
+                "nose ustedes pero yo voy con $target, $reason"
             )
             val line = templates[
                 stableNoise("${session.code}:${session.round}:${bot.name}:vote:$index") % templates.size
             ]
-            bot.name to sanitizeBotSpeech(line, session)
+            bot.name to finishSpeech(line, session, bot, "vote:$index")
         }
     }
 
@@ -161,25 +163,234 @@ internal object LocalBotAi {
         return messageBots(session, replyCount).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot, focusNames).firstOrNull()
             val target = read?.let { safeName(it.player, session) } ?: "alguien"
-            val reason = read?.reason() ?: "su postura todavia no cierra"
+            val reason = informalReason(read?.reason())
+            val mood = moodFor(session, bot, humanMessage)
+            val intent = reactionIntent(session, bot, humanMessage, focusNames, mood, index)
+            val unanswered = unansweredQuestionFor(session, bot)
+                ?: pendingQuestionTarget(session).takeIf { index == 0 }
             val line = when {
                 claimsHiddenInfo && index == 0 ->
-                    "Anoto la acusacion, pero no demos por cierta ninguna carta. Hablemos de conductas."
+                    "para para, no demos cartas por hechas. decime q hizo y listo"
                 claimsHiddenInfo ->
-                    "$target sigue en mi lista solo por lo publico: $reason."
+                    "$target me hace ruido por lo q vimos nomas, $reason"
                 focusNames.contains(bot.name) ->
-                    "Me estan marcando a mi. Respondo con hechos, no con promesas."
-                focusNames.isNotEmpty() && index == 0 ->
-                    "$target, responde puntual. La duda quedo puesta sobre la mesa."
-                focusNames.isNotEmpty() ->
-                    "Me sirve esa pista, pero quiero comparar quien acompano demasiado rapido."
-                humanMessage.trim().endsWith("?") ->
-                    "Buena pregunta. Yo miraria a $target porque $reason."
-                else ->
-                    "Anoto eso. A mi me hace ruido $target porque $reason."
+                    defensiveLine(bot, mood)
+                unanswered != null && intent == Intent.FOLLOW_UP ->
+                    "$unanswered igual sigo esperando esa respuesta"
+                else -> lineForIntent(session, bot, intent, target, reason)
             }
-            bot.name to sanitizeBotSpeech(line, session)
+            bot.name to finishSpeech(line, session, bot, "reply:$index:${humanMessage.length}")
         }
+    }
+
+    private fun openingIntent(session: GameSession, bot: GamePlayer, index: Int): Intent {
+        val personality = personalityFor(bot)
+        return when (personality) {
+            Personality.TRANQUI -> if (index == 0) Intent.CALM_DOWN else Intent.ASK
+            Personality.PICANTE -> Intent.ACCUSE
+            Personality.JODON -> Intent.TEASE
+            Personality.DESCONFIADO -> Intent.ASK
+            Personality.IMPULSIVO -> Intent.ACCUSE
+            Personality.ANALITICO -> if (unansweredQuestionFor(session, bot) != null) Intent.FOLLOW_UP else Intent.ASK
+        }
+    }
+
+    private fun reactionIntent(
+        session: GameSession,
+        bot: GamePlayer,
+        humanMessage: String,
+        focusNames: Set<String>,
+        mood: Mood,
+        index: Int
+    ): Intent {
+        val personality = personalityFor(bot)
+        val seed = stableNoise("${session.code}:${session.round}:${bot.name}:intent:$index:$humanMessage")
+        if (mood == Mood.DEFENSIVE) return Intent.DEFEND
+        if (unansweredQuestionFor(session, bot) != null || (index == 0 && pendingQuestionTarget(session) != null)) {
+            return Intent.FOLLOW_UP
+        }
+        if (humanMessage.trim().endsWith("?")) return if (index == 0) Intent.ASK else Intent.ADMIT_DOUBT
+        if (focusNames.isNotEmpty() && index == 0) return Intent.ASK
+        return when (personality) {
+            Personality.TRANQUI -> listOf(Intent.CALM_DOWN, Intent.ASK, Intent.ADMIT_DOUBT)[seed % 3]
+            Personality.PICANTE -> listOf(Intent.ACCUSE, Intent.ASK, Intent.TEASE)[seed % 3]
+            Personality.JODON -> listOf(Intent.TEASE, Intent.ASK, Intent.ACCUSE)[seed % 3]
+            Personality.DESCONFIADO -> listOf(Intent.ASK, Intent.FOLLOW_UP, Intent.ACCUSE)[seed % 3]
+            Personality.IMPULSIVO -> listOf(Intent.ACCUSE, Intent.DEFEND, Intent.ADMIT_DOUBT)[seed % 3]
+            Personality.ANALITICO -> listOf(Intent.ASK, Intent.FOLLOW_UP, Intent.ADMIT_DOUBT)[seed % 3]
+        }
+    }
+
+    private fun lineForIntent(
+        session: GameSession,
+        bot: GamePlayer,
+        intent: Intent,
+        target: String,
+        reason: String
+    ): String {
+        val personality = personalityFor(bot)
+        val lines = when (intent) {
+            Intent.ASK -> listOf(
+                "$target pq hiciste eso?",
+                "$target explica bien lo tuyo, pq $reason?",
+                "che $target y vos q decis de todo esto?",
+                "$target posta no te parece raro q $reason?"
+            )
+            Intent.FOLLOW_UP -> listOf(
+                "$target si pero no respondiste lo q te preguntaron",
+                "no no, para $target, responde eso primero",
+                "$target estas esquivando la pregunta hace rato",
+                "dale $target contestá bien, pq $reason?"
+            )
+            Intent.ACCUSE -> listOf(
+                "para mi $target se esta regalando, $reason",
+                "$target no me cierra nada amigo",
+                "dale $target, $reason y queres q no sospeche?",
+                "yo lo digo ahora, $target esta re raro"
+            )
+            Intent.DEFEND -> listOf(
+                "nah tampoco para matarlo por eso",
+                "yo a $target no lo veo tan raro todavia",
+                "banco un toque a $target, dejenlo explicar",
+                "capaz estamos flasheando cualquiera con $target"
+            )
+            Intent.TEASE -> listOf(
+                "jajaja $target esa explicacion fue malisima",
+                "$target te estas regalando solo jsjs",
+                "kjjj dale $target inventate una mejor",
+                "no puede ser $target, cada vez te hundis mas jajaj"
+            )
+            Intent.CALM_DOWN -> listOf(
+                "para un toque, dejen hablar a $target",
+                "bajen un cambio y q $target explique",
+                "igual no votemos por votar, escuchemos a $target",
+                "tranqui, primero veamos pq $reason"
+            )
+            Intent.ADMIT_DOUBT -> listOf(
+                "igual nose, capaz estoy flasheando",
+                "puede ser eh, no la tengo tan clara",
+                "bueno capaz me fui al pasto con $target",
+                "mmm no se, lo quiero pensar un toque"
+            )
+        }
+        val offset = if (personality == Personality.ANALITICO) 1 else 0
+        val index = stableNoise("${session.code}:${session.round}:${bot.name}:$intent:$target") + offset
+        return lines[index % lines.size]
+    }
+
+    private fun defensiveLine(bot: GamePlayer, mood: Mood): String {
+        return when {
+            mood == Mood.ANNOYED -> "dale amigo me marcas a mi y ni explicas pq"
+            personalityFor(bot) == Personality.JODON -> "jajaja ahora yo? dale, tirame una razon aunque sea"
+            personalityFor(bot) == Personality.IMPULSIVO -> "para para yo no dije eso, no inventes"
+            else -> "bueno me marcas a mi, pero decime q hice concretamente"
+        }
+    }
+
+    private fun personalityFor(bot: GamePlayer): Personality {
+        val personalities = Personality.entries
+        return personalities[stableNoise("personality:${bot.name}") % personalities.size]
+    }
+
+    private fun moodFor(session: GameSession, bot: GamePlayer, latestMessage: String): Mood {
+        val recent = recentPublicMessages(session).takeLast(8)
+        val mentions = recent.count { mentionsName(it.message, bot.name) }
+        val accusations = recent.count {
+            mentionsName(it.message, bot.name) && hasAnySignal(it.message, accusationWords)
+        }
+        val latestTargetsBot = mentionsName(latestMessage, bot.name)
+        return when {
+            latestTargetsBot && accusations >= 2 -> Mood.ANNOYED
+            latestTargetsBot -> Mood.DEFENSIVE
+            latestMessage.contains("jaja", ignoreCase = true) ||
+                latestMessage.contains("jsjs", ignoreCase = true) -> Mood.AMUSED
+            mentions >= 3 -> Mood.SUSPICIOUS
+            else -> Mood.CALM
+        }
+    }
+
+    private fun unansweredQuestionFor(session: GameSession, bot: GamePlayer): String? {
+        val messages = recentPublicMessages(session)
+        val botQuestionIndex = messages.indexOfLast {
+            it.speaker == bot.name && it.message.contains("?")
+        }
+        if (botQuestionIndex < 0) return null
+        val question = messages[botQuestionIndex]
+        val target = mentionedPlayerNames(session, question.message)
+            .firstOrNull { it != bot.name }
+            ?: return null
+        val answered = messages.drop(botQuestionIndex + 1).any { it.speaker == target }
+        return if (answered) null else "$target"
+    }
+
+    private fun pendingQuestionTarget(session: GameSession): String? {
+        val messages = recentPublicMessages(session)
+        for (index in messages.indices.reversed()) {
+            val question = messages[index]
+            if (!question.message.contains("?")) continue
+            val target = mentionedPlayerNames(session, question.message)
+                .firstOrNull { it != question.speaker }
+                ?: continue
+            val answered = messages.drop(index + 1).any { it.speaker == target }
+            if (!answered) return target
+        }
+        return null
+    }
+
+    private fun informalReason(reason: String?): String {
+        return when (reason) {
+            "lo nombraron en la mesa" -> "lo vienen nombrando todos"
+            "le pidieron explicaciones" -> "le preguntaron y no aclaro mucho"
+            "aparecio demasiado en la charla" -> "esta metido en todas"
+            "esta hablando poco" -> "no esta diciendo nada"
+            "esta ocupando mucho espacio" -> "habla una banda y no dice mucho"
+            "ya venia bajo presion" -> "ya venia medio complicado"
+            else -> "hay algo q no me cierra"
+        }
+    }
+
+    private fun finishSpeech(
+        raw: String,
+        session: GameSession,
+        bot: GamePlayer,
+        context: String
+    ): String {
+        val personality = personalityFor(bot)
+        val seed = stableNoise("${session.code}:${session.round}:${bot.name}:style:$context")
+        var text = raw.lowercase()
+            .replace("porque", if (seed % 3 == 0) "pq" else "porque")
+            .replace("que ", if (seed % 5 == 0) "q " else "que ")
+            .replace("tambien", if (seed % 4 == 0) "tmb" else "tambien")
+            .replace("no se", if (seed % 2 == 0) "nose" else "no se")
+
+        if (personality == Personality.PICANTE && seed % 4 == 0 && !text.startsWith("dale")) {
+            text = "dale, $text"
+        }
+        if (personality == Personality.JODON && seed % 3 == 0 && !containsLaugh(text)) {
+            text = "${laughFor(seed)} $text"
+        }
+        if (personality == Personality.IMPULSIVO && seed % 5 == 0) {
+            text = text.replace("para ", "PARA ")
+        }
+        if (personality == Personality.TRANQUI && seed % 4 == 0 && !text.startsWith("igual")) {
+            text = "igual $text"
+        }
+
+        text = text
+            .replace(Regex("[.!]{1,}$"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        return sanitizeBotSpeech(text, session)
+    }
+
+    private fun containsLaugh(text: String): Boolean {
+        return text.contains("jaja") || text.contains("jsjs") || text.contains("kjjj")
+    }
+
+    private fun laughFor(seed: Int): String {
+        val laughs = listOf("jajaja", "jsjs", "kjjj")
+        return laughs[seed % laughs.size]
     }
 
     private fun rankedPublicSuspects(
