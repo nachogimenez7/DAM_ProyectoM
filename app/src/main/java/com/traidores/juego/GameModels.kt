@@ -40,6 +40,7 @@ data class GamePlayer(
     val role: GameRole? = null,
     val alive: Boolean = true,
     val muted: Boolean = false,
+    val lastSilencedRound: Int? = null,
     val isHuman: Boolean = false
 ) : Serializable
 
@@ -92,6 +93,7 @@ object GameRules {
     const val TRAITOR_WINNER = "Traidores"
 
     val traitorRoleKeys = setOf("asesino", "mercenario", "espia")
+    val killerRoleKeys = setOf("asesino", "espia")
 
     fun isTraitorRole(role: GameRole?): Boolean {
         return role != null &&
@@ -100,13 +102,14 @@ object GameRules {
 
     fun winnerFor(session: GameSession): String {
         val alive = session.players.filter { it.alive }
+        if (alive.none { it.role?.key in killerRoleKeys }) return TOWN_WINNER
+
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
         val desertorSupportsTraitors = desertor != null && session.desertorTeam == TRAITOR_WINNER
         val desertorSupportsTown = desertor != null && session.desertorTeam == TOWN_WINNER
         val traitors = alive.count { isTraitorRole(it.role) } + if (desertorSupportsTraitors) 1 else 0
         val town = alive.count { it.role?.team == TOWN_WINNER } + if (desertorSupportsTown) 1 else 0
         return when {
-            traitors == 0 -> TOWN_WINNER
             traitors >= town -> TRAITOR_WINNER
             else -> ""
         }
@@ -210,7 +213,12 @@ object LocalGameFactory {
 
         val shuffledRoles = roles.shuffled()
         val randomlyAssignedPlayers = session.players.mapIndexed { index, player ->
-            player.copy(role = shuffledRoles[index], alive = true, muted = false)
+            player.copy(
+                role = shuffledRoles[index],
+                alive = true,
+                muted = false,
+                lastSilencedRound = null
+            )
         }
         val assignedPlayers = forceHumanRole(randomlyAssignedPlayers, effectiveForcedRole)
         val human = assignedPlayers.firstOrNull { it.isHuman } ?: assignedPlayers.first()

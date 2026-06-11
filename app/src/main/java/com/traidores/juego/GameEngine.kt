@@ -31,7 +31,7 @@ object GameEngine {
             ?: return advanceNight(session, nextPhaseAfterAssassin(session), "La noche continua.")
 
         val target = if (assassin.isHuman) selectedTarget else LocalBotAi.chooseAssassinTarget(session, assassin)
-        if (!isValidNightTarget(session, target, assassin, allowSelf = false)) {
+        if (!isValidKillTarget(session, target, assassin)) {
             return if (assassin.isHuman) {
                 session
             } else {
@@ -59,11 +59,11 @@ object GameEngine {
     fun resolveMercenary(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_MERCENARIO)) return session
 
-        val mercenary = activePlayers(session).firstOrNull { it.role?.key == "mercenario" }
+        val mercenary = alivePlayers(session).firstOrNull { it.role?.key == "mercenario" }
             ?: return advanceNight(session, GamePhase.NOCHE_POLICIA, "La noche continua.")
 
         val target = if (mercenary.isHuman) selectedTarget else LocalBotAi.chooseSilenceTarget(session, mercenary)
-        if (!isValidNightTarget(session, target, mercenary, allowSelf = false)) {
+        if (!isValidSilenceTarget(session, target, mercenary)) {
             return if (mercenary.isHuman) {
                 session
             } else {
@@ -87,7 +87,7 @@ object GameEngine {
     fun resolvePolice(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_POLICIA)) return session
 
-        val police = activePlayers(session).firstOrNull { it.role?.key == "policia" }
+        val police = alivePlayers(session).firstOrNull { it.role?.key == "policia" }
             ?: return advanceNight(session, GamePhase.NOCHE_MEDICO, "La noche continua.")
 
         val target = if (police.isHuman) selectedTarget else LocalBotAi.chooseInvestigationTarget(session, police)
@@ -117,7 +117,7 @@ object GameEngine {
     fun resolveMedic(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_MEDICO)) return session
 
-        val medic = activePlayers(session).firstOrNull { it.role?.key == "medico" }
+        val medic = alivePlayers(session).firstOrNull { it.role?.key == "medico" }
             ?: return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
 
         val target = if (medic.isHuman) selectedTarget else LocalBotAi.chooseProtectionTarget(session, medic)
@@ -151,16 +151,16 @@ object GameEngine {
             "Amanecer: no murio nadie."
         } else {
             updatedPlayers = updatedPlayers.map { player ->
-                if (player.name == victim) player.copy(alive = false, muted = true) else player
+                if (player.name == victim) player.copy(alive = false, muted = false) else player
             }
-            "Amanecer: murio $victim. $victim queda muteado."
+            "Amanecer: murio $victim."
         }
 
         var silenceApplied = false
         updatedPlayers = updatedPlayers.map { player ->
             if (player.name == session.nightSilenceTarget && player.alive) {
                 silenceApplied = true
-                player.copy(muted = true)
+                player.copy(muted = true, lastSilencedRound = session.round)
             } else {
                 player
             }
@@ -190,11 +190,11 @@ object GameEngine {
     fun resolveDayDebate(session: GameSession): GameSession {
         if (!canResolve(session, GamePhase.DIA_DEBATE)) return session
 
-        val botPayador = activePlayers(session).firstOrNull {
+        val botPayador = alivePlayers(session).firstOrNull {
             it.role?.key == "payador" && !it.isHuman
         }
         if (botPayador != null && !session.payadorUsed) {
-            val candidates = activePlayers(session)
+            val candidates = alivePlayers(session)
                 .filter { it.name != botPayador.name }
                 .sortedBy { it.name }
                 .take(2)
@@ -220,7 +220,7 @@ object GameEngine {
 
     fun revealAlcalde(session: GameSession): GameSession {
         if (session.phase != GamePhase.DIA_DEBATE || session.alcaldeRevealed) return session
-        val alcalde = activePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
+        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (!alcalde.isHuman) return session
         val message = "${alcalde.name} se revelo como Alcalde. Desde ahora su voto vale doble y decide los empates."
         return session.copy(
@@ -232,7 +232,7 @@ object GameEngine {
 
     fun chooseAlcaldeTie(session: GameSession, targetName: String): GameSession {
         if (!canResolve(session, GamePhase.ALCALDE_DESEMPATE)) return session
-        val alcalde = activePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
+        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (!session.alcaldeRevealed || targetName !in session.alcaldeTieCandidates) return session
         if (!alcalde.isHuman) return session
         val message = "El Alcalde decidio el empate. Se resolvera la expulsion de $targetName."
@@ -273,9 +273,9 @@ object GameEngine {
 
     fun chooseContrapuntoPlayer(session: GameSession, targetName: String): GameSession {
         if (session.phase != GamePhase.DIA_DEBATE || session.payadorUsed) return session
-        val payador = activePlayers(session).firstOrNull { it.role?.key == "payador" } ?: return session
+        val payador = alivePlayers(session).firstOrNull { it.role?.key == "payador" } ?: return session
         val target = playerByName(session, targetName) ?: return session
-        if (!isActive(target) || target.name == payador.name || target.name in session.contrapuntoPlayers) {
+        if (!isAlive(target) || target.name == payador.name || target.name in session.contrapuntoPlayers) {
             return session
         }
 
@@ -304,7 +304,7 @@ object GameEngine {
 
     fun resolveContrapunto(session: GameSession, suspiciousPlayer: String): GameSession {
         if (!canResolve(session, GamePhase.CONTRAPUNTO)) return session
-        val payador = activePlayers(session).firstOrNull { it.role?.key == "payador" }
+        val payador = alivePlayers(session).firstOrNull { it.role?.key == "payador" }
             ?: return session.transitionTo(GamePhase.VOTACION, "El Contrapunto termino.", privateRoleHint(session))
         val selected = if (payador.isHuman) {
             suspiciousPlayer.takeIf { it in session.contrapuntoPlayers }.orEmpty()
@@ -325,10 +325,10 @@ object GameEngine {
         if (!canResolve(session, GamePhase.VOTACION)) return session
 
         val human = humanPlayer(session)
-        if (isActive(human) && !isValidVoteTarget(session, selectedTarget, human)) return session
+        if (canVote(human) && !isValidVoteTarget(session, selectedTarget, human)) return session
 
         val votes = mutableMapOf<String, String>()
-        activePlayers(session).forEach { voter ->
+        session.players.filter { canVote(it) }.forEach { voter ->
             val voteTarget = if (voter.isHuman) selectedTarget else LocalBotAi.chooseVoteTarget(session, voter)
             if (isValidVoteTarget(session, voteTarget, voter)) {
                 votes[voter.name] = voteTarget
@@ -336,7 +336,7 @@ object GameEngine {
         }
 
         val votingSession = autoRevealBotAlcalde(session)
-        val alcalde = activePlayers(votingSession).firstOrNull { it.role?.key == "alcalde" }
+        val alcalde = alivePlayers(votingSession).firstOrNull { it.role?.key == "alcalde" }
         val leaders = weightedVoteLeaders(votingSession, votes)
         val humanAlcaldeMustChoose = leaders.size == 2 &&
             votingSession.alcaldeRevealed &&
@@ -391,9 +391,9 @@ object GameEngine {
         }
 
         val updatedPlayers = session.players.map { player ->
-            if (player.name == target) player.copy(alive = false, muted = true) else player
+            if (player.name == target) player.copy(alive = false, muted = false) else player
         }
-        val message = "Dia ${session.round}: $target fue expulsado y queda muteado."
+        val message = "Dia ${session.round}: $target fue expulsado."
         val resolved = session.copy(
             players = updatedPlayers,
             publicAnnouncement = message,
@@ -410,7 +410,7 @@ object GameEngine {
         val espiaKillerHint = if (
             role.key == "espia" &&
             session.phase == GamePhase.NOCHE_ASESINO &&
-            activePlayers(session).none { it.role?.key == "asesino" }
+            alivePlayers(session).none { it.role?.key == "asesino" }
         ) {
             " El Asesino cayo: ahora sos el ejecutor de los Traidores."
         } else {
@@ -431,11 +431,12 @@ object GameEngine {
         } else {
             ""
         }
-        return if (isActive(human)) {
-            "${role.name} - ${role.team}.$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
-        } else {
-            "${role.name} - ${role.team}. Estas muteado.$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
+        val statusHint = when {
+            !human.alive -> " Estas eliminado."
+            human.muted -> " Estas muteado durante el dia."
+            else -> ""
         }
+        return "${role.name} - ${role.team}.$statusHint$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
     }
 
     fun humanPlayer(session: GameSession): GamePlayer {
@@ -446,12 +447,12 @@ object GameEngine {
         return session.players.firstOrNull { it.name == name }
     }
 
-    fun activePlayers(session: GameSession): List<GamePlayer> {
-        return session.players.filter { isActive(it) }
+    fun alivePlayers(session: GameSession): List<GamePlayer> {
+        return session.players.filter { isAlive(it) }
     }
 
     fun isHumanRoleTurn(session: GameSession, roleKey: String): Boolean {
-        return activePlayers(session).any { it.isHuman && canActAs(session, it, roleKey) }
+        return alivePlayers(session).any { it.isHuman && canActAs(session, it, roleKey) }
     }
 
     fun isValidHumanActionTarget(session: GameSession, selectedTarget: String): Boolean {
@@ -466,19 +467,19 @@ object GameEngine {
                 canActOnTarget(session, selectedTarget)
             GamePhase.CONTRAPUNTO -> false
             GamePhase.ALCALDE_DESEMPATE -> false
-            GamePhase.VOTACION -> !isActive(humanPlayer(session)) || canActOnTarget(session, selectedTarget)
+            GamePhase.VOTACION -> !canVote(humanPlayer(session)) || canActOnTarget(session, selectedTarget)
             else -> true
         }
     }
 
     fun canActOnTarget(session: GameSession, targetName: String): Boolean {
         val human = humanPlayer(session)
-        if (!isActive(human) || session.winner.isNotBlank()) return false
+        if (!isAlive(human) || session.winner.isNotBlank()) return false
         return when (session.phase) {
             GamePhase.NOCHE_ASESINO -> canActAs(session, human, "asesino") &&
-                isValidNightTarget(session, targetName, human, allowSelf = false)
+                isValidKillTarget(session, targetName, human)
             GamePhase.NOCHE_MERCENARIO -> canActAs(session, human, "mercenario") &&
-                isValidNightTarget(session, targetName, human, allowSelf = false)
+                isValidSilenceTarget(session, targetName, human)
             GamePhase.NOCHE_POLICIA -> canActAs(session, human, "policia") &&
                 isValidNightTarget(session, targetName, human, allowSelf = false)
             GamePhase.NOCHE_MEDICO -> canActAs(session, human, "medico") &&
@@ -526,13 +527,21 @@ object GameEngine {
         }
     }
 
-    fun isActive(player: GamePlayer): Boolean {
+    fun isAlive(player: GamePlayer): Boolean {
+        return player.alive
+    }
+
+    fun canSpeak(player: GamePlayer): Boolean {
+        return player.alive && !player.muted
+    }
+
+    fun canVote(player: GamePlayer): Boolean {
         return player.alive && !player.muted
     }
 
     fun canHumanChat(session: GameSession): Boolean {
         val human = humanPlayer(session)
-        if (!isActive(human) || session.winner.isNotBlank()) return false
+        if (!canSpeak(human) || session.winner.isNotBlank()) return false
 
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
@@ -564,15 +573,15 @@ object GameEngine {
     fun requiresHumanInput(session: GameSession): Boolean {
         val human = humanPlayer(session)
         return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> isActive(human) && canActAs(session, human, "asesino")
+            GamePhase.NOCHE_ASESINO -> isAlive(human) && canActAs(session, human, "asesino")
             GamePhase.NOCHE_MERCENARIO -> isHumanRoleTurn(session, "mercenario")
             GamePhase.NOCHE_POLICIA -> isHumanRoleTurn(session, "policia")
             GamePhase.NOCHE_MEDICO -> isHumanRoleTurn(session, "medico")
             GamePhase.CONTRAPUNTO ->
-                isActive(human) && human.role?.key == "payador"
+                isAlive(human) && human.role?.key == "payador"
             GamePhase.ALCALDE_DESEMPATE ->
-                isActive(human) && human.role?.key == "alcalde"
-            GamePhase.VOTACION -> isActive(human)
+                isAlive(human) && human.role?.key == "alcalde"
+            GamePhase.VOTACION -> canVote(human)
             else -> needsInitialDesertorChoice(session)
         }
     }
@@ -631,7 +640,7 @@ object GameEngine {
     }
 
     private fun nextPhaseAfterAssassin(session: GameSession): GamePhase {
-        return if (activePlayers(session).any { it.role?.key == "mercenario" }) {
+        return if (alivePlayers(session).any { it.role?.key == "mercenario" }) {
             GamePhase.NOCHE_MERCENARIO
         } else {
             GamePhase.NOCHE_POLICIA
@@ -639,8 +648,40 @@ object GameEngine {
     }
 
     private fun activeKiller(session: GameSession): GamePlayer? {
-        return activePlayers(session).firstOrNull { it.role?.key == "asesino" }
-            ?: activePlayers(session).firstOrNull { it.role?.key == "espia" }
+        return alivePlayers(session).firstOrNull { it.role?.key == "asesino" }
+            ?: alivePlayers(session).firstOrNull { it.role?.key == "espia" }
+    }
+
+    internal fun isValidKillTarget(
+        session: GameSession,
+        selectedTarget: String,
+        actor: GamePlayer
+    ): Boolean {
+        if (!isAlive(actor)) return false
+        val target = playerByName(session, selectedTarget)
+        return target != null &&
+            isAlive(target) &&
+            target.name != actor.name &&
+            target.role?.key !in GameRules.traitorRoleKeys
+    }
+
+    internal fun isValidSilenceTarget(
+        session: GameSession,
+        selectedTarget: String,
+        actor: GamePlayer
+    ): Boolean {
+        if (!isAlive(actor)) return false
+        val target = playerByName(session, selectedTarget)
+        return target != null &&
+            isAlive(target) &&
+            !target.muted &&
+            target.name != actor.name &&
+            canBeSilenced(session, target)
+    }
+
+    internal fun canBeSilenced(session: GameSession, target: GamePlayer): Boolean {
+        val lastRound = target.lastSilencedRound ?: return true
+        return session.round - lastRound >= 2
     }
 
     private fun isValidNightTarget(
@@ -649,15 +690,15 @@ object GameEngine {
         actor: GamePlayer,
         allowSelf: Boolean
     ): Boolean {
-        if (!isActive(actor)) return false
+        if (!isAlive(actor)) return false
         val target = playerByName(session, selectedTarget)
-        return target != null && isActive(target) && (allowSelf || target.name != actor.name)
+        return target != null && isAlive(target) && (allowSelf || target.name != actor.name)
     }
 
     private fun isValidVoteTarget(session: GameSession, selectedTarget: String, voter: GamePlayer): Boolean {
-        if (!isActive(voter)) return false
+        if (!canVote(voter)) return false
         val target = playerByName(session, selectedTarget)
-        return target != null && isActive(target) && target.name != voter.name
+        return target != null && isAlive(target) && target.name != voter.name
     }
 
     private fun isValidContrapuntoTarget(
@@ -666,9 +707,9 @@ object GameEngine {
         payador: GamePlayer
     ): Boolean {
         val target = playerByName(session, selectedTarget)
-        return isActive(payador) &&
+        return isAlive(payador) &&
             target != null &&
-            isActive(target) &&
+            isAlive(target) &&
             target.name != payador.name &&
             target.name !in session.contrapuntoPlayers
     }
@@ -689,7 +730,7 @@ object GameEngine {
         votes: Map<String, String>
     ): List<String> {
         val weightedVotes = votes.values.toMutableList()
-        val alcalde = activePlayers(session).firstOrNull { it.role?.key == "alcalde" }
+        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" }
         if (session.alcaldeRevealed && alcalde != null) {
             votes[alcalde.name]?.let { weightedVotes += it }
         }
@@ -700,10 +741,10 @@ object GameEngine {
     }
 
     private fun canActAs(session: GameSession, player: GamePlayer, roleKey: String): Boolean {
-        if (!isActive(player)) return false
+        if (!isAlive(player)) return false
         return when (roleKey) {
             "asesino" -> player.role?.key == "asesino" ||
-                (player.role?.key == "espia" && activePlayers(session).none { it.role?.key == "asesino" })
+                (player.role?.key == "espia" && alivePlayers(session).none { it.role?.key == "asesino" })
             else -> player.role?.key == roleKey
         }
     }
@@ -808,15 +849,19 @@ object GameEngine {
 
     private fun GameSession.withWinnerCheck(): GameSession {
         val prepared = autoResolveBotDesertorChoice(this)
+        val winner = GameRules.winnerFor(prepared)
+        if (winner == GameRules.TOWN_WINNER) {
+            return prepared.copy(winner = winner)
+        }
         if (canDesertorReconsider(prepared)) {
             return prepared.copy(winner = "")
         }
-        return prepared.copy(winner = GameRules.winnerFor(prepared))
+        return prepared.copy(winner = winner)
     }
 
     private fun autoRevealBotAlcalde(session: GameSession): GameSession {
         if (session.alcaldeRevealed) return session
-        val alcalde = activePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
+        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (alcalde.isHuman || session.round < 2) return session
         val message = "${alcalde.name} se revelo como Alcalde. Su voto vale doble y decidira los empates."
         return session.copy(alcaldeRevealed = true).withPublicHistory(message)

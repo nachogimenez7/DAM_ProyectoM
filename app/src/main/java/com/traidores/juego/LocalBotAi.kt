@@ -33,7 +33,8 @@ internal object LocalBotAi {
     )
 
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
-        val candidates = preferredNightTargets(session, assassin)
+        val candidates = GameEngine.alivePlayers(session)
+            .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
         return candidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
@@ -46,8 +47,11 @@ internal object LocalBotAi {
     }
 
     fun chooseSilenceTarget(session: GameSession, mercenary: GamePlayer): String {
-        val candidates = preferredNightTargets(session, mercenary)
-        return candidates
+        val candidates = GameEngine.alivePlayers(session)
+            .filter { GameEngine.isValidSilenceTarget(session, it.name, mercenary) }
+        val nonTraitors = candidates.filterNot { isTraitor(it) }
+        val preferred = nonTraitors.ifEmpty { candidates }
+        return preferred
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
                     .thenBy { stableNoise("${session.code}:${session.round}:${mercenary.name}:${it.name}:silence") }
@@ -56,12 +60,6 @@ internal object LocalBotAi {
             .firstOrNull()
             ?.name
             .orEmpty()
-    }
-
-    private fun preferredNightTargets(session: GameSession, actor: GamePlayer): List<GamePlayer> {
-        val candidates = GameEngine.activePlayers(session).filter { it.name != actor.name }
-        val nonTraitors = candidates.filterNot { isTraitor(it) }
-        return nonTraitors.ifEmpty { candidates }
     }
 
     fun chooseInvestigationTarget(session: GameSession, police: GamePlayer): String {
@@ -73,7 +71,7 @@ internal object LocalBotAi {
     }
 
     fun chooseProtectionTarget(session: GameSession, medic: GamePlayer): String {
-        return GameEngine.activePlayers(session)
+        return GameEngine.alivePlayers(session)
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) + if (it.name == medic.name) 1 else 0 }
                     .thenBy { stableNoise("${session.code}:${session.round}:${medic.name}:${it.name}:save") }
@@ -93,7 +91,7 @@ internal object LocalBotAi {
     }
 
     fun openingDebateMessages(session: GameSession, limit: Int = 3): List<Pair<String, String>> {
-        val mutedNames = session.players.filter { it.muted }.map { safeName(it, session) }
+        val mutedNames = session.players.filter { it.alive && it.muted }.map { safeName(it, session) }
         val noDeath = session.publicAnnouncement.contains("no murio nadie", ignoreCase = true)
         return messageBots(session, limit).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot).getOrNull(index)
@@ -189,7 +187,7 @@ internal object LocalBotAi {
         voter: GamePlayer,
         focusNames: Set<String> = emptySet()
     ): List<SuspectRead> {
-        return GameEngine.activePlayers(session)
+        return GameEngine.alivePlayers(session)
             .filter { it.name != voter.name }
             .map { candidate -> scoreCandidate(session, voter, candidate, focusNames) }
             .sortedWith(
@@ -268,20 +266,20 @@ internal object LocalBotAi {
     }
 
     private fun messageBots(session: GameSession, limit: Int): List<GamePlayer> {
-        return GameEngine.activePlayers(session)
-            .filterNot { it.isHuman }
+        return GameEngine.alivePlayers(session)
+            .filter { !it.isHuman && GameEngine.canSpeak(it) }
             .sortedBy { stableNoise("${session.code}:${session.round}:${session.chatHistory.size}:${it.name}:talk") }
             .take(limit)
     }
 
     private fun mentionedPlayerNames(session: GameSession, message: String): List<String> {
-        return GameEngine.activePlayers(session)
+        return GameEngine.alivePlayers(session)
             .filter { mentionsName(message, it.name) }
             .map { it.name }
     }
 
     private fun fallbackTarget(session: GameSession, actor: GamePlayer): String {
-        return GameEngine.activePlayers(session)
+        return GameEngine.alivePlayers(session)
             .firstOrNull { it.name != actor.name }
             ?.name
             .orEmpty()

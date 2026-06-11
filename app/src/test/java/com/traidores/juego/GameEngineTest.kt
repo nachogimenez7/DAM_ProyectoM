@@ -2,6 +2,8 @@ package com.traidores.juego
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -164,6 +166,52 @@ class GameEngineTest {
 
         assertFalse(GameEngine.requiresHumanInput(mercenaryHuman))
         assertTrue(GameEngine.requiresHumanInput(spyHuman))
+        assertEquals("", GameEngine.targetActionLabel(spyHuman, "Mercenario"))
+        assertEquals("MATAR", GameEngine.targetActionLabel(spyHuman, "Policia"))
+    }
+
+    @Test
+    fun mutedAssassinCanStillUseNightAbility() {
+        val session = sessionWithHumanAdvancedRole("asesino").copy(
+            phase = GamePhase.NOCHE_ASESINO,
+            players = sessionWithHumanAdvancedRole("asesino").players.map {
+                if (it.isHuman) it.copy(muted = true, lastSilencedRound = 3) else it
+            }
+        )
+
+        val resolved = GameEngine.resolveAssassin(session, "Policia")
+
+        assertTrue(GameEngine.requiresHumanInput(session))
+        assertEquals("MATAR", GameEngine.targetActionLabel(session, "Policia"))
+        assertEquals("Policia", resolved.nightKillTarget)
+        assertEquals(GamePhase.NOCHE_MERCENARIO, resolved.phase)
+    }
+
+    @Test
+    fun assassinCannotTargetExplicitTraitorTeammates() {
+        val session = sessionWithHumanAdvancedRole("asesino").copy(phase = GamePhase.NOCHE_ASESINO)
+
+        assertEquals("", GameEngine.targetActionLabel(session, "Mercenario"))
+        assertEquals("", GameEngine.targetActionLabel(session, "Espia"))
+        assertEquals("MATAR", GameEngine.targetActionLabel(session, "Policia"))
+        assertEquals(session, GameEngine.resolveAssassin(session, "Mercenario"))
+    }
+
+    @Test
+    fun botAssassinNeverTargetsExplicitTraitorTeammates() {
+        val session = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = advancedPlayers(),
+            phase = GamePhase.NOCHE_ASESINO
+        )
+        val assassin = session.players.first { it.role?.key == "asesino" }
+
+        val target = GameEngine.playerByName(session, LocalBotAi.chooseAssassinTarget(session, assassin))
+
+        assertNotNull(target)
+        assertFalse(target!!.role?.key in GameRules.traitorRoleKeys)
     }
 
     @Test
@@ -257,8 +305,8 @@ class GameEngineTest {
         val victim = GameEngine.playerByName(dawn, "Policia")
 
         assertFalse(victim!!.alive)
-        assertTrue(victim.muted)
-        assertEquals("Amanecer: murio Policia. Policia queda muteado.", dawn.publicAnnouncement)
+        assertFalse(victim.muted)
+        assertEquals("Amanecer: murio Policia.", dawn.publicAnnouncement)
     }
 
     @Test
@@ -328,9 +376,56 @@ class GameEngineTest {
         assertEquals(GameActionType.SILENCE, resolved.actionHistory.last().type)
         assertTrue(silenced!!.alive)
         assertTrue(silenced.muted)
+        assertEquals(1, silenced.lastSilencedRound)
         assertTrue(dawn.publicAnnouncement.contains("Policia no puede hablar ni votar hoy."))
         assertFalse(GameEngine.playerByName(nextRound, "Policia")!!.muted)
+        assertEquals(1, GameEngine.playerByName(nextRound, "Policia")!!.lastSilencedRound)
         assertEquals(GamePhase.NOCHE_ASESINO, nextRound.phase)
+    }
+
+    @Test
+    fun silenceCooldownBlocksNextRoundAndAllowsFollowingRound() {
+        val roundFour = sessionWithHumanAdvancedRole("mercenario").copy(
+            phase = GamePhase.NOCHE_MERCENARIO,
+            round = 4
+        )
+        val selected = GameEngine.resolveMercenary(roundFour, "Policia")
+        val dawn = GameEngine.resolveDawn(
+            selected.copy(
+                phase = GamePhase.AMANECER,
+                nightKillTarget = "",
+                protectedPlayer = ""
+            )
+        )
+        val roundFive = GameEngine.resolveResult(
+            dawn.copy(
+                phase = GamePhase.RESULTADO,
+                dayEliminationTarget = ""
+            )
+        ).copy(phase = GamePhase.NOCHE_MERCENARIO)
+        val roundSix = roundFive.copy(round = 6)
+
+        assertEquals("", GameEngine.targetActionLabel(roundFive, "Policia"))
+        assertEquals("SILENCIAR", GameEngine.targetActionLabel(roundSix, "Policia"))
+    }
+
+    @Test
+    fun botMercenaryRespectsSilenceCooldown() {
+        val session = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = advancedPlayers().map {
+                if (it.name == "Policia") it.copy(lastSilencedRound = 4) else it
+            },
+            phase = GamePhase.NOCHE_MERCENARIO,
+            round = 5
+        )
+        val mercenary = session.players.first { it.role?.key == "mercenario" }
+
+        val target = LocalBotAi.chooseSilenceTarget(session, mercenary)
+
+        assertNotEquals("Policia", target)
     }
 
     @Test
@@ -387,7 +482,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun mutedPlayersDoNotVoteOrAct() {
+    fun deadPlayersDoNotVoteOrReceiveActions() {
         val session = baseSession().copy(
             phase = GamePhase.VOTACION,
             players = baseSession().players.map {
@@ -399,6 +494,27 @@ class GameEngineTest {
 
         assertFalse(resolved.votes.containsKey("Aldeano1"))
         assertFalse(resolved.votes.containsValue("Aldeano1"))
+    }
+
+    @Test
+    fun mutedLivingHumanCannotVoteButCanBeVotedFor() {
+        val mutedHuman = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            players = basePlayers().map {
+                if (it.isHuman) it.copy(muted = true, lastSilencedRound = 1) else it
+            }
+        )
+        val mutedTarget = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            players = basePlayers().map {
+                if (it.name == "Policia") it.copy(muted = true, lastSilencedRound = 1) else it
+            }
+        )
+
+        val resolved = GameEngine.resolveVoting(mutedHuman, "")
+
+        assertFalse(resolved.votes.containsKey("Humano"))
+        assertEquals("VOTAR", GameEngine.targetActionLabel(mutedTarget, "Policia"))
     }
 
     @Test
@@ -543,7 +659,7 @@ class GameEngineTest {
             phase = GamePhase.DIA_DEBATE,
             chatHistory = listOf(GameChatMessage("Mateo", "Mensaje visible.")),
             players = basePlayers().map {
-                if (it.isHuman) it.copy(alive = false, muted = true) else it
+                if (it.isHuman) it.copy(muted = true, lastSilencedRound = 1) else it
             }
         )
 
@@ -584,7 +700,7 @@ class GameEngineTest {
 
         assertEquals("Pueblo", resolved.winner)
         assertFalse(GameEngine.playerByName(resolved, "Asesino")!!.alive)
-        assertTrue(GameEngine.playerByName(resolved, "Asesino")!!.muted)
+        assertFalse(GameEngine.playerByName(resolved, "Asesino")!!.muted)
     }
 
     @Test
@@ -640,13 +756,13 @@ class GameEngineTest {
     }
 
     @Test
-    fun townMustEliminateEveryTraitorRoleToWin() {
+    fun townWinsWhenNoAssassinOrSpyRemainsEvenIfMercenaryLives() {
         val players = advancedPlayers()
         val assassinOnlyDead = players.map {
             if (it.role?.key == "asesino") it.copy(alive = false, muted = true) else it
         }
-        val allTraitorsDead = players.map {
-            if (it.role?.key in GameRules.traitorRoleKeys) {
+        val allKillersDead = players.map {
+            if (it.role?.key in GameRules.killerRoleKeys) {
                 it.copy(alive = false, muted = true)
             } else {
                 it
@@ -654,7 +770,26 @@ class GameEngineTest {
         }
 
         assertEquals("", GameRules.winnerFor(assassinOnlyDead))
-        assertEquals("Pueblo", GameRules.winnerFor(allTraitorsDead))
+        assertTrue(allKillersDead.any { it.alive && it.role?.key == "mercenario" })
+        assertEquals("Pueblo", GameRules.winnerFor(allKillersDead))
+    }
+
+    @Test
+    fun deadHumanDoesNotBlockBotVotingOrAutoAdvance() {
+        val session = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            players = basePlayers().map {
+                if (it.isHuman) it.copy(alive = false, muted = false) else it
+            }
+        )
+
+        val resolved = GameEngine.resolveVoting(session, "")
+
+        assertFalse(GameEngine.requiresHumanInput(session))
+        assertTrue(GameEngine.shouldAutoAdvance(session))
+        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertFalse(resolved.votes.containsKey("Humano"))
+        assertTrue(resolved.votes.isNotEmpty())
     }
 
     @Test

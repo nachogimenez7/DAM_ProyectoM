@@ -66,24 +66,114 @@ class GameplayTableUiTest {
     }
 
     @Test
-    fun companionCardMetricsShrinkAsPlayerCountGrows() {
-        val core = GameplayTableUi.companionCardMetrics(8)
-        val medium = GameplayTableUi.companionCardMetrics(12)
-        val large = GameplayTableUi.companionCardMetrics(15)
+    fun companionCardMetricsAdaptToPlayersAndAvailableHeight() {
+        val five = GameplayTableUi.companionCardMetrics(5, availableHeightDp = 360)
+        val eight = GameplayTableUi.companionCardMetrics(8, availableHeightDp = 376)
+        val nine = GameplayTableUi.companionCardMetrics(9, availableHeightDp = 376)
+        val eightTall = GameplayTableUi.companionCardMetrics(8, availableHeightDp = 420)
+        val twelveLow = GameplayTableUi.companionCardMetrics(12, availableHeightDp = 360)
+        val fifteen = GameplayTableUi.companionCardMetrics(15, availableHeightDp = 360)
 
-        assertEquals(76, core.columnWidthDp)
-        assertEquals(76, medium.columnWidthDp)
-        assertEquals(76, large.columnWidthDp)
-        assertTrue(core.minCardWidthDp >= 64)
-        assertTrue(medium.minCardWidthDp >= 60)
-        assertTrue(large.minCardWidthDp >= 56)
-        assertTrue(core.minCardWidthDp <= core.columnWidthDp)
-        assertTrue(medium.minCardWidthDp <= medium.columnWidthDp)
-        assertTrue(large.minCardWidthDp <= large.columnWidthDp)
-        assertTrue(core.itemHeightDp > medium.itemHeightDp)
-        assertTrue(medium.itemHeightDp > large.itemHeightDp)
-        assertTrue(core.cardHeightDp > medium.cardHeightDp)
-        assertTrue(medium.cardHeightDp > large.cardHeightDp)
+        assertEquals(112, five.columnWidthDp)
+        assertEquals(72, five.cardWidthDp)
+        assertEquals(86, five.cardHeightDp)
+        assertEquals(18, five.nameHeightDp)
+        assertEquals(28, five.actionHeightDp)
+        assertFalse(five.scrollEnabled)
+
+        assertEquals(94, eight.columnWidthDp)
+        assertEquals(16, eight.nameHeightDp)
+        assertEquals(eight, nine)
+        assertFalse(eight.scrollEnabled)
+        assertTrue(eight.cardHeightDp < eightTall.cardHeightDp)
+        assertEquals(48, eightTall.cardWidthDp)
+        assertEquals(58, eightTall.cardHeightDp)
+
+        assertEquals(78, twelveLow.columnWidthDp)
+        assertFalse(twelveLow.scrollEnabled)
+        assertTrue((twelveLow.itemHeightDp * 6) + (twelveLow.itemGapDp * 5) <= 360)
+        assertTrue(twelveLow.cardHeightDp < 46)
+
+        assertEquals(78, fifteen.columnWidthDp)
+        assertEquals(38, fifteen.cardWidthDp)
+        assertEquals(46, fifteen.cardHeightDp)
+        assertEquals(14, fifteen.nameHeightDp)
+        assertEquals(20, fifteen.actionHeightDp)
+        assertTrue(fifteen.scrollEnabled)
+        assertTrue(fifteen.actionWidthDp >= 70)
+        assertTrue(eight.actionWidthDp > eight.cardWidthDp)
+    }
+
+    @Test
+    fun deathRevealOnlyIncludesNewNightVictims() {
+        val role = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
+        val players = listOf(
+            GamePlayer("Humano", "H", role = role, isHuman = true),
+            GamePlayer("Martina", "M", role = role, alive = false),
+            GamePlayer("Tomas", "T", role = role, alive = false)
+        )
+        val dawn = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = players,
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Amanecer: murio Martina."
+        )
+
+        assertEquals(
+            listOf("Martina"),
+            GameplayTableUi.newlyKilledAtDawn(dawn, knownDeadPlayers = setOf("Tomas"))
+                .map { it.name }
+        )
+        assertTrue(
+            GameplayTableUi.newlyKilledAtDawn(
+                dawn.copy(publicAnnouncement = "La mesa expulso a Martina."),
+                knownDeadPlayers = setOf("Tomas")
+            ).isEmpty()
+        )
+        assertTrue(
+            GameplayTableUi.newlyKilledAtDawn(
+                dawn,
+                knownDeadPlayers = setOf("Martina", "Tomas")
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun silenceRevealOnlyIncludesNewLivingMutedPlayer() {
+        val role = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
+        val players = listOf(
+            GamePlayer("Humano", "H", role = role, isHuman = true),
+            GamePlayer("Martina", "M", role = role, muted = true),
+            GamePlayer("Tomas", "T", role = role, alive = false, muted = true)
+        )
+        val dawn = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = players,
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Amanecer: no murio nadie. Martina no puede hablar ni votar hoy."
+        )
+
+        assertEquals(
+            listOf("Martina"),
+            GameplayTableUi.newlySilencedAtDawn(dawn, knownMutedPlayers = emptySet())
+                .map { it.name }
+        )
+        assertTrue(
+            GameplayTableUi.newlySilencedAtDawn(
+                dawn,
+                knownMutedPlayers = setOf("Martina")
+            ).isEmpty()
+        )
+        assertTrue(
+            GameplayTableUi.newlySilencedAtDawn(
+                dawn.copy(publicAnnouncement = "Martina fue acusada durante el debate."),
+                knownMutedPlayers = emptySet()
+            ).isEmpty()
+        )
     }
 
     @Test
@@ -199,7 +289,7 @@ class GameplayTableUiTest {
     fun publicEventTypeDetectsDeathVotingDiscussionAndPhaseStart() {
         assertEquals(
             PublicEventType.DEATH,
-            GameplayTableUi.eventTypeFor("Amanecer: murio Tomas. Tomas queda muteado.", GamePhase.AMANECER)
+            GameplayTableUi.eventTypeFor("Amanecer: murio Tomas.", GamePhase.AMANECER)
         )
         assertEquals(
             PublicEventType.VOTING,
