@@ -217,6 +217,23 @@
                 </LinearLayout>
 
                 <Button
+                    android:id="@+id/btnTimingOptions"
+                    style="@style/BtnDark"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="6dp"
+                    android:maxLines="1"
+                    android:text="TIEMPOS  3 / 20 / 60 / 20"
+                    android:textSize="9sp" />
+
+                <Button
+                    android:id="@+id/btnAdvancedOptions"
+                    style="@style/BtnDark"
+                    android:layout_height="36dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="OPCIONES AVANZADAS"
+                    android:textSize="9sp" />
+
+                <Button
                     android:id="@+id/btnAddPlayer"
                     style="@style/BtnDark"
                     android:layout_height="34dp"

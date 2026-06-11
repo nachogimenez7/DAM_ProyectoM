@@ -7,6 +7,7 @@ data class GameSession(
     val mapKey: String,
     val mapName: String,
     val players: List<GamePlayer>,
+    val timingConfig: GameTimingConfig = GameTimingConfig(),
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",
@@ -41,8 +42,56 @@ data class GamePlayer(
     val alive: Boolean = true,
     val muted: Boolean = false,
     val lastSilencedRound: Int? = null,
+    val consecutiveNightAfk: Int = 0,
+    val consecutiveVoteAfk: Int = 0,
     val isHuman: Boolean = false
 ) : Serializable
+
+data class GameTimingConfig(
+    val transitionSeconds: Int = DEFAULT_TRANSITION_SECONDS,
+    val nightSeconds: Int = DEFAULT_NIGHT_SECONDS,
+    val discussionSeconds: Int = DEFAULT_DISCUSSION_SECONDS,
+    val votingSeconds: Int = DEFAULT_VOTING_SECONDS
+) : Serializable {
+
+    fun normalized(): GameTimingConfig {
+        return copy(
+            transitionSeconds = transitionSeconds.coerceIn(MIN_TRANSITION_SECONDS, MAX_TRANSITION_SECONDS),
+            nightSeconds = nightSeconds.coerceIn(MIN_NIGHT_SECONDS, MAX_NIGHT_SECONDS),
+            discussionSeconds = discussionSeconds.coerceIn(MIN_DISCUSSION_SECONDS, MAX_DISCUSSION_SECONDS),
+            votingSeconds = votingSeconds.coerceIn(MIN_VOTING_SECONDS, MAX_VOTING_SECONDS)
+        )
+    }
+
+    fun summary(): String {
+        val value = normalized()
+        return "${value.transitionSeconds} / ${value.nightSeconds} / " +
+            "${value.discussionSeconds} / ${value.votingSeconds}"
+    }
+
+    companion object {
+        const val DEFAULT_TRANSITION_SECONDS = 3
+        const val DEFAULT_NIGHT_SECONDS = 20
+        const val DEFAULT_DISCUSSION_SECONDS = 60
+        const val DEFAULT_VOTING_SECONDS = 20
+
+        const val MIN_TRANSITION_SECONDS = 1
+        const val MAX_TRANSITION_SECONDS = 10
+        const val TRANSITION_STEP_SECONDS = 1
+
+        const val MIN_NIGHT_SECONDS = 10
+        const val MAX_NIGHT_SECONDS = 60
+        const val NIGHT_STEP_SECONDS = 5
+
+        const val MIN_DISCUSSION_SECONDS = 30
+        const val MAX_DISCUSSION_SECONDS = 180
+        const val DISCUSSION_STEP_SECONDS = 15
+
+        const val MIN_VOTING_SECONDS = 10
+        const val MAX_VOTING_SECONDS = 60
+        const val VOTING_STEP_SECONDS = 5
+    }
+}
 
 data class GameRole(
     val key: String,
@@ -217,7 +266,9 @@ object LocalGameFactory {
                 role = shuffledRoles[index],
                 alive = true,
                 muted = false,
-                lastSilencedRound = null
+                lastSilencedRound = null,
+                consecutiveNightAfk = 0,
+                consecutiveVoteAfk = 0
             )
         }
         val assignedPlayers = forceHumanRole(randomlyAssignedPlayers, effectiveForcedRole)

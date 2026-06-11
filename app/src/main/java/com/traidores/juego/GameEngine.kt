@@ -322,10 +322,25 @@ object GameEngine {
     }
 
     fun resolveVoting(session: GameSession, selectedTarget: String): GameSession {
+        return resolveVotingInternal(session, selectedTarget, allowHumanAbstention = false)
+    }
+
+    private fun resolveVotingInternal(
+        session: GameSession,
+        selectedTarget: String,
+        allowHumanAbstention: Boolean,
+        leadingAnnouncement: String = ""
+    ): GameSession {
         if (!canResolve(session, GamePhase.VOTACION)) return session
 
         val human = humanPlayer(session)
-        if (canVote(human) && !isValidVoteTarget(session, selectedTarget, human)) return session
+        if (
+            canVote(human) &&
+            !allowHumanAbstention &&
+            !isValidVoteTarget(session, selectedTarget, human)
+        ) {
+            return session
+        }
 
         val votes = mutableMapOf<String, String>()
         session.players.filter { canVote(it) }.forEach { voter ->
@@ -349,11 +364,14 @@ object GameEngine {
                     ?: leaders.first()
             else -> ""
         }
-        val message = if (eliminated.isBlank()) {
+        val votingMessage = if (eliminated.isBlank()) {
             "Dios cerro la votacion. No hubo mayoria clara."
         } else {
             "Dios cerro la votacion. Se resolvera la expulsion."
         }
+        val message = listOf(leadingAnnouncement, votingMessage)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
 
         val updated = votingSession.copy(
             votes = votes,
@@ -514,17 +532,58 @@ object GameEngine {
 
     fun resolveHumanTargetAction(session: GameSession, targetName: String): GameSession {
         if (!canActOnTarget(session, targetName)) return session
-        return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> resolveAssassin(session, targetName)
-            GamePhase.NOCHE_MERCENARIO -> resolveMercenary(session, targetName)
-            GamePhase.NOCHE_POLICIA -> resolvePolice(session, targetName)
-            GamePhase.NOCHE_MEDICO -> resolveMedic(session, targetName)
+        val prepared = when (session.phase) {
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO -> resetHumanAfkStreak(session, night = true)
+            GamePhase.VOTACION -> resetHumanAfkStreak(session, night = false)
+            else -> session
+        }
+        return when (prepared.phase) {
+            GamePhase.NOCHE_ASESINO -> resolveAssassin(prepared, targetName)
+            GamePhase.NOCHE_MERCENARIO -> resolveMercenary(prepared, targetName)
+            GamePhase.NOCHE_POLICIA -> resolvePolice(prepared, targetName)
+            GamePhase.NOCHE_MEDICO -> resolveMedic(prepared, targetName)
             GamePhase.DIA_DEBATE -> chooseContrapuntoPlayer(session, targetName)
             GamePhase.CONTRAPUNTO -> resolveContrapunto(session, targetName)
             GamePhase.ALCALDE_DESEMPATE -> chooseAlcaldeTie(session, targetName)
-            GamePhase.VOTACION -> resolveVoting(session, targetName)
+            GamePhase.VOTACION -> resolveVoting(prepared, targetName)
             else -> session
         }
+    }
+
+    fun resolveHumanTimeout(session: GameSession): GameSession {
+        if (session.winner.isNotBlank()) return session
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO -> resolveNightTimeout(session)
+            GamePhase.VOTACION -> resolveVotingTimeout(session)
+            GamePhase.ALCALDE_DESEMPATE -> resolveAlcaldeTieTimeout(session)
+            GamePhase.CONTRAPUNTO -> resolveContrapuntoTimeout(session)
+            else -> session
+        }
+    }
+
+    fun resolveContrapuntoTimeout(session: GameSession): GameSession {
+        if (!canResolve(session, GamePhase.CONTRAPUNTO)) return session
+        val message = "El Contrapunto termino sin un senalamiento."
+        return session.copy(contrapuntoSuspicion = "")
+            .transitionTo(GamePhase.VOTACION, message, privateRoleHint(session))
+            .withPublicHistory(message)
+            .withBotVotingIntent()
+    }
+
+    fun resolveAlcaldeTieTimeout(session: GameSession): GameSession {
+        if (!canResolve(session, GamePhase.ALCALDE_DESEMPATE)) return session
+        val message = "El Alcalde no decidio el empate. Nadie sera expulsado."
+        return session.copy(
+            dayEliminationTarget = "",
+            alcaldeTieCandidates = emptyList()
+        ).transitionTo(GamePhase.RESULTADO, message, privateRoleHint(session))
+            .withPublicHistory(message)
     }
 
     fun isAlive(player: GamePlayer): Boolean {
@@ -593,19 +652,149 @@ object GameEngine {
     }
 
     fun autoAdvanceDelayMs(session: GameSession): Long {
-        return when (session.phase) {
-            GamePhase.REPARTO -> 10000L
-            GamePhase.DIA_DEBATE -> 14000L
-            GamePhase.AMANECER,
-            GamePhase.RESULTADO -> 8000L
-            GamePhase.VOTACION -> 9000L
-            GamePhase.CONTRAPUNTO -> 14000L
+        val timing = session.timingConfig.normalized()
+        val seconds = when (session.phase) {
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO -> timing.discussionSeconds
+            GamePhase.VOTACION,
+            GamePhase.ALCALDE_DESEMPATE -> timing.votingSeconds
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
-            GamePhase.NOCHE_MEDICO -> 7000L
-            GamePhase.ALCALDE_DESEMPATE -> 9000L
+            GamePhase.NOCHE_MEDICO -> timing.nightSeconds
+            GamePhase.REPARTO,
+            GamePhase.AMANECER,
+            GamePhase.RESULTADO -> timing.transitionSeconds
         }
+        return seconds * 1000L
+    }
+
+    private fun resolveNightTimeout(session: GameSession): GameSession {
+        if (!requiresHumanInput(session)) return session
+        val missed = registerHumanAfkMiss(session, night = true)
+        if (missed.session.winner.isNotBlank()) return missed.session
+
+        val publicMessage = if (missed.expelled) {
+            "${missed.humanName} fue expulsado por inactividad. La noche continua."
+        } else {
+            "La noche continua."
+        }
+        val advanced = when (session.phase) {
+            GamePhase.NOCHE_ASESINO -> missed.session.transitionTo(
+                nextPhaseAfterAssassin(missed.session),
+                publicMessage,
+                missed.session.privateHint
+            )
+            GamePhase.NOCHE_MERCENARIO -> missed.session.transitionTo(
+                GamePhase.NOCHE_POLICIA,
+                publicMessage,
+                missed.session.privateHint
+            )
+            GamePhase.NOCHE_POLICIA -> missed.session.transitionTo(
+                GamePhase.NOCHE_MEDICO,
+                publicMessage,
+                missed.session.privateHint
+            )
+            GamePhase.NOCHE_MEDICO -> missed.session.transitionTo(
+                GamePhase.AMANECER,
+                if (missed.expelled) {
+                    "${missed.humanName} fue expulsado por inactividad. La noche llega a su fin."
+                } else {
+                    "La noche llega a su fin."
+                },
+                missed.session.privateHint
+            )
+            else -> missed.session
+        }
+        return advanced
+    }
+
+    private fun resolveVotingTimeout(session: GameSession): GameSession {
+        val human = humanPlayer(session)
+        if (!canVote(human)) {
+            return resolveVotingInternal(session, "", allowHumanAbstention = true)
+        }
+
+        val missed = registerHumanAfkMiss(session, night = false)
+        if (missed.session.winner.isNotBlank()) return missed.session
+        val afkAnnouncement = if (missed.expelled) {
+            "${missed.humanName} fue expulsado por inactividad."
+        } else {
+            ""
+        }
+        val resolved = resolveVotingInternal(
+            missed.session,
+            "",
+            allowHumanAbstention = true,
+            leadingAnnouncement = afkAnnouncement
+        )
+        return if (missed.expelled) {
+            resolved
+        } else {
+            resolved.copy(privateHint = missed.session.privateHint)
+        }
+    }
+
+    private fun registerHumanAfkMiss(session: GameSession, night: Boolean): AfkMissResult {
+        val human = humanPlayer(session)
+        val nextStreak = if (night) {
+            human.consecutiveNightAfk + 1
+        } else {
+            human.consecutiveVoteAfk + 1
+        }
+        val expelled = nextStreak >= 2
+        val updatedPlayers = session.players.map { player ->
+            if (!player.isHuman) {
+                player
+            } else if (expelled) {
+                player.copy(
+                    alive = false,
+                    muted = false,
+                    consecutiveNightAfk = if (night) nextStreak else player.consecutiveNightAfk,
+                    consecutiveVoteAfk = if (night) player.consecutiveVoteAfk else nextStreak
+                )
+            } else if (night) {
+                player.copy(consecutiveNightAfk = nextStreak)
+            } else {
+                player.copy(consecutiveVoteAfk = nextStreak)
+            }
+        }
+
+        if (!expelled) {
+            val nextOpportunity = if (night) "proxima noche" else "proxima votacion"
+            val action = if (night) "accion" else "voto"
+            return AfkMissResult(
+                session = session.copy(
+                    players = updatedPlayers,
+                    privateHint = "Perdiste tu $action. Si volves a ausentarte en tu $nextOpportunity, seras expulsado por AFK."
+                ),
+                expelled = false,
+                humanName = human.name
+            )
+        }
+
+        val message = "${human.name} fue expulsado por inactividad."
+        val expelledSession = session.copy(
+            players = updatedPlayers,
+            publicAnnouncement = message,
+            privateHint = "Fuiste expulsado por AFK."
+        ).withPublicHistory(message)
+            .withWinnerCheck()
+        return AfkMissResult(expelledSession, expelled = true, humanName = human.name)
+    }
+
+    private fun resetHumanAfkStreak(session: GameSession, night: Boolean): GameSession {
+        return session.copy(
+            players = session.players.map { player ->
+                if (!player.isHuman) {
+                    player
+                } else if (night) {
+                    player.copy(consecutiveNightAfk = 0)
+                } else {
+                    player.copy(consecutiveVoteAfk = 0)
+                }
+            }
+        )
     }
 
     private fun canResolve(session: GameSession, expectedPhase: GamePhase): Boolean {
@@ -830,6 +1019,12 @@ object GameEngine {
     private fun GameSession.withChatMessage(speaker: String, message: String, isGod: Boolean = false): GameSession {
         return copy(chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod)).takeLast(40))
     }
+
+    private data class AfkMissResult(
+        val session: GameSession,
+        val expelled: Boolean,
+        val humanName: String
+    )
 
     private fun GameSession.withBotDebate(): GameSession {
         return withBotMessages(LocalBotAi.openingDebateMessages(this))

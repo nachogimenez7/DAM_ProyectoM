@@ -5,9 +5,10 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.app.Dialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
@@ -18,12 +19,12 @@ import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -56,12 +57,21 @@ class GameplayMockActivity : BaseActivity() {
     private var isDeathRevealRunning = false
     private var isSilenceRevealRunning = false
     private var isRolePreviewOpen = false
+    private var isWinnerRevealVisible = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
     private var lastPresentedTransitionKey: String? = null
     private var lastActionAttentionKey: String? = null
     private var presentedPeriod: GameplayPeriod? = null
     private var traitorRevealCompleted = false
+    private var winnerRevealPresented = false
+    private var countdownStage: CountdownStage? = null
+    private var countdownPhaseIndex = -1
+    private var countdownRemainingMs = 0L
+    private var countdownTotalMs = 0L
+    private var countdownDeadlineMs = 0L
+    private var countdownRunning = false
+    private var lastCountdownSecond = -1
     private var knownDeadPlayers = emptySet<String>()
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
@@ -70,19 +80,19 @@ class GameplayMockActivity : BaseActivity() {
     private var unreadChatCount = 0
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
-    private val narratorCollapseRunnable = Runnable { collapseNarrator() }
     private val traitorRevealDismissRunnable = Runnable { dismissTraitorReveal() }
+    private val countdownRunnable = object : Runnable {
+        override fun run() {
+            updateCountdown()
+        }
+    }
     private val transitionMusicRunnable = Runnable {
         if (isDayNightTransitionRunning) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
     }
 
-    private var chatDialog: Dialog? = null
     private var actionPulseAnimator: AnimatorSet? = null
-    private var dialogChatInput: EditText? = null
-    private var dialogChatMessages: TextView? = null
-    private var dialogSendButton: Button? = null
     private var dayNightAnimator: AnimatorSet? = null
     private var deathRevealAnimator: AnimatorSet? = null
     private var deathRevealSoundPlayer: MediaPlayer? = null
@@ -91,11 +101,17 @@ class GameplayMockActivity : BaseActivity() {
     private var silenceRevealSoundPlayer: MediaPlayer? = null
     private var traitorRevealAnimator: AnimatorSet? = null
     private var transitionSoundPlayer: MediaPlayer? = null
+    private var winnerRevealAnimator: AnimatorSet? = null
 
     private lateinit var btnAction: Button
     private lateinit var btnRevealCard: Button
     private lateinit var btnToggleChat: ImageButton
     private lateinit var btnToggleEventLog: Button
+    private lateinit var btnSendChat: Button
+    private lateinit var chatInput: EditText
+    private lateinit var chatMessages: TextView
+    private lateinit var chatMessagesScroll: ScrollView
+    private lateinit var chatPanel: LinearLayout
     private lateinit var chatUnreadBadge: TextView
     private lateinit var currentPlayerHint: TextView
     private lateinit var currentPlayerName: TextView
@@ -110,19 +126,23 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var deathRevealPlayerName: TextView
     private lateinit var deathRevealRoleName: TextView
     private lateinit var eventLogBackground: ImageView
+    private lateinit var eventLogColorBar: View
     private lateinit var eventLogContent: FrameLayout
     private lateinit var eventLogContainer: LinearLayout
+    private lateinit var eventLogHeader: LinearLayout
     private lateinit var eventLogPanel: LinearLayout
     private lateinit var eventLogScroll: ScrollView
+    private lateinit var eventLogSummary: TextView
     private lateinit var gameplayBody: LinearLayout
     private lateinit var gameplayRoot: RelativeLayout
     private lateinit var centerColumn: FrameLayout
-    private lateinit var chatButtonFrame: FrameLayout
     private lateinit var leftPlayersScroll: ScrollView
     private lateinit var leftPlayersContainer: LinearLayout
     private lateinit var mapBackground: ImageView
     private lateinit var phaseTitle: TextView
     private lateinit var phaseSubtitle: TextView
+    private lateinit var phaseCountdown: TextView
+    private lateinit var phaseProgressFill: View
     private lateinit var rightPlayersContainer: LinearLayout
     private lateinit var rightPlayersScroll: ScrollView
     private lateinit var rightColumn: LinearLayout
@@ -152,10 +172,20 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var traitorRevealCards: LinearLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
+    private lateinit var winnerRevealBackground: ImageView
+    private lateinit var winnerRevealCards: LinearLayout
+    private lateinit var winnerRevealContent: LinearLayout
+    private lateinit var winnerRevealOverlay: FrameLayout
+    private lateinit var winnerRevealPanel: FrameLayout
+    private lateinit var winnerRevealPersonalResult: TextView
+    private lateinit var winnerRevealShine: View
+    private lateinit var winnerRevealTitle: TextView
     private lateinit var themeKey: String
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
     private val playerCardViews = linkedMapOf<String, SidePlayerCardHolder>()
+    private val winnerCardViews = mutableListOf<View>()
+    private val winnerCardFinalAlphas = linkedMapOf<View, Float>()
 
     private data class SidePlayerCardHolder(
         val root: LinearLayout,
@@ -164,27 +194,32 @@ class GameplayMockActivity : BaseActivity() {
         val avatar: TextView,
         val mutedBadge: TextView,
         val name: TextView,
-        val action: Button,
-        var lastActionLabel: String = "",
         var selected: Boolean = false
-    )
-
-    private data class SideActionVisual(
-        val color: Int,
-        val darkContent: Boolean = false
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gameplay_mock)
 
-        session = readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        @Suppress("DEPRECATION")
+        val restoredSession = savedInstanceState?.getSerializable(STATE_SESSION) as? GameSession
+        session = restoredSession ?: readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         themeKey = themeFromIntentOrSession()
         lastPresentedTransitionKey = savedInstanceState?.getString(STATE_TRANSITION_KEY)
         presentedPeriod = savedInstanceState
             ?.getString(STATE_PRESENTED_PERIOD)
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
+        winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
+        isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
+        isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: false
+        selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
+        countdownStage = savedInstanceState
+            ?.getString(STATE_COUNTDOWN_STAGE)
+            ?.let { runCatching { CountdownStage.valueOf(it) }.getOrNull() }
+        countdownPhaseIndex = savedInstanceState?.getInt(STATE_COUNTDOWN_PHASE_INDEX, -1) ?: -1
+        countdownRemainingMs = savedInstanceState?.getLong(STATE_COUNTDOWN_REMAINING_MS, 0L) ?: 0L
+        countdownTotalMs = savedInstanceState?.getLong(STATE_COUNTDOWN_TOTAL_MS, 0L) ?: 0L
         knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
         knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
         lastSeenChatCount = session.chatHistory.size
@@ -194,6 +229,11 @@ class GameplayMockActivity : BaseActivity() {
         btnRevealCard = findViewById(R.id.btnRevealCard)
         btnToggleChat = findViewById(R.id.btnToggleChat)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
+        btnSendChat = findViewById(R.id.btnSendChat)
+        chatInput = findViewById(R.id.chatInput)
+        chatMessages = findViewById(R.id.chatMessages)
+        chatMessagesScroll = findViewById(R.id.chatMessagesScroll)
+        chatPanel = findViewById(R.id.chatPanel)
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
@@ -209,19 +249,24 @@ class GameplayMockActivity : BaseActivity() {
         deathRevealPlayerName = findViewById(R.id.deathRevealPlayerName)
         deathRevealRoleName = findViewById(R.id.deathRevealRoleName)
         eventLogBackground = findViewById(R.id.eventLogBackground)
+        eventLogColorBar = findViewById(R.id.eventLogColorBar)
         eventLogContent = findViewById(R.id.eventLogContent)
         eventLogContainer = findViewById(R.id.eventLogContainer)
+        eventLogHeader = findViewById(R.id.eventLogHeader)
         eventLogPanel = findViewById(R.id.eventLogPanel)
         eventLogScroll = findViewById(R.id.eventLogScroll)
+        eventLogSummary = findViewById(R.id.eventLogSummary)
         gameplayBody = findViewById(R.id.gameplayBody)
         gameplayRoot = findViewById(R.id.gameplayRoot)
         centerColumn = findViewById(R.id.centerColumn)
-        chatButtonFrame = findViewById(R.id.chatButtonFrame)
         leftPlayersScroll = findViewById(R.id.leftPlayersScroll)
         leftPlayersContainer = findViewById(R.id.leftPlayersContainer)
         mapBackground = findViewById(R.id.mapBackground)
         phaseTitle = findViewById(R.id.phaseTitle)
         phaseSubtitle = findViewById(R.id.phaseSubtitle)
+        phaseCountdown = findViewById(R.id.phaseCountdown)
+        phaseProgressFill = findViewById(R.id.phaseProgressFill)
+        phaseProgressFill.pivotX = 0f
         rightPlayersContainer = findViewById(R.id.rightPlayersContainer)
         rightPlayersScroll = findViewById(R.id.rightPlayersScroll)
         rightColumn = findViewById(R.id.rightColumn)
@@ -250,21 +295,34 @@ class GameplayMockActivity : BaseActivity() {
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
         traitorRevealContent = findViewById(R.id.traitorRevealContent)
         traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
+        winnerRevealBackground = findViewById(R.id.winnerRevealBackground)
+        winnerRevealCards = findViewById(R.id.winnerRevealCards)
+        winnerRevealContent = findViewById(R.id.winnerRevealContent)
+        winnerRevealOverlay = findViewById(R.id.winnerRevealOverlay)
+        winnerRevealPanel = findViewById(R.id.winnerRevealPanel)
+        winnerRevealPersonalResult = findViewById(R.id.winnerRevealPersonalResult)
+        winnerRevealShine = findViewById(R.id.winnerRevealShine)
+        winnerRevealTitle = findViewById(R.id.winnerRevealTitle)
 
         btnSettings.setOnClickListener {
             startActivity(Intent(this, OpcionesActivity::class.java))
         }
         btnAction.setOnClickListener { handleCurrentPhase() }
         btnRevealCard.setOnClickListener { toggleHumanCard() }
-        btnToggleChat.setOnClickListener { toggleChatDialog() }
+        btnToggleChat.setOnClickListener { toggleChatPanel() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
+        eventLogHeader.setOnClickListener { toggleEventLog() }
+        findViewById<ImageButton>(R.id.btnCloseChat).setOnClickListener { closeChatPanel() }
+        btnSendChat.setOnClickListener { sendHumanChatMessage() }
         roleCard.setOnClickListener { showRolePreview() }
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
         findViewById<ImageButton>(R.id.btnCloseRolePreview).setOnClickListener { closeRolePreview() }
         traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
+        findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
+        renderChatPanelVisibility(animate = false)
         renderGame()
         gameplayRoot.post { renderPlayerColumns() }
     }
@@ -274,39 +332,50 @@ class GameplayMockActivity : BaseActivity() {
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelTraitorReveal()
+        settleWinnerReveal()
         cancelActionPulse()
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
         autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
         autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(countdownRunnable)
         releaseTransitionSound()
         releaseDeathRevealSound()
         releaseSilenceRevealSound()
-        chatDialog?.dismiss()
+        if (isFinishing) {
+            MusicManager.stopVictoryMusic()
+        } else {
+            MusicManager.pauseVictoryMusic()
+        }
         super.onDestroy()
     }
 
     override fun onPause() {
+        pauseCountdown()
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelTraitorReveal()
+        settleWinnerReveal()
         cancelActionPulse()
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
         autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
         autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
         releaseDeathRevealSound()
         releaseSilenceRevealSound()
+        MusicManager.pauseVictoryMusic()
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        if (::session.isInitialized && isWinnerRevealVisible) {
+            MusicManager.resumeVictoryMusic(this)
+            return
+        }
         if (
             ::session.isInitialized &&
             !isDayNightTransitionRunning &&
@@ -319,17 +388,38 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putSerializable(STATE_SESSION, session)
         outState.putString(STATE_TRANSITION_KEY, lastPresentedTransitionKey)
         outState.putString(STATE_PRESENTED_PERIOD, presentedPeriod?.name)
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
+        outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
+        outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
+        outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
+        outState.putString(STATE_SELECTED_TARGET, selectedTarget)
+        outState.putString(STATE_COUNTDOWN_STAGE, countdownStage?.name)
+        outState.putInt(STATE_COUNTDOWN_PHASE_INDEX, countdownPhaseIndex)
+        outState.putLong(STATE_COUNTDOWN_REMAINING_MS, countdownRemainingForSave())
+        outState.putLong(STATE_COUNTDOWN_TOTAL_MS, countdownTotalMs)
         super.onSaveInstanceState(outState)
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (isDeathRevealRunning || isSilenceRevealRunning) return
+        if (isWinnerRevealVisible) {
+            returnToLobby()
+            return
+        }
         if (isRolePreviewOpen) {
             closeRolePreview()
+            return
+        }
+        if (isChatOpen) {
+            closeChatPanel()
+            return
+        }
+        if (isEventLogExpanded) {
+            toggleEventLog()
             return
         }
         super.onBackPressed()
@@ -337,12 +427,23 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun handleCurrentPhase() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+            Toast.makeText(this, "La siguiente fase comienza enseguida.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        pauseCountdown()
         if (session.winner.isNotBlank()) {
             renderGame()
             return
         }
 
-        if (GameplayTableUi.canHumanMedicSelfProtect(session)) {
+        val selectedAction = GameplayTableUi.confirmedTargetActionLabel(session, selectedTarget)
+        if (selectedAction != null) {
+            performTargetAction(selectedTarget)
+            return
+        }
+
+        if (selectedTarget.isBlank() && GameplayTableUi.canHumanMedicSelfProtect(session)) {
             performTargetAction(GameEngine.humanPlayer(session).name)
             return
         }
@@ -392,6 +493,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun performTargetAction(targetName: String) {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+            Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        pauseCountdown()
         if (!GameEngine.canActOnTarget(session, targetName)) {
             Toast.makeText(this, "No podes actuar sobre ese jugador.", Toast.LENGTH_SHORT).show()
             renderGame()
@@ -406,6 +512,12 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun renderGame() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        if (
+            selectedTarget.isNotBlank() &&
+            !GameEngine.canActOnTarget(session, selectedTarget)
+        ) {
+            clearSelection()
+        }
         val newlyDeadPlayers = collectNewlyDeadPlayers()
         collectNewlyMutedPlayers()
         val transitionSpec = GameplayTableUi.transitionSpec(session)
@@ -416,7 +528,11 @@ class GameplayMockActivity : BaseActivity() {
             lastPresentedTransitionKey = transitionSpec.key
             MusicManager.pauseForTransition()
         } else if (!isDayNightTransitionRunning) {
-            MusicManager.playGamePhase(this, session)
+            if (session.winner.isBlank()) {
+                MusicManager.playGamePhase(this, session)
+            } else {
+                MusicManager.pauseForTransition()
+            }
         }
 
         val phaseText = phaseText(session.phase)
@@ -441,7 +557,7 @@ class GameplayMockActivity : BaseActivity() {
         renderAdvanceButton()
         renderHumanCardIfVisible()
         renderPlayerColumns(newlyDeadPlayers.map { it.name }.toSet())
-        renderChatDialog()
+        renderChatPanel()
         renderChatBadge()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = publicMessage
@@ -472,33 +588,27 @@ class GameplayMockActivity : BaseActivity() {
         phaseSubtitle.text = publicMessage
         if (!eventChanged) return
 
-        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
-        phaseSubtitle.visibility = View.VISIBLE
         topStatus.alpha = 0f
-        topStatus.scaleX = 0.96f
-        topStatus.scaleY = 0.96f
+        topStatus.translationY = -dp(4).toFloat()
         topStatus.animate()
             .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(420L)
-            .start()
-        autoAdvanceHandler.postDelayed(narratorCollapseRunnable, 5200L)
-    }
-
-    private fun collapseNarrator() {
-        phaseSubtitle.visibility = View.GONE
-        topStatus.animate()
-            .alpha(0.92f)
-            .scaleX(0.94f)
-            .scaleY(0.94f)
-            .setDuration(360L)
+            .translationY(0f)
+            .setDuration(220L)
             .start()
     }
 
     private fun renderEventLog(publicMessage: String, phaseText: PhaseText) {
-        val allEvents = publicEvents(publicMessage, phaseText)
-        val visibleEvents = if (isEventLogExpanded) allEvents.takeLast(8) else allEvents.takeLast(2)
+        val allEvents = GameplayTableUi.historicalPublicEvents(
+            session.publicHistory,
+            publicMessage,
+            phaseText.subtitle
+        )
+        val latestEvent = allEvents.last()
+        eventLogSummary.text = latestEvent
+        eventLogColorBar.setBackgroundColor(
+            Color.parseColor(GameplayTableUi.eventTypeFor(latestEvent, session.phase).colorHex)
+        )
+        val visibleEvents = if (isEventLogExpanded) allEvents.takeLast(8) else listOf(latestEvent)
         if (
             visibleEvents == lastRenderedEventMessages &&
             lastRenderedEventExpanded == isEventLogExpanded
@@ -533,6 +643,9 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun toggleEventLog() {
         isEventLogExpanded = !isEventLogExpanded
+        if (isEventLogExpanded && isChatOpen) {
+            closeChatPanel()
+        }
         renderEventLogPanel(animate = true)
         lastRenderedEventExpanded = null
         renderEventLog(
@@ -542,10 +655,11 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderEventLogPanel(animate: Boolean = false) {
-        val targetHeight = dp(if (isEventLogExpanded) 170 else 72)
+        val targetHeight = dp(if (isEventLogExpanded) 170 else 32)
         val params = eventLogPanel.layoutParams as FrameLayout.LayoutParams
-        btnToggleEventLog.text = if (isEventLogExpanded) "\u25B2 resumir" else "\u25BC ampliar"
+        btnToggleEventLog.text = if (isEventLogExpanded) "\u25B2" else "\u25BC"
         eventLogPanel.elevation = dp(if (isEventLogExpanded) 8 else 4).toFloat()
+        eventLogContent.visibility = if (isEventLogExpanded) View.VISIBLE else View.GONE
         if (!animate || eventLogPanel.height <= 0 || eventLogPanel.height == targetHeight) {
             params.height = targetHeight
             eventLogPanel.layoutParams = params
@@ -563,18 +677,6 @@ class GameplayMockActivity : BaseActivity() {
             }
             start()
         }
-    }
-
-    private fun publicEvents(publicMessage: String, phaseText: PhaseText): List<String> {
-        val events = mutableListOf<String>()
-        (session.publicHistory + publicMessage).forEach { message ->
-            val clean = message.trim()
-            if (clean.isNotBlank() && events.lastOrNull() != clean) {
-                events += clean
-            }
-        }
-        if (events.isEmpty()) events += phaseText.subtitle
-        return events
     }
 
     private fun createEventRow(message: String): View {
@@ -614,43 +716,67 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderAdvanceButton() {
-        val waitsForTarget = GameEngine.requiresHumanInput(session)
-        val canSelfProtect = GameplayTableUi.canHumanMedicSelfProtect(session)
-        btnAction.text = when {
+        val selectedAction = GameplayTableUi.confirmedTargetActionLabel(session, selectedTarget)
+        val validTargets = GameplayTableUi.validHumanTargets(session)
+        val mandatoryTargetSelection = GameEngine.requiresHumanInput(session) && validTargets.isNotEmpty()
+        val canSelfProtect = selectedTarget.isBlank() &&
+            GameplayTableUi.canHumanMedicSelfProtect(session)
+        val transitionLocked = countdownStage == CountdownStage.TRANSITION &&
+            countdownPhaseIndex == session.phaseIndex
+        val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
+            GameEngine.canDesertorReconsider(session) ||
+            (session.phase == GamePhase.DIA_DEBATE &&
+                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
+                !session.alcaldeRevealed)
+        val label = when {
             session.winner.isNotBlank() -> "FINAL"
+            selectedAction != null -> selectedAction
             canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
             session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "alcalde" &&
                 !session.alcaldeRevealed -> "REVELARME"
-            waitsForTarget -> "ELIGE CARTA"
+            mandatoryTargetSelection -> "ELEGIR OBJETIVO"
             session.phase == GamePhase.REPARTO -> "NOCHE"
             session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "payador" &&
                 !session.payadorUsed -> "VOTAR SIN USAR"
             else -> phaseText(session.phase).actionLabel
         }
-        val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
-            GameEngine.canDesertorReconsider(session) ||
-            (session.phase == GamePhase.DIA_DEBATE &&
-                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
-                !session.alcaldeRevealed)
+        btnAction.text = label
         val requiresAttention = session.winner.isBlank() &&
-            (waitsForTarget || canSelfProtect || specialDecision)
-        btnAction.isEnabled = session.winner.isBlank() && (!waitsForTarget || canSelfProtect || specialDecision)
-        btnAction.setBackgroundResource(
-            if (requiresAttention) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
-        )
-        btnAction.setTextColor(
-            getColor(if (requiresAttention) R.color.bg_dark else R.color.text_primary)
-        )
+            (selectedAction != null || canSelfProtect || specialDecision)
+        btnAction.isEnabled = !transitionLocked &&
+            session.winner.isBlank() &&
+            (!mandatoryTargetSelection || selectedAction != null || canSelfProtect || specialDecision)
+        applyPrimaryActionVisual(label, requiresAttention)
         btnAction.alpha = when {
             btnAction.isEnabled -> 1f
             requiresAttention -> 0.92f
             else -> 0.55f
         }
         updateActionAttentionPulse(requiresAttention)
+    }
+
+    private fun applyPrimaryActionVisual(label: String, emphasized: Boolean) {
+        val tone = if (emphasized) {
+            GameplayTableUi.actionToneFor(label)
+        } else {
+            GameplayActionTone.DEFAULT
+        }
+        btnAction.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor(tone.colorHex))
+            setStroke(
+                dp(1),
+                if (emphasized) getColor(R.color.accent_gold) else getColor(R.color.btn_dark_border)
+            )
+            cornerRadius = dp(6).toFloat()
+        }
+        btnAction.setTextColor(
+            getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
+        )
     }
 
     private fun updateActionAttentionPulse(requiresAttention: Boolean) {
@@ -743,21 +869,6 @@ class GameplayMockActivity : BaseActivity() {
         leftPlayersContainer.gravity = containerGravity
         rightPlayersContainer.gravity = containerGravity
 
-        val screenWidthDp = if (gameplayRoot.width > 0) {
-            pxToDp(gameplayRoot.width)
-        } else {
-            resources.configuration.screenWidthDp
-        }
-        val topWidthDp = minOf(
-            440,
-            (screenWidthDp - (metrics.columnWidthDp * 2) - 40).coerceAtLeast(280)
-        )
-        topStatus.layoutParams = (topStatus.layoutParams as RelativeLayout.LayoutParams).apply {
-            width = dp(topWidthDp)
-        }
-        chatButtonFrame.layoutParams = (chatButtonFrame.layoutParams as RelativeLayout.LayoutParams).apply {
-            marginEnd = dp(metrics.columnWidthDp + 12)
-        }
         gameplayBody.requestLayout()
     }
 
@@ -912,23 +1023,7 @@ class GameplayMockActivity : BaseActivity() {
             )
         )
 
-        val action = Button(this)
-        action.minHeight = 0
-        action.minimumHeight = 0
-        action.minWidth = 0
-        action.minimumWidth = 0
-        action.includeFontPadding = false
-        action.setTypeface(null, Typeface.BOLD)
-        action.setSingleLine(true)
-        action.maxLines = 1
-        action.setPadding(dp(2), 0, dp(2), 0)
-        action.visibility = View.INVISIBLE
-        item.addView(
-            action,
-            LinearLayout.LayoutParams(dp(metrics.actionWidthDp), dp(metrics.actionHeightDp))
-        )
-
-        return SidePlayerCardHolder(item, cardFace, cardBack, avatar, mutedBadge, name, action)
+        return SidePlayerCardHolder(item, cardFace, cardBack, avatar, mutedBadge, name)
     }
 
     private fun bindSidePlayerCard(
@@ -938,6 +1033,9 @@ class GameplayMockActivity : BaseActivity() {
     ) {
         val isAlive = GameEngine.isAlive(player)
         val actionLabel = GameEngine.targetActionLabel(session, player.name)
+        val transitionLocked = countdownStage == CountdownStage.TRANSITION &&
+            countdownPhaseIndex == session.phaseIndex
+        val isActionable = actionLabel.isNotBlank() && !transitionLocked
         val isSelected = player.name == selectedTarget
 
         holder.root.minimumWidth = dp(metrics.minCardWidthDp)
@@ -991,7 +1089,7 @@ class GameplayMockActivity : BaseActivity() {
             cornerRadius = dp(4).toFloat()
             when {
                 isSelected -> setStroke(dp(3), getColor(R.color.accent_gold))
-                actionLabel.isNotBlank() -> setStroke(dp(2), getColor(R.color.accent_gold))
+                isActionable -> setStroke(dp(2), getColor(R.color.accent_gold))
             }
         }
         if (holder.selected != isSelected) {
@@ -1003,84 +1101,25 @@ class GameplayMockActivity : BaseActivity() {
             holder.selected = isSelected
         }
 
-        holder.action.layoutParams = (holder.action.layoutParams as LinearLayout.LayoutParams).apply {
-            width = dp(metrics.actionWidthDp)
-            height = dp(metrics.actionHeightDp)
-        }
-        holder.action.text = actionLabel
-        holder.action.textSize = metrics.actionTextSp
-        if (actionLabel.isNotBlank()) {
-            applySideActionVisual(holder.action, actionLabel, metrics.actionTextSp)
-            holder.action.setOnClickListener { performTargetAction(player.name) }
-            if (holder.lastActionLabel != actionLabel || holder.action.visibility != View.VISIBLE) {
-                holder.action.visibility = View.VISIBLE
-                holder.action.alpha = 0f
-                holder.action.translationY = dp(4).toFloat()
-                holder.action.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(200L)
-                    .start()
-            }
-        } else {
-            holder.action.animate().cancel()
-            holder.action.visibility = View.INVISIBLE
-            holder.action.alpha = 1f
-            holder.action.translationY = 0f
-            holder.action.setOnClickListener(null)
-        }
-        holder.lastActionLabel = actionLabel
-
         holder.root.alpha = if (isAlive) 1f else 0.4f
         holder.root.setOnClickListener {
             when {
-                actionLabel.isNotBlank() -> performTargetAction(player.name)
-                !isAlive -> Toast.makeText(this, "${player.name} esta eliminado.", Toast.LENGTH_SHORT).show()
-                else -> {
-                    selectedTarget = player.name
+                isActionable -> {
+                    selectedTarget = if (isSelected) "" else player.name
                     currentPlayerHint.text = privateHintText()
+                    renderAdvanceButton()
                     renderPlayerColumns()
                 }
+                !isAlive -> Toast.makeText(this, "${player.name} esta eliminado.", Toast.LENGTH_SHORT).show()
+                else -> Unit
             }
         }
         holder.root.contentDescription = when {
             !isAlive -> "${player.name}, eliminado"
             player.muted -> "${player.name}, muteado durante el dia"
+            isSelected -> "${player.name}, objetivo seleccionado"
+            isActionable -> "${player.name}, objetivo disponible para $actionLabel"
             else -> player.name
-        }
-    }
-
-    private fun applySideActionVisual(button: Button, label: String, maximumTextSp: Float) {
-        val visual = sideActionVisual(label)
-        val contentColor = getColor(if (visual.darkContent) R.color.bg_dark else android.R.color.white)
-        button.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(visual.color)
-            setStroke(dp(1), Color.argb(110, 255, 255, 255))
-            cornerRadius = dp(5).toFloat()
-        }
-        button.setTextColor(contentColor)
-        button.setCompoundDrawablesRelative(null, null, null, null)
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            button,
-            5,
-            maximumTextSp.toInt().coerceAtLeast(5),
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
-    }
-
-    private fun sideActionVisual(label: String): SideActionVisual {
-        return when (label.uppercase()) {
-            "MATAR" -> SideActionVisual(Color.parseColor("#A83A36"))
-            "INVESTIGAR" -> SideActionVisual(Color.parseColor("#4A7FB5"))
-            "SALVAR", "SALVARME" ->
-                SideActionVisual(Color.parseColor("#5A8A3C"))
-            "SILENCIAR" -> SideActionVisual(Color.parseColor("#9A7520"))
-            else -> SideActionVisual(
-                getColor(R.color.accent_gold),
-                darkContent = true
-            )
         }
     }
 
@@ -1115,10 +1154,14 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.DIA_DEBATE -> PhaseText("DIA ${session.round}", "La mesa debate antes de votar.", "VOTAR")
             GamePhase.CONTRAPUNTO -> PhaseText(
                 "CONTRAPUNTO",
-                "Solo el Payador y los dos participantes pueden hablar.",
+                "Selecciona un participante y confirma el contrapunto.",
                 "SENALAR"
             )
-            GamePhase.VOTACION -> PhaseText("VOTACION", "Toca una carta para emitir tu voto.", "VOTAR")
+            GamePhase.VOTACION -> PhaseText(
+                "VOTACION",
+                "Selecciona un jugador y confirma tu voto.",
+                "VOTAR"
+            )
             GamePhase.ALCALDE_DESEMPATE -> PhaseText(
                 "DESEMPATE",
                 "El Alcalde decide entre los jugadores empatados.",
@@ -1132,133 +1175,87 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
-    private fun toggleChatDialog() {
-        if (chatDialog?.isShowing == true) {
-            chatDialog?.dismiss()
+    private fun toggleChatPanel() {
+        if (isChatOpen) {
+            closeChatPanel()
             return
         }
-        unreadChatCount = 0
-        lastSeenChatCount = session.chatHistory.size
-        showChatDialog()
-        renderChatBadge()
-    }
-
-    private fun showChatDialog() {
-        val dialog = Dialog(this)
-        dialog.setContentView(createChatDialogContent())
-        dialog.setOnDismissListener {
-            isChatOpen = false
-            btnToggleChat.alpha = 0.9f
-            chatDialog = null
-            dialogChatInput = null
-            dialogChatMessages = null
-            dialogSendButton = null
+        if (isEventLogExpanded) {
+            isEventLogExpanded = false
+            renderEventLogPanel(animate = true)
         }
-        chatDialog = dialog
         isChatOpen = true
         unreadChatCount = 0
         lastSeenChatCount = session.chatHistory.size
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.window?.setGravity(Gravity.BOTTOM or Gravity.END)
-        dialog.window?.setLayout(dp(300), WindowManager.LayoutParams.WRAP_CONTENT)
-        dialog.window?.attributes = dialog.window?.attributes?.apply {
-            x = dp(10)
-            y = dp(10)
-        }
-        renderChatDialog()
+        renderChatPanelVisibility(animate = true)
+        renderChatPanel()
         renderChatBadge()
     }
 
-    private fun createChatDialogContent(): View {
-        val container = LinearLayout(this)
-        container.orientation = LinearLayout.VERTICAL
-        container.setBackgroundResource(R.drawable.bg_chat_panel)
-        container.setPadding(dp(12), dp(9), dp(12), dp(10))
-
-        val title = TextView(this)
-        title.text = "CHAT"
-        title.setTextColor(getColor(R.color.accent_gold))
-        title.textSize = 13f
-        title.setTypeface(null, Typeface.BOLD)
-        container.addView(title)
-
-        val messages = TextView(this)
-        messages.setTextColor(getColor(R.color.text_secondary))
-        messages.textSize = 11f
-        messages.setLineSpacing(dp(1).toFloat(), 1f)
-        dialogChatMessages = messages
-
-        val messagesScroll = ScrollView(this)
-        val messagesParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(132)
-        )
-        messagesParams.topMargin = dp(6)
-        messagesScroll.addView(messages)
-        container.addView(messagesScroll, messagesParams)
-
-        val inputRow = LinearLayout(this)
-        inputRow.orientation = LinearLayout.HORIZONTAL
-        inputRow.gravity = Gravity.CENTER_VERTICAL
-
-        val input = EditText(this)
-        input.setBackgroundResource(R.drawable.bg_chat_input)
-        input.hint = "Escribir..."
-        input.maxLines = 1
-        input.setSingleLine(true)
-        input.setTextColor(getColor(R.color.text_primary))
-        input.setHintTextColor(getColor(R.color.text_muted))
-        input.textSize = 11f
-        input.setPadding(dp(9), 0, dp(9), 0)
-        dialogChatInput = input
-        inputRow.addView(
-            input,
-            LinearLayout.LayoutParams(0, dp(32), 1f)
-        )
-
-        val send = Button(this)
-        send.text = "ENVIAR"
-        send.textSize = 8f
-        send.setBackgroundResource(R.drawable.bg_btn_gold)
-        send.setTextColor(getColor(R.color.bg_dark))
-        send.setPadding(0, 0, 0, 0)
-        send.setOnClickListener { sendHumanChatMessage() }
-        dialogSendButton = send
-        val sendParams = LinearLayout.LayoutParams(dp(62), dp(32))
-        sendParams.leftMargin = dp(6)
-        inputRow.addView(send, sendParams)
-
-        val inputRowParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        inputRowParams.topMargin = dp(8)
-        container.addView(inputRow, inputRowParams)
-        return container
+    private fun closeChatPanel() {
+        if (!isChatOpen) return
+        isChatOpen = false
+        renderChatPanelVisibility(animate = true)
+        renderChatBadge()
     }
 
-    private fun renderChatDialog() {
+    private fun renderChatPanelVisibility(animate: Boolean) {
+        chatPanel.animate().cancel()
+        if (isChatOpen) {
+            chatPanel.visibility = View.VISIBLE
+            if (animate) {
+                chatPanel.translationX = dp(36).toFloat()
+                chatPanel.alpha = 0f
+                chatPanel.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(210L)
+                    .start()
+            } else {
+                chatPanel.translationX = 0f
+                chatPanel.alpha = 1f
+            }
+        } else if (animate && chatPanel.visibility == View.VISIBLE) {
+            chatPanel.animate()
+                .translationX(dp(36).toFloat())
+                .alpha(0f)
+                .setDuration(190L)
+                .withEndAction {
+                    chatPanel.visibility = View.GONE
+                    chatPanel.translationX = 0f
+                    chatPanel.alpha = 1f
+                }
+                .start()
+        } else {
+            chatPanel.visibility = View.GONE
+            chatPanel.translationX = 0f
+            chatPanel.alpha = 1f
+        }
+        btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
+    }
+
+    private fun renderChatPanel() {
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.9f
-        if (chatDialog?.isShowing != true) return
+        if (!isChatOpen) return
 
         val messages = session.chatHistory.filterNot { it.isGod }.takeLast(12)
-        dialogChatMessages?.text = if (messages.isEmpty()) {
+        chatMessages.text = if (messages.isEmpty()) {
             "Todavia no hay mensajes."
         } else {
             messages.joinToString("\n") { message -> "${message.speaker}: ${message.message}" }
         }
 
         val canChat = GameEngine.canHumanChat(session)
-        dialogChatInput?.isEnabled = canChat
-        dialogSendButton?.isEnabled = canChat
-        dialogChatInput?.hint = chatInputHint(canChat)
-        dialogSendButton?.alpha = if (canChat) 1f else 0.45f
+        chatInput.isEnabled = canChat
+        btnSendChat.isEnabled = canChat
+        chatInput.hint = chatInputHint(canChat)
+        btnSendChat.alpha = if (canChat) 1f else 0.45f
+        chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun updateUnreadChatCount() {
         val currentCount = session.chatHistory.size
-        if (isChatOpen || chatDialog?.isShowing == true) {
+        if (isChatOpen) {
             unreadChatCount = 0
             lastSeenChatCount = currentCount
             return
@@ -1279,11 +1276,14 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun sendHumanChatMessage() {
-        val input = dialogChatInput ?: return
+        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+            Toast.makeText(this, "El chat se habilita al comenzar la fase.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val before = session.chatHistory.size
-        session = GameEngine.addHumanChatMessage(session, input.text.toString())
+        session = GameEngine.addHumanChatMessage(session, chatInput.text.toString())
         if (session.chatHistory.size > before) {
-            input.text.clear()
+            chatInput.text.clear()
         } else if (!GameEngine.canHumanChat(session)) {
             val human = GameEngine.humanPlayer(session)
             val message = when {
@@ -1319,14 +1319,219 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isWinnerRevealVisible ||
             isRolePreviewOpen ||
             isTraitorRevealRunning ||
             desertorDialogOpen
         ) {
+            pauseCountdown()
             return
         }
-        if (!GameEngine.shouldAutoAdvance(session)) return
-        autoAdvanceHandler.postDelayed(autoAdvanceRunnable, GameEngine.autoAdvanceDelayMs(session))
+        ensureCountdownForCurrentPhase()
+    }
+
+    private fun ensureCountdownForCurrentPhase() {
+        if (session.winner.isNotBlank()) {
+            clearCountdown()
+            return
+        }
+        if (countdownPhaseIndex != session.phaseIndex || countdownStage == null) {
+            countdownPhaseIndex = session.phaseIndex
+            countdownStage = CountdownStage.TRANSITION
+            countdownTotalMs = session.timingConfig.normalized().transitionSeconds * 1000L
+            countdownRemainingMs = countdownTotalMs
+        }
+        startCountdown()
+    }
+
+    private fun startCountdown() {
+        if (countdownRunning || countdownRemainingMs <= 0L) {
+            if (countdownRemainingMs <= 0L) onCountdownExpired()
+            return
+        }
+        countdownRunning = true
+        if (countdownTotalMs <= 0L) countdownTotalMs = countdownRemainingMs
+        countdownDeadlineMs = SystemClock.elapsedRealtime() + countdownRemainingMs
+        lastCountdownSecond = -1
+        phaseCountdown.visibility = View.VISIBLE
+        renderAdvanceButton()
+        updateCountdown()
+    }
+
+    private fun updateCountdown() {
+        if (!countdownRunning) return
+        countdownRemainingMs = (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        val seconds = kotlin.math.ceil(countdownRemainingMs / 1000.0).toInt()
+        renderCountdown(seconds)
+        if (countdownRemainingMs <= 0L) {
+            countdownRunning = false
+            autoAdvanceHandler.removeCallbacks(countdownRunnable)
+            onCountdownExpired()
+        } else {
+            autoAdvanceHandler.postDelayed(countdownRunnable, COUNTDOWN_TICK_MS)
+        }
+    }
+
+    private fun renderCountdown(seconds: Int) {
+        phaseCountdown.text = seconds.coerceAtLeast(0).toString()
+        val urgent = seconds in 1..5
+        phaseCountdown.setTextColor(getColor(if (urgent) R.color.accent_red else R.color.text_primary))
+        phaseProgressFill.setBackgroundColor(
+            getColor(if (urgent) R.color.accent_red else R.color.accent_gold)
+        )
+        phaseProgressFill.scaleX = if (countdownTotalMs > 0L) {
+            (countdownRemainingMs.toFloat() / countdownTotalMs).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        if (urgent && seconds != lastCountdownSecond) {
+            phaseCountdown.animate().cancel()
+            phaseProgressFill.animate().cancel()
+            phaseCountdown.scaleX = 1f
+            phaseCountdown.scaleY = 1f
+            phaseProgressFill.alpha = 1f
+            phaseCountdown.animate()
+                .scaleX(1.14f)
+                .scaleY(1.14f)
+                .setDuration(130L)
+                .withEndAction {
+                    phaseCountdown.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(170L)
+                        .start()
+                }
+                .start()
+            phaseProgressFill.animate()
+                .alpha(0.58f)
+                .setDuration(130L)
+                .withEndAction {
+                    phaseProgressFill.animate()
+                        .alpha(1f)
+                        .setDuration(170L)
+                        .start()
+                }
+                .start()
+        }
+        lastCountdownSecond = seconds
+    }
+
+    private fun onCountdownExpired() {
+        if (session.winner.isNotBlank() || countdownPhaseIndex != session.phaseIndex) {
+            clearCountdown()
+            return
+        }
+        if (countdownStage == CountdownStage.TRANSITION) {
+            val phaseSeconds = activePhaseSeconds()
+            if (phaseSeconds != null) {
+                countdownStage = CountdownStage.ACTIVE
+                countdownTotalMs = phaseSeconds * 1000L
+                countdownRemainingMs = countdownTotalMs
+                renderAdvanceButton()
+                renderPlayerColumns()
+                startCountdown()
+                return
+            }
+        }
+
+        clearCountdown()
+        session = when (session.phase) {
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO -> {
+                if (GameEngine.requiresHumanInput(session)) {
+                    GameEngine.resolveHumanTimeout(session)
+                } else {
+                    advanceSessionWithoutRendering()
+                }
+            }
+            GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
+            GamePhase.CONTRAPUNTO -> {
+                if (GameEngine.requiresHumanInput(session)) {
+                    GameEngine.resolveContrapuntoTimeout(session)
+                } else {
+                    GameEngine.resolveContrapunto(session, "")
+                }
+            }
+            GamePhase.VOTACION -> {
+                if (GameEngine.requiresHumanInput(session)) {
+                    GameEngine.resolveHumanTimeout(session)
+                } else {
+                    GameEngine.resolveVoting(session, "")
+                }
+            }
+            GamePhase.ALCALDE_DESEMPATE -> GameEngine.resolveAlcaldeTieTimeout(session)
+            GamePhase.REPARTO -> GameEngine.startNight(session)
+            GamePhase.AMANECER -> GameEngine.resolveDawn(session)
+            GamePhase.RESULTADO -> GameEngine.resolveResult(session)
+        }
+        clearSelection()
+        renderGame()
+    }
+
+    private fun advanceSessionWithoutRendering(): GameSession {
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(session, "")
+            GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(session, "")
+            GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(session, "")
+            GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
+            else -> session
+        }
+    }
+
+    private fun activePhaseSeconds(): Int? {
+        val timing = session.timingConfig.normalized()
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO -> timing.nightSeconds.takeIf {
+                GameEngine.requiresHumanInput(session)
+            }
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO -> timing.discussionSeconds
+            GamePhase.VOTACION,
+            GamePhase.ALCALDE_DESEMPATE -> timing.votingSeconds
+            GamePhase.REPARTO,
+            GamePhase.AMANECER,
+            GamePhase.RESULTADO -> null
+        }
+    }
+
+    private fun pauseCountdown() {
+        if (countdownRunning) {
+            countdownRemainingMs = (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        }
+        countdownRunning = false
+        autoAdvanceHandler.removeCallbacks(countdownRunnable)
+        phaseCountdown.animate().cancel()
+        phaseProgressFill.animate().cancel()
+        phaseCountdown.scaleX = 1f
+        phaseCountdown.scaleY = 1f
+        phaseProgressFill.alpha = 1f
+    }
+
+    private fun clearCountdown() {
+        pauseCountdown()
+        countdownStage = null
+        countdownPhaseIndex = -1
+        countdownRemainingMs = 0L
+        countdownTotalMs = 0L
+        lastCountdownSecond = -1
+        phaseCountdown.visibility = View.INVISIBLE
+        phaseCountdown.setTextColor(getColor(R.color.text_primary))
+        phaseProgressFill.scaleX = 0f
+        phaseProgressFill.alpha = 1f
+        phaseProgressFill.setBackgroundColor(getColor(R.color.accent_gold))
+    }
+
+    private fun countdownRemainingForSave(): Long {
+        return if (countdownRunning) {
+            (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        } else {
+            countdownRemainingMs
+        }
     }
 
     private fun toggleHumanCard() {
@@ -1379,14 +1584,15 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isWinnerRevealVisible ||
             isTraitorRevealRunning ||
             desertorDialogOpen
         ) {
             return
         }
         val role = GameEngine.humanPlayer(session).role ?: return
+        pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        chatDialog?.dismiss()
         if (!isCardRevealed && session.phase != GamePhase.REPARTO) {
             isCardRevealed = true
             renderHumanCardIfVisible()
@@ -1431,14 +1637,14 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun targetActionMessage(): String {
         return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> "Toca una carta con MATAR para elegir victima."
-            GamePhase.NOCHE_MERCENARIO -> "Toca una carta con SILENCIAR para callar a alguien durante el dia."
-            GamePhase.NOCHE_POLICIA -> "Toca una carta con INVESTIGAR para pedir una pista privada."
-            GamePhase.NOCHE_MEDICO -> "Toca una carta con SALVAR para proteger a alguien."
+            GamePhase.NOCHE_ASESINO -> "Selecciona una victima y confirma MATAR."
+            GamePhase.NOCHE_MERCENARIO -> "Selecciona un jugador y confirma SILENCIAR."
+            GamePhase.NOCHE_POLICIA -> "Selecciona un jugador y confirma INVESTIGAR."
+            GamePhase.NOCHE_MEDICO -> "Selecciona un jugador y confirma SALVAR."
             GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o continuar a la votacion."
-            GamePhase.CONTRAPUNTO -> "Toca SENALAR sobre uno de los participantes."
-            GamePhase.VOTACION -> "Toca una carta con VOTAR para acusar publicamente."
-            GamePhase.ALCALDE_DESEMPATE -> "Toca DECIDIR sobre uno de los jugadores empatados."
+            GamePhase.CONTRAPUNTO -> "Selecciona un participante y confirma SENALAR."
+            GamePhase.VOTACION -> "Selecciona un jugador y confirma VOTAR."
+            GamePhase.ALCALDE_DESEMPATE -> "Selecciona un jugador empatado y confirma DECIDIR."
             else -> "Toca una carta valida."
         }
     }
@@ -1448,12 +1654,14 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isWinnerRevealVisible ||
             isRolePreviewOpen
         ) {
             return
         }
         if (maybeShowNextDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
+        if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
         maybeShowDesertorChoice()
         if (!desertorDialogOpen) {
@@ -1469,9 +1677,8 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun showDeathReveal(player: GamePlayer) {
+        pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
-        chatDialog?.dismiss()
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
 
@@ -1634,9 +1841,8 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun showSilenceReveal(player: GamePlayer) {
+        pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(narratorCollapseRunnable)
-        chatDialog?.dismiss()
         MusicManager.pauseForTransition()
         isSilenceRevealRunning = true
 
@@ -1801,6 +2007,263 @@ class GameplayMockActivity : BaseActivity() {
         silenceRevealSoundPlayer = null
     }
 
+    private fun maybeShowWinnerReveal(): Boolean {
+        if (session.winner.isBlank()) return false
+        if (isWinnerRevealVisible) return true
+        showWinnerReveal(animate = !winnerRevealPresented)
+        return true
+    }
+
+    private fun showWinnerReveal(animate: Boolean) {
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        eventLogHeightAnimator?.cancel()
+
+        val presentation = GameplayTableUi.winnerPresentation(session)
+        winnerRevealTitle.text = when (session.winner) {
+            GameRules.TOWN_WINNER -> "EL PUEBLO HA GANADO"
+            GameRules.TRAITOR_WINNER -> "LOS TRAIDORES HAN GANADO"
+            else -> "${session.winner.uppercase()} HA GANADO"
+        }
+        winnerRevealPersonalResult.text = if (presentation.humanWon) "VICTORIA" else "DERROTA"
+        winnerRevealPersonalResult.setTextColor(
+            Color.parseColor(if (presentation.humanWon) "#765019" else "#7C2F2A")
+        )
+        winnerRevealBackground.setImageResource(logDrawableFor(themeKey))
+        renderWinnerCards(presentation.winningPlayers)
+
+        isWinnerRevealVisible = true
+        winnerRevealOverlay.visibility = View.VISIBLE
+        winnerRevealPresented = true
+        if (!animate) {
+            settleWinnerReveal()
+            MusicManager.resumeVictoryMusic(this)
+            return
+        }
+
+        resetWinnerRevealViews()
+        MusicManager.playVictoryMusic(this)
+
+        val entrance = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(winnerRevealOverlay, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(winnerRevealPanel, View.SCALE_X, 0.72f, 1f),
+                ObjectAnimator.ofFloat(winnerRevealPanel, View.SCALE_Y, 0.72f, 1f),
+                ObjectAnimator.ofFloat(winnerRevealPanel, View.ALPHA, 0f, 1f)
+            )
+            duration = 520L
+            interpolator = DecelerateInterpolator()
+        }
+        val headings = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(winnerRevealTitle, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(winnerRevealTitle, View.TRANSLATION_Y, dp(10).toFloat(), 0f),
+                ObjectAnimator.ofFloat(winnerRevealPersonalResult, View.ALPHA, 0f, 1f)
+            )
+            duration = 360L
+            interpolator = DecelerateInterpolator()
+        }
+
+        val cardAnimators = winnerCardViews.mapIndexed { index, card ->
+            AnimatorSet().apply {
+                startDelay = index * WINNER_CARD_STAGGER_MS
+                playTogether(
+                    ObjectAnimator.ofFloat(
+                        card,
+                        View.ALPHA,
+                        0f,
+                        winnerCardFinalAlphas[card] ?: 1f
+                    ),
+                    ObjectAnimator.ofFloat(card, View.TRANSLATION_Y, dp(16).toFloat(), 0f),
+                    ObjectAnimator.ofFloat(card, View.SCALE_X, 0.9f, 1f),
+                    ObjectAnimator.ofFloat(card, View.SCALE_Y, 0.9f, 1f)
+                )
+                duration = 300L
+                interpolator = DecelerateInterpolator()
+            }
+        }
+        val cardsEntrance = AnimatorSet().apply {
+            playTogether(cardAnimators)
+        }
+        val shine = ObjectAnimator.ofFloat(winnerRevealShine, View.ALPHA, 0f, 0.34f, 0f).apply {
+            duration = 720L
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+
+        winnerRevealAnimator = AnimatorSet().apply {
+            playSequentially(entrance, headings, cardsEntrance, shine)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    winnerRevealAnimator = null
+                    settleWinnerReveal()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun renderWinnerCards(players: List<GamePlayer>) {
+        winnerRevealCards.removeAllViews()
+        winnerCardViews.clear()
+        winnerCardFinalAlphas.clear()
+        if (players.isEmpty()) return
+
+        val rowCount = when (players.size) {
+            in 1..5 -> 1
+            in 6..10 -> 2
+            else -> 3
+        }
+        val playersPerRow = kotlin.math.ceil(players.size / rowCount.toDouble()).toInt()
+        players.chunked(playersPerRow).forEach { rowPlayers ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            val rowParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+            winnerRevealCards.addView(row, rowParams)
+            rowPlayers.forEach { player ->
+                val card = createWinnerCard(player, players.size)
+                winnerCardViews += card
+                winnerCardFinalAlphas[card] = if (player.alive) 1f else 0.62f
+                row.addView(card)
+            }
+        }
+    }
+
+    private fun createWinnerCard(player: GamePlayer, winnerCount: Int): View {
+        val metrics = when {
+            winnerCount <= 5 -> intArrayOf(110, 72, 88, 12, 9)
+            winnerCount <= 10 -> intArrayOf(94, 58, 70, 10, 8)
+            else -> intArrayOf(76, 42, 50, 9, 7)
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(dp(metrics[0]), LinearLayout.LayoutParams.WRAP_CONTENT)
+            setPadding(dp(3), dp(1), dp(3), dp(1))
+        }
+        val cardFrame = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#E6231810"))
+                setStroke(
+                    dp(if (player.alive) 3 else 2),
+                    Color.parseColor(if (player.alive) "#D4A24E" else "#75695B")
+                )
+                cornerRadius = dp(6).toFloat()
+            }
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            if (player.alive) elevation = dp(4).toFloat()
+        }
+        val image = ImageView(this).apply {
+            setImageResource(roleImageFor(player.role))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Rol de ${player.name}"
+            if (!player.alive) {
+                colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+            }
+        }
+        cardFrame.addView(
+            image,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        container.addView(
+            cardFrame,
+            LinearLayout.LayoutParams(dp(metrics[1]), dp(metrics[2]))
+        )
+
+        val playerName = TextView(this).apply {
+            text = player.name
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(Color.parseColor("#352114"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[3].toFloat())
+            typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
+            setTypeface(typeface, Typeface.BOLD)
+            includeFontPadding = false
+        }
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            playerName,
+            7,
+            metrics[3],
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
+        container.addView(
+            playerName,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(16))
+        )
+
+        val roleLabel = TextView(this).apply {
+            text = player.role?.name?.uppercase() ?: "SIN ROL"
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(Color.parseColor("#765019"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[4].toFloat())
+            typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.cormorant_garamond)
+            includeFontPadding = false
+        }
+        container.addView(
+            roleLabel,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(13))
+        )
+        return container
+    }
+
+    private fun resetWinnerRevealViews() {
+        winnerRevealOverlay.alpha = 0f
+        winnerRevealPanel.alpha = 0f
+        winnerRevealPanel.scaleX = 0.72f
+        winnerRevealPanel.scaleY = 0.72f
+        winnerRevealTitle.alpha = 0f
+        winnerRevealTitle.translationY = dp(10).toFloat()
+        winnerRevealPersonalResult.alpha = 0f
+        winnerRevealShine.alpha = 0f
+        winnerCardViews.forEach { card ->
+            card.alpha = 0f
+            card.translationY = dp(16).toFloat()
+            card.scaleX = 0.9f
+            card.scaleY = 0.9f
+        }
+    }
+
+    private fun settleWinnerReveal() {
+        if (!::winnerRevealOverlay.isInitialized || !isWinnerRevealVisible) return
+        winnerRevealAnimator?.removeAllListeners()
+        winnerRevealAnimator?.end()
+        winnerRevealAnimator = null
+        winnerRevealOverlay.visibility = View.VISIBLE
+        winnerRevealOverlay.alpha = 1f
+        winnerRevealPanel.alpha = 1f
+        winnerRevealPanel.scaleX = 1f
+        winnerRevealPanel.scaleY = 1f
+        winnerRevealTitle.alpha = 1f
+        winnerRevealTitle.translationY = 0f
+        winnerRevealPersonalResult.alpha = 1f
+        winnerRevealShine.alpha = 0f
+        winnerCardViews.forEach { card ->
+            card.alpha = winnerCardFinalAlphas[card] ?: 1f
+            card.translationY = 0f
+            card.scaleX = 1f
+            card.scaleY = 1f
+        }
+    }
+
+    private fun returnToLobby() {
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        MusicManager.stopVictoryMusic()
+        finish()
+    }
+
     private fun maybeShowTraitorReveal(): Boolean {
         if (isTraitorRevealRunning) return true
         if (!GameplayTableUi.shouldShowTraitorReveal(session, traitorRevealCompleted)) {
@@ -1816,9 +2279,9 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun showTraitorReveal(teammates: List<GamePlayer>) {
+        pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
-        chatDialog?.dismiss()
         isTraitorRevealDismissing = false
         isTraitorRevealRunning = true
         traitorRevealCards.removeAllViews()
@@ -1942,9 +2405,9 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun startDayNightTransition(spec: GameplayTransitionSpec) {
+        pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-        chatDialog?.dismiss()
 
         val fromPeriod = presentedPeriod ?: spec.period
         transitionFromBackground.setImageResource(
@@ -2249,6 +2712,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun showDesertorTeamDialog() {
         if (desertorDialogOpen || isFinishing) return
+        pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)
         val title = if (isInitial) "Elegi tu bando" else "Queres cambiar de bando?"
@@ -2280,14 +2744,30 @@ class GameplayMockActivity : BaseActivity() {
         val actionLabel: String
     )
 
+    private enum class CountdownStage {
+        TRANSITION,
+        ACTIVE
+    }
+
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
+        private const val STATE_SESSION = "gameplay_session"
+        private const val STATE_CHAT_OPEN = "chat_open"
+        private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
+        private const val STATE_SELECTED_TARGET = "selected_target"
+        private const val STATE_COUNTDOWN_STAGE = "countdown_stage"
+        private const val STATE_COUNTDOWN_PHASE_INDEX = "countdown_phase_index"
+        private const val STATE_COUNTDOWN_REMAINING_MS = "countdown_remaining_ms"
+        private const val STATE_COUNTDOWN_TOTAL_MS = "countdown_total_ms"
         private const val STATE_PRESENTED_PERIOD = "presented_period"
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
+        private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
         private const val SILENCE_REVEAL_GAP_MS = 300L
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val TRANSITION_MUSIC_DELAY_MS = 1600L
+        private const val WINNER_CARD_STAGGER_MS = 105L
+        private const val COUNTDOWN_TICK_MS = 200L
 
         const val EXTRA_TEMA = "tema"
         const val EXTRA_ES_NOCHE = "es_noche"

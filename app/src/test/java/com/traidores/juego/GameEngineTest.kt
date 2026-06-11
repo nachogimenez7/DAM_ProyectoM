@@ -10,6 +10,218 @@ import org.junit.Test
 class GameEngineTest {
 
     @Test
+    fun timingConfigUsesDefaultsAndClampsEveryField() {
+        assertEquals("3 / 20 / 60 / 20", GameTimingConfig().summary())
+
+        val minimums = GameTimingConfig(
+            transitionSeconds = -5,
+            nightSeconds = 1,
+            discussionSeconds = 2,
+            votingSeconds = 3
+        ).normalized()
+        assertEquals(GameTimingConfig.MIN_TRANSITION_SECONDS, minimums.transitionSeconds)
+        assertEquals(GameTimingConfig.MIN_NIGHT_SECONDS, minimums.nightSeconds)
+        assertEquals(GameTimingConfig.MIN_DISCUSSION_SECONDS, minimums.discussionSeconds)
+        assertEquals(GameTimingConfig.MIN_VOTING_SECONDS, minimums.votingSeconds)
+
+        val maximums = GameTimingConfig(
+            transitionSeconds = 99,
+            nightSeconds = 99,
+            discussionSeconds = 999,
+            votingSeconds = 99
+        ).normalized()
+        assertEquals(GameTimingConfig.MAX_TRANSITION_SECONDS, maximums.transitionSeconds)
+        assertEquals(GameTimingConfig.MAX_NIGHT_SECONDS, maximums.nightSeconds)
+        assertEquals(GameTimingConfig.MAX_DISCUSSION_SECONDS, maximums.discussionSeconds)
+        assertEquals(GameTimingConfig.MAX_VOTING_SECONDS, maximums.votingSeconds)
+    }
+
+    @Test
+    fun assigningRolesKeepsLobbyTimingAndResetsAfkStreaks() {
+        val configured = LocalGameFactory.createSession().copy(
+            timingConfig = GameTimingConfig(5, 30, 90, 25),
+            players = LocalGameFactory.createSession().players.map {
+                it.copy(consecutiveNightAfk = 1, consecutiveVoteAfk = 1)
+            }
+        )
+
+        val assigned = LocalGameFactory.assignRoles(configured)
+
+        assertEquals(GameTimingConfig(5, 30, 90, 25), assigned.timingConfig)
+        assertTrue(assigned.players.all { it.consecutiveNightAfk == 0 })
+        assertTrue(assigned.players.all { it.consecutiveVoteAfk == 0 })
+    }
+
+    @Test
+    fun firstNightTimeoutLosesActionAndSecondConsecutiveTimeoutExpelsForAfk() {
+        val firstNight = sessionWithHumanRole("medico").copy(phase = GamePhase.NOCHE_MEDICO)
+
+        val firstMiss = GameEngine.resolveHumanTimeout(firstNight)
+        val warnedHuman = GameEngine.humanPlayer(firstMiss)
+
+        assertEquals(GamePhase.AMANECER, firstMiss.phase)
+        assertTrue(warnedHuman.alive)
+        assertEquals(1, warnedHuman.consecutiveNightAfk)
+        assertTrue(firstMiss.privateHint.contains("proxima noche"))
+
+        val secondMiss = GameEngine.resolveHumanTimeout(
+            firstMiss.copy(phase = GamePhase.NOCHE_MEDICO, round = 2, winner = "")
+        )
+        val expelledHuman = GameEngine.humanPlayer(secondMiss)
+
+        assertFalse(expelledHuman.alive)
+        assertEquals(2, expelledHuman.consecutiveNightAfk)
+        assertTrue(secondMiss.publicHistory.any { it.contains("expulsado por inactividad") })
+    }
+
+    @Test
+    fun afkExpulsionRechecksVictoryImmediately() {
+        val firstNight = sessionWithHumanRole("asesino").copy(phase = GamePhase.NOCHE_ASESINO)
+        val firstMiss = GameEngine.resolveHumanTimeout(firstNight)
+
+        val secondMiss = GameEngine.resolveHumanTimeout(
+            firstMiss.copy(phase = GamePhase.NOCHE_ASESINO, round = 2, winner = "")
+        )
+
+        assertFalse(GameEngine.humanPlayer(secondMiss).alive)
+        assertEquals(GameRules.TOWN_WINNER, secondMiss.winner)
+    }
+
+    @Test
+    fun validNightActionResetsOnlyNightAfkStreak() {
+        val session = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            players = sessionWithHumanRole("medico").players.map {
+                if (it.isHuman) {
+                    it.copy(consecutiveNightAfk = 1, consecutiveVoteAfk = 1)
+                } else {
+                    it
+                }
+            }
+        )
+
+        val resolved = GameEngine.resolveHumanTargetAction(session, "Humano")
+        val human = GameEngine.humanPlayer(resolved)
+
+        assertEquals(0, human.consecutiveNightAfk)
+        assertEquals(1, human.consecutiveVoteAfk)
+        assertEquals(GamePhase.AMANECER, resolved.phase)
+    }
+
+    @Test
+    fun firstVoteTimeoutAbstainsAndSecondConsecutiveTimeoutExpelsForAfk() {
+        val firstVote = baseSession().copy(phase = GamePhase.VOTACION)
+
+        val firstMiss = GameEngine.resolveHumanTimeout(firstVote)
+        val warnedHuman = GameEngine.humanPlayer(firstMiss)
+
+        assertEquals(GamePhase.RESULTADO, firstMiss.phase)
+        assertTrue(warnedHuman.alive)
+        assertEquals(1, warnedHuman.consecutiveVoteAfk)
+        assertTrue(firstMiss.privateHint.contains("proxima votacion"))
+
+        val secondMiss = GameEngine.resolveHumanTimeout(
+            firstMiss.copy(
+                phase = GamePhase.VOTACION,
+                round = 2,
+                votes = emptyMap(),
+                dayEliminationTarget = "",
+                winner = ""
+            )
+        )
+        val expelledHuman = GameEngine.humanPlayer(secondMiss)
+
+        assertFalse(expelledHuman.alive)
+        assertEquals(2, expelledHuman.consecutiveVoteAfk)
+        assertTrue(secondMiss.publicHistory.any { it.contains("expulsado por inactividad") })
+    }
+
+    @Test
+    fun validVoteResetsVoteAfkWithoutChangingNightStreak() {
+        val base = baseSession()
+        val session = base.copy(
+            phase = GamePhase.VOTACION,
+            players = base.players.map {
+                if (it.isHuman) {
+                    it.copy(consecutiveNightAfk = 1, consecutiveVoteAfk = 1)
+                } else {
+                    it
+                }
+            }
+        )
+
+        val resolved = GameEngine.resolveHumanTargetAction(session, "Asesino")
+        val human = GameEngine.humanPlayer(resolved)
+
+        assertEquals(1, human.consecutiveNightAfk)
+        assertEquals(0, human.consecutiveVoteAfk)
+    }
+
+    @Test
+    fun deadOrMutedHumanDoesNotAccumulateAfk() {
+        val base = baseSession()
+        val deadNight = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            players = sessionWithHumanRole("medico").players.map {
+                if (it.isHuman) it.copy(alive = false) else it
+            }
+        )
+        val mutedVote = base.copy(
+            phase = GamePhase.VOTACION,
+            players = base.players.map {
+                if (it.isHuman) it.copy(muted = true) else it
+            }
+        )
+
+        val unchangedNight = GameEngine.resolveHumanTimeout(deadNight)
+        val resolvedVote = GameEngine.resolveHumanTimeout(mutedVote)
+
+        assertEquals(0, GameEngine.humanPlayer(unchangedNight).consecutiveNightAfk)
+        assertEquals(0, GameEngine.humanPlayer(resolvedVote).consecutiveVoteAfk)
+        assertTrue(GameEngine.humanPlayer(resolvedVote).alive)
+    }
+
+    @Test
+    fun roleWithoutNightActionDoesNotAccumulateAfk() {
+        val session = sessionWithHumanRole("aldeano").copy(phase = GamePhase.NOCHE_MEDICO)
+
+        val resolved = GameEngine.resolveHumanTimeout(session)
+
+        assertEquals(session, resolved)
+        assertEquals(0, GameEngine.humanPlayer(resolved).consecutiveNightAfk)
+    }
+
+    @Test
+    fun optionalContrapuntoTimeoutDoesNotAccumulateAfk() {
+        val session = sessionWithHumanAdvancedRole("payador").copy(
+            phase = GamePhase.CONTRAPUNTO,
+            contrapuntoPlayers = listOf("Asesino", "Policia")
+        )
+
+        val resolved = GameEngine.resolveHumanTimeout(session)
+
+        assertEquals(GamePhase.VOTACION, resolved.phase)
+        assertEquals(0, GameEngine.humanPlayer(resolved).consecutiveNightAfk)
+        assertEquals(0, GameEngine.humanPlayer(resolved).consecutiveVoteAfk)
+    }
+
+    @Test
+    fun mayorTieTimeoutExpelsNobodyAndDoesNotCountAfk() {
+        val session = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.ALCALDE_DESEMPATE,
+            alcaldeRevealed = true,
+            alcaldeTieCandidates = listOf("Asesino", "Policia")
+        )
+
+        val resolved = GameEngine.resolveHumanTimeout(session)
+
+        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals("", resolved.dayEliminationTarget)
+        assertTrue(resolved.alcaldeTieCandidates.isEmpty())
+        assertEquals(0, GameEngine.humanPlayer(resolved).consecutiveVoteAfk)
+    }
+
+    @Test
     fun assignRolesCreatesOneCoreRoleAndVillagers() {
         val session = LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         val roleCounts = session.players

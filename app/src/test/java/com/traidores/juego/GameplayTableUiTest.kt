@@ -78,14 +78,14 @@ class GameplayTableUiTest {
         assertEquals(72, five.cardWidthDp)
         assertEquals(86, five.cardHeightDp)
         assertEquals(18, five.nameHeightDp)
-        assertEquals(28, five.actionHeightDp)
+        assertEquals(106, five.itemHeightDp)
         assertFalse(five.scrollEnabled)
 
         assertEquals(94, eight.columnWidthDp)
         assertEquals(16, eight.nameHeightDp)
         assertEquals(eight, nine)
         assertFalse(eight.scrollEnabled)
-        assertTrue(eight.cardHeightDp < eightTall.cardHeightDp)
+        assertEquals(eight, eightTall)
         assertEquals(48, eightTall.cardWidthDp)
         assertEquals(58, eightTall.cardHeightDp)
 
@@ -98,10 +98,9 @@ class GameplayTableUiTest {
         assertEquals(38, fifteen.cardWidthDp)
         assertEquals(46, fifteen.cardHeightDp)
         assertEquals(14, fifteen.nameHeightDp)
-        assertEquals(20, fifteen.actionHeightDp)
+        assertEquals(62, fifteen.itemHeightDp)
         assertTrue(fifteen.scrollEnabled)
-        assertTrue(fifteen.actionWidthDp >= 70)
-        assertTrue(eight.actionWidthDp > eight.cardWidthDp)
+        assertTrue(eight.itemHeightDp < five.itemHeightDp)
     }
 
     @Test
@@ -174,6 +173,77 @@ class GameplayTableUiTest {
                 knownMutedPlayers = emptySet()
             ).isEmpty()
         )
+    }
+
+    @Test
+    fun townWinnerPresentationIncludesTownAndTownDesertorEvenWhenDead() {
+        val town = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
+        val assassin = GameRole("asesino", "Asesino", "Traidores", "rol_asesino_gaucho")
+        val desertor = GameRole("desertor", "Desertora", "Neutral", "rol_desertor_gaucho")
+        val session = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                GamePlayer("Humano", "H", role = town, alive = false, isHuman = true),
+                GamePlayer("Pueblo vivo", "P", role = town),
+                GamePlayer("Asesino", "A", role = assassin),
+                GamePlayer("Desertora", "D", role = desertor, alive = false)
+            ),
+            desertorTeam = GameRules.TOWN_WINNER,
+            winner = GameRules.TOWN_WINNER
+        )
+
+        val presentation = GameplayTableUi.winnerPresentation(session)
+
+        assertEquals(
+            listOf("Humano", "Pueblo vivo", "Desertora"),
+            presentation.winningPlayers.map { it.name }
+        )
+        assertTrue(presentation.humanWon)
+        assertTrue(presentation.winningPlayers.any { !it.alive })
+    }
+
+    @Test
+    fun traitorWinnerPresentationIncludesExplicitTraitorsAndTraitorDesertor() {
+        val town = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
+        val assassin = GameRole("asesino", "Asesino", "Traidores", "rol_asesino_gaucho")
+        val mercenary = GameRole("mercenario", "Mercenario", "Traidores", "rol_mercenario_gaucho")
+        val spy = GameRole("espia", "Espia", "Traidores", "rol_espia_gaucho")
+        val desertor = GameRole("desertor", "Desertora", "Neutral", "rol_desertor_gaucho")
+        val session = GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                GamePlayer("Humano", "H", role = town, isHuman = true),
+                GamePlayer("Asesino", "A", role = assassin),
+                GamePlayer("Mercenario", "M", role = mercenary, alive = false),
+                GamePlayer("Espia", "E", role = spy),
+                GamePlayer("Desertora", "D", role = desertor)
+            ),
+            desertorTeam = GameRules.TRAITOR_WINNER,
+            winner = GameRules.TRAITOR_WINNER
+        )
+
+        val presentation = GameplayTableUi.winnerPresentation(session)
+
+        assertEquals(
+            listOf("Asesino", "Mercenario", "Espia", "Desertora"),
+            presentation.winningPlayers.map { it.name }
+        )
+        assertFalse(presentation.humanWon)
+        assertTrue(presentation.winningPlayers.any { !it.alive })
+    }
+
+    @Test
+    fun winnerPresentationIsEmptyBeforeGameEnds() {
+        val presentation = GameplayTableUi.winnerPresentation(
+            transitionSession(GamePhase.RESULTADO, round = 2)
+        )
+
+        assertTrue(presentation.winningPlayers.isEmpty())
+        assertFalse(presentation.humanWon)
     }
 
     @Test
@@ -309,6 +379,77 @@ class GameplayTableUiTest {
         )
     }
 
+    @Test
+    fun targetActionsRequireAValidSelectionAndUseSemanticTones() {
+        val assassin = actionSession("asesino", GamePhase.NOCHE_ASESINO)
+        val mercenary = actionSession("mercenario", GamePhase.NOCHE_MERCENARIO)
+        val detective = actionSession("policia", GamePhase.NOCHE_POLICIA)
+        val medic = actionSession("medico", GamePhase.NOCHE_MEDICO)
+        val voting = actionSession("aldeano", GamePhase.VOTACION)
+        val payador = actionSession("payador", GamePhase.DIA_DEBATE)
+        val mayor = actionSession("alcalde", GamePhase.ALCALDE_DESEMPATE).copy(
+            alcaldeRevealed = true,
+            alcaldeTieCandidates = listOf("Objetivo")
+        )
+
+        assertEquals(null, GameplayTableUi.confirmedTargetActionLabel(assassin, ""))
+        assertEquals("MATAR", GameplayTableUi.confirmedTargetActionLabel(assassin, "Objetivo"))
+        assertEquals("SILENCIAR", GameplayTableUi.confirmedTargetActionLabel(mercenary, "Objetivo"))
+        assertEquals("INVESTIGAR", GameplayTableUi.confirmedTargetActionLabel(detective, "Objetivo"))
+        assertEquals("SALVAR", GameplayTableUi.confirmedTargetActionLabel(medic, "Objetivo"))
+        assertEquals("VOTAR", GameplayTableUi.confirmedTargetActionLabel(voting, "Objetivo"))
+        assertEquals("SENALAR", GameplayTableUi.confirmedTargetActionLabel(payador, "Objetivo"))
+        assertEquals("DECIDIR", GameplayTableUi.confirmedTargetActionLabel(mayor, "Objetivo"))
+        assertEquals(listOf("Objetivo"), GameplayTableUi.validHumanTargets(assassin).map { it.name })
+
+        assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR"))
+        assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("SALVARME"))
+        assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVESTIGAR"))
+        assertEquals(GameplayActionTone.SILENCE, GameplayTableUi.actionToneFor("SILENCIAR"))
+        assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("VOTAR"))
+        assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("REVELARME"))
+        assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("ELEGIR BANDO"))
+        assertEquals(GameplayActionTone.DEFAULT, GameplayTableUi.actionToneFor("ACELERAR"))
+    }
+
+    @Test
+    fun publicEventsDeduplicateAndKeepCurrentModeratorMessageOutOfTheSummary() {
+        val history = listOf(
+            "La partida comenzo.",
+            "Noche 1: todos guardan silencio.",
+            "Noche 1: todos guardan silencio."
+        )
+
+        assertEquals(
+            listOf("La partida comenzo.", "Noche 1: todos guardan silencio."),
+            GameplayTableUi.publicEvents(
+                history,
+                "Noche 1: todos guardan silencio.",
+                "Sin eventos."
+            )
+        )
+        assertEquals(
+            listOf("La partida comenzo."),
+            GameplayTableUi.historicalPublicEvents(
+                history,
+                "Noche 1: todos guardan silencio.",
+                "Sin eventos."
+            )
+        )
+        assertEquals(
+            listOf("Evento repetido.", "Otro evento."),
+            GameplayTableUi.historicalPublicEvents(
+                listOf("Evento repetido.", "Otro evento.", "Evento repetido."),
+                "Evento repetido.",
+                "Sin eventos."
+            )
+        )
+        assertEquals(
+            listOf("Sin eventos."),
+            GameplayTableUi.historicalPublicEvents(emptyList(), "", "Sin eventos.")
+        )
+    }
+
     private fun assertSplit(players: List<GamePlayer>, expectedLeft: Int, expectedRight: Int) {
         val (left, right) = GameplayTableUi.splitCompanions(players)
 
@@ -336,6 +477,26 @@ class GameplayTableUiTest {
             players = players(5),
             phase = phase,
             round = round
+        )
+    }
+
+    private fun actionSession(roleKey: String, phase: GamePhase): GameSession {
+        val team = if (roleKey in GameRules.traitorRoleKeys) {
+            GameRules.TRAITOR_WINNER
+        } else {
+            GameRules.TOWN_WINNER
+        }
+        val humanRole = GameRole(roleKey, roleKey, team, "rol_${roleKey}_gaucho")
+        val villager = GameRole("aldeano", "Aldeano", GameRules.TOWN_WINNER, "rol_aldeano_gaucho")
+        return GameSession(
+            code = "TEST",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                GamePlayer("Humano", "H", role = humanRole, isHuman = true),
+                GamePlayer("Objetivo", "O", role = villager)
+            ),
+            phase = phase
         )
     }
 }

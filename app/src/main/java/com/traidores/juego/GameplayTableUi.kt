@@ -10,9 +10,6 @@ data class CompanionCardMetrics(
     val cardHeightDp: Int,
     val nameHeightDp: Int,
     val nameTextSp: Float,
-    val actionTextSp: Float,
-    val actionHeightDp: Int,
-    val actionWidthDp: Int,
     val scrollEnabled: Boolean
 )
 
@@ -21,6 +18,15 @@ enum class PublicEventType(val colorHex: String) {
     VOTING("#d4a24e"),
     DISCUSSION("#4a7fb5"),
     PHASE_START("#5a8a3c")
+}
+
+enum class GameplayActionTone(val colorHex: String, val darkText: Boolean) {
+    KILL("#8F2633", false),
+    SAVE("#5A8A3C", false),
+    INVESTIGATE("#4A7FB5", false),
+    SILENCE("#9A6A32", false),
+    DECIDE("#D4A24E", true),
+    DEFAULT("#2A2318", false)
 }
 
 enum class GameplayPeriod {
@@ -32,6 +38,11 @@ data class GameplayTransitionSpec(
     val period: GameplayPeriod,
     val title: String,
     val key: String
+)
+
+data class GameWinnerPresentation(
+    val winningPlayers: List<GamePlayer>,
+    val humanWon: Boolean
 )
 
 object GameplayTableUi {
@@ -105,6 +116,58 @@ object GameplayTableUi {
             GameEngine.canActOnTarget(session, human.name)
     }
 
+    fun validHumanTargets(session: GameSession): List<GamePlayer> {
+        return session.players.filter { GameEngine.canActOnTarget(session, it.name) }
+    }
+
+    fun confirmedTargetActionLabel(session: GameSession, selectedTarget: String): String? {
+        if (selectedTarget.isBlank() || !GameEngine.canActOnTarget(session, selectedTarget)) return null
+        return GameEngine.targetActionLabel(session, selectedTarget)
+            .takeIf { it.isNotBlank() }
+            ?.let { if (it == "CONTRAPUNTO") "SENALAR" else it }
+    }
+
+    fun actionToneFor(label: String): GameplayActionTone {
+        return when (label.uppercase()) {
+            "MATAR" -> GameplayActionTone.KILL
+            "SALVAR", "SALVARME" -> GameplayActionTone.SAVE
+            "INVESTIGAR" -> GameplayActionTone.INVESTIGATE
+            "SILENCIAR" -> GameplayActionTone.SILENCE
+            "VOTAR",
+            "DECIDIR",
+            "CONTRAPUNTO",
+            "SENALAR",
+            "REVELARME",
+            "ELEGIR BANDO",
+            "REVISAR BANDO" -> GameplayActionTone.DECIDE
+            else -> GameplayActionTone.DEFAULT
+        }
+    }
+
+    fun publicEvents(history: List<String>, current: String, fallback: String): List<String> {
+        val events = mutableListOf<String>()
+        (history + current).forEach { message ->
+            val clean = message.trim()
+            if (clean.isNotBlank() && events.lastOrNull() != clean) {
+                events += clean
+            }
+        }
+        if (events.isEmpty() && fallback.isNotBlank()) events += fallback.trim()
+        return events
+    }
+
+    fun historicalPublicEvents(history: List<String>, current: String, fallback: String): List<String> {
+        val normalizedCurrent = current.trim()
+        val historical = publicEvents(history, "", fallback).toMutableList()
+        if (normalizedCurrent.isNotBlank() && historical.lastOrNull() == normalizedCurrent) {
+            historical.removeAt(historical.lastIndex)
+        }
+        return historical.ifEmpty {
+            listOf(fallback.trim().ifBlank { normalizedCurrent })
+                .filter { it.isNotBlank() }
+        }
+    }
+
     fun newlyKilledAtDawn(
         session: GameSession,
         knownDeadPlayers: Set<String>
@@ -132,6 +195,27 @@ object GameplayTableUi {
         }
     }
 
+    fun winnerPresentation(session: GameSession): GameWinnerPresentation {
+        if (session.winner.isBlank()) {
+            return GameWinnerPresentation(emptyList(), humanWon = false)
+        }
+
+        val winningPlayers = session.players.filter { player ->
+            when {
+                player.role?.key == "desertor" -> session.desertorTeam == session.winner
+                session.winner == GameRules.TOWN_WINNER ->
+                    player.role?.team == GameRules.TOWN_WINNER
+                session.winner == GameRules.TRAITOR_WINNER ->
+                    player.role?.key in GameRules.traitorRoleKeys
+                else -> false
+            }
+        }
+        return GameWinnerPresentation(
+            winningPlayers = winningPlayers,
+            humanWon = winningPlayers.any { it.isHuman }
+        )
+    }
+
     fun companionCardMetrics(
         totalPlayers: Int,
         availableHeightDp: Int = 376
@@ -142,76 +226,61 @@ object GameplayTableUi {
             0, 1, 2 -> CompanionCardMetrics(
                 columnWidthDp = 112,
                 minCardWidthDp = 104,
-                itemHeightDp = 136,
+                itemHeightDp = 106,
                 itemGapDp = 4,
                 avatarSizeDp = 22,
                 cardWidthDp = 72,
                 cardHeightDp = 86,
                 nameHeightDp = 18,
                 nameTextSp = 10f,
-                actionTextSp = 9f,
-                actionHeightDp = 28,
-                actionWidthDp = 104,
                 scrollEnabled = false
             )
             3 -> CompanionCardMetrics(
                 columnWidthDp = 104,
                 minCardWidthDp = 96,
-                itemHeightDp = 116,
+                itemHeightDp = 89,
                 itemGapDp = 3,
                 avatarSizeDp = 20,
                 cardWidthDp = 60,
                 cardHeightDp = 72,
                 nameHeightDp = 17,
                 nameTextSp = 9.5f,
-                actionTextSp = 8f,
-                actionHeightDp = 24,
-                actionWidthDp = 96,
                 scrollEnabled = false
             )
             4 -> CompanionCardMetrics(
                 columnWidthDp = 94,
                 minCardWidthDp = 86,
-                itemHeightDp = 98,
+                itemHeightDp = 74,
                 itemGapDp = 2,
                 avatarSizeDp = 18,
                 cardWidthDp = 48,
                 cardHeightDp = 58,
                 nameHeightDp = 16,
                 nameTextSp = 9f,
-                actionTextSp = 7.5f,
-                actionHeightDp = 22,
-                actionWidthDp = 86,
                 scrollEnabled = false
             )
             5 -> CompanionCardMetrics(
                 columnWidthDp = 86,
                 minCardWidthDp = 78,
-                itemHeightDp = 89,
+                itemHeightDp = 65,
                 itemGapDp = 2,
                 avatarSizeDp = 16,
                 cardWidthDp = 42,
                 cardHeightDp = 50,
                 nameHeightDp = 15,
                 nameTextSp = 8.5f,
-                actionTextSp = 7f,
-                actionHeightDp = 20,
-                actionWidthDp = 78,
                 scrollEnabled = false
             )
             else -> CompanionCardMetrics(
                 columnWidthDp = SIDE_COLUMN_WIDTH_DP,
                 minCardWidthDp = 70,
-                itemHeightDp = 84,
+                itemHeightDp = 62,
                 itemGapDp = 2,
                 avatarSizeDp = 15,
                 cardWidthDp = 38,
                 cardHeightDp = 46,
                 nameHeightDp = 14,
                 nameTextSp = 8f,
-                actionTextSp = 6.5f,
-                actionHeightDp = 20,
-                actionWidthDp = 70,
                 scrollEnabled = scrollEnabled
             )
         }
@@ -222,7 +291,7 @@ object GameplayTableUi {
         val fittedItemHeight = minOf(base.itemHeightDp, usableHeight / playersPerSide)
         if (fittedItemHeight >= base.itemHeightDp) return base
 
-        val fixedContentHeight = base.actionHeightDp + base.nameHeightDp
+        val fixedContentHeight = base.nameHeightDp
         val fittedCardHeight = (fittedItemHeight - fixedContentHeight).coerceAtLeast(24)
         val fittedCardWidth = (
             base.cardWidthDp.toFloat() * fittedCardHeight / base.cardHeightDp

@@ -14,11 +14,13 @@ object MusicManager {
     private var activeScreens = 0
     private var currentTrackRes = R.raw.menu_music
     private var player: MediaPlayer? = null
+    private var victoryPlayer: MediaPlayer? = null
     private var transitionPaused = false
 
     private val pauseIfBackground = Runnable {
         if (activeScreens == 0) {
             player?.pause()
+            victoryPlayer?.pause()
         }
     }
 
@@ -48,6 +50,7 @@ object MusicManager {
         }
 
         player?.setVolume(volume, volume)
+        victoryPlayer?.setVolume(volume, volume)
 
         if (activeScreens > 0 && soundOn && volume > 0f && !transitionPaused) {
             if (player?.isPlaying == false) {
@@ -56,17 +59,32 @@ object MusicManager {
         } else {
             player?.pause()
         }
+
+        if (activeScreens > 0 && soundOn && volume > 0f && victoryPlayer != null) {
+            if (victoryPlayer?.isPlaying == false) {
+                victoryPlayer?.start()
+            }
+        } else if (!soundOn || volume <= 0f) {
+            victoryPlayer?.pause()
+        }
     }
 
     fun playMenuMusic(context: Context) {
+        stopVictoryMusic()
+        transitionPaused = false
         switchTrack(context, R.raw.menu_music)
     }
 
     fun playGameIntro(context: Context, session: GameSession) {
+        stopVictoryMusic()
+        transitionPaused = false
         switchTrack(context, dayTrackForMap(session.mapKey))
     }
 
     fun playGamePhase(context: Context, session: GameSession) {
+        if (session.winner.isNotBlank()) return
+        stopVictoryMusic()
+        transitionPaused = false
         switchTrack(context, trackForSession(session))
     }
 
@@ -76,6 +94,11 @@ object MusicManager {
     }
 
     fun resumeGamePhaseAfterTransition(context: Context, session: GameSession) {
+        if (session.winner.isNotBlank()) {
+            transitionPaused = true
+            player?.pause()
+            return
+        }
         transitionPaused = false
         switchTrack(context, trackForSession(session))
     }
@@ -91,10 +114,55 @@ object MusicManager {
         }
     }
 
+    fun playVictoryMusic(context: Context) {
+        if (victoryPlayer != null) {
+            refresh(context)
+            return
+        }
+
+        transitionPaused = true
+        player?.pause()
+        val appContext = context.applicationContext
+        val sharedPref = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val soundOn = sharedPref.getBoolean("sound_on", true)
+        val volume = sharedPref.getInt("music_volume", 80) / 100f
+        if (!soundOn || volume <= 0f) return
+
+        victoryPlayer = MediaPlayer.create(appContext, R.raw.victory_music)?.apply {
+            isLooping = false
+            setVolume(volume, volume)
+            setOnCompletionListener { completed ->
+                if (victoryPlayer === completed) {
+                    victoryPlayer = null
+                }
+                completed.release()
+            }
+            start()
+        }
+    }
+
+    fun resumeVictoryMusic(context: Context) {
+        transitionPaused = true
+        player?.pause()
+        refresh(context)
+    }
+
+    fun pauseVictoryMusic() {
+        victoryPlayer?.pause()
+    }
+
+    fun stopVictoryMusic() {
+        victoryPlayer?.runCatching {
+            stop()
+            release()
+        }
+        victoryPlayer = null
+    }
+
     private fun trackForSession(session: GameSession): Int {
         return when {
             session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
-            session.winner.isNotBlank() || isDecisiveDebate(session) -> R.raw.decisive_debate_music
+            isDecisiveDebate(session) -> R.raw.decisive_debate_music
             isNightPhase(session.phase) -> R.raw.night_phase_music
             else -> dayTrackForMap(session.mapKey)
         }
