@@ -24,6 +24,7 @@
         <activity android:name=".JugarActivity" android:screenOrientation="portrait" />
         <activity android:name=".LocalModeActivity" android:screenOrientation="portrait" />
         <activity android:name=".OnlineModeActivity" android:screenOrientation="portrait" />
+        <activity android:name=".LobbyBrowserActivity" android:screenOrientation="landscape" />
         <activity android:name=".LobbyActivity" android:screenOrientation="landscape" />
         <activity android:name=".AssigningRolesActivity" android:screenOrientation="landscape" />
         <activity android:name=".GameplayMockActivity" android:screenOrientation="landscape" />

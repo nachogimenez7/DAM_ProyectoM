@@ -59,6 +59,7 @@ class GameplayMockActivity : BaseActivity() {
     private var isDeathRevealRunning = false
     private var isSilenceRevealRunning = false
     private var isRolePreviewOpen = false
+    private var restoreRolePreviewOnResume = false
     private var isWinnerRevealVisible = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
@@ -67,19 +68,13 @@ class GameplayMockActivity : BaseActivity() {
     private var presentedPeriod: GameplayPeriod? = null
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
-    private var countdownStage: CountdownStage? = null
-    private var countdownPhaseIndex = -1
-    private var countdownRemainingMs = 0L
-    private var countdownTotalMs = 0L
-    private var countdownDeadlineMs = 0L
-    private var countdownRunning = false
+    private val countdown = GameplayCountdown()
     private var lastCountdownSecond = -1
     private var knownDeadPlayers = emptySet<String>()
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
-    private var pendingFeedback: GameplayFeedbackSpec? = null
-    private var isPrivateFeedbackVisible = false
+    private val feedbackState = GameplayFeedbackState()
     private lateinit var session: GameSession
     private var unreadChatCount = 0
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
@@ -236,6 +231,10 @@ class GameplayMockActivity : BaseActivity() {
         themeKey = themeFromIntentOrSession()
         val shouldShowInitialRoleReveal = savedInstanceState == null &&
             session.phase == GamePhase.REPARTO
+        val shouldRestoreRolePreview = savedInstanceState
+            ?.getBoolean(STATE_ROLE_PREVIEW_OPEN)
+            ?: false
+        val shouldPresentRolePreview = shouldShowInitialRoleReveal || shouldRestoreRolePreview
         lastPresentedTransitionKey = savedInstanceState?.getString(STATE_TRANSITION_KEY)
         if (shouldShowInitialRoleReveal) {
             lastPresentedTransitionKey = GameplayTableUi.transitionSpec(session).key
@@ -248,15 +247,19 @@ class GameplayMockActivity : BaseActivity() {
         isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
         isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: true
         selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
-        countdownStage = savedInstanceState
+        val restoredCountdownStage = savedInstanceState
             ?.getString(STATE_COUNTDOWN_STAGE)
             ?.let { runCatching { CountdownStage.valueOf(it) }.getOrNull() }
-        countdownPhaseIndex = savedInstanceState?.getInt(STATE_COUNTDOWN_PHASE_INDEX, -1) ?: -1
-        countdownRemainingMs = savedInstanceState?.getLong(STATE_COUNTDOWN_REMAINING_MS, 0L) ?: 0L
-        countdownTotalMs = savedInstanceState?.getLong(STATE_COUNTDOWN_TOTAL_MS, 0L) ?: 0L
+        countdown.restore(
+            stage = restoredCountdownStage,
+            phaseIndex = savedInstanceState?.getInt(STATE_COUNTDOWN_PHASE_INDEX, -1) ?: -1,
+            remainingMs = savedInstanceState?.getLong(STATE_COUNTDOWN_REMAINING_MS, 0L) ?: 0L,
+            totalMs = savedInstanceState?.getLong(STATE_COUNTDOWN_TOTAL_MS, 0L) ?: 0L
+        )
         @Suppress("DEPRECATION")
-        pendingFeedback = savedInstanceState?.getSerializable(STATE_PENDING_FEEDBACK)
-            as? GameplayFeedbackSpec
+        feedbackState.restore(
+            savedInstanceState?.getSerializable(STATE_PENDING_FEEDBACK) as? GameplayFeedbackSpec
+        )
         knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
         knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
         lastSeenChatCount = session.chatHistory.size
@@ -396,7 +399,7 @@ class GameplayMockActivity : BaseActivity() {
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
         renderChatPanelVisibility(animate = false)
-        if (shouldShowInitialRoleReveal) {
+        if (shouldPresentRolePreview) {
             isRolePreviewOpen = true
             rolePreviewOverlay.visibility = View.VISIBLE
             rolePreviewOverlay.alpha = 1f
@@ -405,9 +408,9 @@ class GameplayMockActivity : BaseActivity() {
         renderGame()
         gameplayRoot.post {
             renderPlayerColumns()
-            if (shouldShowInitialRoleReveal) {
+            if (shouldPresentRolePreview) {
                 isRolePreviewOpen = false
-                showRolePreview(initialReveal = true)
+                showRolePreview(initialReveal = shouldShowInitialRoleReveal)
             }
         }
     }
@@ -443,6 +446,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        restoreRolePreviewOnResume = isRolePreviewOpen
         pauseCountdown()
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
@@ -472,11 +476,16 @@ class GameplayMockActivity : BaseActivity() {
         if (::gameplayRoot.isInitialized) {
             applyGameplayTextScale()
         }
+        if (::session.isInitialized && restoreRolePreviewOnResume) {
+            restoreRolePreviewOnResume = false
+            gameplayRoot.post { showRolePreview() }
+            return
+        }
         if (::session.isInitialized && isWinnerRevealVisible) {
             MusicManager.resumeVictoryMusic(this)
             return
         }
-        if (::session.isInitialized && pendingFeedback?.blocksGameplay == true) {
+        if (::session.isInitialized && feedbackState.pending?.blocksGameplay == true) {
             showPendingPrivateFeedback()
             return
         }
@@ -499,12 +508,16 @@ class GameplayMockActivity : BaseActivity() {
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
         outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
         outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
+        outState.putBoolean(
+            STATE_ROLE_PREVIEW_OPEN,
+            isRolePreviewOpen || restoreRolePreviewOnResume
+        )
         outState.putString(STATE_SELECTED_TARGET, selectedTarget)
-        outState.putString(STATE_COUNTDOWN_STAGE, countdownStage?.name)
-        outState.putInt(STATE_COUNTDOWN_PHASE_INDEX, countdownPhaseIndex)
+        outState.putString(STATE_COUNTDOWN_STAGE, countdown.stage?.name)
+        outState.putInt(STATE_COUNTDOWN_PHASE_INDEX, countdown.phaseIndex)
         outState.putLong(STATE_COUNTDOWN_REMAINING_MS, countdownRemainingForSave())
-        outState.putLong(STATE_COUNTDOWN_TOTAL_MS, countdownTotalMs)
-        pendingFeedback?.takeIf { it.blocksGameplay }?.let {
+        outState.putLong(STATE_COUNTDOWN_TOTAL_MS, countdown.totalMs)
+        feedbackState.pending?.takeIf { it.blocksGameplay }?.let {
             outState.putSerializable(STATE_PENDING_FEEDBACK, it)
         }
         super.onSaveInstanceState(outState)
@@ -512,7 +525,7 @@ class GameplayMockActivity : BaseActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (isDeathRevealRunning || isSilenceRevealRunning || isPrivateFeedbackVisible) return
+        if (isDeathRevealRunning || isSilenceRevealRunning || feedbackState.privateVisible) return
         if (isWinnerRevealVisible) {
             returnToLobby()
             return
@@ -534,7 +547,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun handleCurrentPhase() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+        if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "La siguiente fase comienza enseguida.", Toast.LENGTH_SHORT).show()
             return
@@ -605,7 +618,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun performTargetAction(targetName: String) {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+        if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
             return
@@ -624,11 +637,9 @@ class GameplayMockActivity : BaseActivity() {
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
         session = resolved
         clearSelection()
-        if (feedback?.blocksGameplay == true) {
-            pendingFeedback = feedback
-        }
+        val feedbackPresentation = feedbackState.submit(feedback)
         renderGame()
-        if (feedback != null && !feedback.blocksGameplay) {
+        if (feedbackPresentation == GameplayFeedbackState.Presentation.BANNER && feedback != null) {
             showActionFeedbackBanner(feedback)
         }
     }
@@ -644,8 +655,7 @@ class GameplayMockActivity : BaseActivity() {
         val newlyDeadPlayers = collectNewlyDeadPlayers()
         collectNewlyMutedPlayers()
         val transitionSpec = GameplayTableUi.transitionSpec(session)
-        val blockingFeedbackPending = pendingFeedback?.blocksGameplay == true ||
-            isPrivateFeedbackVisible
+        val blockingFeedbackPending = feedbackState.blocksGameplay()
         val shouldStartTransition = !blockingFeedbackPending &&
             !isDayNightTransitionRunning &&
             GameplayTableUi.shouldPresentTransition(transitionSpec, lastPresentedTransitionKey)
@@ -866,8 +876,7 @@ class GameplayMockActivity : BaseActivity() {
         val mandatoryTargetSelection = GameEngine.requiresHumanInput(session) && validTargets.isNotEmpty()
         val canSelfProtect = selectedTarget.isBlank() &&
             GameplayTableUi.canHumanMedicSelfProtect(session)
-        val transitionLocked = countdownStage == CountdownStage.TRANSITION &&
-            countdownPhaseIndex == session.phaseIndex
+        val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
             (session.phase == GamePhase.DIA_DEBATE &&
@@ -1178,8 +1187,7 @@ class GameplayMockActivity : BaseActivity() {
     ) {
         val isAlive = GameEngine.isAlive(player)
         val actionLabel = GameEngine.targetActionLabel(session, player.name)
-        val transitionLocked = countdownStage == CountdownStage.TRANSITION &&
-            countdownPhaseIndex == session.phaseIndex
+        val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val isActionable = actionLabel.isNotBlank() && !transitionLocked
         val isSelected = player.name == selectedTarget
 
@@ -1428,7 +1436,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun sendHumanChatMessage() {
-        if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+        if (countdown.isTransitionLocked(session.phaseIndex)) {
             Toast.makeText(this, "El chat se habilita al comenzar la fase.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1476,8 +1484,8 @@ class GameplayMockActivity : BaseActivity() {
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
             isTraitorRevealRunning ||
-            isPrivateFeedbackVisible ||
-            pendingFeedback?.blocksGameplay == true ||
+            feedbackState.privateVisible ||
+            feedbackState.pending?.blocksGameplay == true ||
             desertorDialogOpen
         ) {
             pauseCountdown()
@@ -1491,23 +1499,22 @@ class GameplayMockActivity : BaseActivity() {
             clearCountdown()
             return
         }
-        if (countdownPhaseIndex != session.phaseIndex || countdownStage == null) {
-            countdownPhaseIndex = session.phaseIndex
-            countdownStage = CountdownStage.TRANSITION
-            countdownTotalMs = session.timingConfig.normalized().transitionSeconds * 1000L
-            countdownRemainingMs = countdownTotalMs
-        }
+        countdown.ensurePhase(
+            phaseIndex = session.phaseIndex,
+            transitionDurationMs = session.timingConfig.normalized().transitionSeconds * 1000L
+        )
         startCountdown()
     }
 
     private fun startCountdown() {
-        if (countdownRunning || countdownRemainingMs <= 0L) {
-            if (countdownRemainingMs <= 0L) onCountdownExpired()
-            return
+        when (countdown.start(SystemClock.elapsedRealtime())) {
+            GameplayCountdown.StartResult.ALREADY_RUNNING -> return
+            GameplayCountdown.StartResult.EXPIRED -> {
+                onCountdownExpired()
+                return
+            }
+            GameplayCountdown.StartResult.STARTED -> Unit
         }
-        countdownRunning = true
-        if (countdownTotalMs <= 0L) countdownTotalMs = countdownRemainingMs
-        countdownDeadlineMs = SystemClock.elapsedRealtime() + countdownRemainingMs
         lastCountdownSecond = -1
         phaseCountdown.visibility = View.VISIBLE
         renderAdvanceButton()
@@ -1515,12 +1522,9 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun updateCountdown() {
-        if (!countdownRunning) return
-        countdownRemainingMs = (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-        val seconds = kotlin.math.ceil(countdownRemainingMs / 1000.0).toInt()
-        renderCountdown(seconds)
-        if (countdownRemainingMs <= 0L) {
-            countdownRunning = false
+        val tick = countdown.tick(SystemClock.elapsedRealtime()) ?: return
+        renderCountdown(tick.seconds)
+        if (tick.expired) {
             autoAdvanceHandler.removeCallbacks(countdownRunnable)
             onCountdownExpired()
         } else {
@@ -1574,16 +1578,14 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun onCountdownExpired() {
-        if (session.winner.isNotBlank() || countdownPhaseIndex != session.phaseIndex) {
+        if (session.winner.isNotBlank() || countdown.phaseIndex != session.phaseIndex) {
             clearCountdown()
             return
         }
-        if (countdownStage == CountdownStage.TRANSITION) {
+        if (countdown.stage == CountdownStage.TRANSITION) {
             val phaseSeconds = activePhaseSeconds()
             if (phaseSeconds != null) {
-                countdownStage = CountdownStage.ACTIVE
-                countdownTotalMs = phaseSeconds * 1000L
-                countdownRemainingMs = countdownTotalMs
+                countdown.beginActive(phaseSeconds * 1000L)
                 renderAdvanceButton()
                 renderPlayerColumns()
                 startCountdown()
@@ -1659,23 +1661,16 @@ class GameplayMockActivity : BaseActivity() {
     private fun visualCountdownTotalMs(): Long {
         val transitionMs = session.timingConfig.normalized().transitionSeconds * 1000L
         val activeMs = activePhaseSeconds()?.times(1000L) ?: 0L
-        return (transitionMs + activeMs).coerceAtLeast(countdownTotalMs)
+        return countdown.visualTotalMs(transitionMs, activeMs)
     }
 
     private fun visualCountdownRemainingMs(): Long {
         val activeMs = activePhaseSeconds()?.times(1000L) ?: 0L
-        return when (countdownStage) {
-            CountdownStage.TRANSITION -> countdownRemainingMs + activeMs
-            CountdownStage.ACTIVE -> countdownRemainingMs
-            null -> 0L
-        }
+        return countdown.visualRemainingMs(activeMs)
     }
 
     private fun pauseCountdown() {
-        if (countdownRunning) {
-            countdownRemainingMs = (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-        }
-        countdownRunning = false
+        countdown.pause(SystemClock.elapsedRealtime())
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         phaseCountdown.animate().cancel()
         phaseProgressFill.animate().cancel()
@@ -1686,10 +1681,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun clearCountdown() {
         pauseCountdown()
-        countdownStage = null
-        countdownPhaseIndex = -1
-        countdownRemainingMs = 0L
-        countdownTotalMs = 0L
+        countdown.clear()
         lastCountdownSecond = -1
         phaseCountdown.visibility = View.INVISIBLE
         phaseCountdown.setTextColor(getColor(R.color.text_primary))
@@ -1699,11 +1691,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun countdownRemainingForSave(): Long {
-        return if (countdownRunning) {
-            (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-        } else {
-            countdownRemainingMs
-        }
+        return countdown.remainingForSave(SystemClock.elapsedRealtime())
     }
 
     private fun toggleHumanCard() {
@@ -1759,8 +1747,8 @@ class GameplayMockActivity : BaseActivity() {
             isSilenceRevealRunning ||
             isWinnerRevealVisible ||
             isTraitorRevealRunning ||
-            isPrivateFeedbackVisible ||
-            pendingFeedback?.blocksGameplay == true ||
+            feedbackState.privateVisible ||
+            feedbackState.pending?.blocksGameplay == true ||
             desertorDialogOpen
         ) {
             return
@@ -2004,8 +1992,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun showPendingPrivateFeedback() {
-        val spec = pendingFeedback?.takeIf { it.blocksGameplay } ?: return
-        if (isPrivateFeedbackVisible) return
+        val spec = feedbackState.privateToPresent() ?: return
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
@@ -2021,7 +2008,7 @@ class GameplayMockActivity : BaseActivity() {
         privateFeedbackPanel.scaleX = 0.94f
         privateFeedbackPanel.scaleY = 0.94f
         privateFeedbackOverlay.visibility = View.VISIBLE
-        isPrivateFeedbackVisible = true
+        feedbackState.markPrivateVisible()
 
         feedbackAnimator = AnimatorSet().apply {
             playTogether(
@@ -2041,9 +2028,9 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun dismissCurrentFeedback() {
-        if (!isPrivateFeedbackVisible) return
+        if (!feedbackState.privateVisible) return
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
-        pendingFeedback = null
+        feedbackState.dismissPrivate()
         feedbackAnimator?.cancel()
         feedbackAnimator = AnimatorSet().apply {
             playTogether(
@@ -2056,7 +2043,7 @@ class GameplayMockActivity : BaseActivity() {
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     feedbackAnimator = null
-                    isPrivateFeedbackVisible = false
+                    feedbackState.finishPrivateDismissal()
                     privateFeedbackOverlay.visibility = View.GONE
                     privateFeedbackOverlay.alpha = 1f
                     privateFeedbackPanel.alpha = 1f
@@ -2084,8 +2071,7 @@ class GameplayMockActivity : BaseActivity() {
         privateFeedbackPanel.alpha = 1f
         privateFeedbackPanel.scaleX = 1f
         privateFeedbackPanel.scaleY = 1f
-        isPrivateFeedbackVisible = false
-        if (!keepPending) pendingFeedback = null
+        feedbackState.cancel(keepPending)
     }
 
     private fun clearSelection() {
@@ -2113,11 +2099,11 @@ class GameplayMockActivity : BaseActivity() {
             isSilenceRevealRunning ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
-            isPrivateFeedbackVisible
+            feedbackState.privateVisible
         ) {
             return
         }
-        if (pendingFeedback?.blocksGameplay == true) {
+        if (feedbackState.pending?.blocksGameplay == true) {
             showPendingPrivateFeedback()
             return
         }
@@ -3312,16 +3298,12 @@ class GameplayMockActivity : BaseActivity() {
         val actionLabel: String
     )
 
-    private enum class CountdownStage {
-        TRANSITION,
-        ACTIVE
-    }
-
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
+        private const val STATE_ROLE_PREVIEW_OPEN = "role_preview_open"
         private const val STATE_SELECTED_TARGET = "selected_target"
         private const val STATE_COUNTDOWN_STAGE = "countdown_stage"
         private const val STATE_COUNTDOWN_PHASE_INDEX = "countdown_phase_index"

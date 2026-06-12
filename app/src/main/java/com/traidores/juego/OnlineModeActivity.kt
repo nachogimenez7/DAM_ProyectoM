@@ -1,5 +1,6 @@
 ﻿package com.traidores.juego
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -20,19 +21,41 @@ class OnlineModeActivity : BaseActivity() {
         btnBack.setOnClickListener { finish() }
 
         btnQuick.setOnClickListener {
-            Toast.makeText(this, "Abriendo mock de partida rapida.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, GameplayMockActivity::class.java))
+            openOnlineLobby(
+                mode = LobbyActivity.MODE_ONLINE_QUICK,
+                playerCount = LocalGameFactory.MAX_PLAYERS,
+                humanIsHost = false
+            )
         }
 
         btnSearch.setOnClickListener {
-            Toast.makeText(this, "Simulando busqueda de lobby.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, GameplayMockActivity::class.java))
+            startActivity(Intent(this, LobbyBrowserActivity::class.java))
         }
 
         btnCreate.setOnClickListener {
-            Toast.makeText(this, "Abriendo mock de lobby creado.", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, GameplayMockActivity::class.java))
+            openOnlineLobby(
+                mode = LobbyActivity.MODE_ONLINE_CREATE,
+                playerCount = 1,
+                humanIsHost = true
+            )
         }
+    }
+
+    private fun openOnlineLobby(mode: String, playerCount: Int, humanIsHost: Boolean) {
+        val playerName = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
+            .orEmpty()
+        val session = LocalGameFactory.createOnlineLobby(
+            humanName = playerName,
+            playerCount = playerCount,
+            humanIsHost = humanIsHost
+        )
+        Toast.makeText(this, "Entrando al lobby online.", Toast.LENGTH_SHORT).show()
+        startActivity(
+            Intent(this, LobbyActivity::class.java)
+                .putExtra(LobbyActivity.EXTRA_SESSION, session)
+                .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, mode)
+        )
     }
 }
 

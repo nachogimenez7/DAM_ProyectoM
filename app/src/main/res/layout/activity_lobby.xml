@@ -43,6 +43,7 @@
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/lobbyTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:fontFamily="@font/grenze"
@@ -126,6 +127,7 @@
                 android:orientation="vertical">
 
                 <TextView
+                    android:id="@+id/lobbyModeHint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
@@ -179,6 +181,7 @@
                 </LinearLayout>
 
                 <TextView
+                    android:id="@+id/mapDescription"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
@@ -261,9 +264,15 @@
                 <Button
                     android:id="@+id/btnStartGame"
                     style="@style/BtnGold"
-                    android:layout_height="38dp"
+                    android:layout_height="42dp"
                     android:layout_marginBottom="0dp"
-                    android:text="INICIAR" />
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="INICIAR"
+                    app:autoSizeMaxTextSize="15sp"
+                    app:autoSizeMinTextSize="9sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
             </LinearLayout>
         </ScrollView>
     </LinearLayout>

@@ -110,8 +110,25 @@ internal object LocalBotAi {
     }
 
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {
-        return rankedPublicSuspects(session, voter)
-            .firstOrNull()
+        val ranked = rankedPublicSuspects(session, voter)
+        val declaredTarget = declaredSuspicionTarget(session, voter)
+        val coordinated = if (isTraitor(voter)) {
+            val allies = GameEngine.alivePlayers(session)
+                .filter { it.name != voter.name && isTraitor(it) }
+                .map { it.name }
+                .toSet()
+            val coverVote = stableNoise(
+                "${session.code}:${session.round}:${voter.name}:cover-vote"
+            ) % 10 == 0
+            if (coverVote) ranked else ranked.filterNot { it.player.name in allies }
+        } else {
+            ranked
+        }
+        return coordinated
+            .firstOrNull { it.player.name == declaredTarget }
+            ?.player
+            ?.name
+            ?: coordinated.firstOrNull()
             ?.player
             ?.name
             ?: fallbackTarget(session, voter)
@@ -120,6 +137,8 @@ internal object LocalBotAi {
     fun openingDebateMessages(session: GameSession, limit: Int = 3): List<Pair<String, String>> {
         val mutedNames = session.players.filter { it.alive && it.muted }.map { safeName(it, session) }
         val noDeath = session.publicAnnouncement.contains("no murio nadie", ignoreCase = true)
+        val dawnVictim = eventTarget(session, session.publicAnnouncement, "murio")
+        val expelled = latestExpelledTarget(session)
         return messageBots(session, limit).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot).getOrNull(index)
                 ?: rankedPublicSuspects(session, bot).firstOrNull()
@@ -128,10 +147,14 @@ internal object LocalBotAi {
             val muted = mutedNames.lastOrNull()
             val intent = openingIntent(session, bot, index)
             val line = when {
+                dawnVictim != null && index == 0 ->
+                    "lo de $dawnVictim anoche cambia todo, $target explica bien pq $reason"
+                noDeath && index == 0 ->
+                    "no murio nadie pero no nos durmamos, $target vos q hiciste ayer?"
+                expelled != null && index == 1 ->
+                    "ayer sacamos a $expelled y seguimos igual, no votemos por inercia"
                 muted != null && index == 0 ->
                     "bueno $muted no puede contestar, $target vos q onda? bancas lo q dijiste?"
-                noDeath && index == 1 ->
-                    "igual q no haya muerto nadie no limpia a nadie eh, $target me hace ruido pq $reason"
                 else -> lineForIntent(session, bot, intent, target, reason)
             }
             bot.name to finishSpeech(line, session, bot, "opening:$index")
@@ -335,6 +358,42 @@ internal object LocalBotAi {
             if (!answered) return target
         }
         return null
+    }
+
+    private fun declaredSuspicionTarget(session: GameSession, bot: GamePlayer): String? {
+        val candidates = GameEngine.alivePlayers(session)
+            .filter { it.name != bot.name }
+        return recentPublicMessages(session)
+            .asReversed()
+            .asSequence()
+            .filter { it.speaker == bot.name }
+            .mapNotNull { message ->
+                candidates.firstOrNull { candidate ->
+                    mentionsName(message.message, candidate.name) &&
+                        hasAnySignal(message.message, accusationWords)
+                }?.name
+            }
+            .firstOrNull()
+    }
+
+    private fun latestExpelledTarget(session: GameSession): String? {
+        val announcement = session.publicHistory
+            .asReversed()
+            .firstOrNull { it.contains("expulso a", ignoreCase = true) }
+            ?: return null
+        return eventTarget(session, announcement, "expulso a")
+    }
+
+    private fun eventTarget(
+        session: GameSession,
+        announcement: String,
+        marker: String
+    ): String? {
+        if (!announcement.contains(marker, ignoreCase = true)) return null
+        return session.players
+            .sortedByDescending { it.name.length }
+            .firstOrNull { mentionsName(announcement, it.name) }
+            ?.let { safeName(it, session) }
     }
 
     private fun informalReason(reason: String?): String {

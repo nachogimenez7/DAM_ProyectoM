@@ -1032,6 +1032,122 @@ class GameEngineTest {
     }
 
     @Test
+    fun localRosterUsesConfiguredHumanNameAndFriendBotNames() {
+        var session = LocalGameFactory.createSession(humanName = "  Ignacio  ")
+        repeat(LocalGameFactory.MAX_PLAYERS - LocalGameFactory.MIN_PLAYERS) {
+            session = LocalGameFactory.addMockPlayer(session)
+        }
+
+        assertEquals("Ignacio", session.players.first().name)
+        assertTrue(session.players.first().isHuman)
+        assertEquals(
+            listOf(
+                "Nanuela",
+                "Kamila",
+                "Calbo",
+                "Carim",
+                "Walter",
+                "Safia",
+                "Emmanuele",
+                "Faustinho",
+                "JuanNieves",
+                "Bartolome",
+                "Teresa",
+                "CasaMas",
+                "Lusiano",
+                "Juako"
+            ),
+            session.players.drop(1).map { it.name }
+        )
+    }
+
+    @Test
+    fun onlineLobbyFactoryPreparesHostSearchAndQuickRooms() {
+        val created = LocalGameFactory.createOnlineLobby(
+            humanName = "Ignacio",
+            playerCount = 1,
+            humanIsHost = true
+        )
+        val searched = LocalGameFactory.createOnlineLobby(
+            humanName = "Ignacio",
+            playerCount = 8,
+            humanIsHost = false
+        )
+        val quick = LocalGameFactory.createOnlineLobby(
+            humanName = "Ignacio",
+            playerCount = LocalGameFactory.MAX_PLAYERS,
+            humanIsHost = false
+        )
+
+        assertEquals(1, created.players.size)
+        assertTrue(created.players.first().isHuman)
+        assertEquals(8, searched.players.size)
+        assertFalse(searched.players.first().isHuman)
+        assertTrue(searched.players.last().isHuman)
+        assertEquals(LocalGameFactory.MAX_PLAYERS, quick.players.size)
+        assertTrue(quick.players.last().isHuman)
+        assertEquals("ONLINE-MOCK", quick.code)
+    }
+
+    @Test
+    fun botVoteKeepsItsLatestPublicAccusation() {
+        val session = publicNameSession().copy(
+            code = "PUBLIC-VOTE",
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "para mi Dina esta re rara, voto a Dina"),
+                GameChatMessage("Humano", "yo sigo dudando de Ana")
+            )
+        )
+        val beto = GameEngine.playerByName(session, "Beto")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, beto))
+    }
+
+    @Test
+    fun traitorBotsUsuallyAvoidVotingForLivingAllies() {
+        val base = GameSession(
+            code = "ALLY-VOTE",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = advancedPlayers(),
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "Mercenario esta raro y no responde"),
+                GameChatMessage("Policia", "Mercenario tiene que explicar")
+            )
+        )
+        val assassin = GameEngine.playerByName(base, "Asesino")!!
+        val allyVotes = (1..30).count { round ->
+            val target = LocalBotAi.chooseVoteTarget(base.copy(round = round), assassin)
+            GameEngine.playerByName(base, target)?.role?.key in GameRules.traitorRoleKeys
+        }
+
+        assertTrue("Votos aliados: $allyVotes", allyVotes <= 6)
+    }
+
+    @Test
+    fun botsReactToDawnAndPreviousExpulsionUsingOnlyPublicEvents() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Amanecer: murio Dina.",
+            publicHistory = listOf(
+                "La mesa expulso a Ema.",
+                "Amanecer: murio Dina."
+            )
+        )
+
+        val messages = LocalBotAi.openingDebateMessages(session, limit = 4)
+            .joinToString(" ") { it.second }
+
+        assertTrue(messages.contains("dina", ignoreCase = true))
+        assertTrue(messages.contains("ema", ignoreCase = true))
+        assertFalse(messages.contains("asesino", ignoreCase = true))
+        assertFalse(messages.contains("policia", ignoreCase = true))
+        assertFalse(messages.contains("medico", ignoreCase = true))
+    }
+
+    @Test
     fun mutedHumanCanReadButCannotWriteChat() {
         val session = baseSession().copy(
             phase = GamePhase.DIA_DEBATE,

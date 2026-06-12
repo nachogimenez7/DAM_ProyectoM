@@ -310,32 +310,65 @@ object LocalGameFactory {
         GameMap("medieval", "Medieval", R.drawable.mapa_medieval, "medieval")
     )
 
-    private val defaultPlayers = listOf(
-        GamePlayer("Nacho", "N", isHuman = true),
-        GamePlayer("Martina", "M"),
-        GamePlayer("Tomas", "T"),
-        GamePlayer("Sofia", "S"),
-        GamePlayer("Camila", "C"),
-        GamePlayer("Juan", "J"),
-        GamePlayer("Valen", "V"),
-        GamePlayer("Bruno", "B"),
-        GamePlayer("Luz", "L"),
-        GamePlayer("Mateo", "A"),
-        GamePlayer("Rocio", "R"),
-        GamePlayer("Julia", "U"),
-        GamePlayer("Nico", "I"),
-        GamePlayer("Flor", "F"),
-        GamePlayer("Dante", "D")
+    private val defaultBots = listOf(
+        "Nanuela",
+        "Kamila",
+        "Calbo",
+        "Carim",
+        "Walter",
+        "Safia",
+        "Emmanuele",
+        "Faustinho",
+        "JuanNieves",
+        "Bartolome",
+        "Teresa",
+        "CasaMas",
+        "Lusiano",
+        "Juako"
     )
 
-    fun createSession(joinedByCode: Boolean = false): GameSession {
+    fun createSession(
+        joinedByCode: Boolean = false,
+        humanName: String = ""
+    ): GameSession {
         val map = maps.first()
+        val requestedName = humanName.trim().take(18).ifBlank { "Nacho" }
+        val localPlayerName = if (defaultBots.any { it.equals(requestedName, ignoreCase = true) }) {
+            "$requestedName Vos".take(18)
+        } else {
+            requestedName
+        }
+        val players = listOf(
+            GamePlayer(localPlayerName, playerInitial(localPlayerName), isHuman = true)
+        ) + defaultBots.map { name ->
+            GamePlayer(name, playerInitial(name))
+        }
         return GameSession(
             code = if (joinedByCode) "PAMPA-42" else "SALA-01",
             mapKey = map.key,
             mapName = map.name,
-            players = defaultPlayers.take(MIN_PLAYERS)
+            players = players.take(MIN_PLAYERS)
         )
+    }
+
+    fun createOnlineLobby(
+        humanName: String,
+        playerCount: Int,
+        humanIsHost: Boolean
+    ): GameSession {
+        var session = createSession(humanName = humanName).let {
+            it.copy(players = it.players.take(1))
+        }
+        while (session.players.size < playerCount.coerceIn(1, MAX_PLAYERS)) {
+            session = addMockPlayer(session)
+        }
+        if (!humanIsHost) {
+            val human = session.players.first { it.isHuman }
+            session = session.copy(
+                players = session.players.filterNot { it.isHuman } + human
+            )
+        }
+        return session.copy(code = "ONLINE-MOCK")
     }
 
     fun selectMap(session: GameSession, mapKey: String): GameSession {
@@ -346,7 +379,8 @@ object LocalGameFactory {
     fun addMockPlayer(session: GameSession): GameSession {
         if (session.players.size >= MAX_PLAYERS) return session
         val currentNames = session.players.map { it.name }.toSet()
-        val next = defaultPlayers.firstOrNull { it.name !in currentNames } ?: return session
+        val nextName = defaultBots.firstOrNull { it !in currentNames } ?: return session
+        val next = GamePlayer(nextName, playerInitial(nextName))
         return session.copy(players = session.players + next)
     }
 
@@ -358,6 +392,10 @@ object LocalGameFactory {
     fun removePlayer(session: GameSession, index: Int): GameSession {
         if (index <= 0 || index >= session.players.size) return session
         return session.copy(players = session.players.filterIndexed { playerIndex, _ -> playerIndex != index })
+    }
+
+    private fun playerInitial(name: String): String {
+        return name.trim().firstOrNull()?.uppercase() ?: "?"
     }
 
     fun minimumPlayersForRole(roleKey: String): Int {

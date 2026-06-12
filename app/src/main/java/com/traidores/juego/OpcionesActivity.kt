@@ -54,6 +54,7 @@ class OpcionesActivity : BaseActivity() {
         labelVoices = findViewById(R.id.labelVoices)
         etUsername = findViewById(R.id.etUsername)
         etPassword = findViewById(R.id.etPassword)
+        etUsername.setText(sharedPref.getString(PREF_PLAYER_NAME, "").orEmpty())
         btnLogin = findViewById(R.id.btnLogin)
         btnRegister = findViewById(R.id.btnRegister)
         switchVibration = findViewById(R.id.switchVibration)
@@ -132,6 +133,7 @@ class OpcionesActivity : BaseActivity() {
             if (username.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, emptyLoginMessage(), Toast.LENGTH_SHORT).show()
             } else {
+                sharedPref.edit().putString(PREF_PLAYER_NAME, username).apply()
                 Toast.makeText(this, welcomeMessage(username), Toast.LENGTH_LONG).show()
                 finish()
             }
@@ -144,6 +146,7 @@ class OpcionesActivity : BaseActivity() {
             if (username.isEmpty() || password.isEmpty()) {
                 Toast.makeText(this, emptyRegisterMessage(), Toast.LENGTH_SHORT).show()
             } else {
+                sharedPref.edit().putString(PREF_PLAYER_NAME, username).apply()
                 Toast.makeText(this, registerMessage(username), Toast.LENGTH_LONG).show()
             }
         }
@@ -173,6 +176,19 @@ class OpcionesActivity : BaseActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         }
+    }
+
+    override fun onPause() {
+        if (::etUsername.isInitialized) {
+            val username = etUsername.text.toString().trim()
+            if (username.isNotBlank()) {
+                getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_PLAYER_NAME, username)
+                    .apply()
+            }
+        }
+        super.onPause()
     }
 
     private fun updateVolumeLabels(music: Int, voices: Int) {
@@ -255,6 +271,10 @@ class OpcionesActivity : BaseActivity() {
 
     private fun focusAccountMessage(): String {
         return if (currentLanguage == "English (EN)") "Log in or register to play online" else "Inicia sesion o registrate para jugar en linea"
+    }
+
+    companion object {
+        const val PREF_PLAYER_NAME = "player_name"
     }
 }
 

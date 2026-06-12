@@ -5,6 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Gravity
 import android.widget.ImageView
 import android.widget.Button
@@ -17,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.widget.TextViewCompat
 
 class LobbyActivity : BaseActivity() {
 
@@ -29,6 +31,11 @@ class LobbyActivity : BaseActivity() {
     private lateinit var mapCards: List<ImageView>
     private lateinit var debugRoleButton: Button
     private lateinit var timingOptionsButton: Button
+    private lateinit var lobbyTitle: TextView
+    private lateinit var lobbyModeHint: TextView
+    private lateinit var mapDescription: TextView
+    private var lobbyMode = MODE_LOCAL
+    private var onlineLobbyName = ""
     private var debugRoleIndex = 0
 
     private val debugRoles = listOf(
@@ -49,6 +56,8 @@ class LobbyActivity : BaseActivity() {
         setContentView(R.layout.activity_lobby)
 
         session = readSession() ?: LocalGameFactory.createSession()
+        lobbyMode = intent.getStringExtra(EXTRA_LOBBY_MODE) ?: MODE_LOCAL
+        onlineLobbyName = intent.getStringExtra(EXTRA_LOBBY_NAME).orEmpty()
 
         val btnBack: ImageButton = findViewById(R.id.btnBack)
         val headerLabel: TextView = findViewById(R.id.headerLabel)
@@ -58,6 +67,9 @@ class LobbyActivity : BaseActivity() {
         val debugRoleSection: LinearLayout = findViewById(R.id.debugRoleSection)
         debugRoleButton = findViewById(R.id.btnDebugRole)
         timingOptionsButton = findViewById(R.id.btnTimingOptions)
+        lobbyTitle = findViewById(R.id.lobbyTitle)
+        lobbyModeHint = findViewById(R.id.lobbyModeHint)
+        mapDescription = findViewById(R.id.mapDescription)
         lobbyMapBackground = findViewById(R.id.lobbyMapBackground)
         mapName = findViewById(R.id.mapName)
         startButton = findViewById(R.id.btnStartGame)
@@ -73,13 +85,28 @@ class LobbyActivity : BaseActivity() {
         headerLabel.text = "MAPA"
         setupMapSelector()
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        debugRoleSection.visibility = if (isDebugBuild) View.VISIBLE else View.GONE
+        debugRoleSection.visibility = if (isDebugBuild && lobbyMode == MODE_LOCAL) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         debugRoleButton.setOnClickListener {
             debugRoleIndex = (debugRoleIndex + 1) % debugRoles.size
             renderDebugRole()
         }
         timingOptionsButton.setOnClickListener { showTimingDialog() }
         btnAdvancedOptions.setOnClickListener { showAdvancedOptionsDialog() }
+
+        if (isOnlineGuest()) {
+            btnAddPlayer.isEnabled = false
+            btnAddPlayer.alpha = 0.35f
+            btnRemovePlayer.isEnabled = false
+            btnRemovePlayer.alpha = 0.35f
+            timingOptionsButton.isEnabled = false
+            timingOptionsButton.alpha = 0.55f
+            btnAdvancedOptions.isEnabled = false
+            btnAdvancedOptions.alpha = 0.55f
+        }
 
         btnAddPlayer.setOnClickListener {
             val updated = LocalGameFactory.addMockPlayer(session)
@@ -93,7 +120,12 @@ class LobbyActivity : BaseActivity() {
         btnRemovePlayer.setOnClickListener {
             val updated = LocalGameFactory.removeLastPlayer(session)
             if (updated.players.size == session.players.size) {
-                Toast.makeText(this, "Minimo ${LocalGameFactory.MIN_PLAYERS} jugadores para iniciar.", Toast.LENGTH_SHORT).show()
+                val message = if (lobbyMode == MODE_ONLINE_CREATE) {
+                    "La sala necesita conservar al anfitrion."
+                } else {
+                    "Minimo ${LocalGameFactory.MIN_PLAYERS} jugadores para iniciar."
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
             session = updated
             renderLobby()
@@ -116,7 +148,12 @@ class LobbyActivity : BaseActivity() {
                 ).show()
             } else {
                 val assigned = LocalGameFactory.assignRoles(session, selectedRoleKey)
-                Toast.makeText(this, "Iniciando partida local.", Toast.LENGTH_SHORT).show()
+                val message = if (lobbyMode == MODE_ONLINE_CREATE) {
+                    "Iniciando simulacion de partida online."
+                } else {
+                    "Iniciando partida local."
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 startActivity(
                     Intent(this, AssigningRolesActivity::class.java)
                         .putExtra(EXTRA_SESSION, assigned)
@@ -134,8 +171,30 @@ class LobbyActivity : BaseActivity() {
 
     private fun renderLobby() {
         playerCount.text = "${session.players.size}/${LocalGameFactory.MAX_PLAYERS} JUGADORES"
-        startButton.isEnabled = session.players.size >= LocalGameFactory.MIN_PLAYERS
+        lobbyTitle.text = when (lobbyMode) {
+            MODE_ONLINE_CREATE -> "LOBBY ONLINE - TU SALA"
+            MODE_ONLINE_SEARCH -> onlineLobbyName
+                .takeIf { it.isNotBlank() }
+                ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
+                ?: "LOBBY ONLINE - SALA ENCONTRADA"
+            MODE_ONLINE_QUICK -> "LOBBY ONLINE - PARTIDA RAPIDA"
+            else -> "LOBBY LOCAL"
+        }
+        lobbyModeHint.text = when (lobbyMode) {
+            MODE_ONLINE_CREATE ->
+                "Configura la sala y espera a que se sumen jugadores."
+            MODE_ONLINE_SEARCH ->
+                "Sala encontrada. El anfitrion controla la configuracion."
+            MODE_ONLINE_QUICK ->
+                "Partida completa. Comenzara cuando el anfitrion confirme."
+            else ->
+                "Elegi mapa, tiempos y participantes antes de iniciar."
+        }
+        mapDescription.text = mapDescriptionFor(session.mapKey)
+        startButton.isEnabled = !isOnlineGuest() &&
+            session.players.size >= LocalGameFactory.MIN_PLAYERS
         startButton.alpha = if (startButton.isEnabled) 1f else 0.55f
+        startButton.text = if (isOnlineGuest()) "ESPERANDO AL ANFITRION" else "INICIAR PARTIDA"
         mapName.text = session.mapName.uppercase()
         lobbyMapBackground.setImageResource(currentMap().imageRes)
         mapCards.forEachIndexed { index, imageView ->
@@ -156,7 +215,7 @@ class LobbyActivity : BaseActivity() {
                 showPlayerProfile(index, player)
             }
             row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
-                isEnabled = index != 0
+                isEnabled = index != 0 && !isOnlineGuest()
                 alpha = if (isEnabled) 1f else 0.28f
                 setOnClickListener { confirmPlayerRemoval(index, player) }
             }
@@ -169,6 +228,14 @@ class LobbyActivity : BaseActivity() {
             val map = LocalGameFactory.maps[index]
             imageView.setImageResource(map.imageRes)
             imageView.setOnClickListener {
+                if (isOnlineGuest()) {
+                    Toast.makeText(
+                        this,
+                        "El mapa lo administra el anfitrion.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@setOnClickListener
+                }
                 session = LocalGameFactory.selectMap(session, map.key)
                 renderLobby()
             }
@@ -246,7 +313,15 @@ class LobbyActivity : BaseActivity() {
             presetRow.addView(button, params)
         }
         val customPresetButton = compactDialogButton("PERSONALIZADO").apply {
-            textSize = 11f
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this,
+                8,
+                11,
+                1,
+                TypedValue.COMPLEX_UNIT_SP
+            )
+            maxLines = 1
+            isSingleLine = true
             isAllCaps = false
             setOnClickListener {
                 customMode = true
@@ -256,7 +331,7 @@ class LobbyActivity : BaseActivity() {
         customButton = customPresetButton
         presetRow.addView(
             customPresetButton,
-            LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginStart = dp(7) }
+            LinearLayout.LayoutParams(0, dp(38), 1.18f).apply { marginStart = dp(7) }
         )
         content.addView(
             presetRow,
@@ -328,7 +403,7 @@ class LobbyActivity : BaseActivity() {
                 dialog.dismiss()
             }
         }
-        showLandscapeDialog(dialog, widthDp = 520)
+        showLandscapeDialog(dialog, widthDp = 620)
     }
 
     private fun showAdvancedOptionsDialog() {
@@ -471,7 +546,11 @@ class LobbyActivity : BaseActivity() {
 
     private fun showPlayerProfile(index: Int, player: GamePlayer) {
         val status = if (index == 0) "Anfitrion de la sala" else "Participante listo"
-        val type = if (player.isHuman) "Jugador local" else "Bot local"
+        val type = when {
+            player.isHuman -> "Tu perfil"
+            lobbyMode != MODE_LOCAL -> "Participante simulado"
+            else -> "Bot local"
+        }
         AlertDialog.Builder(this)
             .setTitle(player.name)
             .setMessage("$status\n$type\nMapa: ${session.mapName}")
@@ -480,6 +559,10 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun confirmPlayerRemoval(index: Int, player: GamePlayer) {
+        if (isOnlineGuest()) {
+            Toast.makeText(this, "Solo el anfitrion puede expulsar.", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (index == 0) {
             Toast.makeText(this, "El anfitrion no se puede expulsar.", Toast.LENGTH_SHORT).show()
             return
@@ -500,6 +583,21 @@ class LobbyActivity : BaseActivity() {
         return LocalGameFactory.maps.firstOrNull { it.key == session.mapKey } ?: LocalGameFactory.maps.first()
     }
 
+    private fun mapDescriptionFor(mapKey: String): String {
+        return when (mapKey) {
+            "grecia" ->
+                "Intriga entre templos y plazas. Rol exclusivo futuro: Oraculo."
+            "medieval" ->
+                "Secretos entre murallas y castillos. Rol exclusivo futuro: Bufon."
+            else ->
+                "Sospechas en la pampa y el pueblo. Rol exclusivo: Payador."
+        }
+    }
+
+    private fun isOnlineGuest(): Boolean {
+        return lobbyMode == MODE_ONLINE_SEARCH || lobbyMode == MODE_ONLINE_QUICK
+    }
+
     @Suppress("DEPRECATION")
     private fun readSession(): GameSession? {
         return intent.getSerializableExtra(EXTRA_SESSION) as? GameSession
@@ -507,6 +605,12 @@ class LobbyActivity : BaseActivity() {
 
     companion object {
         const val EXTRA_SESSION = "extra_session"
+        const val EXTRA_LOBBY_MODE = "extra_lobby_mode"
+        const val EXTRA_LOBBY_NAME = "extra_lobby_name"
+        const val MODE_LOCAL = "local"
+        const val MODE_ONLINE_CREATE = "online_create"
+        const val MODE_ONLINE_SEARCH = "online_search"
+        const val MODE_ONLINE_QUICK = "online_quick"
     }
 
     private data class RoleCountPreview(val label: String, val count: Int)
