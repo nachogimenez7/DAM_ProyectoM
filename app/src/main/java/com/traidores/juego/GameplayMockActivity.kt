@@ -7,14 +7,10 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
-import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
@@ -79,7 +75,6 @@ class GameplayMockActivity : BaseActivity() {
     private var unreadChatCount = 0
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
-    private val traitorRevealDismissRunnable = Runnable { dismissTraitorReveal() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
     private val countdownRunnable = object : Runnable {
@@ -87,24 +82,11 @@ class GameplayMockActivity : BaseActivity() {
             updateCountdown()
         }
     }
-    private val transitionMusicRunnable = Runnable {
-        if (isDayNightTransitionRunning) {
-            MusicManager.resumeGamePhaseAfterTransition(this, session)
-        }
-    }
-
     private var actionPulseAnimator: AnimatorSet? = null
-    private var dayNightAnimator: AnimatorSet? = null
-    private var deathRevealAnimator: AnimatorSet? = null
-    private var deathRevealSoundPlayer: MediaPlayer? = null
     private var eventLogHeightAnimator: ValueAnimator? = null
-    private var silenceRevealAnimator: AnimatorSet? = null
-    private var silenceRevealSoundPlayer: MediaPlayer? = null
-    private var traitorRevealAnimator: AnimatorSet? = null
-    private var transitionSoundPlayer: MediaPlayer? = null
-    private var winnerRevealAnimator: AnimatorSet? = null
     private var feedbackAnimator: AnimatorSet? = null
-    private var rolePreviewAnimator: AnimatorSet? = null
+    private lateinit var rolePreviewAnimator: RolePreviewAnimator
+    private lateinit var traitorRevealAnimator: TraitorRevealAnimator
 
     private lateinit var actionFeedbackBanner: LinearLayout
     private lateinit var actionFeedbackBannerMessage: TextView
@@ -187,6 +169,9 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var transitionSun: ImageView
     private lateinit var transitionTitle: TextView
     private lateinit var transitionToBackground: ImageView
+    private lateinit var dayNightTransitionAnimator: DayNightTransitionAnimator
+    private lateinit var deathRevealAnimator: DeathRevealAnimator
+    private lateinit var silenceRevealAnimator: SilenceRevealAnimator
     private lateinit var traitorRevealCards: LinearLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
@@ -208,8 +193,8 @@ class GameplayMockActivity : BaseActivity() {
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
     private val playerCardViews = linkedMapOf<String, SidePlayerCardHolder>()
-    private val winnerCardViews = mutableListOf<View>()
-    private val winnerCardFinalAlphas = linkedMapOf<View, Float>()
+    private lateinit var winnerRevealAnimator: WinnerRevealAnimator
+    private lateinit var winnerResultsRenderer: WinnerResultsRenderer
 
     private data class SidePlayerCardHolder(
         val root: LinearLayout,
@@ -332,6 +317,17 @@ class GameplayMockActivity : BaseActivity() {
         rolePreviewOverlay = findViewById(R.id.rolePreviewOverlay)
         rolePreviewScroll = findViewById(R.id.rolePreviewScroll)
         rolePreviewTeam = findViewById(R.id.rolePreviewTeam)
+        rolePreviewAnimator = RolePreviewAnimator(
+            overlay = rolePreviewOverlay,
+            content = rolePreviewContent,
+            mapBackground = rolePreviewMapBackground,
+            roleImage = rolePreviewImage,
+            roleName = rolePreviewName,
+            roleTeam = rolePreviewTeam,
+            roleFunction = rolePreviewFunction,
+            roleAdvice = rolePreviewAdvice,
+            dp = ::dp
+        )
         silenceRevealCageDoor = findViewById(R.id.silenceRevealCageDoor)
         silenceRevealCageLeft = findViewById(R.id.silenceRevealCageLeft)
         silenceRevealCageLock = findViewById(R.id.silenceRevealCageLock)
@@ -347,9 +343,64 @@ class GameplayMockActivity : BaseActivity() {
         transitionSun = findViewById(R.id.transitionSun)
         transitionTitle = findViewById(R.id.transitionTitle)
         transitionToBackground = findViewById(R.id.transitionToBackground)
+        dayNightTransitionAnimator = DayNightTransitionAnimator(
+            context = this,
+            handler = autoAdvanceHandler,
+            overlay = dayNightTransitionOverlay,
+            fromBackground = transitionFromBackground,
+            toBackground = transitionToBackground,
+            sun = transitionSun,
+            moon = transitionMoon,
+            shade = transitionShade,
+            title = transitionTitle,
+            backgroundFor = { period ->
+                backgroundDrawableFor(themeKey, period == GameplayPeriod.NIGHT)
+            },
+            onMusicCue = {
+                MusicManager.resumeGamePhaseAfterTransition(this, session)
+            },
+            onFinished = { spec ->
+                finishDayNightTransition(spec)
+            }
+        )
+        deathRevealAnimator = DeathRevealAnimator(
+            context = this,
+            overlay = deathRevealOverlay,
+            content = deathRevealContent,
+            card = deathRevealCard,
+            cardBack = deathRevealCardBack,
+            cardFront = deathRevealCardFront,
+            bloodLeft = deathRevealBloodLeft,
+            bloodRight = deathRevealBloodRight,
+            flash = deathRevealFlash,
+            playerName = deathRevealPlayerName,
+            roleName = deathRevealRoleName,
+            roleImageFor = ::roleImageFor,
+            dp = ::dp,
+            onFinished = ::finishDeathReveal
+        )
+        silenceRevealAnimator = SilenceRevealAnimator(
+            context = this,
+            overlay = silenceRevealOverlay,
+            content = silenceRevealContent,
+            card = silenceRevealCard,
+            cageLeft = silenceRevealCageLeft,
+            cageRight = silenceRevealCageRight,
+            cageDoor = silenceRevealCageDoor,
+            cageLock = silenceRevealCageLock,
+            playerName = silenceRevealPlayerName,
+            dp = ::dp,
+            onFinished = ::finishSilenceReveal
+        )
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
         traitorRevealContent = findViewById(R.id.traitorRevealContent)
         traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
+        traitorRevealAnimator = TraitorRevealAnimator(
+            overlay = traitorRevealOverlay,
+            content = traitorRevealContent,
+            cards = traitorRevealCards,
+            handler = autoAdvanceHandler
+        )
         winnerRevealBackground = findViewById(R.id.winnerRevealBackground)
         winnerRevealCards = findViewById(R.id.winnerRevealCards)
         winnerRevealContent = findViewById(R.id.winnerRevealContent)
@@ -364,6 +415,25 @@ class GameplayMockActivity : BaseActivity() {
         winnerSummaryPlayers = findViewById(R.id.winnerSummaryPlayers)
         winnerSummaryRounds = findViewById(R.id.winnerSummaryRounds)
         winnerSummaryTimeline = findViewById(R.id.winnerSummaryTimeline)
+        winnerRevealAnimator = WinnerRevealAnimator(
+            overlay = winnerRevealOverlay,
+            panel = winnerRevealPanel,
+            title = winnerRevealTitle,
+            personalResult = winnerRevealPersonalResult,
+            shine = winnerRevealShine,
+            dp = ::dp
+        )
+        winnerResultsRenderer = WinnerResultsRenderer(
+            context = this,
+            content = winnerRevealContent,
+            cards = winnerRevealCards,
+            rounds = winnerSummaryRounds,
+            duration = winnerSummaryDuration,
+            eliminatedCount = winnerSummaryPlayers,
+            eliminatedPlayers = winnerSummaryHighlight,
+            timeline = winnerSummaryTimeline,
+            roleImageFor = ::roleImageFor
+        )
 
         applyGameplayTextScale()
 
@@ -401,9 +471,7 @@ class GameplayMockActivity : BaseActivity() {
         renderChatPanelVisibility(animate = false)
         if (shouldPresentRolePreview) {
             isRolePreviewOpen = true
-            rolePreviewOverlay.visibility = View.VISIBLE
-            rolePreviewOverlay.alpha = 1f
-            rolePreviewContent.alpha = 0f
+            rolePreviewAnimator.reserveVisible()
         }
         renderGame()
         gameplayRoot.post {
@@ -423,20 +491,12 @@ class GameplayMockActivity : BaseActivity() {
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = false)
-        rolePreviewAnimator?.removeAllListeners()
-        rolePreviewAnimator?.cancel()
-        rolePreviewAnimator = null
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
-        releaseTransitionSound()
-        releaseDeathRevealSound()
-        releaseSilenceRevealSound()
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
         } else {
@@ -455,18 +515,11 @@ class GameplayMockActivity : BaseActivity() {
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = true)
-        rolePreviewAnimator?.removeAllListeners()
-        rolePreviewAnimator?.cancel()
-        rolePreviewAnimator = null
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
-        releaseDeathRevealSound()
-        releaseSilenceRevealSound()
         MusicManager.pauseVictoryMusic()
         super.onPause()
     }
@@ -1781,105 +1834,23 @@ class GameplayMockActivity : BaseActivity() {
             roleAdvice(role.key)
         }
         rolePreviewScroll.scrollTo(0, 0)
-        rolePreviewAnimator?.cancel()
-        rolePreviewOverlay.alpha = if (initialReveal) 1f else 0f
-        rolePreviewContent.alpha = 1f
-        rolePreviewContent.rotationY = -82f
-        rolePreviewContent.scaleX = 0.34f
-        rolePreviewContent.scaleY = 0.72f
-        rolePreviewContent.cameraDistance = resources.displayMetrics.density * 9000f
-        rolePreviewMapBackground.alpha = 0f
-        rolePreviewImage.alpha = 0f
-        rolePreviewImage.translationY = dp(12).toFloat()
-        rolePreviewName.alpha = 0f
-        rolePreviewTeam.alpha = 0f
-        rolePreviewFunction.alpha = 0f
-        rolePreviewAdvice.alpha = 0f
-        rolePreviewOverlay.visibility = View.VISIBLE
         isRolePreviewOpen = true
         GameplayEffects.play(this, GameplayEffect.REVEAL)
-
-        val overlayEntrance = ObjectAnimator.ofFloat(
-            rolePreviewOverlay,
-            View.ALPHA,
-            rolePreviewOverlay.alpha,
-            1f
-        ).apply {
-            duration = if (initialReveal) 1L else 180L
-        }
-        val cardTurn = AnimatorSet().apply {
-            duration = if (initialReveal) 460L else 340L
-            interpolator = DecelerateInterpolator()
-            playTogether(
-                ObjectAnimator.ofFloat(rolePreviewContent, View.ROTATION_Y, -82f, 0f),
-                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_X, 0.34f, 1f),
-                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_Y, 0.72f, 1f)
-            )
-        }
-        val revealDetails = AnimatorSet().apply {
-            duration = 280L
-            interpolator = DecelerateInterpolator()
-            playTogether(
-                ObjectAnimator.ofFloat(rolePreviewMapBackground, View.ALPHA, 0f, 0.68f),
-                ObjectAnimator.ofFloat(rolePreviewImage, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(rolePreviewImage, View.TRANSLATION_Y, dp(12).toFloat(), 0f),
-                ObjectAnimator.ofFloat(rolePreviewName, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(rolePreviewTeam, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(rolePreviewFunction, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(rolePreviewAdvice, View.ALPHA, 0f, 1f)
-            )
-        }
-        rolePreviewAnimator = AnimatorSet().apply {
-            playTogether(
-                overlayEntrance,
-                AnimatorSet().apply {
-                    startDelay = 80L
-                    playSequentially(cardTurn, revealDetails)
-                }
-            )
-            start()
-        }
+        rolePreviewAnimator.show(initialReveal)
     }
 
     private fun closeRolePreview(resumeGameFlow: Boolean = true) {
         if (!::rolePreviewOverlay.isInitialized) return
         val wasOpen = isRolePreviewOpen
-        rolePreviewAnimator?.removeAllListeners()
-        rolePreviewAnimator?.cancel()
-        rolePreviewAnimator = null
         if (!wasOpen || !resumeGameFlow) {
-            rolePreviewOverlay.visibility = View.GONE
-            rolePreviewOverlay.alpha = 1f
-            rolePreviewContent.alpha = 1f
-            rolePreviewContent.rotationY = 0f
-            rolePreviewContent.scaleX = 1f
-            rolePreviewContent.scaleY = 1f
+            rolePreviewAnimator.cancelAndHide()
             isRolePreviewOpen = false
             return
         }
 
-        rolePreviewAnimator = AnimatorSet().apply {
-            duration = 180L
-            interpolator = AccelerateInterpolator()
-            playTogether(
-                ObjectAnimator.ofFloat(rolePreviewOverlay, View.ALPHA, rolePreviewOverlay.alpha, 0f),
-                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_X, rolePreviewContent.scaleX, 0.82f),
-                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_Y, rolePreviewContent.scaleY, 0.82f),
-                ObjectAnimator.ofFloat(rolePreviewContent, View.ROTATION_Y, rolePreviewContent.rotationY, 18f)
-            )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    rolePreviewOverlay.visibility = View.GONE
-                    rolePreviewOverlay.alpha = 1f
-                    rolePreviewContent.rotationY = 0f
-                    rolePreviewContent.scaleX = 1f
-                    rolePreviewContent.scaleY = 1f
-                    isRolePreviewOpen = false
-                    rolePreviewAnimator = null
-                    resumeGameFlowAfterBlockingUi()
-                }
-            })
-            start()
+        rolePreviewAnimator.dismiss {
+            isRolePreviewOpen = false
+            resumeGameFlowAfterBlockingUi()
         }
     }
 
@@ -2129,133 +2100,12 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
-
-        val revealRole = session.revealRolesOnDeath
-        deathRevealPlayerName.text = player.name.uppercase()
-        deathRevealRoleName.text = if (revealRole) {
-            player.role?.name?.uppercase() ?: "ROL DESCONOCIDO"
-        } else {
-            "ROL OCULTO"
-        }
-        if (revealRole) {
-            deathRevealCardFront.setImageResource(roleImageFor(player.role))
-        }
-        resetDeathRevealViews()
-        if (!revealRole) {
-            deathRevealRoleName.alpha = 1f
-        }
-        deathRevealOverlay.visibility = View.VISIBLE
-        playDeathRevealSound()
-
-        val entrance = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(deathRevealOverlay, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(deathRevealContent, View.SCALE_X, 0.94f, 1f),
-                ObjectAnimator.ofFloat(deathRevealContent, View.SCALE_Y, 0.94f, 1f)
-            )
-            duration = 280L
-            interpolator = DecelerateInterpolator()
-        }
-
-        val impact = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(
-                    deathRevealCard,
-                    View.TRANSLATION_X,
-                    0f,
-                    -dp(6).toFloat(),
-                    dp(6).toFloat(),
-                    -dp(3).toFloat(),
-                    dp(3).toFloat(),
-                    0f
-                ),
-                ObjectAnimator.ofFloat(deathRevealFlash, View.ALPHA, 0f, 0.56f, 0f),
-                ObjectAnimator.ofFloat(deathRevealBloodLeft, View.ALPHA, 0f, 0.9f),
-                ObjectAnimator.ofFloat(deathRevealBloodLeft, View.SCALE_X, 0.55f, 1.08f),
-                ObjectAnimator.ofFloat(deathRevealBloodLeft, View.SCALE_Y, 0.55f, 1.08f),
-                ObjectAnimator.ofFloat(deathRevealBloodRight, View.ALPHA, 0f, 0.76f),
-                ObjectAnimator.ofFloat(deathRevealBloodRight, View.SCALE_X, 0.5f, 1f),
-                ObjectAnimator.ofFloat(deathRevealBloodRight, View.SCALE_Y, 0.5f, 1f)
-            )
-            duration = 420L
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-
-        val revealAnimation = if (revealRole) {
-            val flipOut = ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, 0f, 90f).apply {
-                duration = 230L
-                interpolator = AccelerateInterpolator()
-                addListener(object : AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: Animator) {
-                        deathRevealCardBack.visibility = View.INVISIBLE
-                        deathRevealCardFront.visibility = View.VISIBLE
-                        deathRevealCard.rotationY = -90f
-                    }
-                })
-            }
-            val flipIn = AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, -90f, 0f),
-                    ObjectAnimator.ofFloat(deathRevealRoleName, View.ALPHA, 0f, 1f)
-                )
-                duration = 260L
-                interpolator = DecelerateInterpolator()
-            }
-            AnimatorSet().apply { playSequentially(flipOut, flipIn) }
-        } else {
-            AnimatorSet().apply {
-                playTogether(
-                    ObjectAnimator.ofFloat(deathRevealCard, View.SCALE_X, 1f, 1.05f, 1f),
-                    ObjectAnimator.ofFloat(deathRevealCard, View.SCALE_Y, 1f, 1.05f, 1f)
-                )
-                duration = 420L
-                interpolator = DecelerateInterpolator()
-            }
-        }
-        val hold = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1050L
-        }
-        val exit = ObjectAnimator.ofFloat(deathRevealOverlay, View.ALPHA, 1f, 0f).apply {
-            duration = 320L
-            interpolator = AccelerateInterpolator()
-        }
-
-        deathRevealAnimator = AnimatorSet().apply {
-            playSequentially(entrance, impact, revealAnimation, hold, exit)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    finishDeathReveal()
-                }
-            })
-            start()
-        }
-    }
-
-    private fun resetDeathRevealViews() {
-        deathRevealOverlay.alpha = 0f
-        deathRevealContent.scaleX = 0.94f
-        deathRevealContent.scaleY = 0.94f
-        deathRevealFlash.alpha = 0f
-        deathRevealCard.translationX = 0f
-        deathRevealCard.rotationY = 0f
-        deathRevealCard.cameraDistance = dp(900).toFloat()
-        deathRevealCardBack.visibility = View.VISIBLE
-        deathRevealCardFront.visibility = View.INVISIBLE
-        deathRevealRoleName.alpha = 0f
-        listOf(deathRevealBloodLeft, deathRevealBloodRight).forEach { blood ->
-            blood.alpha = 0f
-            blood.scaleX = 0.5f
-            blood.scaleY = 0.5f
-        }
+        deathRevealAnimator.start(player, session.revealRolesOnDeath)
     }
 
     private fun finishDeathReveal() {
         if (!isDeathRevealRunning) return
         isDeathRevealRunning = false
-        deathRevealAnimator = null
-        deathRevealOverlay.visibility = View.GONE
-        deathRevealOverlay.alpha = 1f
-        releaseDeathRevealSound()
         if (pendingDeathReveals.isEmpty() && pendingSilenceReveals.isEmpty()) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
@@ -2264,43 +2114,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun cancelDeathReveal(resumeMusic: Boolean) {
         if (!::deathRevealOverlay.isInitialized) return
-        deathRevealAnimator?.removeAllListeners()
-        deathRevealAnimator?.cancel()
-        deathRevealAnimator = null
+        deathRevealAnimator.cancel()
         isDeathRevealRunning = false
-        deathRevealOverlay.visibility = View.GONE
-        deathRevealOverlay.alpha = 1f
-        releaseDeathRevealSound()
         if (resumeMusic) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
-    }
-
-    private fun playDeathRevealSound() {
-        releaseDeathRevealSound()
-        val sharedPref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val soundOn = sharedPref.getBoolean("sound_on", true)
-        val volume = sharedPref.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
-
-        deathRevealSoundPlayer = MediaPlayer.create(this, R.raw.death_reveal)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (deathRevealSoundPlayer === completed) {
-                    deathRevealSoundPlayer = null
-                }
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseDeathRevealSound() {
-        deathRevealSoundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        deathRevealSoundPlayer = null
     }
 
     private fun maybeShowNextSilenceReveal(): Boolean {
@@ -2315,121 +2133,12 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         MusicManager.pauseForTransition()
         isSilenceRevealRunning = true
-
-        silenceRevealPlayerName.text = player.name.uppercase()
-        resetSilenceRevealViews()
-        silenceRevealOverlay.visibility = View.VISIBLE
-        playSilenceRevealSound()
-
-        val entrance = AnimatorSet().apply {
-            startDelay = SILENCE_REVEAL_GAP_MS
-            playTogether(
-                ObjectAnimator.ofFloat(silenceRevealOverlay, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(silenceRevealContent, View.SCALE_X, 0.95f, 1f),
-                ObjectAnimator.ofFloat(silenceRevealContent, View.SCALE_Y, 0.95f, 1f)
-            )
-            duration = 280L
-            interpolator = DecelerateInterpolator()
-        }
-        val buildCage = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(silenceRevealCageLeft, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(
-                    silenceRevealCageLeft,
-                    View.TRANSLATION_X,
-                    -dp(62).toFloat(),
-                    0f
-                ),
-                ObjectAnimator.ofFloat(silenceRevealCageRight, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(
-                    silenceRevealCageRight,
-                    View.TRANSLATION_X,
-                    dp(62).toFloat(),
-                    0f
-                )
-            )
-            duration = 460L
-            interpolator = DecelerateInterpolator()
-        }
-        val closeDoor = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(silenceRevealCageDoor, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(silenceRevealCageDoor, View.ROTATION_Y, -72f, 0f),
-                ObjectAnimator.ofFloat(
-                    silenceRevealCageDoor,
-                    View.TRANSLATION_X,
-                    dp(28).toFloat(),
-                    0f
-                )
-            )
-            duration = 420L
-            interpolator = DecelerateInterpolator()
-        }
-        val lockImpact = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(silenceRevealCageLock, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(silenceRevealCageLock, View.SCALE_X, 1.65f, 1f),
-                ObjectAnimator.ofFloat(silenceRevealCageLock, View.SCALE_Y, 1.65f, 1f),
-                ObjectAnimator.ofFloat(
-                    silenceRevealCard,
-                    View.TRANSLATION_X,
-                    0f,
-                    -dp(3).toFloat(),
-                    dp(3).toFloat(),
-                    -dp(2).toFloat(),
-                    dp(2).toFloat(),
-                    0f
-                )
-            )
-            duration = 320L
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-        val hold = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 900L
-        }
-        val exit = ObjectAnimator.ofFloat(silenceRevealOverlay, View.ALPHA, 1f, 0f).apply {
-            duration = 300L
-            interpolator = AccelerateInterpolator()
-        }
-
-        silenceRevealAnimator = AnimatorSet().apply {
-            playSequentially(entrance, buildCage, closeDoor, lockImpact, hold, exit)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    finishSilenceReveal()
-                }
-            })
-            start()
-        }
-    }
-
-    private fun resetSilenceRevealViews() {
-        silenceRevealOverlay.alpha = 0f
-        silenceRevealContent.scaleX = 0.95f
-        silenceRevealContent.scaleY = 0.95f
-        silenceRevealCard.translationX = 0f
-        silenceRevealCard.scaleX = 1f
-        silenceRevealCard.scaleY = 1f
-        silenceRevealCageLeft.alpha = 0f
-        silenceRevealCageLeft.translationX = -dp(62).toFloat()
-        silenceRevealCageRight.alpha = 0f
-        silenceRevealCageRight.translationX = dp(62).toFloat()
-        silenceRevealCageDoor.alpha = 0f
-        silenceRevealCageDoor.rotationY = -72f
-        silenceRevealCageDoor.translationX = dp(28).toFloat()
-        silenceRevealCageDoor.cameraDistance = dp(900).toFloat()
-        silenceRevealCageLock.alpha = 0f
-        silenceRevealCageLock.scaleX = 1.65f
-        silenceRevealCageLock.scaleY = 1.65f
+        silenceRevealAnimator.start(player)
     }
 
     private fun finishSilenceReveal() {
         if (!isSilenceRevealRunning) return
         isSilenceRevealRunning = false
-        silenceRevealAnimator = null
-        silenceRevealOverlay.visibility = View.GONE
-        silenceRevealOverlay.alpha = 1f
-        releaseSilenceRevealSound()
         if (pendingSilenceReveals.isEmpty()) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
@@ -2438,43 +2147,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun cancelSilenceReveal(resumeMusic: Boolean) {
         if (!::silenceRevealOverlay.isInitialized) return
-        silenceRevealAnimator?.removeAllListeners()
-        silenceRevealAnimator?.cancel()
-        silenceRevealAnimator = null
+        silenceRevealAnimator.cancel()
         isSilenceRevealRunning = false
-        silenceRevealOverlay.visibility = View.GONE
-        silenceRevealOverlay.alpha = 1f
-        releaseSilenceRevealSound()
         if (resumeMusic) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
-    }
-
-    private fun playSilenceRevealSound() {
-        releaseSilenceRevealSound()
-        val sharedPref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val soundOn = sharedPref.getBoolean("sound_on", true)
-        val volume = sharedPref.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
-
-        silenceRevealSoundPlayer = MediaPlayer.create(this, R.raw.silence_reveal)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (silenceRevealSoundPlayer === completed) {
-                    silenceRevealSoundPlayer = null
-                }
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseSilenceRevealSound() {
-        silenceRevealSoundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        silenceRevealSoundPlayer = null
     }
 
     private fun maybeShowWinnerReveal(): Boolean {
@@ -2500,124 +2177,23 @@ class GameplayMockActivity : BaseActivity() {
             Color.parseColor(if (presentation.humanWon) "#765019" else "#7C2F2A")
         )
         winnerRevealBackground.setImageResource(logDrawableFor(themeKey))
-        applyWinnerThemeInsets()
-        renderWinnerCards(presentation.winningPlayers)
-        renderWinnerSummary(presentation.summary)
+        val cardViews = winnerResultsRenderer.render(
+            players = presentation.winningPlayers,
+            summary = presentation.summary,
+            themeKey = themeKey
+        )
         winnerRevealScroll.scrollTo(0, 0)
 
         isWinnerRevealVisible = true
-        winnerRevealOverlay.visibility = View.VISIBLE
         winnerRevealPresented = true
         if (!animate) {
-            settleWinnerReveal()
+            winnerRevealAnimator.show(cardViews, animate = false) {}
             MusicManager.resumeVictoryMusic(this)
             return
         }
 
-        resetWinnerRevealViews()
         MusicManager.playVictoryMusic(this)
-
-        val entrance = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(winnerRevealOverlay, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(winnerRevealPanel, View.SCALE_X, 0.72f, 1f),
-                ObjectAnimator.ofFloat(winnerRevealPanel, View.SCALE_Y, 0.72f, 1f),
-                ObjectAnimator.ofFloat(winnerRevealPanel, View.ALPHA, 0f, 1f)
-            )
-            duration = 520L
-            interpolator = DecelerateInterpolator()
-        }
-        val headings = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(winnerRevealTitle, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(winnerRevealTitle, View.TRANSLATION_Y, dp(10).toFloat(), 0f),
-                ObjectAnimator.ofFloat(winnerRevealPersonalResult, View.ALPHA, 0f, 1f)
-            )
-            duration = 360L
-            interpolator = DecelerateInterpolator()
-        }
-
-        val cardAnimators = winnerCardViews.mapIndexed { index, card ->
-            AnimatorSet().apply {
-                startDelay = index * WINNER_CARD_STAGGER_MS
-                playTogether(
-                    ObjectAnimator.ofFloat(
-                        card,
-                        View.ALPHA,
-                        0f,
-                        winnerCardFinalAlphas[card] ?: 1f
-                    ),
-                    ObjectAnimator.ofFloat(card, View.TRANSLATION_Y, dp(16).toFloat(), 0f),
-                    ObjectAnimator.ofFloat(card, View.SCALE_X, 0.9f, 1f),
-                    ObjectAnimator.ofFloat(card, View.SCALE_Y, 0.9f, 1f)
-                )
-                duration = 300L
-                interpolator = DecelerateInterpolator()
-            }
-        }
-        val cardsEntrance = AnimatorSet().apply {
-            playTogether(cardAnimators)
-        }
-        val shine = ObjectAnimator.ofFloat(winnerRevealShine, View.ALPHA, 0f, 0.34f, 0f).apply {
-            duration = 720L
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-
-        winnerRevealAnimator = AnimatorSet().apply {
-            playSequentially(entrance, headings, cardsEntrance, shine)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    winnerRevealAnimator = null
-                    settleWinnerReveal()
-                }
-            })
-            start()
-        }
-    }
-
-    private fun renderWinnerCards(players: List<GamePlayer>) {
-        winnerRevealCards.removeAllViews()
-        winnerCardViews.clear()
-        winnerCardFinalAlphas.clear()
-        if (players.isEmpty()) return
-
-        val rowCount = when (players.size) {
-            in 1..6 -> 1
-            in 7..10 -> 2
-            else -> 3
-        }
-        val playersPerRow = kotlin.math.ceil(players.size / rowCount.toDouble()).toInt()
-        players.chunked(playersPerRow).forEach { rowPlayers ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-            val rowParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            winnerRevealCards.addView(row, rowParams)
-            rowPlayers.forEach { player ->
-                val card = createWinnerCard(player, players.size)
-                winnerCardViews += card
-                winnerCardFinalAlphas[card] = 1f
-                row.addView(card)
-            }
-        }
-    }
-
-    private fun renderWinnerSummary(summary: GameSummaryPresentation) {
-        winnerSummaryRounds.text = "${summary.roundsPlayed} RONDAS"
-        winnerSummaryDuration.text = "TIEMPO ${summary.durationLabel}"
-        winnerSummaryPlayers.text = "${summary.eliminated} ELIMINADOS"
-        winnerSummaryHighlight.text = if (summary.eliminatedPlayers.isEmpty()) {
-            "ELIMINADOS: NINGUNO"
-        } else {
-            "ELIMINADOS: ${summary.eliminatedPlayers.joinToString(", ")}"
-        }
-        winnerSummaryTimeline.text = summary.daySummaries
-            .joinToString("\n")
-            .ifBlank { "Día 1: no murió nadie y nadie fue silenciado." }
+        winnerRevealAnimator.show(cardViews, animate = true) {}
     }
 
     private fun applyGameplayTextScale() {
@@ -2647,153 +2223,9 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
-    private fun applyWinnerThemeInsets() {
-        val top = when (themeKey) {
-            "medieval" -> 20
-            "griego" -> 12
-            else -> 8
-        }
-        val horizontal = when (themeKey) {
-            "medieval" -> 54
-            "griego" -> 48
-            else -> 42
-        }
-        val bottom = if (themeKey == "medieval") 12 else 8
-        winnerRevealContent.setPadding(dp(horizontal), dp(top), dp(horizontal), dp(bottom))
-    }
-
-    private fun createWinnerCard(player: GamePlayer, winnerCount: Int): View {
-        val metrics = when {
-            winnerCount == 1 -> intArrayOf(136, 80, 96, 16, 12, 21, 18)
-            winnerCount == 2 -> intArrayOf(126, 76, 92, 15, 11, 20, 18)
-            winnerCount <= 5 -> intArrayOf(106, 64, 77, 13, 10, 20, 18)
-            winnerCount <= 10 -> intArrayOf(94, 58, 72, 10, 8, 15, 12)
-            else -> intArrayOf(76, 42, 52, 9, 7, 13, 11)
-        }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(metrics[0]), LinearLayout.LayoutParams.WRAP_CONTENT)
-            setPadding(dp(4), dp(2), dp(4), dp(2))
-        }
-        val cardFrame = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#E6231810"))
-                setStroke(
-                    dp(if (player.alive) 3 else 2),
-                    Color.parseColor(if (player.alive) "#D4A24E" else "#75695B")
-                )
-                cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            if (player.alive) elevation = dp(4).toFloat()
-        }
-        val image = ImageView(this).apply {
-            setImageResource(roleImageFor(player.role))
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "Rol de ${player.name}"
-            if (!player.alive) {
-                colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
-            }
-        }
-        cardFrame.addView(
-            image,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        container.addView(
-            cardFrame,
-            LinearLayout.LayoutParams(dp(metrics[1]), dp(metrics[2]))
-        )
-
-        val playerName = TextView(this).apply {
-            text = player.name
-            gravity = Gravity.CENTER
-            maxLines = 1
-            setSingleLine(true)
-            setTextColor(Color.parseColor("#352114"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[3].toFloat())
-            typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
-            setTypeface(typeface, Typeface.BOLD)
-            includeFontPadding = false
-        }
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            playerName,
-            7,
-            metrics[3],
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
-        container.addView(
-            playerName,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(metrics[5]))
-        )
-
-        val roleLabel = TextView(this).apply {
-            text = player.role?.name?.uppercase() ?: "SIN ROL"
-            gravity = Gravity.CENTER
-            maxLines = 1
-            setSingleLine(true)
-            setTextColor(Color.parseColor("#4F321A"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[4].toFloat())
-            typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.cormorant_garamond)
-            setTypeface(typeface, Typeface.BOLD)
-            includeFontPadding = false
-        }
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            roleLabel,
-            7,
-            metrics[4].coerceAtLeast(7),
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
-        container.addView(
-            roleLabel,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(metrics[6]))
-        )
-        return container
-    }
-
-    private fun resetWinnerRevealViews() {
-        winnerRevealOverlay.alpha = 0f
-        winnerRevealPanel.alpha = 0f
-        winnerRevealPanel.scaleX = 0.72f
-        winnerRevealPanel.scaleY = 0.72f
-        winnerRevealTitle.alpha = 0f
-        winnerRevealTitle.translationY = dp(10).toFloat()
-        winnerRevealPersonalResult.alpha = 0f
-        winnerRevealShine.alpha = 0f
-        winnerCardViews.forEach { card ->
-            card.alpha = 0f
-            card.translationY = dp(16).toFloat()
-            card.scaleX = 0.9f
-            card.scaleY = 0.9f
-        }
-    }
-
     private fun settleWinnerReveal() {
         if (!::winnerRevealOverlay.isInitialized || !isWinnerRevealVisible) return
-        winnerRevealAnimator?.removeAllListeners()
-        winnerRevealAnimator?.end()
-        winnerRevealAnimator = null
-        winnerRevealOverlay.visibility = View.VISIBLE
-        winnerRevealOverlay.alpha = 1f
-        winnerRevealPanel.alpha = 1f
-        winnerRevealPanel.scaleX = 1f
-        winnerRevealPanel.scaleY = 1f
-        winnerRevealTitle.alpha = 1f
-        winnerRevealTitle.translationY = 0f
-        winnerRevealPersonalResult.alpha = 1f
-        winnerRevealShine.alpha = 0f
-        winnerCardViews.forEach { card ->
-            card.alpha = winnerCardFinalAlphas[card] ?: 1f
-            card.translationY = 0f
-            card.scaleX = 1f
-            card.scaleY = 1f
-        }
+        winnerRevealAnimator.settle()
     }
 
     private fun returnToLobby() {
@@ -2819,51 +2251,18 @@ class GameplayMockActivity : BaseActivity() {
     private fun showTraitorReveal(teammates: List<GamePlayer>) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
         isTraitorRevealDismissing = false
         isTraitorRevealRunning = true
         traitorRevealCards.removeAllViews()
 
         val cardViews = teammates.map { teammate ->
-            createTraitorRevealCard(teammate).also { card ->
-                card.alpha = 0f
-                card.translationY = dp(42).toFloat()
-                traitorRevealCards.addView(card)
-            }
+            createTraitorRevealCard(teammate)
         }
-
-        traitorRevealOverlay.alpha = 0f
-        traitorRevealContent.scaleX = 0.96f
-        traitorRevealContent.scaleY = 0.96f
-        traitorRevealOverlay.visibility = View.VISIBLE
-
-        val animators = mutableListOf<Animator>(
-            ObjectAnimator.ofFloat(traitorRevealOverlay, View.ALPHA, 0f, 1f).apply {
-                duration = 260L
-            },
-            ObjectAnimator.ofFloat(traitorRevealContent, View.SCALE_X, 0.96f, 1f).apply {
-                duration = 320L
-            },
-            ObjectAnimator.ofFloat(traitorRevealContent, View.SCALE_Y, 0.96f, 1f).apply {
-                duration = 320L
-            }
+        traitorRevealAnimator.show(
+            cardViews = cardViews,
+            durationMs = TRAITOR_REVEAL_DURATION_MS,
+            onDismissRequested = ::dismissTraitorReveal
         )
-        cardViews.forEachIndexed { index, card ->
-            animators += ObjectAnimator.ofFloat(card, View.ALPHA, 0f, 1f).apply {
-                startDelay = 120L + index * 150L
-                duration = 320L
-            }
-            animators += ObjectAnimator.ofFloat(card, View.TRANSLATION_Y, card.translationY, 0f).apply {
-                startDelay = 120L + index * 150L
-                duration = 350L
-            }
-        }
-        traitorRevealAnimator = AnimatorSet().apply {
-            interpolator = DecelerateInterpolator()
-            playTogether(animators)
-            start()
-        }
-        autoAdvanceHandler.postDelayed(traitorRevealDismissRunnable, TRAITOR_REVEAL_DURATION_MS)
     }
 
     private fun createTraitorRevealCard(player: GamePlayer): View {
@@ -2906,227 +2305,32 @@ class GameplayMockActivity : BaseActivity() {
         if (!isTraitorRevealRunning || isTraitorRevealDismissing) return
         isTraitorRevealDismissing = true
         traitorRevealCompleted = true
-        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
-        traitorRevealAnimator?.removeAllListeners()
-        traitorRevealAnimator?.cancel()
-
-        val fade = ObjectAnimator.ofFloat(traitorRevealOverlay, View.ALPHA, traitorRevealOverlay.alpha, 0f)
-        fade.duration = 220L
-        traitorRevealAnimator = AnimatorSet().apply {
-            playTogether(fade)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    isTraitorRevealDismissing = false
-                    isTraitorRevealRunning = false
-                    traitorRevealAnimator = null
-                    traitorRevealOverlay.visibility = View.GONE
-                    traitorRevealOverlay.alpha = 1f
-                    traitorRevealCards.removeAllViews()
-                    resumeGameFlowAfterBlockingUi()
-                }
-            })
-            start()
+        traitorRevealAnimator.dismiss {
+            isTraitorRevealDismissing = false
+            isTraitorRevealRunning = false
+            resumeGameFlowAfterBlockingUi()
         }
     }
 
     private fun cancelTraitorReveal() {
         if (!::traitorRevealOverlay.isInitialized) return
-        autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
-        traitorRevealAnimator?.removeAllListeners()
-        traitorRevealAnimator?.cancel()
-        traitorRevealAnimator = null
+        traitorRevealAnimator.cancelAndHide()
         isTraitorRevealDismissing = false
         isTraitorRevealRunning = false
-        traitorRevealOverlay.visibility = View.GONE
-        traitorRevealOverlay.alpha = 1f
-        traitorRevealCards.removeAllViews()
     }
 
     private fun startDayNightTransition(spec: GameplayTransitionSpec) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-
         val fromPeriod = presentedPeriod ?: spec.period
-        transitionFromBackground.setImageResource(
-            backgroundDrawableFor(themeKey, fromPeriod == GameplayPeriod.NIGHT)
-        )
-        transitionToBackground.setImageResource(
-            backgroundDrawableFor(themeKey, spec.period == GameplayPeriod.NIGHT)
-        )
-        transitionToBackground.alpha = if (fromPeriod == spec.period) 1f else 0f
-        transitionShade.alpha = if (spec.period == GameplayPeriod.NIGHT) 0.48f else 0.26f
-        transitionTitle.text = spec.title
-        transitionTitle.alpha = 0f
-        transitionTitle.scaleX = 0.86f
-        transitionTitle.scaleY = 0.86f
-        dayNightTransitionOverlay.alpha = 1f
-        dayNightTransitionOverlay.visibility = View.VISIBLE
-
-        playTransitionSound(spec.period)
-        autoAdvanceHandler.postDelayed(transitionMusicRunnable, TRANSITION_MUSIC_DELAY_MS)
-        dayNightTransitionOverlay.post {
-            if (isDayNightTransitionRunning) {
-                animateDayNightTransition(spec, fromPeriod)
-            }
-        }
-    }
-
-    private fun animateDayNightTransition(
-        spec: GameplayTransitionSpec,
-        fromPeriod: GameplayPeriod
-    ) {
-        val width = dayNightTransitionOverlay.width.toFloat()
-        val height = dayNightTransitionOverlay.height.toFloat()
-        if (width <= 0f || height <= 0f) {
-            finishDayNightTransition(spec)
-            return
-        }
-
-        val sunTopX = width * 0.70f - transitionSun.width / 2f
-        val moonTopX = width * 0.20f - transitionMoon.width / 2f
-        val topY = height * 0.10f
-        val lowerY = height + maxOf(transitionSun.height, transitionMoon.height) * 0.12f
-        val animators = mutableListOf<Animator>()
-
-        if (spec.period == GameplayPeriod.NIGHT) {
-            if (fromPeriod == GameplayPeriod.DAY) {
-                transitionSun.alpha = 1f
-                transitionMoon.alpha = 0f
-                animators += arcAnimator(
-                    transitionSun,
-                    sunTopX,
-                    topY,
-                    width * 0.90f,
-                    height * 0.48f,
-                    width + transitionSun.width * 0.15f,
-                    lowerY
-                )
-                animators += fadeAnimator(transitionSun, 1f, 0f, 1180L, 520L)
-            } else {
-                transitionSun.alpha = 0f
-            }
-            animators += risingAnimator(
-                transitionMoon,
-                startX = -transitionMoon.width.toFloat(),
-                startY = lowerY,
-                controlX = width * 0.05f,
-                controlY = height * 0.42f,
-                endX = moonTopX,
-                endY = topY
-            )
-        } else {
-            if (fromPeriod == GameplayPeriod.NIGHT) {
-                transitionMoon.alpha = 1f
-                transitionSun.alpha = 0f
-                animators += arcAnimator(
-                    transitionMoon,
-                    moonTopX,
-                    topY,
-                    width * 0.05f,
-                    height * 0.48f,
-                    -transitionMoon.width.toFloat(),
-                    lowerY
-                )
-                animators += fadeAnimator(transitionMoon, 1f, 0f, 1180L, 520L)
-            } else {
-                transitionMoon.alpha = 0f
-            }
-            animators += risingAnimator(
-                transitionSun,
-                startX = width + transitionSun.width * 0.15f,
-                startY = lowerY,
-                controlX = width * 0.88f,
-                controlY = height * 0.42f,
-                endX = sunTopX,
-                endY = topY
-            )
-        }
-
-        animators += ObjectAnimator.ofFloat(transitionToBackground, View.ALPHA, transitionToBackground.alpha, 1f)
-            .apply { duration = 1450L }
-        animators += fadeAnimator(transitionTitle, 0f, 1f, 480L, 420L)
-        animators += ObjectAnimator.ofFloat(transitionTitle, View.SCALE_X, 0.86f, 1f).apply {
-            startDelay = 480L
-            duration = 420L
-        }
-        animators += ObjectAnimator.ofFloat(transitionTitle, View.SCALE_Y, 0.86f, 1f).apply {
-            startDelay = 480L
-            duration = 420L
-        }
-        animators += fadeAnimator(transitionTitle, 1f, 0f, 1600L, 360L)
-        animators += fadeAnimator(dayNightTransitionOverlay, 1f, 0f, 1850L, 350L)
-
-        dayNightAnimator = AnimatorSet().apply {
-            interpolator = AccelerateDecelerateInterpolator()
-            playTogether(animators)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    if (isDayNightTransitionRunning) {
-                        finishDayNightTransition(spec)
-                    }
-                }
-            })
-            start()
-        }
-    }
-
-    private fun risingAnimator(
-        view: View,
-        startX: Float,
-        startY: Float,
-        controlX: Float,
-        controlY: Float,
-        endX: Float,
-        endY: Float
-    ): Animator {
-        view.alpha = 0f
-        val motion = arcAnimator(view, startX, startY, controlX, controlY, endX, endY)
-        val fade = fadeAnimator(view, 0f, 1f, 120L, 560L)
-        return AnimatorSet().apply { playTogether(motion, fade) }
-    }
-
-    private fun arcAnimator(
-        view: View,
-        startX: Float,
-        startY: Float,
-        controlX: Float,
-        controlY: Float,
-        endX: Float,
-        endY: Float
-    ): ObjectAnimator {
-        val path = Path().apply {
-            moveTo(startX, startY)
-            quadTo(controlX, controlY, endX, endY)
-        }
-        return ObjectAnimator.ofFloat(view, View.X, View.Y, path).apply {
-            duration = 1800L
-        }
-    }
-
-    private fun fadeAnimator(
-        view: View,
-        from: Float,
-        to: Float,
-        delayMs: Long,
-        durationMs: Long
-    ): ObjectAnimator {
-        return ObjectAnimator.ofFloat(view, View.ALPHA, from, to).apply {
-            startDelay = delayMs
-            duration = durationMs
-        }
+        dayNightTransitionAnimator.start(spec, fromPeriod)
     }
 
     private fun finishDayNightTransition(spec: GameplayTransitionSpec) {
         if (!isDayNightTransitionRunning) return
         isDayNightTransitionRunning = false
-        dayNightAnimator = null
-        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-        releaseTransitionSound()
         presentedPeriod = spec.period
         renderThemedBackground(spec.period)
-        dayNightTransitionOverlay.visibility = View.GONE
-        dayNightTransitionOverlay.alpha = 1f
         MusicManager.resumeGamePhaseAfterTransition(this, session)
         resumeGameFlowAfterBlockingUi()
     }
@@ -3134,57 +2338,17 @@ class GameplayMockActivity : BaseActivity() {
     private fun settleDayNightTransition(resumeMusic: Boolean) {
         if (!isDayNightTransitionRunning) return
         isDayNightTransitionRunning = false
-        dayNightAnimator?.removeAllListeners()
-        dayNightAnimator?.cancel()
-        dayNightAnimator = null
-        autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
-        releaseTransitionSound()
+        dayNightTransitionAnimator.cancel()
 
         val spec = GameplayTableUi.transitionSpec(session)
         lastPresentedTransitionKey = spec.key
         presentedPeriod = spec.period
-        if (::dayNightTransitionOverlay.isInitialized) {
-            dayNightTransitionOverlay.visibility = View.GONE
-            dayNightTransitionOverlay.alpha = 1f
-            renderThemedBackground(spec.period)
-        }
+        renderThemedBackground(spec.period)
         if (resumeMusic) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         } else {
             MusicManager.prepareGamePhaseWithoutPlayback(session)
         }
-    }
-
-    private fun playTransitionSound(period: GameplayPeriod) {
-        releaseTransitionSound()
-        val sharedPref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val soundOn = sharedPref.getBoolean("sound_on", true)
-        val volume = sharedPref.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
-
-        val soundRes = if (period == GameplayPeriod.NIGHT) {
-            R.raw.transition_night
-        } else {
-            R.raw.transition_day
-        }
-        transitionSoundPlayer = MediaPlayer.create(this, soundRes)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (transitionSoundPlayer === completed) {
-                    transitionSoundPlayer = null
-                }
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseTransitionSound() {
-        transitionSoundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        transitionSoundPlayer = null
     }
 
     private fun roleImageFor(role: GameRole?): Int {
@@ -3314,10 +2478,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
         private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
-        private const val SILENCE_REVEAL_GAP_MS = 300L
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
-        private const val TRANSITION_MUSIC_DELAY_MS = 1600L
-        private const val WINNER_CARD_STAGGER_MS = 105L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
 
