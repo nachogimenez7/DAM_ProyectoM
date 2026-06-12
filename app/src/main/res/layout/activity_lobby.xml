@@ -185,7 +185,7 @@
                     android:fontFamily="@font/cormorant_garamond"
                     android:gravity="center"
                     android:lineSpacingExtra="1dp"
-                    android:text="Toca un participante para expulsarlo. Inicia con cinco o mas jugadores."
+                    android:text="Usa el perfil o la X de cada participante. Inicia con cinco o mas jugadores."
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
 
@@ -219,19 +219,30 @@
                 <Button
                     android:id="@+id/btnTimingOptions"
                     style="@style/BtnDark"
-                    android:layout_height="36dp"
+                    android:layout_height="40dp"
                     android:layout_marginBottom="6dp"
                     android:maxLines="1"
-                    android:text="TIEMPOS  3 / 20 / 60 / 20"
-                    android:textSize="9sp" />
+                    android:singleLine="true"
+                    android:text="TIEMPOS"
+                    android:textSize="11sp"
+                    app:autoSizeMaxTextSize="11sp"
+                    app:autoSizeMinTextSize="8sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <Button
                     android:id="@+id/btnAdvancedOptions"
                     style="@style/BtnDark"
                     android:layout_height="36dp"
                     android:layout_marginBottom="8dp"
+                    android:maxLines="1"
+                    android:singleLine="true"
                     android:text="OPCIONES AVANZADAS"
-                    android:textSize="9sp" />
+                    android:textSize="11sp"
+                    app:autoSizeMaxTextSize="11sp"
+                    app:autoSizeMinTextSize="9sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <Button
                     android:id="@+id/btnAddPlayer"

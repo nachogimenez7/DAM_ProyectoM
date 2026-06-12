@@ -1,44 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/assigningRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
+
+    <FrameLayout
+        android:id="@+id/animationStage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/assigningHands"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop"
+            android:src="@drawable/assigning_roles_hands" />
+
+        <ImageView
+            android:id="@+id/shuffleCardLeft"
+            android:layout_width="82dp"
+            android:layout_height="131dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:contentDescription="Carta oculta"
+            android:elevation="1dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/card_back_traidores" />
+
+        <ImageView
+            android:id="@+id/shuffleCardRight"
+            android:layout_width="82dp"
+            android:layout_height="131dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:contentDescription="Carta oculta"
+            android:elevation="2dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/card_back_traidores" />
+
+        <ImageView
+            android:id="@+id/finalRoleCard"
+            android:layout_width="82dp"
+            android:layout_height="131dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:contentDescription="Tu carta oculta"
+            android:elevation="3dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/card_back_traidores" />
+
+        <ImageView
+            android:id="@+id/assigningDealingHands"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:elevation="8dp"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop"
+            android:src="@drawable/assigning_roles_dealing_hands" />
+
+        <TextView
+            android:id="@+id/assigningStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:alpha="0"
+            android:elevation="10dp"
+            android:fontFamily="@font/grenze"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text="REPARTIENDO ROLES"
+            android:textColor="@color/accent_gold"
+            android:textSize="21sp"
+            android:textStyle="bold" />
+    </FrameLayout>
 
     <ImageButton
         android:id="@+id/btnBack"
         android:layout_width="40dp"
         android:layout_height="40dp"
+        android:layout_gravity="top|start"
         android:layout_margin="10dp"
         android:background="@drawable/bg_btn_dark"
-        android:contentDescription="Volver"
+        android:contentDescription="Volver al lobby"
+        android:elevation="12dp"
         android:padding="8dp"
         android:src="@android:drawable/ic_media_previous"
         app:tint="@color/text_secondary" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="32dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/grenze"
-            android:text="ASIGNANDO ROLES..."
-            android:textColor="@color/accent_gold"
-            android:textSize="30sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:fontFamily="@font/cormorant_garamond"
-            android:text="Nadie debe mirar la carta de otro jugador."
-            android:textColor="@color/text_secondary"
-            android:textSize="16sp" />
-    </LinearLayout>
-</RelativeLayout>
+</FrameLayout>

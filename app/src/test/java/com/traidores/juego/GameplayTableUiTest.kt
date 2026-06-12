@@ -75,7 +75,7 @@ class GameplayTableUiTest {
         val fifteen = GameplayTableUi.companionCardMetrics(15, availableHeightDp = 360)
 
         assertEquals(112, five.columnWidthDp)
-        assertEquals(72, five.cardWidthDp)
+        assertEquals(54, five.cardWidthDp)
         assertEquals(86, five.cardHeightDp)
         assertEquals(18, five.nameHeightDp)
         assertEquals(106, five.itemHeightDp)
@@ -86,7 +86,7 @@ class GameplayTableUiTest {
         assertEquals(eight, nine)
         assertFalse(eight.scrollEnabled)
         assertEquals(eight, eightTall)
-        assertEquals(48, eightTall.cardWidthDp)
+        assertEquals(36, eightTall.cardWidthDp)
         assertEquals(58, eightTall.cardHeightDp)
 
         assertEquals(78, twelveLow.columnWidthDp)
@@ -95,7 +95,7 @@ class GameplayTableUiTest {
         assertTrue(twelveLow.cardHeightDp < 46)
 
         assertEquals(78, fifteen.columnWidthDp)
-        assertEquals(38, fifteen.cardWidthDp)
+        assertEquals(29, fifteen.cardWidthDp)
         assertEquals(46, fifteen.cardHeightDp)
         assertEquals(14, fifteen.nameHeightDp)
         assertEquals(62, fifteen.itemHeightDp)
@@ -244,6 +244,99 @@ class GameplayTableUiTest {
 
         assertTrue(presentation.winningPlayers.isEmpty())
         assertFalse(presentation.humanWon)
+    }
+
+    @Test
+    fun gameSummaryIncludesDurationPlayersRoundsAndHumanRoleHighlight() {
+        val medic = actionSession("medico", GamePhase.NOCHE_MEDICO).copy(
+            round = 4,
+            initialPlayerCount = 5,
+            startedAtEpochMs = 1_000L,
+            players = actionSession("medico", GamePhase.NOCHE_MEDICO).players.mapIndexed { index, player ->
+                if (index == 1) player.copy(alive = false) else player
+            },
+            actionHistory = listOf(
+                GameAction(
+                    GameActionType.PROTECT,
+                    "Humano",
+                    "Objetivo",
+                    1,
+                    GamePhase.NOCHE_MEDICO
+                ),
+                GameAction(
+                    GameActionType.PROTECT,
+                    "Humano",
+                    "Humano",
+                    2,
+                    GamePhase.NOCHE_MEDICO
+                )
+            ),
+            godHistory = listOf(
+                "Noche 1: todos guardan silencio.",
+                "Amanecer: murio Objetivo. Rival no puede hablar ni votar hoy.",
+                "Noche 2: todos guardan silencio.",
+                "Amanecer: no murio nadie."
+            )
+        )
+
+        val summary = GameplayTableUi.gameSummary(medic, nowEpochMs = 126_000L)
+
+        assertEquals(4, summary.roundsPlayed)
+        assertEquals("02:05", summary.durationLabel)
+        assertEquals(1, summary.survivors)
+        assertEquals(4, summary.eliminated)
+        assertEquals(listOf("Objetivo (Aldeano)"), summary.eliminatedPlayers)
+        assertEquals("2 protecciones", summary.humanHighlight)
+        assertEquals(
+            listOf(
+                "Día 1: murió Objetivo y se silenció a Rival.",
+                "Día 2: no murió nadie y nadie fue silenciado.",
+                "Día 3: no murió nadie y nadie fue silenciado.",
+                "Día 4: no murió nadie y nadie fue silenciado."
+            ),
+            summary.daySummaries
+        )
+    }
+
+    @Test
+    fun gameSummaryUsesRoleSpecificHumanHighlights() {
+        val assassin = actionSession("asesino", GamePhase.RESULTADO).copy(
+            actionHistory = listOf(
+                GameAction(
+                    GameActionType.KILL,
+                    "Humano",
+                    "Objetivo",
+                    1,
+                    GamePhase.NOCHE_ASESINO
+                )
+            )
+        )
+        val detective = actionSession("policia", GamePhase.RESULTADO).copy(
+            actionHistory = listOf(
+                GameAction(
+                    GameActionType.INVESTIGATE,
+                    "Humano",
+                    "Objetivo",
+                    1,
+                    GamePhase.NOCHE_POLICIA
+                )
+            )
+        )
+        val desertor = actionSession("desertor", GamePhase.RESULTADO)
+            .copy(desertorTeam = GameRules.TOWN_WINNER)
+
+        assertEquals(
+            "1 ataques elegidos",
+            GameplayTableUi.gameSummary(assassin, assassin.startedAtEpochMs).humanHighlight
+        )
+        assertEquals(
+            "1 investigaciones",
+            GameplayTableUi.gameSummary(detective, detective.startedAtEpochMs).humanHighlight
+        )
+        assertEquals(
+            "Bando final: Pueblo",
+            GameplayTableUi.gameSummary(desertor, desertor.startedAtEpochMs).humanHighlight
+        )
     }
 
     @Test
@@ -447,6 +540,129 @@ class GameplayTableUiTest {
         assertEquals(
             listOf("Sin eventos."),
             GameplayTableUi.historicalPublicEvents(emptyList(), "", "Sin eventos.")
+        )
+    }
+
+    @Test
+    fun nightActionsProduceBlockingPrivateFeedbackWithoutRoleLeaks() {
+        val cases = listOf(
+            actionSession("asesino", GamePhase.NOCHE_ASESINO) to GameplayActionTone.KILL,
+            actionSession("mercenario", GamePhase.NOCHE_MERCENARIO) to GameplayActionTone.SILENCE,
+            actionSession("policia", GamePhase.NOCHE_POLICIA) to GameplayActionTone.INVESTIGATE,
+            actionSession("medico", GamePhase.NOCHE_MEDICO) to GameplayActionTone.SAVE
+        )
+
+        cases.forEach { (before, tone) ->
+            val after = GameEngine.resolveHumanTargetAction(before, "Objetivo")
+            val feedback = GameplayTableUi.feedbackForResolvedAction(before, after, "Objetivo")
+
+            assertEquals(GameplayFeedbackType.PRIVATE_RESULT, feedback?.type)
+            assertEquals(2000L, feedback?.durationMs)
+            assertEquals(tone, feedback?.tone)
+            assertEquals("Objetivo", feedback?.target)
+            assertFalse(feedback?.message.orEmpty().contains("Aldeano", ignoreCase = true))
+            assertFalse(feedback?.message.orEmpty().contains("Pueblo", ignoreCase = true))
+        }
+    }
+
+    @Test
+    fun medicSelfProtectionAndDetectiveResultUseExpectedPrivateCopy() {
+        val medic = actionSession("medico", GamePhase.NOCHE_MEDICO)
+        val medicAfter = GameEngine.resolveHumanTargetAction(medic, "Humano")
+        val medicFeedback = GameplayTableUi.feedbackForResolvedAction(
+            medic,
+            medicAfter,
+            "Humano"
+        )
+        assertEquals("Te protegiste durante esta noche.", medicFeedback?.message)
+
+        val detective = actionSession("policia", GamePhase.NOCHE_POLICIA)
+        val detectiveAfter = GameEngine.resolveHumanTargetAction(detective, "Objetivo")
+        val detectiveFeedback = GameplayTableUi.feedbackForResolvedAction(
+            detective,
+            detectiveAfter,
+            "Objetivo"
+        )
+        assertTrue(detectiveFeedback?.message.orEmpty().contains("INOCENTE"))
+    }
+
+    @Test
+    fun dayActionsProduceNonBlockingConfirmationFeedback() {
+        val voting = actionSession("aldeano", GamePhase.VOTACION)
+        val voteAfter = GameEngine.resolveHumanTargetAction(voting, "Objetivo")
+        val vote = GameplayTableUi.feedbackForResolvedAction(voting, voteAfter, "Objetivo")
+
+        val payador = actionSession("payador", GamePhase.DIA_DEBATE)
+        val payadorAfter = GameEngine.resolveHumanTargetAction(payador, "Objetivo")
+        val contrapunto = GameplayTableUi.feedbackForResolvedAction(
+            payador,
+            payadorAfter,
+            "Objetivo"
+        )
+        val payadorFinal = payador.copy(
+            phase = GamePhase.CONTRAPUNTO,
+            contrapuntoPlayers = listOf("Objetivo")
+        )
+        val payadorFinalAfter = GameEngine.resolveHumanTargetAction(payadorFinal, "Objetivo")
+        val suspicion = GameplayTableUi.feedbackForResolvedAction(
+            payadorFinal,
+            payadorFinalAfter,
+            "Objetivo"
+        )
+
+        val mayor = actionSession("alcalde", GamePhase.ALCALDE_DESEMPATE).copy(
+            alcaldeRevealed = true,
+            alcaldeTieCandidates = listOf("Objetivo")
+        )
+        val mayorAfter = GameEngine.resolveHumanTargetAction(mayor, "Objetivo")
+        val decision = GameplayTableUi.feedbackForResolvedAction(mayor, mayorAfter, "Objetivo")
+
+        listOf(vote, contrapunto, suspicion, decision).forEach { feedback ->
+            assertEquals(GameplayFeedbackType.ACTION_CONFIRMATION, feedback?.type)
+            assertEquals(1200L, feedback?.durationMs)
+            assertFalse(feedback?.blocksGameplay ?: true)
+        }
+        assertEquals("SENALAMIENTO", suspicion?.title)
+    }
+
+    @Test
+    fun mayorDesertorAndPersonalStatusesHaveCompactPresentation() {
+        val mayor = actionSession("alcalde", GamePhase.DIA_DEBATE)
+        val revealedMayor = mayor.copy(alcaldeRevealed = true)
+        assertEquals(
+            "ALCALDE REVELADO",
+            GameplayTableUi.feedbackForMayorReveal(mayor, revealedMayor)?.title
+        )
+        assertEquals(
+            "BANDO ELEGIDO",
+            GameplayTableUi.feedbackForDesertorChoice(GameRules.TOWN_WINNER, false).title
+        )
+        assertEquals(
+            "BANDO ACTUALIZADO",
+            GameplayTableUi.feedbackForDesertorChoice(GameRules.TRAITOR_WINNER, true).title
+        )
+
+        val base = actionSession("medico", GamePhase.NOCHE_MEDICO)
+        assertEquals(null, GameplayTableUi.personalStatus(base))
+        assertEquals(
+            "PROTEGIDO",
+            GameplayTableUi.personalStatus(base.copy(protectedPlayer = "Humano"))
+        )
+        assertEquals(
+            "SILENCIADO",
+            GameplayTableUi.personalStatus(
+                base.copy(players = base.players.map {
+                    if (it.isHuman) it.copy(muted = true) else it
+                })
+            )
+        )
+        assertEquals(
+            "ELIMINADO",
+            GameplayTableUi.personalStatus(
+                base.copy(players = base.players.map {
+                    if (it.isHuman) it.copy(alive = false, muted = true) else it
+                })
+            )
         )
     }
 

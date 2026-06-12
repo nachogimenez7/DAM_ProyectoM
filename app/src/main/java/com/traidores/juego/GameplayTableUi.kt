@@ -1,5 +1,7 @@
 package com.traidores.juego
 
+import java.io.Serializable
+
 data class CompanionCardMetrics(
     val columnWidthDp: Int,
     val minCardWidthDp: Int,
@@ -42,8 +44,36 @@ data class GameplayTransitionSpec(
 
 data class GameWinnerPresentation(
     val winningPlayers: List<GamePlayer>,
-    val humanWon: Boolean
+    val humanWon: Boolean,
+    val summary: GameSummaryPresentation
 )
+
+data class GameSummaryPresentation(
+    val roundsPlayed: Int,
+    val durationLabel: String,
+    val survivors: Int,
+    val eliminated: Int,
+    val eliminatedPlayers: List<String>,
+    val humanHighlight: String,
+    val daySummaries: List<String>
+)
+
+enum class GameplayFeedbackType : Serializable {
+    PRIVATE_RESULT,
+    ACTION_CONFIRMATION
+}
+
+data class GameplayFeedbackSpec(
+    val type: GameplayFeedbackType,
+    val title: String,
+    val message: String,
+    val target: String,
+    val tone: GameplayActionTone,
+    val durationMs: Long
+) : Serializable {
+    val blocksGameplay: Boolean
+        get() = type == GameplayFeedbackType.PRIVATE_RESULT
+}
 
 object GameplayTableUi {
 
@@ -144,6 +174,127 @@ object GameplayTableUi {
         }
     }
 
+    fun feedbackForResolvedAction(
+        before: GameSession,
+        after: GameSession,
+        target: String
+    ): GameplayFeedbackSpec? {
+        if (target.isBlank() || before == after) return null
+        return when (before.phase) {
+            GamePhase.NOCHE_ASESINO -> privateFeedback(
+                title = "VICTIMA ELEGIDA",
+                message = "Elegiste a $target. El resultado se anunciara al amanecer.",
+                target = target,
+                tone = GameplayActionTone.KILL
+            )
+            GamePhase.NOCHE_MERCENARIO -> privateFeedback(
+                title = "SILENCIO REGISTRADO",
+                message = "$target no podra hablar ni votar durante el dia.",
+                target = target,
+                tone = GameplayActionTone.SILENCE
+            )
+            GamePhase.NOCHE_POLICIA -> {
+                val result = after.investigatedResult.uppercase()
+                privateFeedback(
+                    title = "RESPUESTA PRIVADA",
+                    message = "$target parece $result.",
+                    target = target,
+                    tone = GameplayActionTone.INVESTIGATE
+                )
+            }
+            GamePhase.NOCHE_MEDICO -> privateFeedback(
+                title = "PROTECCION REGISTRADA",
+                message = if (target == GameEngine.humanPlayer(before).name) {
+                    "Te protegiste durante esta noche."
+                } else {
+                    "Protegiste a $target durante esta noche."
+                },
+                target = target,
+                tone = GameplayActionTone.SAVE
+            )
+            GamePhase.DIA_DEBATE -> actionConfirmation(
+                title = "CONTRAPUNTO",
+                message = "Elegiste a $target.",
+                target = target
+            )
+            GamePhase.CONTRAPUNTO -> actionConfirmation(
+                title = "SENALAMIENTO",
+                message = "Senalaste a $target.",
+                target = target
+            )
+            GamePhase.VOTACION -> actionConfirmation(
+                title = "VOTO REGISTRADO",
+                message = "Votaste a $target.",
+                target = target
+            )
+            GamePhase.ALCALDE_DESEMPATE -> actionConfirmation(
+                title = "DECISION DEL ALCALDE",
+                message = "Elegiste expulsar a $target.",
+                target = target
+            )
+            else -> null
+        }
+    }
+
+    fun feedbackForMayorReveal(before: GameSession, after: GameSession): GameplayFeedbackSpec? {
+        if (before.alcaldeRevealed || !after.alcaldeRevealed) return null
+        return actionConfirmation(
+            title = "ALCALDE REVELADO",
+            message = "Tu voto ahora vale doble.",
+            target = GameEngine.humanPlayer(after).name
+        )
+    }
+
+    fun feedbackForDesertorChoice(team: String, changedTeam: Boolean): GameplayFeedbackSpec {
+        return actionConfirmation(
+            title = if (changedTeam) "BANDO ACTUALIZADO" else "BANDO ELEGIDO",
+            message = "Ahora apoyas a $team.",
+            target = team
+        )
+    }
+
+    fun personalStatus(session: GameSession): String? {
+        val human = GameEngine.humanPlayer(session)
+        return when {
+            !human.alive -> "ELIMINADO"
+            human.muted -> "SILENCIADO"
+            session.protectedPlayer == human.name &&
+                human.role?.key == "medico" -> "PROTEGIDO"
+            else -> null
+        }
+    }
+
+    private fun privateFeedback(
+        title: String,
+        message: String,
+        target: String,
+        tone: GameplayActionTone
+    ): GameplayFeedbackSpec {
+        return GameplayFeedbackSpec(
+            type = GameplayFeedbackType.PRIVATE_RESULT,
+            title = title,
+            message = message,
+            target = target,
+            tone = tone,
+            durationMs = 2000L
+        )
+    }
+
+    private fun actionConfirmation(
+        title: String,
+        message: String,
+        target: String
+    ): GameplayFeedbackSpec {
+        return GameplayFeedbackSpec(
+            type = GameplayFeedbackType.ACTION_CONFIRMATION,
+            title = title,
+            message = message,
+            target = target,
+            tone = GameplayActionTone.DECIDE,
+            durationMs = 1200L
+        )
+    }
+
     fun publicEvents(history: List<String>, current: String, fallback: String): List<String> {
         val events = mutableListOf<String>()
         (history + current).forEach { message ->
@@ -197,7 +348,11 @@ object GameplayTableUi {
 
     fun winnerPresentation(session: GameSession): GameWinnerPresentation {
         if (session.winner.isBlank()) {
-            return GameWinnerPresentation(emptyList(), humanWon = false)
+            return GameWinnerPresentation(
+                emptyList(),
+                humanWon = false,
+                summary = gameSummary(session)
+            )
         }
 
         val winningPlayers = session.players.filter { player ->
@@ -212,8 +367,93 @@ object GameplayTableUi {
         }
         return GameWinnerPresentation(
             winningPlayers = winningPlayers,
-            humanWon = winningPlayers.any { it.isHuman }
+            humanWon = winningPlayers.any { it.isHuman },
+            summary = gameSummary(session)
         )
+    }
+
+    fun gameSummary(
+        session: GameSession,
+        nowEpochMs: Long = System.currentTimeMillis()
+    ): GameSummaryPresentation {
+        val alive = session.players.count { it.alive }
+        val elapsedMs = (nowEpochMs - session.startedAtEpochMs).coerceAtLeast(0L)
+        val totalSeconds = elapsedMs / 1000L
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        val human = GameEngine.humanPlayer(session)
+        val humanActions = session.actionHistory.filter { it.actor == human.name }
+        val actionLabel = when (human.role?.key) {
+            "asesino", "espia" -> "${humanActions.count { it.type == GameActionType.KILL }} ataques elegidos"
+            "mercenario" -> "${humanActions.count { it.type == GameActionType.SILENCE }} silencios"
+            "policia" -> "${humanActions.count { it.type == GameActionType.INVESTIGATE }} investigaciones"
+            "medico" -> "${humanActions.count { it.type == GameActionType.PROTECT }} protecciones"
+            "alcalde" -> if (session.alcaldeRevealed) "Alcalde revelado" else "Alcalde en secreto"
+            "payador" -> if (session.payadorUsed) "Contrapunto utilizado" else "Contrapunto sin usar"
+            "desertor" -> "Bando final: ${session.desertorTeam.ifBlank { "sin elegir" }}"
+            else -> "${humanActions.count { it.type == GameActionType.VOTE }} votos emitidos"
+        }
+        return GameSummaryPresentation(
+            roundsPlayed = session.round.coerceAtLeast(1),
+            durationLabel = "%02d:%02d".format(minutes, seconds),
+            survivors = alive,
+            eliminated = (session.initialPlayerCount - alive).coerceAtLeast(0),
+            eliminatedPlayers = session.players.filterNot { it.alive }.map { player ->
+                "${player.name} (${player.role?.name ?: "Rol desconocido"})"
+            },
+            humanHighlight = actionLabel,
+            daySummaries = daySummaries(session)
+        )
+    }
+
+    private fun daySummaries(session: GameSession): List<String> {
+        data class DayOutcome(
+            var killed: String? = null,
+            var silenced: String? = null
+        )
+
+        val outcomes = linkedMapOf<Int, DayOutcome>()
+        var currentRound = 1
+        val nightPattern = Regex("""Noche\s+(\d+)""", RegexOption.IGNORE_CASE)
+        val dayPattern = Regex("""Dia\s+(\d+)""", RegexOption.IGNORE_CASE)
+        val killedPattern = Regex("""murio\s+([^.\s]+)""", RegexOption.IGNORE_CASE)
+        val silencedPattern = Regex(
+            """([^.]+?)\s+no puede hablar ni votar hoy""",
+            RegexOption.IGNORE_CASE
+        )
+
+        session.godHistory.forEach { message ->
+            nightPattern.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
+                currentRound = it
+            }
+            val explicitDay = dayPattern.find(message)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+            val round = explicitDay ?: currentRound
+            if (
+                message.contains("Amanecer:", ignoreCase = true) ||
+                message.contains("no puede hablar ni votar hoy", ignoreCase = true)
+            ) {
+                val outcome = outcomes.getOrPut(round) { DayOutcome() }
+                if (!message.contains("no murio nadie", ignoreCase = true)) {
+                    killedPattern.find(message)?.groupValues?.getOrNull(1)?.let {
+                        outcome.killed = it
+                    }
+                }
+                silencedPattern.find(message)?.groupValues?.getOrNull(1)?.let {
+                    outcome.silenced = it.trim()
+                }
+            }
+        }
+
+        return (1..session.round.coerceAtLeast(1)).map { round ->
+            val outcome = outcomes[round]
+            val deathText = outcome?.killed?.let { "murió $it" } ?: "no murió nadie"
+            val silenceText = outcome?.silenced?.let { "se silenció a $it" }
+                ?: "nadie fue silenciado"
+            "Día $round: $deathText y $silenceText."
+        }
     }
 
     fun companionCardMetrics(
@@ -229,7 +469,7 @@ object GameplayTableUi {
                 itemHeightDp = 106,
                 itemGapDp = 4,
                 avatarSizeDp = 22,
-                cardWidthDp = 72,
+                cardWidthDp = 54,
                 cardHeightDp = 86,
                 nameHeightDp = 18,
                 nameTextSp = 10f,
@@ -241,7 +481,7 @@ object GameplayTableUi {
                 itemHeightDp = 89,
                 itemGapDp = 3,
                 avatarSizeDp = 20,
-                cardWidthDp = 60,
+                cardWidthDp = 45,
                 cardHeightDp = 72,
                 nameHeightDp = 17,
                 nameTextSp = 9.5f,
@@ -253,7 +493,7 @@ object GameplayTableUi {
                 itemHeightDp = 74,
                 itemGapDp = 2,
                 avatarSizeDp = 18,
-                cardWidthDp = 48,
+                cardWidthDp = 36,
                 cardHeightDp = 58,
                 nameHeightDp = 16,
                 nameTextSp = 9f,
@@ -265,7 +505,7 @@ object GameplayTableUi {
                 itemHeightDp = 65,
                 itemGapDp = 2,
                 avatarSizeDp = 16,
-                cardWidthDp = 42,
+                cardWidthDp = 31,
                 cardHeightDp = 50,
                 nameHeightDp = 15,
                 nameTextSp = 8.5f,
@@ -277,7 +517,7 @@ object GameplayTableUi {
                 itemHeightDp = 62,
                 itemGapDp = 2,
                 avatarSizeDp = 15,
-                cardWidthDp = 38,
+                cardWidthDp = 29,
                 cardHeightDp = 46,
                 nameHeightDp = 14,
                 nameTextSp = 8f,

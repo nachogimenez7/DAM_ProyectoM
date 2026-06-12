@@ -8,6 +8,8 @@ data class GameSession(
     val mapName: String,
     val players: List<GamePlayer>,
     val timingConfig: GameTimingConfig = GameTimingConfig(),
+    val roleRevealConfig: RoleRevealConfig = RoleRevealConfig(),
+    val revealRolesOnDeath: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",
@@ -31,6 +33,7 @@ data class GameSession(
     val desertorTeam: String = "",
     val desertorChangedTeam: Boolean = false,
     val initialPlayerCount: Int = players.size,
+    val startedAtEpochMs: Long = System.currentTimeMillis(),
     val winner: String = "",
     val phaseIndex: Int = 0
 ) : Serializable
@@ -46,6 +49,96 @@ data class GamePlayer(
     val consecutiveVoteAfk: Int = 0,
     val isHuman: Boolean = false
 ) : Serializable
+
+data class RoleRevealConfig(
+    val mode: RoleRevealMode = RoleRevealMode.BALANCED,
+    val minimumReadingSeconds: Int = DEFAULT_MINIMUM_READING_SECONDS,
+    val maximumWaitingSeconds: Int = DEFAULT_MAXIMUM_WAITING_SECONDS
+) : Serializable {
+
+    fun normalized(): RoleRevealConfig {
+        val minimum = minimumReadingSeconds.coerceIn(
+            MIN_READING_SECONDS,
+            MAX_READING_SECONDS
+        )
+        val maximum = maximumWaitingSeconds.coerceIn(
+            minimum,
+            MAX_WAITING_SECONDS
+        )
+        return copy(
+            minimumReadingSeconds = minimum,
+            maximumWaitingSeconds = maximum
+        )
+    }
+
+    companion object {
+        const val DEFAULT_MINIMUM_READING_SECONDS = 10
+        const val DEFAULT_MAXIMUM_WAITING_SECONDS = 30
+        const val MIN_READING_SECONDS = 5
+        const val MAX_READING_SECONDS = 30
+        const val MAX_WAITING_SECONDS = 90
+    }
+}
+
+enum class RoleRevealMode : Serializable {
+    WAIT_FOR_ALL,
+    BALANCED,
+    QUICK
+}
+
+enum class RoleRevealStartReason {
+    WAITING_FOR_MINIMUM,
+    WAITING_FOR_PLAYERS,
+    ALL_READY,
+    TIME_LIMIT_REACHED
+}
+
+data class RoleRevealStartDecision(
+    val canStart: Boolean,
+    val reason: RoleRevealStartReason,
+    val readyPlayers: Int,
+    val totalPlayers: Int
+)
+
+object RoleRevealGate {
+
+    fun evaluate(
+        config: RoleRevealConfig,
+        elapsedSeconds: Int,
+        readyPlayerIds: Set<String>,
+        connectedPlayerIds: Set<String>
+    ): RoleRevealStartDecision {
+        val normalized = config.normalized()
+        val connected = connectedPlayerIds.filter { it.isNotBlank() }.toSet()
+        val ready = readyPlayerIds.intersect(connected)
+        val minimumReached = elapsedSeconds >= normalized.minimumReadingSeconds
+        val allReady = connected.isNotEmpty() && ready.size == connected.size
+        val timeLimitReached = normalized.mode != RoleRevealMode.WAIT_FOR_ALL &&
+            elapsedSeconds >= effectiveMaximumSeconds(normalized)
+
+        val reason = when {
+            !minimumReached -> RoleRevealStartReason.WAITING_FOR_MINIMUM
+            allReady -> RoleRevealStartReason.ALL_READY
+            timeLimitReached -> RoleRevealStartReason.TIME_LIMIT_REACHED
+            else -> RoleRevealStartReason.WAITING_FOR_PLAYERS
+        }
+        return RoleRevealStartDecision(
+            canStart = reason == RoleRevealStartReason.ALL_READY ||
+                reason == RoleRevealStartReason.TIME_LIMIT_REACHED,
+            reason = reason,
+            readyPlayers = ready.size,
+            totalPlayers = connected.size
+        )
+    }
+
+    private fun effectiveMaximumSeconds(config: RoleRevealConfig): Int {
+        return when (config.mode) {
+            RoleRevealMode.WAIT_FOR_ALL -> Int.MAX_VALUE
+            RoleRevealMode.BALANCED -> config.maximumWaitingSeconds
+            RoleRevealMode.QUICK -> config.minimumReadingSeconds
+        }
+    }
+}
 
 data class GameTimingConfig(
     val transitionSeconds: Int = DEFAULT_TRANSITION_SECONDS,
@@ -69,10 +162,15 @@ data class GameTimingConfig(
             "${value.discussionSeconds} / ${value.votingSeconds}"
     }
 
+    fun preset(): GameTimingPreset? {
+        val value = normalized()
+        return GameTimingPreset.entries.firstOrNull { it.config == value }
+    }
+
     companion object {
-        const val DEFAULT_TRANSITION_SECONDS = 3
-        const val DEFAULT_NIGHT_SECONDS = 20
-        const val DEFAULT_DISCUSSION_SECONDS = 60
+        const val DEFAULT_TRANSITION_SECONDS = 5
+        const val DEFAULT_NIGHT_SECONDS = 40
+        const val DEFAULT_DISCUSSION_SECONDS = 120
         const val DEFAULT_VOTING_SECONDS = 20
 
         const val MIN_TRANSITION_SECONDS = 1
@@ -80,7 +178,7 @@ data class GameTimingConfig(
         const val TRANSITION_STEP_SECONDS = 1
 
         const val MIN_NIGHT_SECONDS = 10
-        const val MAX_NIGHT_SECONDS = 60
+        const val MAX_NIGHT_SECONDS = 90
         const val NIGHT_STEP_SECONDS = 5
 
         const val MIN_DISCUSSION_SECONDS = 30
@@ -91,6 +189,28 @@ data class GameTimingConfig(
         const val MAX_VOTING_SECONDS = 60
         const val VOTING_STEP_SECONDS = 5
     }
+}
+
+enum class GameTimingPreset(
+    val label: String,
+    val description: String,
+    val config: GameTimingConfig
+) {
+    SLOW(
+        "LENTO",
+        "Ideal para partidas online o mesas con mucha gente.",
+        GameTimingConfig(7, 90, 180, 60)
+    ),
+    NORMAL(
+        "NORMAL",
+        "Ritmo equilibrado para la mayoria de las partidas.",
+        GameTimingConfig(5, 40, 120, 20)
+    ),
+    FAST(
+        "RAPIDO",
+        "Ideal para partidas cortas y jugadores que ya conocen el juego.",
+        GameTimingConfig(3, 20, 60, 15)
+    )
 }
 
 data class GameRole(
@@ -300,6 +420,7 @@ object LocalGameFactory {
             desertorTeam = initialDesertorTeam(assignedPlayers, session.code),
             desertorChangedTeam = false,
             initialPlayerCount = assignedPlayers.size,
+            startedAtEpochMs = System.currentTimeMillis(),
             winner = "",
             phaseIndex = 0
         )

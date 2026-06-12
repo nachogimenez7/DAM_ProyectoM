@@ -28,6 +28,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -46,6 +47,7 @@ import java.util.ArrayDeque
 class GameplayMockActivity : BaseActivity() {
 
     private var isCardRevealed = false
+    private var appliedGameplayTextScale = 1f
     private var isChatOpen = false
     private var isEventLogExpanded = false
     private var lastRenderedAnnouncement = ""
@@ -76,11 +78,15 @@ class GameplayMockActivity : BaseActivity() {
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
+    private var pendingFeedback: GameplayFeedbackSpec? = null
+    private var isPrivateFeedbackVisible = false
     private lateinit var session: GameSession
     private var unreadChatCount = 0
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val traitorRevealDismissRunnable = Runnable { dismissTraitorReveal() }
+    private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
+    private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
     private val countdownRunnable = object : Runnable {
         override fun run() {
             updateCountdown()
@@ -102,7 +108,13 @@ class GameplayMockActivity : BaseActivity() {
     private var traitorRevealAnimator: AnimatorSet? = null
     private var transitionSoundPlayer: MediaPlayer? = null
     private var winnerRevealAnimator: AnimatorSet? = null
+    private var feedbackAnimator: AnimatorSet? = null
+    private var rolePreviewAnimator: AnimatorSet? = null
 
+    private lateinit var actionFeedbackBanner: LinearLayout
+    private lateinit var actionFeedbackBannerMessage: TextView
+    private lateinit var actionFeedbackBannerTitle: TextView
+    private lateinit var actionFeedbackBannerTone: View
     private lateinit var btnAction: Button
     private lateinit var btnRevealCard: Button
     private lateinit var btnToggleChat: ImageButton
@@ -115,6 +127,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var chatUnreadBadge: TextView
     private lateinit var currentPlayerHint: TextView
     private lateinit var currentPlayerName: TextView
+    private lateinit var currentPlayerStatus: TextView
     private lateinit var deathRevealBloodLeft: ImageView
     private lateinit var deathRevealBloodRight: ImageView
     private lateinit var deathRevealCard: FrameLayout
@@ -143,6 +156,11 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var phaseSubtitle: TextView
     private lateinit var phaseCountdown: TextView
     private lateinit var phaseProgressFill: View
+    private lateinit var privateFeedbackMessage: TextView
+    private lateinit var privateFeedbackOverlay: FrameLayout
+    private lateinit var privateFeedbackPanel: FrameLayout
+    private lateinit var privateFeedbackTitle: TextView
+    private lateinit var privateFeedbackTone: View
     private lateinit var rightPlayersContainer: LinearLayout
     private lateinit var rightPlayersScroll: ScrollView
     private lateinit var rightColumn: LinearLayout
@@ -150,9 +168,14 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var roleImage: ImageView
     private lateinit var roleName: TextView
     private lateinit var rolePreviewContent: FrameLayout
+    private lateinit var rolePreviewAdvice: TextView
+    private lateinit var rolePreviewFunction: TextView
     private lateinit var rolePreviewImage: ImageView
+    private lateinit var rolePreviewMapBackground: ImageView
     private lateinit var rolePreviewName: TextView
     private lateinit var rolePreviewOverlay: FrameLayout
+    private lateinit var rolePreviewScroll: ScrollView
+    private lateinit var rolePreviewTeam: TextView
     private lateinit var silenceRevealCageDoor: ImageView
     private lateinit var silenceRevealCageLeft: ImageView
     private lateinit var silenceRevealCageLock: ImageView
@@ -178,8 +201,14 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var winnerRevealOverlay: FrameLayout
     private lateinit var winnerRevealPanel: FrameLayout
     private lateinit var winnerRevealPersonalResult: TextView
+    private lateinit var winnerRevealScroll: ScrollView
     private lateinit var winnerRevealShine: View
     private lateinit var winnerRevealTitle: TextView
+    private lateinit var winnerSummaryDuration: TextView
+    private lateinit var winnerSummaryHighlight: TextView
+    private lateinit var winnerSummaryPlayers: TextView
+    private lateinit var winnerSummaryRounds: TextView
+    private lateinit var winnerSummaryTimeline: TextView
     private lateinit var themeKey: String
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
@@ -205,14 +234,19 @@ class GameplayMockActivity : BaseActivity() {
         val restoredSession = savedInstanceState?.getSerializable(STATE_SESSION) as? GameSession
         session = restoredSession ?: readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         themeKey = themeFromIntentOrSession()
+        val shouldShowInitialRoleReveal = savedInstanceState == null &&
+            session.phase == GamePhase.REPARTO
         lastPresentedTransitionKey = savedInstanceState?.getString(STATE_TRANSITION_KEY)
+        if (shouldShowInitialRoleReveal) {
+            lastPresentedTransitionKey = GameplayTableUi.transitionSpec(session).key
+        }
         presentedPeriod = savedInstanceState
             ?.getString(STATE_PRESENTED_PERIOD)
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
         isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
-        isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: false
+        isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: true
         selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
         countdownStage = savedInstanceState
             ?.getString(STATE_COUNTDOWN_STAGE)
@@ -220,11 +254,18 @@ class GameplayMockActivity : BaseActivity() {
         countdownPhaseIndex = savedInstanceState?.getInt(STATE_COUNTDOWN_PHASE_INDEX, -1) ?: -1
         countdownRemainingMs = savedInstanceState?.getLong(STATE_COUNTDOWN_REMAINING_MS, 0L) ?: 0L
         countdownTotalMs = savedInstanceState?.getLong(STATE_COUNTDOWN_TOTAL_MS, 0L) ?: 0L
+        @Suppress("DEPRECATION")
+        pendingFeedback = savedInstanceState?.getSerializable(STATE_PENDING_FEEDBACK)
+            as? GameplayFeedbackSpec
         knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
         knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
         lastSeenChatCount = session.chatHistory.size
 
         val btnSettings: ImageButton = findViewById(R.id.btnSettings)
+        actionFeedbackBanner = findViewById(R.id.actionFeedbackBanner)
+        actionFeedbackBannerMessage = findViewById(R.id.actionFeedbackBannerMessage)
+        actionFeedbackBannerTitle = findViewById(R.id.actionFeedbackBannerTitle)
+        actionFeedbackBannerTone = findViewById(R.id.actionFeedbackBannerTone)
         btnAction = findViewById(R.id.btnVote)
         btnRevealCard = findViewById(R.id.btnRevealCard)
         btnToggleChat = findViewById(R.id.btnToggleChat)
@@ -237,6 +278,7 @@ class GameplayMockActivity : BaseActivity() {
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
+        currentPlayerStatus = findViewById(R.id.currentPlayerStatus)
         dayNightTransitionOverlay = findViewById(R.id.dayNightTransitionOverlay)
         deathRevealBloodLeft = findViewById(R.id.deathRevealBloodLeft)
         deathRevealBloodRight = findViewById(R.id.deathRevealBloodRight)
@@ -267,6 +309,11 @@ class GameplayMockActivity : BaseActivity() {
         phaseCountdown = findViewById(R.id.phaseCountdown)
         phaseProgressFill = findViewById(R.id.phaseProgressFill)
         phaseProgressFill.pivotX = 0f
+        privateFeedbackMessage = findViewById(R.id.privateFeedbackMessage)
+        privateFeedbackOverlay = findViewById(R.id.privateFeedbackOverlay)
+        privateFeedbackPanel = findViewById(R.id.privateFeedbackPanel)
+        privateFeedbackTitle = findViewById(R.id.privateFeedbackTitle)
+        privateFeedbackTone = findViewById(R.id.privateFeedbackTone)
         rightPlayersContainer = findViewById(R.id.rightPlayersContainer)
         rightPlayersScroll = findViewById(R.id.rightPlayersScroll)
         rightColumn = findViewById(R.id.rightColumn)
@@ -274,9 +321,14 @@ class GameplayMockActivity : BaseActivity() {
         roleImage = findViewById(R.id.roleImage)
         roleName = findViewById(R.id.roleName)
         rolePreviewContent = findViewById(R.id.rolePreviewContent)
+        rolePreviewAdvice = findViewById(R.id.rolePreviewAdvice)
+        rolePreviewFunction = findViewById(R.id.rolePreviewFunction)
         rolePreviewImage = findViewById(R.id.rolePreviewImage)
+        rolePreviewMapBackground = findViewById(R.id.rolePreviewMapBackground)
         rolePreviewName = findViewById(R.id.rolePreviewName)
         rolePreviewOverlay = findViewById(R.id.rolePreviewOverlay)
+        rolePreviewScroll = findViewById(R.id.rolePreviewScroll)
+        rolePreviewTeam = findViewById(R.id.rolePreviewTeam)
         silenceRevealCageDoor = findViewById(R.id.silenceRevealCageDoor)
         silenceRevealCageLeft = findViewById(R.id.silenceRevealCageLeft)
         silenceRevealCageLock = findViewById(R.id.silenceRevealCageLock)
@@ -301,10 +353,19 @@ class GameplayMockActivity : BaseActivity() {
         winnerRevealOverlay = findViewById(R.id.winnerRevealOverlay)
         winnerRevealPanel = findViewById(R.id.winnerRevealPanel)
         winnerRevealPersonalResult = findViewById(R.id.winnerRevealPersonalResult)
+        winnerRevealScroll = findViewById(R.id.winnerRevealScroll)
         winnerRevealShine = findViewById(R.id.winnerRevealShine)
         winnerRevealTitle = findViewById(R.id.winnerRevealTitle)
+        winnerSummaryDuration = findViewById(R.id.winnerSummaryDuration)
+        winnerSummaryHighlight = findViewById(R.id.winnerSummaryHighlight)
+        winnerSummaryPlayers = findViewById(R.id.winnerSummaryPlayers)
+        winnerSummaryRounds = findViewById(R.id.winnerSummaryRounds)
+        winnerSummaryTimeline = findViewById(R.id.winnerSummaryTimeline)
+
+        applyGameplayTextScale()
 
         btnSettings.setOnClickListener {
+            GameplayEffects.play(this, GameplayEffect.PANEL)
             startActivity(Intent(this, OpcionesActivity::class.java))
         }
         btnAction.setOnClickListener { handleCurrentPhase() }
@@ -312,19 +373,43 @@ class GameplayMockActivity : BaseActivity() {
         btnToggleChat.setOnClickListener { toggleChatPanel() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
         eventLogHeader.setOnClickListener { toggleEventLog() }
-        findViewById<ImageButton>(R.id.btnCloseChat).setOnClickListener { closeChatPanel() }
+        findViewById<ImageButton>(R.id.btnCloseChat).setOnClickListener {
+            GameplayEffects.play(this, GameplayEffect.PANEL)
+            closeChatPanel()
+        }
         btnSendChat.setOnClickListener { sendHumanChatMessage() }
         roleCard.setOnClickListener { showRolePreview() }
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
-        findViewById<ImageButton>(R.id.btnCloseRolePreview).setOnClickListener { closeRolePreview() }
+        privateFeedbackOverlay.setOnClickListener { dismissCurrentFeedback() }
+        actionFeedbackBanner.setOnClickListener { hideActionFeedbackBanner() }
+        findViewById<ImageButton>(R.id.btnCloseRolePreview).setOnClickListener {
+            GameplayEffects.play(this, GameplayEffect.PANEL)
+            closeRolePreview()
+        }
+        findViewById<Button>(R.id.btnContinueRolePreview).setOnClickListener {
+            GameplayEffects.play(this, GameplayEffect.CONFIRM)
+            closeRolePreview()
+        }
         traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
         findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
         renderChatPanelVisibility(animate = false)
+        if (shouldShowInitialRoleReveal) {
+            isRolePreviewOpen = true
+            rolePreviewOverlay.visibility = View.VISIBLE
+            rolePreviewOverlay.alpha = 1f
+            rolePreviewContent.alpha = 0f
+        }
         renderGame()
-        gameplayRoot.post { renderPlayerColumns() }
+        gameplayRoot.post {
+            renderPlayerColumns()
+            if (shouldShowInitialRoleReveal) {
+                isRolePreviewOpen = false
+                showRolePreview(initialReveal = true)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -334,11 +419,17 @@ class GameplayMockActivity : BaseActivity() {
         cancelTraitorReveal()
         settleWinnerReveal()
         cancelActionPulse()
+        cancelFeedbackPresentation(keepPending = false)
+        rolePreviewAnimator?.removeAllListeners()
+        rolePreviewAnimator?.cancel()
+        rolePreviewAnimator = null
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
         autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         releaseTransitionSound()
         releaseDeathRevealSound()
@@ -359,11 +450,17 @@ class GameplayMockActivity : BaseActivity() {
         cancelTraitorReveal()
         settleWinnerReveal()
         cancelActionPulse()
+        cancelFeedbackPresentation(keepPending = true)
+        rolePreviewAnimator?.removeAllListeners()
+        rolePreviewAnimator?.cancel()
+        rolePreviewAnimator = null
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(transitionMusicRunnable)
         autoAdvanceHandler.removeCallbacks(traitorRevealDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         releaseDeathRevealSound()
         releaseSilenceRevealSound()
         MusicManager.pauseVictoryMusic()
@@ -372,8 +469,15 @@ class GameplayMockActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::gameplayRoot.isInitialized) {
+            applyGameplayTextScale()
+        }
         if (::session.isInitialized && isWinnerRevealVisible) {
             MusicManager.resumeVictoryMusic(this)
+            return
+        }
+        if (::session.isInitialized && pendingFeedback?.blocksGameplay == true) {
+            showPendingPrivateFeedback()
             return
         }
         if (
@@ -400,12 +504,15 @@ class GameplayMockActivity : BaseActivity() {
         outState.putInt(STATE_COUNTDOWN_PHASE_INDEX, countdownPhaseIndex)
         outState.putLong(STATE_COUNTDOWN_REMAINING_MS, countdownRemainingForSave())
         outState.putLong(STATE_COUNTDOWN_TOTAL_MS, countdownTotalMs)
+        pendingFeedback?.takeIf { it.blocksGameplay }?.let {
+            outState.putSerializable(STATE_PENDING_FEEDBACK, it)
+        }
         super.onSaveInstanceState(outState)
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (isDeathRevealRunning || isSilenceRevealRunning) return
+        if (isDeathRevealRunning || isSilenceRevealRunning || isPrivateFeedbackVisible) return
         if (isWinnerRevealVisible) {
             returnToLobby()
             return
@@ -428,6 +535,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun handleCurrentPhase() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "La siguiente fase comienza enseguida.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -459,12 +567,16 @@ class GameplayMockActivity : BaseActivity() {
             human.role?.key == "alcalde" &&
             !session.alcaldeRevealed
         ) {
+            val before = session
             session = GameEngine.revealAlcalde(session)
+            val feedback = GameplayTableUi.feedbackForMayorReveal(before, session)
             renderGame()
+            feedback?.let { showActionFeedbackBanner(it) }
             return
         }
 
         if (GameEngine.requiresHumanInput(session)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, targetActionMessage(), Toast.LENGTH_SHORT).show()
             renderGame()
             return
@@ -494,20 +606,31 @@ class GameplayMockActivity : BaseActivity() {
     private fun performTargetAction(targetName: String) {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         if (countdownStage == CountdownStage.TRANSITION && countdownPhaseIndex == session.phaseIndex) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
             return
         }
         pauseCountdown()
         if (!GameEngine.canActOnTarget(session, targetName)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "No podes actuar sobre ese jugador.", Toast.LENGTH_SHORT).show()
             renderGame()
             return
         }
 
+        val before = session
         selectedTarget = targetName
-        session = GameEngine.resolveHumanTargetAction(session, targetName)
+        val resolved = GameEngine.resolveHumanTargetAction(session, targetName)
+        val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
+        session = resolved
         clearSelection()
+        if (feedback?.blocksGameplay == true) {
+            pendingFeedback = feedback
+        }
         renderGame()
+        if (feedback != null && !feedback.blocksGameplay) {
+            showActionFeedbackBanner(feedback)
+        }
     }
 
     private fun renderGame() {
@@ -521,9 +644,14 @@ class GameplayMockActivity : BaseActivity() {
         val newlyDeadPlayers = collectNewlyDeadPlayers()
         collectNewlyMutedPlayers()
         val transitionSpec = GameplayTableUi.transitionSpec(session)
-        val shouldStartTransition = !isDayNightTransitionRunning &&
+        val blockingFeedbackPending = pendingFeedback?.blocksGameplay == true ||
+            isPrivateFeedbackVisible
+        val shouldStartTransition = !blockingFeedbackPending &&
+            !isDayNightTransitionRunning &&
             GameplayTableUi.shouldPresentTransition(transitionSpec, lastPresentedTransitionKey)
-        if (shouldStartTransition) {
+        if (blockingFeedbackPending) {
+            MusicManager.pauseForTransition()
+        } else if (shouldStartTransition) {
             isDayNightTransitionRunning = true
             lastPresentedTransitionKey = transitionSpec.key
             MusicManager.pauseForTransition()
@@ -549,10 +677,11 @@ class GameplayMockActivity : BaseActivity() {
             transitionSpec.period
         }
         renderThemedBackground(visiblePeriod)
-        renderNarrator(phaseText, publicMessage, eventChanged)
+        renderNarrator(phaseText, firstRoundRoleTip() ?: publicMessage, eventChanged)
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
         currentPlayerName.text = GameEngine.humanPlayer(session).name
+        renderPersonalStatus()
         currentPlayerHint.text = privateHintText()
         renderAdvanceButton()
         renderHumanCardIfVisible()
@@ -561,7 +690,9 @@ class GameplayMockActivity : BaseActivity() {
         renderChatBadge()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = publicMessage
-        if (shouldStartTransition) {
+        if (blockingFeedbackPending) {
+            showPendingPrivateFeedback()
+        } else if (shouldStartTransition) {
             startDayNightTransition(transitionSpec)
         } else if (!isDayNightTransitionRunning) {
             resumeGameFlowAfterBlockingUi()
@@ -605,10 +736,11 @@ class GameplayMockActivity : BaseActivity() {
         )
         val latestEvent = allEvents.last()
         eventLogSummary.text = latestEvent
+        (eventLogSummary.parent as? HorizontalScrollView)?.scrollTo(0, 0)
         eventLogColorBar.setBackgroundColor(
             Color.parseColor(GameplayTableUi.eventTypeFor(latestEvent, session.phase).colorHex)
         )
-        val visibleEvents = if (isEventLogExpanded) allEvents.takeLast(8) else listOf(latestEvent)
+        val visibleEvents = if (isEventLogExpanded) allEvents.takeLast(5) else listOf(latestEvent)
         if (
             visibleEvents == lastRenderedEventMessages &&
             lastRenderedEventExpanded == isEventLogExpanded
@@ -642,6 +774,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun toggleEventLog() {
+        GameplayEffects.play(this, GameplayEffect.PANEL)
         isEventLogExpanded = !isEventLogExpanded
         if (isEventLogExpanded && isChatOpen) {
             closeChatPanel()
@@ -655,7 +788,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderEventLogPanel(animate: Boolean = false) {
-        val targetHeight = dp(if (isEventLogExpanded) 170 else 32)
+        val targetHeight = dp(if (isEventLogExpanded) 136 else 32)
         val params = eventLogPanel.layoutParams as FrameLayout.LayoutParams
         btnToggleEventLog.text = if (isEventLogExpanded) "\u25B2" else "\u25BC"
         eventLogPanel.elevation = dp(if (isEventLogExpanded) 8 else 4).toFloat()
@@ -697,12 +830,24 @@ class GameplayMockActivity : BaseActivity() {
         val text = TextView(this)
         text.text = message
         text.setTextColor(getColor(R.color.text_primary))
-        text.textSize = if (isEventLogExpanded) 10.5f else 9f
-        text.maxLines = if (isEventLogExpanded) 3 else 1
-        text.ellipsize = TextUtils.TruncateAt.END
+        text.textSize = if (isEventLogExpanded) 10f else 9f
+        text.maxLines = 1
+        text.setSingleLine(true)
         text.setPadding(dp(9), 0, 0, 0)
+        val scroller = HorizontalScrollView(this).apply {
+            isFillViewport = true
+            isHorizontalFadingEdgeEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                text,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
         row.addView(
-            text,
+            scroller,
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
 
@@ -980,7 +1125,7 @@ class GameplayMockActivity : BaseActivity() {
             FrameLayout.LayoutParams(
                 dp(metrics.avatarSizeDp),
                 dp(metrics.avatarSizeDp),
-                Gravity.TOP or Gravity.START
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
             )
         )
 
@@ -1052,6 +1197,8 @@ class GameplayMockActivity : BaseActivity() {
         holder.avatar.layoutParams = (holder.avatar.layoutParams as FrameLayout.LayoutParams).apply {
             width = dp(metrics.avatarSizeDp)
             height = dp(metrics.avatarSizeDp)
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = dp(2)
         }
         holder.avatar.text = if (isAlive) GameplayTableUi.playerInitial(player) else "\u2620"
         holder.avatar.textSize = if (isAlive) metrics.nameTextSp else metrics.nameTextSp + 1f
@@ -1105,13 +1252,17 @@ class GameplayMockActivity : BaseActivity() {
         holder.root.setOnClickListener {
             when {
                 isActionable -> {
+                    GameplayEffects.play(this, GameplayEffect.SELECT)
                     selectedTarget = if (isSelected) "" else player.name
                     currentPlayerHint.text = privateHintText()
                     renderAdvanceButton()
                     renderPlayerColumns()
                 }
-                !isAlive -> Toast.makeText(this, "${player.name} esta eliminado.", Toast.LENGTH_SHORT).show()
-                else -> Unit
+                !isAlive -> {
+                    GameplayEffects.play(this, GameplayEffect.ERROR)
+                    Toast.makeText(this, "${player.name} esta eliminado.", Toast.LENGTH_SHORT).show()
+                }
+                else -> GameplayEffects.play(this, GameplayEffect.ERROR)
             }
         }
         holder.root.contentDescription = when {
@@ -1176,6 +1327,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun toggleChatPanel() {
+        GameplayEffects.play(this, GameplayEffect.PANEL)
         if (isChatOpen) {
             closeChatPanel()
             return
@@ -1283,8 +1435,10 @@ class GameplayMockActivity : BaseActivity() {
         val before = session.chatHistory.size
         session = GameEngine.addHumanChatMessage(session, chatInput.text.toString())
         if (session.chatHistory.size > before) {
+            GameplayEffects.play(this, GameplayEffect.CHAT)
             chatInput.text.clear()
         } else if (!GameEngine.canHumanChat(session)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
             val human = GameEngine.humanPlayer(session)
             val message = when {
                 !human.alive -> "Estas eliminado. Podes mirar el chat, no escribir."
@@ -1322,6 +1476,8 @@ class GameplayMockActivity : BaseActivity() {
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
             isTraitorRevealRunning ||
+            isPrivateFeedbackVisible ||
+            pendingFeedback?.blocksGameplay == true ||
             desertorDialogOpen
         ) {
             pauseCountdown()
@@ -1375,24 +1531,25 @@ class GameplayMockActivity : BaseActivity() {
     private fun renderCountdown(seconds: Int) {
         phaseCountdown.text = seconds.coerceAtLeast(0).toString()
         val urgent = seconds in 1..5
-        phaseCountdown.setTextColor(getColor(if (urgent) R.color.accent_red else R.color.text_primary))
-        phaseProgressFill.setBackgroundColor(
-            getColor(if (urgent) R.color.accent_red else R.color.accent_gold)
-        )
-        phaseProgressFill.scaleX = if (countdownTotalMs > 0L) {
-            (countdownRemainingMs.toFloat() / countdownTotalMs).coerceIn(0f, 1f)
+        phaseCountdown.setTextColor(getColor(R.color.text_primary))
+        phaseProgressFill.setBackgroundColor(getColor(R.color.accent_gold))
+        val visualTotalMs = visualCountdownTotalMs()
+        val visualRemainingMs = visualCountdownRemainingMs()
+        phaseProgressFill.scaleX = if (visualTotalMs > 0L) {
+            (visualRemainingMs.toFloat() / visualTotalMs).coerceIn(0f, 1f)
         } else {
             0f
         }
         if (urgent && seconds != lastCountdownSecond) {
+            GameplayEffects.play(this, GameplayEffect.COUNTDOWN)
             phaseCountdown.animate().cancel()
             phaseProgressFill.animate().cancel()
             phaseCountdown.scaleX = 1f
             phaseCountdown.scaleY = 1f
             phaseProgressFill.alpha = 1f
             phaseCountdown.animate()
-                .scaleX(1.14f)
-                .scaleY(1.14f)
+                .scaleX(1.06f)
+                .scaleY(1.06f)
                 .setDuration(130L)
                 .withEndAction {
                     phaseCountdown.animate()
@@ -1499,6 +1656,21 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun visualCountdownTotalMs(): Long {
+        val transitionMs = session.timingConfig.normalized().transitionSeconds * 1000L
+        val activeMs = activePhaseSeconds()?.times(1000L) ?: 0L
+        return (transitionMs + activeMs).coerceAtLeast(countdownTotalMs)
+    }
+
+    private fun visualCountdownRemainingMs(): Long {
+        val activeMs = activePhaseSeconds()?.times(1000L) ?: 0L
+        return when (countdownStage) {
+            CountdownStage.TRANSITION -> countdownRemainingMs + activeMs
+            CountdownStage.ACTIVE -> countdownRemainingMs
+            null -> 0L
+        }
+    }
+
     private fun pauseCountdown() {
         if (countdownRunning) {
             countdownRemainingMs = (countdownDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
@@ -1536,6 +1708,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun toggleHumanCard() {
         if (session.phase == GamePhase.REPARTO) return
+        GameplayEffects.play(this, GameplayEffect.REVEAL)
         isCardRevealed = !isCardRevealed
         renderHumanCardIfVisible()
     }
@@ -1578,7 +1751,7 @@ class GameplayMockActivity : BaseActivity() {
         btnRevealCard.alpha = if (btnRevealCard.isEnabled) 1f else 0.7f
     }
 
-    private fun showRolePreview() {
+    private fun showRolePreview(initialReveal: Boolean = false) {
         if (
             isRolePreviewOpen ||
             isDayNightTransitionRunning ||
@@ -1586,6 +1759,8 @@ class GameplayMockActivity : BaseActivity() {
             isSilenceRevealRunning ||
             isWinnerRevealVisible ||
             isTraitorRevealRunning ||
+            isPrivateFeedbackVisible ||
+            pendingFeedback?.blocksGameplay == true ||
             desertorDialogOpen
         ) {
             return
@@ -1599,26 +1774,169 @@ class GameplayMockActivity : BaseActivity() {
         }
 
         rolePreviewImage.setImageResource(roleImageFor(role))
+        rolePreviewMapBackground.setImageResource(logDrawableFor(themeKey))
         rolePreviewName.text = role.name.uppercase()
-        rolePreviewOverlay.alpha = 0f
+        rolePreviewTeam.text = role.team.uppercase()
+        rolePreviewTeam.setTextColor(
+            Color.parseColor(
+                when (role.team) {
+                    GameRules.TRAITOR_WINNER -> "#E1746E"
+                    GameRules.TOWN_WINNER -> "#8FCB91"
+                    else -> "#E0B85F"
+                }
+            )
+        )
+        rolePreviewFunction.text = roleFunction(role.key)
+        rolePreviewAdvice.text = if (role.key == "mercenario") {
+            "Silencia a quien este guiando bien la discusion, pero evita repetir siempre el mismo patron."
+        } else {
+            roleAdvice(role.key)
+        }
+        rolePreviewScroll.scrollTo(0, 0)
+        rolePreviewAnimator?.cancel()
+        rolePreviewOverlay.alpha = if (initialReveal) 1f else 0f
+        rolePreviewContent.alpha = 1f
+        rolePreviewContent.rotationY = -82f
+        rolePreviewContent.scaleX = 0.34f
+        rolePreviewContent.scaleY = 0.72f
+        rolePreviewContent.cameraDistance = resources.displayMetrics.density * 9000f
+        rolePreviewMapBackground.alpha = 0f
+        rolePreviewImage.alpha = 0f
+        rolePreviewImage.translationY = dp(12).toFloat()
+        rolePreviewName.alpha = 0f
+        rolePreviewTeam.alpha = 0f
+        rolePreviewFunction.alpha = 0f
+        rolePreviewAdvice.alpha = 0f
         rolePreviewOverlay.visibility = View.VISIBLE
         isRolePreviewOpen = true
-        rolePreviewOverlay.animate()
-            .alpha(1f)
-            .setDuration(180L)
-            .start()
+        GameplayEffects.play(this, GameplayEffect.REVEAL)
+
+        val overlayEntrance = ObjectAnimator.ofFloat(
+            rolePreviewOverlay,
+            View.ALPHA,
+            rolePreviewOverlay.alpha,
+            1f
+        ).apply {
+            duration = if (initialReveal) 1L else 180L
+        }
+        val cardTurn = AnimatorSet().apply {
+            duration = if (initialReveal) 460L else 340L
+            interpolator = DecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(rolePreviewContent, View.ROTATION_Y, -82f, 0f),
+                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_X, 0.34f, 1f),
+                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_Y, 0.72f, 1f)
+            )
+        }
+        val revealDetails = AnimatorSet().apply {
+            duration = 280L
+            interpolator = DecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(rolePreviewMapBackground, View.ALPHA, 0f, 0.68f),
+                ObjectAnimator.ofFloat(rolePreviewImage, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(rolePreviewImage, View.TRANSLATION_Y, dp(12).toFloat(), 0f),
+                ObjectAnimator.ofFloat(rolePreviewName, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(rolePreviewTeam, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(rolePreviewFunction, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(rolePreviewAdvice, View.ALPHA, 0f, 1f)
+            )
+        }
+        rolePreviewAnimator = AnimatorSet().apply {
+            playTogether(
+                overlayEntrance,
+                AnimatorSet().apply {
+                    startDelay = 80L
+                    playSequentially(cardTurn, revealDetails)
+                }
+            )
+            start()
+        }
     }
 
     private fun closeRolePreview(resumeGameFlow: Boolean = true) {
         if (!::rolePreviewOverlay.isInitialized) return
-        rolePreviewOverlay.animate().cancel()
-        rolePreviewOverlay.visibility = View.GONE
-        rolePreviewOverlay.alpha = 1f
         val wasOpen = isRolePreviewOpen
-        isRolePreviewOpen = false
-        if (wasOpen && resumeGameFlow) {
-            resumeGameFlowAfterBlockingUi()
+        rolePreviewAnimator?.removeAllListeners()
+        rolePreviewAnimator?.cancel()
+        rolePreviewAnimator = null
+        if (!wasOpen || !resumeGameFlow) {
+            rolePreviewOverlay.visibility = View.GONE
+            rolePreviewOverlay.alpha = 1f
+            rolePreviewContent.alpha = 1f
+            rolePreviewContent.rotationY = 0f
+            rolePreviewContent.scaleX = 1f
+            rolePreviewContent.scaleY = 1f
+            isRolePreviewOpen = false
+            return
         }
+
+        rolePreviewAnimator = AnimatorSet().apply {
+            duration = 180L
+            interpolator = AccelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(rolePreviewOverlay, View.ALPHA, rolePreviewOverlay.alpha, 0f),
+                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_X, rolePreviewContent.scaleX, 0.82f),
+                ObjectAnimator.ofFloat(rolePreviewContent, View.SCALE_Y, rolePreviewContent.scaleY, 0.82f),
+                ObjectAnimator.ofFloat(rolePreviewContent, View.ROTATION_Y, rolePreviewContent.rotationY, 18f)
+            )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    rolePreviewOverlay.visibility = View.GONE
+                    rolePreviewOverlay.alpha = 1f
+                    rolePreviewContent.rotationY = 0f
+                    rolePreviewContent.scaleX = 1f
+                    rolePreviewContent.scaleY = 1f
+                    isRolePreviewOpen = false
+                    rolePreviewAnimator = null
+                    resumeGameFlowAfterBlockingUi()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun roleFunction(roleKey: String): String = when (roleKey) {
+        "asesino" -> "Cada noche elegis una victima para eliminar. Ganas cuando los Traidores logran controlar la mesa."
+        "mercenario" -> "Cada noche silencias a un jugador. Esa persona no podra hablar ni votar durante el dia siguiente."
+        "policia" -> "Cada noche investigas a un jugador y recibis en privado una pista sobre su bando."
+        "medico" -> "Cada noche proteges a un jugador. Si los Traidores lo atacan, evitas su eliminacion."
+        "alcalde" -> "Podes revelar tu identidad durante el debate. Desde entonces tu voto vale doble y decidis ciertos empates."
+        "payador" -> "Una vez por partida inicias un Contrapunto entre dos jugadores y agregas un voto al mas sospechoso."
+        "desertor" -> "Elegis un bando al comenzar y ganas con ese equipo si sobrevivis. Mas adelante podes cambiarlo una sola vez."
+        "espia" -> "Formas parte de los Traidores, pero cuando te investiga el Detective apareces como inocente."
+        else -> "No tenes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
+    }
+
+    private fun roleAdvice(roleKey: String): String = when (roleKey) {
+        "asesino" -> "Actua con calma. Acusar demasiado o defender siempre a tus aliados puede delatarte."
+        "mercenario" -> "Ganas con los Traidores. De noche silencia a quien pueda convencer al pueblo; de dia evita defender demasiado a tus compañeros."
+        "policia" -> "No reveles todos tus resultados enseguida. Orienta al Pueblo sin exponerte demasiado pronto."
+        "medico" -> "Cambia tus protecciones para que los Traidores no puedan anticiparte."
+        "alcalde" -> "Guarda tu revelacion para un voto importante o un empate que realmente necesite tu peso."
+        "payador" -> "Usa el Contrapunto cuando dos jugadores generen dudas y escucha bien sus respuestas."
+        "desertor" -> "Observa la ventaja de cada bando antes de comprometerte y prioriza seguir con vida."
+        "espia" -> "Podes parecer inocente ante una investigacion. Aprovechalo sin llamar demasiado la atencion."
+        else -> "Pregunta, escucha y compara versiones. Vota usando solo lo que todos pudieron ver y escuchar."
+    }
+
+    private fun firstRoundRoleTip(): String? {
+        if (session.round != 1 || session.winner.isNotBlank()) return null
+        if (session.phase != GamePhase.REPARTO && !GameplayTableUi.isNightPhase(session.phase)) {
+            return null
+        }
+        val roleKey = GameEngine.humanPlayer(session).role?.key ?: return null
+        val advice = when (roleKey) {
+            "asesino" -> "elegi una victima y evita llamar la atencion."
+            "mercenario" -> "silencia a quien pueda liderar la discusion."
+            "policia" -> "investiga a alguien que te parezca sospechoso."
+            "medico" -> "protege a quien creas que pueden atacar."
+            "alcalde" -> "escucha bien antes de usar el peso de tu voto."
+            "payador" -> "usa el contrapunto cuando dos jugadores generen dudas."
+            "desertor" -> "elegi un bando y trata de sobrevivir."
+            "espia" -> "ayuda a los Traidores sin revelar tu bando."
+            else -> "pregunta, escucha y busca contradicciones."
+        }
+        return "Consejo: $advice"
     }
 
     private fun privateHintText(): String {
@@ -1629,6 +1947,145 @@ class GameplayMockActivity : BaseActivity() {
             .ifBlank { phaseText(session.phase).subtitle }
         val selection = if (selectedTarget.isBlank()) "" else " Objetivo: $selectedTarget."
         return "$base$selection"
+    }
+
+    private fun renderPersonalStatus() {
+        val status = GameplayTableUi.personalStatus(session)
+        currentPlayerStatus.visibility = if (status == null) View.GONE else View.VISIBLE
+        currentPlayerStatus.text = status.orEmpty()
+        val color = when (status) {
+            "ELIMINADO" -> Color.parseColor("#A83232")
+            "SILENCIADO" -> Color.parseColor("#9A6A32")
+            "PROTEGIDO" -> Color.parseColor("#5A8A3C")
+            else -> getColor(R.color.accent_gold)
+        }
+        currentPlayerStatus.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#D9221B15"))
+            setStroke(dp(1), color)
+            cornerRadius = dp(8).toFloat()
+        }
+        currentPlayerStatus.setTextColor(color)
+    }
+
+    private fun showActionFeedbackBanner(spec: GameplayFeedbackSpec) {
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        actionFeedbackBanner.animate().cancel()
+        actionFeedbackBannerTitle.text = spec.title
+        actionFeedbackBannerMessage.text = spec.message
+        actionFeedbackBannerTone.setBackgroundColor(Color.parseColor(spec.tone.colorHex))
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        actionFeedbackBanner.visibility = View.VISIBLE
+        actionFeedbackBanner.alpha = 0f
+        actionFeedbackBanner.translationY = dp(8).toFloat()
+        actionFeedbackBanner.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(200L)
+            .start()
+        autoAdvanceHandler.postDelayed(
+            feedbackBannerDismissRunnable,
+            spec.durationMs.coerceAtLeast(INFORMATION_FEEDBACK_DURATION_MS)
+        )
+    }
+
+    private fun hideActionFeedbackBanner() {
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        actionFeedbackBanner.animate()
+            .alpha(0f)
+            .translationY(dp(6).toFloat())
+            .setDuration(180L)
+            .withEndAction {
+                actionFeedbackBanner.visibility = View.GONE
+                actionFeedbackBanner.alpha = 1f
+                actionFeedbackBanner.translationY = 0f
+            }
+            .start()
+    }
+
+    private fun showPendingPrivateFeedback() {
+        val spec = pendingFeedback?.takeIf { it.blocksGameplay } ?: return
+        if (isPrivateFeedbackVisible) return
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        feedbackAnimator?.cancel()
+
+        privateFeedbackTitle.text = spec.title
+        privateFeedbackMessage.text = spec.message
+        privateFeedbackTone.setBackgroundColor(Color.parseColor(spec.tone.colorHex))
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        privateFeedbackOverlay.alpha = 0f
+        privateFeedbackPanel.alpha = 0f
+        privateFeedbackPanel.scaleX = 0.94f
+        privateFeedbackPanel.scaleY = 0.94f
+        privateFeedbackOverlay.visibility = View.VISIBLE
+        isPrivateFeedbackVisible = true
+
+        feedbackAnimator = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(privateFeedbackOverlay, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_X, 0.94f, 1f),
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_Y, 0.94f, 1f)
+            )
+            duration = 220L
+            interpolator = DecelerateInterpolator()
+            start()
+        }
+        autoAdvanceHandler.postDelayed(
+            feedbackDismissRunnable,
+            spec.durationMs.coerceAtLeast(INFORMATION_FEEDBACK_DURATION_MS)
+        )
+    }
+
+    private fun dismissCurrentFeedback() {
+        if (!isPrivateFeedbackVisible) return
+        autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
+        pendingFeedback = null
+        feedbackAnimator?.cancel()
+        feedbackAnimator = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(privateFeedbackOverlay, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_X, 1f, 0.96f),
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_Y, 1f, 0.96f)
+            )
+            duration = 180L
+            interpolator = AccelerateInterpolator()
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    feedbackAnimator = null
+                    isPrivateFeedbackVisible = false
+                    privateFeedbackOverlay.visibility = View.GONE
+                    privateFeedbackOverlay.alpha = 1f
+                    privateFeedbackPanel.alpha = 1f
+                    privateFeedbackPanel.scaleX = 1f
+                    privateFeedbackPanel.scaleY = 1f
+                    renderGame()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun cancelFeedbackPresentation(keepPending: Boolean) {
+        autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        feedbackAnimator?.removeAllListeners()
+        feedbackAnimator?.cancel()
+        feedbackAnimator = null
+        actionFeedbackBanner.animate().cancel()
+        actionFeedbackBanner.visibility = View.GONE
+        actionFeedbackBanner.alpha = 1f
+        actionFeedbackBanner.translationY = 0f
+        privateFeedbackOverlay.visibility = View.GONE
+        privateFeedbackOverlay.alpha = 1f
+        privateFeedbackPanel.alpha = 1f
+        privateFeedbackPanel.scaleX = 1f
+        privateFeedbackPanel.scaleY = 1f
+        isPrivateFeedbackVisible = false
+        if (!keepPending) pendingFeedback = null
     }
 
     private fun clearSelection() {
@@ -1655,8 +2112,13 @@ class GameplayMockActivity : BaseActivity() {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isWinnerRevealVisible ||
-            isRolePreviewOpen
+            isRolePreviewOpen ||
+            isPrivateFeedbackVisible
         ) {
+            return
+        }
+        if (pendingFeedback?.blocksGameplay == true) {
+            showPendingPrivateFeedback()
             return
         }
         if (maybeShowNextDeathReveal()) return
@@ -1682,10 +2144,20 @@ class GameplayMockActivity : BaseActivity() {
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
 
+        val revealRole = session.revealRolesOnDeath
         deathRevealPlayerName.text = player.name.uppercase()
-        deathRevealRoleName.text = player.role?.name?.uppercase() ?: "ROL DESCONOCIDO"
-        deathRevealCardFront.setImageResource(roleImageFor(player.role))
+        deathRevealRoleName.text = if (revealRole) {
+            player.role?.name?.uppercase() ?: "ROL DESCONOCIDO"
+        } else {
+            "ROL OCULTO"
+        }
+        if (revealRole) {
+            deathRevealCardFront.setImageResource(roleImageFor(player.role))
+        }
         resetDeathRevealViews()
+        if (!revealRole) {
+            deathRevealRoleName.alpha = 1f
+        }
         deathRevealOverlay.visibility = View.VISIBLE
         playDeathRevealSound()
 
@@ -1723,24 +2195,36 @@ class GameplayMockActivity : BaseActivity() {
             interpolator = AccelerateDecelerateInterpolator()
         }
 
-        val flipOut = ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, 0f, 90f).apply {
-            duration = 230L
-            interpolator = AccelerateInterpolator()
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    deathRevealCardBack.visibility = View.INVISIBLE
-                    deathRevealCardFront.visibility = View.VISIBLE
-                    deathRevealCard.rotationY = -90f
-                }
-            })
-        }
-        val flipIn = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, -90f, 0f),
-                ObjectAnimator.ofFloat(deathRevealRoleName, View.ALPHA, 0f, 1f)
-            )
-            duration = 260L
-            interpolator = DecelerateInterpolator()
+        val revealAnimation = if (revealRole) {
+            val flipOut = ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, 0f, 90f).apply {
+                duration = 230L
+                interpolator = AccelerateInterpolator()
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        deathRevealCardBack.visibility = View.INVISIBLE
+                        deathRevealCardFront.visibility = View.VISIBLE
+                        deathRevealCard.rotationY = -90f
+                    }
+                })
+            }
+            val flipIn = AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(deathRevealCard, View.ROTATION_Y, -90f, 0f),
+                    ObjectAnimator.ofFloat(deathRevealRoleName, View.ALPHA, 0f, 1f)
+                )
+                duration = 260L
+                interpolator = DecelerateInterpolator()
+            }
+            AnimatorSet().apply { playSequentially(flipOut, flipIn) }
+        } else {
+            AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(deathRevealCard, View.SCALE_X, 1f, 1.05f, 1f),
+                    ObjectAnimator.ofFloat(deathRevealCard, View.SCALE_Y, 1f, 1.05f, 1f)
+                )
+                duration = 420L
+                interpolator = DecelerateInterpolator()
+            }
         }
         val hold = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1050L
@@ -1751,7 +2235,7 @@ class GameplayMockActivity : BaseActivity() {
         }
 
         deathRevealAnimator = AnimatorSet().apply {
-            playSequentially(entrance, impact, flipOut, flipIn, hold, exit)
+            playSequentially(entrance, impact, revealAnimation, hold, exit)
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     finishDeathReveal()
@@ -2030,7 +2514,10 @@ class GameplayMockActivity : BaseActivity() {
             Color.parseColor(if (presentation.humanWon) "#765019" else "#7C2F2A")
         )
         winnerRevealBackground.setImageResource(logDrawableFor(themeKey))
+        applyWinnerThemeInsets()
         renderWinnerCards(presentation.winningPlayers)
+        renderWinnerSummary(presentation.summary)
+        winnerRevealScroll.scrollTo(0, 0)
 
         isWinnerRevealVisible = true
         winnerRevealOverlay.visibility = View.VISIBLE
@@ -2109,8 +2596,8 @@ class GameplayMockActivity : BaseActivity() {
         if (players.isEmpty()) return
 
         val rowCount = when (players.size) {
-            in 1..5 -> 1
-            in 6..10 -> 2
+            in 1..6 -> 1
+            in 7..10 -> 2
             else -> 3
         }
         val playersPerRow = kotlin.math.ceil(players.size / rowCount.toDouble()).toInt()
@@ -2121,30 +2608,87 @@ class GameplayMockActivity : BaseActivity() {
             }
             val rowParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
             winnerRevealCards.addView(row, rowParams)
             rowPlayers.forEach { player ->
                 val card = createWinnerCard(player, players.size)
                 winnerCardViews += card
-                winnerCardFinalAlphas[card] = if (player.alive) 1f else 0.62f
+                winnerCardFinalAlphas[card] = 1f
                 row.addView(card)
             }
         }
     }
 
+    private fun renderWinnerSummary(summary: GameSummaryPresentation) {
+        winnerSummaryRounds.text = "${summary.roundsPlayed} RONDAS"
+        winnerSummaryDuration.text = "TIEMPO ${summary.durationLabel}"
+        winnerSummaryPlayers.text = "${summary.eliminated} ELIMINADOS"
+        winnerSummaryHighlight.text = if (summary.eliminatedPlayers.isEmpty()) {
+            "ELIMINADOS: NINGUNO"
+        } else {
+            "ELIMINADOS: ${summary.eliminatedPlayers.joinToString(", ")}"
+        }
+        winnerSummaryTimeline.text = summary.daySummaries
+            .joinToString("\n")
+            .ifBlank { "Día 1: no murió nadie y nadie fue silenciado." }
+    }
+
+    private fun applyGameplayTextScale() {
+        val preference = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getInt("gameplay_text_size", 1)
+            .coerceIn(0, 2)
+        val requestedScale = when (preference) {
+            0 -> 1f
+            2 -> 1.24f
+            else -> 1.12f
+        }
+        val relativeScale = requestedScale / appliedGameplayTextScale
+        if (relativeScale != 1f) {
+            scaleTextRecursively(gameplayRoot, relativeScale)
+            appliedGameplayTextScale = requestedScale
+        }
+    }
+
+    private fun scaleTextRecursively(view: View, scale: Float) {
+        if (view is TextView) {
+            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.textSize * scale)
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                scaleTextRecursively(view.getChildAt(index), scale)
+            }
+        }
+    }
+
+    private fun applyWinnerThemeInsets() {
+        val top = when (themeKey) {
+            "medieval" -> 20
+            "griego" -> 12
+            else -> 8
+        }
+        val horizontal = when (themeKey) {
+            "medieval" -> 54
+            "griego" -> 48
+            else -> 42
+        }
+        val bottom = if (themeKey == "medieval") 12 else 8
+        winnerRevealContent.setPadding(dp(horizontal), dp(top), dp(horizontal), dp(bottom))
+    }
+
     private fun createWinnerCard(player: GamePlayer, winnerCount: Int): View {
         val metrics = when {
-            winnerCount <= 5 -> intArrayOf(110, 72, 88, 12, 9)
-            winnerCount <= 10 -> intArrayOf(94, 58, 70, 10, 8)
-            else -> intArrayOf(76, 42, 50, 9, 7)
+            winnerCount == 1 -> intArrayOf(136, 80, 96, 16, 12, 21, 18)
+            winnerCount == 2 -> intArrayOf(126, 76, 92, 15, 11, 20, 18)
+            winnerCount <= 5 -> intArrayOf(106, 64, 77, 13, 10, 20, 18)
+            winnerCount <= 10 -> intArrayOf(94, 58, 72, 10, 8, 15, 12)
+            else -> intArrayOf(76, 42, 52, 9, 7, 13, 11)
         }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(dp(metrics[0]), LinearLayout.LayoutParams.WRAP_CONTENT)
-            setPadding(dp(3), dp(1), dp(3), dp(1))
+            setPadding(dp(4), dp(2), dp(4), dp(2))
         }
         val cardFrame = FrameLayout(this).apply {
             background = GradientDrawable().apply {
@@ -2183,7 +2727,7 @@ class GameplayMockActivity : BaseActivity() {
             text = player.name
             gravity = Gravity.CENTER
             maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            setSingleLine(true)
             setTextColor(Color.parseColor("#352114"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[3].toFloat())
             typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
@@ -2199,22 +2743,30 @@ class GameplayMockActivity : BaseActivity() {
         )
         container.addView(
             playerName,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(16))
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(metrics[5]))
         )
 
         val roleLabel = TextView(this).apply {
             text = player.role?.name?.uppercase() ?: "SIN ROL"
             gravity = Gravity.CENTER
             maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(Color.parseColor("#765019"))
+            setSingleLine(true)
+            setTextColor(Color.parseColor("#4F321A"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics[4].toFloat())
             typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.cormorant_garamond)
+            setTypeface(typeface, Typeface.BOLD)
             includeFontPadding = false
         }
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            roleLabel,
+            7,
+            metrics[4].coerceAtLeast(7),
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
         container.addView(
             roleLabel,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(13))
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(metrics[6]))
         )
         return container
     }
@@ -2726,13 +3278,29 @@ class GameplayMockActivity : BaseActivity() {
             .setMessage(message)
             .setPositiveButton("PUEBLO") { _, _ ->
                 desertorDialogOpen = false
+                val changedTeam = session.desertorTeam.isNotBlank() &&
+                    session.desertorTeam != GameRules.TOWN_WINNER
                 session = GameEngine.chooseDesertorTeam(session, GameRules.TOWN_WINNER)
                 renderGame()
+                showActionFeedbackBanner(
+                    GameplayTableUi.feedbackForDesertorChoice(
+                        GameRules.TOWN_WINNER,
+                        changedTeam
+                    )
+                )
             }
             .setNegativeButton("TRAIDORES") { _, _ ->
                 desertorDialogOpen = false
+                val changedTeam = session.desertorTeam.isNotBlank() &&
+                    session.desertorTeam != GameRules.TRAITOR_WINNER
                 session = GameEngine.chooseDesertorTeam(session, GameRules.TRAITOR_WINNER)
                 renderGame()
+                showActionFeedbackBanner(
+                    GameplayTableUi.feedbackForDesertorChoice(
+                        GameRules.TRAITOR_WINNER,
+                        changedTeam
+                    )
+                )
             }
             .setCancelable(false)
             .show()
@@ -2759,6 +3327,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_COUNTDOWN_PHASE_INDEX = "countdown_phase_index"
         private const val STATE_COUNTDOWN_REMAINING_MS = "countdown_remaining_ms"
         private const val STATE_COUNTDOWN_TOTAL_MS = "countdown_total_ms"
+        private const val STATE_PENDING_FEEDBACK = "pending_feedback"
         private const val STATE_PRESENTED_PERIOD = "presented_period"
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
@@ -2768,6 +3337,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val TRANSITION_MUSIC_DELAY_MS = 1600L
         private const val WINNER_CARD_STAGGER_MS = 105L
         private const val COUNTDOWN_TICK_MS = 200L
+        private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
 
         const val EXTRA_TEMA = "tema"
         const val EXTRA_ES_NOCHE = "es_noche"

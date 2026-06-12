@@ -10,8 +10,92 @@ import org.junit.Test
 class GameEngineTest {
 
     @Test
+    fun roleRevealGateProtectsMinimumReadingTimeEvenWhenEveryoneIsReady() {
+        val players = setOf("a", "b", "c")
+
+        val beforeMinimum = RoleRevealGate.evaluate(
+            RoleRevealConfig(),
+            elapsedSeconds = 9,
+            readyPlayerIds = players,
+            connectedPlayerIds = players
+        )
+        val atMinimum = RoleRevealGate.evaluate(
+            RoleRevealConfig(),
+            elapsedSeconds = 10,
+            readyPlayerIds = players,
+            connectedPlayerIds = players
+        )
+
+        assertFalse(beforeMinimum.canStart)
+        assertEquals(RoleRevealStartReason.WAITING_FOR_MINIMUM, beforeMinimum.reason)
+        assertTrue(atMinimum.canStart)
+        assertEquals(RoleRevealStartReason.ALL_READY, atMinimum.reason)
+    }
+
+    @Test
+    fun balancedRoleRevealStartsAtTimeLimitWithoutExposingWhoIsReading() {
+        val decision = RoleRevealGate.evaluate(
+            RoleRevealConfig(
+                mode = RoleRevealMode.BALANCED,
+                minimumReadingSeconds = 10,
+                maximumWaitingSeconds = 30
+            ),
+            elapsedSeconds = 30,
+            readyPlayerIds = setOf("a", "b"),
+            connectedPlayerIds = setOf("a", "b", "c", "d")
+        )
+
+        assertTrue(decision.canStart)
+        assertEquals(RoleRevealStartReason.TIME_LIMIT_REACHED, decision.reason)
+        assertEquals(2, decision.readyPlayers)
+        assertEquals(4, decision.totalPlayers)
+    }
+
+    @Test
+    fun waitForAllRoleRevealIgnoresMaximumAndQuickUsesProtectedMinimum() {
+        val players = setOf("a", "b", "c")
+        val waiting = RoleRevealGate.evaluate(
+            RoleRevealConfig(
+                mode = RoleRevealMode.WAIT_FOR_ALL,
+                minimumReadingSeconds = 5,
+                maximumWaitingSeconds = 10
+            ),
+            elapsedSeconds = 90,
+            readyPlayerIds = setOf("a", "b"),
+            connectedPlayerIds = players
+        )
+        val quick = RoleRevealGate.evaluate(
+            RoleRevealConfig(
+                mode = RoleRevealMode.QUICK,
+                minimumReadingSeconds = 10,
+                maximumWaitingSeconds = 60
+            ),
+            elapsedSeconds = 10,
+            readyPlayerIds = emptySet(),
+            connectedPlayerIds = players
+        )
+
+        assertFalse(waiting.canStart)
+        assertEquals(RoleRevealStartReason.WAITING_FOR_PLAYERS, waiting.reason)
+        assertTrue(quick.canStart)
+        assertEquals(RoleRevealStartReason.TIME_LIMIT_REACHED, quick.reason)
+    }
+
+    @Test
+    fun roleRevealConfigClampsInvalidReadingLimits() {
+        val normalized = RoleRevealConfig(
+            minimumReadingSeconds = 1,
+            maximumWaitingSeconds = 2
+        ).normalized()
+
+        assertEquals(RoleRevealConfig.MIN_READING_SECONDS, normalized.minimumReadingSeconds)
+        assertEquals(normalized.minimumReadingSeconds, normalized.maximumWaitingSeconds)
+    }
+
+    @Test
     fun timingConfigUsesDefaultsAndClampsEveryField() {
-        assertEquals("3 / 20 / 60 / 20", GameTimingConfig().summary())
+        assertEquals("5 / 40 / 120 / 20", GameTimingConfig().summary())
+        assertEquals(GameTimingPreset.NORMAL, GameTimingConfig().preset())
 
         val minimums = GameTimingConfig(
             transitionSeconds = -5,
@@ -34,6 +118,22 @@ class GameEngineTest {
         assertEquals(GameTimingConfig.MAX_NIGHT_SECONDS, maximums.nightSeconds)
         assertEquals(GameTimingConfig.MAX_DISCUSSION_SECONDS, maximums.discussionSeconds)
         assertEquals(GameTimingConfig.MAX_VOTING_SECONDS, maximums.votingSeconds)
+    }
+
+    @Test
+    fun timingPresetsUseExpectedValues() {
+        assertEquals(GameTimingConfig(7, 90, 180, 60), GameTimingPreset.SLOW.config)
+        assertEquals(GameTimingConfig(5, 40, 120, 20), GameTimingPreset.NORMAL.config)
+        assertEquals(GameTimingConfig(3, 20, 60, 15), GameTimingPreset.FAST.config)
+        assertEquals(GameTimingPreset.SLOW, GameTimingPreset.SLOW.config.preset())
+        assertEquals(null, GameTimingConfig(4, 35, 90, 25).preset())
+    }
+
+    @Test
+    fun rolesStayHiddenOnDeathByDefault() {
+        val session = LocalGameFactory.createSession()
+
+        assertFalse(session.revealRolesOnDeath)
     }
 
     @Test

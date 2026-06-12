@@ -16,6 +16,7 @@ import android.widget.Toast
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 
 class LobbyActivity : BaseActivity() {
 
@@ -144,14 +145,21 @@ class LobbyActivity : BaseActivity() {
         }
         playersContainer.removeAllViews()
         renderDebugRole()
-        timingOptionsButton.text = "TIEMPOS  ${session.timingConfig.normalized().summary()}"
+        timingOptionsButton.text = "TIEMPOS"
 
         session.players.forEachIndexed { index, player ->
             val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
             row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
             row.findViewById<TextView>(R.id.playerName).text = player.name
             row.findViewById<TextView>(R.id.playerStatus).text = if (index == 0) "Anfitrion" else "Listo"
-            row.setOnClickListener { onPlayerClicked(index, player) }
+            row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
+                showPlayerProfile(index, player)
+            }
+            row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
+                isEnabled = index != 0
+                alpha = if (isEnabled) 1f else 0.28f
+                setOnClickListener { confirmPlayerRemoval(index, player) }
+            }
             playersContainer.addView(row)
         }
     }
@@ -180,11 +188,84 @@ class LobbyActivity : BaseActivity() {
         content.addView(dialogTitle("TIEMPOS DE PARTIDA"))
 
         val valueViews = linkedMapOf<TimingField, TextView>()
+        val presetButtons = linkedMapOf<GameTimingPreset, Button>()
+        var customButton: Button? = null
+        var customMode = draft.preset() == null
+        val presetDescription = TextView(this).apply {
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 12f
+            setPadding(dp(6), dp(4), dp(6), dp(8))
+            maxLines = 2
+        }
         fun refreshValues() {
             valueViews.forEach { (field, view) ->
                 view.text = "${field.value(draft)} s"
             }
+            val selectedPreset = draft.preset()
+            presetButtons.forEach { (preset, button) ->
+                val selected = !customMode && preset == selectedPreset
+                button.setBackgroundResource(if (selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
+                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+                button.alpha = if (selected) 1f else 0.82f
+            }
+            customButton?.apply {
+                setBackgroundResource(
+                    if (customMode) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
+                )
+                setTextColor(
+                    getColor(if (customMode) R.color.bg_dark else R.color.text_primary)
+                )
+                alpha = if (customMode) 1f else 0.82f
+            }
+            presetDescription.text = if (customMode) {
+                "Configuracion personalizada. Podes ajustar cada tiempo manualmente."
+            } else {
+                selectedPreset?.description.orEmpty()
+            }
         }
+
+        val presetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        GameTimingPreset.entries.forEachIndexed { index, preset ->
+            val button = compactDialogButton(preset.label).apply {
+                textSize = 12f
+                isAllCaps = false
+                setOnClickListener {
+                    draft = preset.config
+                    customMode = false
+                    refreshValues()
+                }
+            }
+            presetButtons[preset] = button
+            val params = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                if (index > 0) marginStart = dp(7)
+            }
+            presetRow.addView(button, params)
+        }
+        val customPresetButton = compactDialogButton("PERSONALIZADO").apply {
+            textSize = 11f
+            isAllCaps = false
+            setOnClickListener {
+                customMode = true
+                refreshValues()
+            }
+        }
+        customButton = customPresetButton
+        presetRow.addView(
+            customPresetButton,
+            LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginStart = dp(7) }
+        )
+        content.addView(
+            presetRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        content.addView(presetDescription)
 
         TimingField.entries.forEach { field ->
             val row = LinearLayout(this).apply {
@@ -195,7 +276,8 @@ class LobbyActivity : BaseActivity() {
             val label = TextView(this).apply {
                 text = field.label
                 setTextColor(getColor(R.color.text_primary))
-                textSize = 13f
+                textSize = 14f
+                maxLines = 1
             }
             row.addView(label, LinearLayout.LayoutParams(0, dp(34), 1f))
 
@@ -203,15 +285,18 @@ class LobbyActivity : BaseActivity() {
             val value = TextView(this).apply {
                 gravity = Gravity.CENTER
                 setTextColor(getColor(R.color.accent_gold))
-                textSize = 14f
+                textSize = 15f
+                maxLines = 1
             }
             val plus = compactDialogButton("+")
             valueViews[field] = value
             minus.setOnClickListener {
+                customMode = true
                 draft = field.update(draft, field.value(draft) - field.step)
                 refreshValues()
             }
             plus.setOnClickListener {
+                customMode = true
                 draft = field.update(draft, field.value(draft) + field.step)
                 refreshValues()
             }
@@ -233,7 +318,8 @@ class LobbyActivity : BaseActivity() {
             .create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                draft = GameTimingConfig()
+                draft = GameTimingPreset.NORMAL.config
+                customMode = false
                 refreshValues()
             }
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -246,8 +332,27 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun showAdvancedOptionsDialog() {
+        var revealRolesOnDeath = session.revealRolesOnDeath
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
+        val revealRolesSwitch = SwitchCompat(this).apply {
+            text = "Mostrar roles al morir"
+            isChecked = revealRolesOnDeath
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(2), dp(4), dp(8))
+            setOnCheckedChangeListener { _, checked ->
+                revealRolesOnDeath = checked
+            }
+        }
+        content.addView(revealRolesSwitch)
+        content.addView(TextView(this).apply {
+            text = "Desactivado por defecto: las cartas eliminadas permanecen ocultas."
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        })
         content.addView(TextView(this).apply {
             text = "COMPOSICION AUTOMATICA - PROXIMAMENTE"
             gravity = Gravity.CENTER
@@ -292,7 +397,10 @@ class LobbyActivity : BaseActivity() {
 
         val dialog = AlertDialog.Builder(this)
             .setView(content)
-            .setPositiveButton("CERRAR", null)
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("APLICAR") { _, _ ->
+                session = session.copy(revealRolesOnDeath = revealRolesOnDeath)
+            }
             .create()
         showLandscapeDialog(dialog, widthDp = 500)
     }
@@ -361,7 +469,17 @@ class LobbyActivity : BaseActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private fun onPlayerClicked(index: Int, player: GamePlayer) {
+    private fun showPlayerProfile(index: Int, player: GamePlayer) {
+        val status = if (index == 0) "Anfitrion de la sala" else "Participante listo"
+        val type = if (player.isHuman) "Jugador local" else "Bot local"
+        AlertDialog.Builder(this)
+            .setTitle(player.name)
+            .setMessage("$status\n$type\nMapa: ${session.mapName}")
+            .setPositiveButton("CERRAR", null)
+            .show()
+    }
+
+    private fun confirmPlayerRemoval(index: Int, player: GamePlayer) {
         if (index == 0) {
             Toast.makeText(this, "El anfitrion no se puede expulsar.", Toast.LENGTH_SHORT).show()
             return

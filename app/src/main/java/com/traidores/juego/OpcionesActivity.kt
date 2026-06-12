@@ -10,6 +10,7 @@ import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.SwitchCompat
 
 class OpcionesActivity : BaseActivity() {
 
@@ -18,6 +19,8 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var titleOptions: TextView
     private lateinit var titleAudio: TextView
     private lateinit var titleLanguage: TextView
+    private lateinit var titleTextSize: TextView
+    private lateinit var labelTextSize: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var titleAccount: TextView
     private lateinit var titleLogin: TextView
@@ -25,6 +28,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var etPassword: EditText
     private lateinit var btnLogin: Button
     private lateinit var btnRegister: Button
+    private lateinit var switchVibration: SwitchCompat
     private var currentLanguage = "Espanol (ES)"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +45,8 @@ class OpcionesActivity : BaseActivity() {
         titleOptions = findViewById(R.id.titleOptions)
         titleAudio = findViewById(R.id.titleAudio)
         titleLanguage = findViewById(R.id.titleLanguage)
+        titleTextSize = findViewById(R.id.titleTextSize)
+        labelTextSize = findViewById(R.id.labelTextSize)
         labelLanguage = findViewById(R.id.labelLanguage)
         titleAccount = findViewById(R.id.titleAccount)
         titleLogin = findViewById(R.id.titleLogin)
@@ -50,15 +56,45 @@ class OpcionesActivity : BaseActivity() {
         etPassword = findViewById(R.id.etPassword)
         btnLogin = findViewById(R.id.btnLogin)
         btnRegister = findViewById(R.id.btnRegister)
+        switchVibration = findViewById(R.id.switchVibration)
 
         val seekMusic: SeekBar = findViewById(R.id.seekMusic)
         val seekVoices: SeekBar = findViewById(R.id.seekVoices)
         seekMusic.progress = sharedPref.getInt("music_volume", 80)
         seekVoices.progress = sharedPref.getInt("voice_volume", 80)
+        switchVibration.isChecked = sharedPref.getBoolean("vibration_on", false)
+        switchVibration.setOnCheckedChangeListener { _, enabled ->
+            sharedPref.edit().putBoolean("vibration_on", enabled).apply()
+            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        }
         updateVolumeLabels(seekMusic.progress, seekVoices.progress)
 
         seekMusic.setOnSeekBarChangeListener(volumeListener("music_volume", seekMusic, seekVoices, sharedPref))
         seekVoices.setOnSeekBarChangeListener(volumeListener("voice_volume", seekMusic, seekVoices, sharedPref))
+
+        val spinnerTextSize: Spinner = findViewById(R.id.spinnerTextSize)
+        val textSizes = arrayOf("Compacta", "Normal", "Grande")
+        spinnerTextSize.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            textSizes
+        ).also {
+            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        spinnerTextSize.setSelection(sharedPref.getInt("gameplay_text_size", 1).coerceIn(0, 2))
+        spinnerTextSize.onItemSelectedListener =
+            object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    sharedPref.edit().putInt("gameplay_text_size", position).apply()
+                }
+
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            }
 
         val spinnerLanguage: Spinner = findViewById(R.id.spinnerLanguage)
         val languages = arrayOf("Espanol (ES)", "English (EN)")
@@ -143,9 +179,11 @@ class OpcionesActivity : BaseActivity() {
         if (currentLanguage == "English (EN)") {
             labelMusic.text = "Music: $music%"
             labelVoices.text = "Voices: $voices%"
+            switchVibration.text = "Vibration"
         } else {
             labelMusic.text = "Musica: $music%"
             labelVoices.text = "Voces: $voices%"
+            switchVibration.text = "Vibracion"
         }
     }
 
@@ -154,6 +192,8 @@ class OpcionesActivity : BaseActivity() {
             titleOptions.text = "OPTIONS"
             titleAudio.text = "SOUND AND AUDIO"
             titleLanguage.text = "GAME LANGUAGE"
+            titleTextSize.text = "TEXT SIZE"
+            labelTextSize.text = "Gameplay text"
             labelLanguage.text = "Select language"
             titleAccount.text = "PLAYER ACCOUNT"
             titleLogin.text = "LOGIN / REGISTER"
@@ -165,6 +205,8 @@ class OpcionesActivity : BaseActivity() {
             titleOptions.text = "OPCIONES"
             titleAudio.text = "SONIDO Y AUDIO"
             titleLanguage.text = "IDIOMA DEL JUEGO"
+            titleTextSize.text = "TAMAÑO DEL TEXTO"
+            labelTextSize.text = "Texto del gameplay"
             labelLanguage.text = "Seleccionar idioma"
             titleAccount.text = "CUENTA DEL JUGADOR"
             titleLogin.text = "INICIAR SESION / REGISTRARSE"

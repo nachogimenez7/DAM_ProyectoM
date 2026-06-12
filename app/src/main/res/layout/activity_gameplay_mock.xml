@@ -60,7 +60,7 @@
             <LinearLayout
                 android:id="@+id/topStatus"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
+                android:layout_height="60dp"
                 android:layout_gravity="top"
                 android:background="@drawable/bg_translucent_game_panel"
                 android:elevation="7dp"
@@ -68,7 +68,7 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="56dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingStart="10dp"
@@ -76,17 +76,20 @@
 
                     <TextView
                         android:id="@+id/phaseTitle"
-                        android:layout_width="78dp"
+                        android:layout_width="96dp"
                         android:layout_height="match_parent"
-                        android:ellipsize="end"
                         android:fontFamily="@font/grenze"
                         android:gravity="center_vertical"
                         android:includeFontPadding="false"
                         android:maxLines="1"
                         android:text="REPARTO"
                         android:textColor="@color/accent_gold"
-                        android:textSize="15sp"
-                        android:textStyle="bold" />
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="16sp"
+                        app:autoSizeMinTextSize="11sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
                     <TextView
                         android:id="@+id/phaseSubtitle"
@@ -94,30 +97,37 @@
                         android:layout_height="match_parent"
                         android:layout_marginStart="4dp"
                         android:layout_weight="1"
-                        android:ellipsize="end"
                         android:fontFamily="@font/cormorant_garamond"
                         android:gravity="center_vertical"
                         android:includeFontPadding="false"
-                        android:maxLines="1"
+                        android:maxLines="2"
+                        android:paddingEnd="6dp"
                         android:text="Mira tu rol. La noche empieza enseguida."
                         android:textColor="@color/text_secondary"
                         android:textSize="10sp" />
 
                     <TextView
                         android:id="@+id/phaseCountdown"
-                        android:layout_width="34dp"
-                        android:layout_height="30dp"
+                        android:layout_width="42dp"
+                        android:layout_height="32dp"
                         android:layout_marginStart="4dp"
                         android:background="@drawable/bg_btn_dark"
                         android:fontFamily="@font/grenze"
                         android:gravity="center"
                         android:includeFontPadding="false"
                         android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:padding="0dp"
                         android:text="20"
                         android:textColor="@color/text_primary"
-                        android:textSize="15sp"
+                        android:textSize="14sp"
                         android:textStyle="bold"
-                        android:visibility="invisible" />
+                        android:visibility="invisible"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
                     <FrameLayout
                         android:id="@+id/chatButtonFrame"
@@ -185,7 +195,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="32dp"
                 android:layout_gravity="top"
-                android:layout_marginTop="52dp"
+                android:layout_marginTop="64dp"
                 android:background="@drawable/bg_translucent_game_panel"
                 android:elevation="6dp"
                 android:orientation="vertical">
@@ -208,31 +218,44 @@
 
                     <TextView
                         android:id="@+id/eventLogTitle"
-                        android:layout_width="60dp"
+                        android:layout_width="68dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="7dp"
-                        android:ellipsize="end"
                         android:fontFamily="@font/grenze"
                         android:maxLines="1"
                         android:text="EVENTOS"
                         android:textColor="@color/accent_gold"
                         android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="12sp"
+                        app:autoSizeMinTextSize="9sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
-                    <TextView
-                        android:id="@+id/eventLogSummary"
+                    <HorizontalScrollView
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginStart="3dp"
                         android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:fontFamily="@font/cormorant_garamond"
-                        android:gravity="center_vertical"
-                        android:includeFontPadding="false"
-                        android:maxLines="1"
-                        android:text="La partida esta por comenzar."
-                        android:textColor="@color/text_secondary"
-                        android:textSize="9.5sp" />
+                        android:fillViewport="true"
+                        android:overScrollMode="ifContentScrolls"
+                        android:requiresFadingEdge="horizontal"
+                        android:scrollbars="horizontal">
+
+                        <TextView
+                            android:id="@+id/eventLogSummary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="match_parent"
+                            android:fontFamily="@font/cormorant_garamond"
+                            android:gravity="center_vertical"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingEnd="8dp"
+                            android:singleLine="true"
+                            android:text="La partida esta por comenzar."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="10sp" />
+                    </HorizontalScrollView>
 
                     <Button
                         android:id="@+id/btnToggleEventLog"
@@ -285,7 +308,7 @@
             <LinearLayout
                 android:id="@+id/bottomPlayerPanel"
                 android:layout_width="match_parent"
-                android:layout_height="64dp"
+                android:layout_height="80dp"
                 android:layout_gravity="bottom"
                 android:background="@drawable/bg_hud_parchment"
                 android:gravity="center_vertical"
@@ -321,16 +344,41 @@
                     android:gravity="center_vertical"
                     android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/currentPlayerName"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:fontFamily="@font/grenze"
-                        android:maxLines="1"
-                        android:text="Nacho"
-                        android:textColor="@color/accent_gold"
-                        android:textSize="15sp" />
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/currentPlayerName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/grenze"
+                            android:maxLines="1"
+                            android:text="Nacho"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="17sp" />
+
+                        <TextView
+                            android:id="@+id/currentPlayerStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="16dp"
+                            android:layout_marginStart="5dp"
+                            android:background="@drawable/bg_player_chip"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingHorizontal="6dp"
+                            android:text="SILENCIADO"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="8sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/roleName"
@@ -342,24 +390,23 @@
                         android:maxLines="1"
                         android:text="CARTA OCULTA"
                         android:textColor="@color/text_secondary"
-                        android:textSize="9sp"
+                        android:textSize="11sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/currentPlayerHint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
                         android:fontFamily="@font/cormorant_garamond"
                         android:includeFontPadding="false"
-                        android:maxLines="1"
+                        android:maxLines="2"
                         android:text="Tu carta esta oculta."
                         android:textColor="@color/text_muted"
-                        android:textSize="9sp" />
+                        android:textSize="11sp" />
                 </LinearLayout>
 
                 <LinearLayout
-                    android:layout_width="202dp"
+                    android:layout_width="218dp"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:orientation="horizontal">
@@ -371,17 +418,29 @@
                         android:layout_height="30dp"
                         android:layout_marginEnd="6dp"
                         android:layout_marginBottom="0dp"
+                        android:maxLines="1"
+                        android:singleLine="true"
                         android:text="REVELAR"
-                        android:textSize="8sp" />
+                        android:textSize="10sp"
+                        app:autoSizeMaxTextSize="10sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
                     <Button
                         android:id="@+id/btnVote"
                         style="@style/BtnDark"
-                        android:layout_width="118dp"
+                        android:layout_width="134dp"
                         android:layout_height="38dp"
                         android:layout_marginBottom="0dp"
+                        android:maxLines="1"
+                        android:singleLine="true"
                         android:text="ELEGIR OBJETIVO"
-                        android:textSize="9sp" />
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -391,7 +450,7 @@
                 android:layout_height="match_parent"
                 android:layout_gravity="top|end"
                 android:layout_marginTop="86dp"
-                android:layout_marginBottom="68dp"
+                android:layout_marginBottom="84dp"
                 android:background="@drawable/bg_chat_panel"
                 android:elevation="10dp"
                 android:orientation="vertical"
@@ -515,6 +574,144 @@
             </ScrollView>
         </LinearLayout>
     </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/actionFeedbackBanner"
+        android:layout_width="300dp"
+        android:layout_height="38dp"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="92dp"
+        android:background="@drawable/bg_translucent_game_panel"
+        android:elevation="12dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="9dp"
+        android:visibility="gone">
+
+        <View
+            android:id="@+id/actionFeedbackBannerTone"
+            android:layout_width="5dp"
+            android:layout_height="match_parent"
+            android:background="@color/accent_gold" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/actionFeedbackBannerTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/grenze"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="VOTO REGISTRADO"
+                android:textColor="@color/accent_gold"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="10sp"
+                app:autoSizeMinTextSize="8sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
+
+            <TextView
+                android:id="@+id/actionFeedbackBannerMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/cormorant_garamond"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:text="Votaste a Martina."
+                android:textColor="@color/text_secondary"
+                android:textSize="9sp"
+                app:autoSizeMaxTextSize="9sp"
+                app:autoSizeMinTextSize="7sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/privateFeedbackOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#C4000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:id="@+id/privateFeedbackPanel"
+            android:layout_width="360dp"
+            android:layout_height="196dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_translucent_game_panel"
+            android:elevation="14dp">
+
+            <View
+                android:id="@+id/privateFeedbackTone"
+                android:layout_width="6dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="start"
+                android:background="@color/accent_gold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="24dp"
+                android:paddingVertical="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:includeFontPadding="false"
+                    android:text="INFORMACION PRIVADA"
+                    android:textColor="@color/text_muted"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/privateFeedbackTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:fontFamily="@font/grenze"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="RESPUESTA PRIVADA"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="21sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/privateFeedbackMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="4"
+                    android:text="Martina parece SOSPECHOSA."
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="11sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
 
     <FrameLayout
         android:id="@+id/deathRevealOverlay"
@@ -780,34 +977,49 @@
 
         <FrameLayout
             android:id="@+id/rolePreviewContent"
-            android:layout_width="270dp"
-            android:layout_height="wrap_content"
+            android:layout_width="330dp"
+            android:layout_height="330dp"
             android:layout_gravity="center"
             android:background="@drawable/bg_translucent_game_panel"
             android:clickable="true"
             android:focusable="true"
-            android:padding="14dp">
+            android:clipToOutline="true"
+            android:padding="12dp">
+
+            <ImageView
+                android:id="@+id/rolePreviewMapBackground"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:alpha="0.68"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#8C18120D" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingTop="4dp">
+                android:layout_height="match_parent"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
 
-                <ImageView
-                    android:id="@+id/rolePreviewImage"
-                    android:layout_width="180dp"
-                    android:layout_height="220dp"
-                    android:adjustViewBounds="true"
-                    android:contentDescription="Carta de rol ampliada"
-                    android:scaleType="fitCenter" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/grenze"
+                    android:gravity="center"
+                    android:text="TU ROL"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/rolePreviewName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="1dp"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:maxLines="1"
@@ -815,16 +1027,124 @@
                     android:textColor="@color/accent_gold"
                     android:textSize="22sp"
                     android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/rolePreviewTeam"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/grenze"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="BANDO"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="5dp"
+                    android:background="@color/btn_dark_border" />
+
+                <ScrollView
+                    android:id="@+id/rolePreviewScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:fadeScrollbars="false"
+                    android:fillViewport="false"
+                    android:overScrollMode="ifContentScrolls"
+                    android:paddingEnd="4dp"
+                    android:scrollbarAlwaysDrawVerticalTrack="true"
+                    android:scrollbarStyle="insideInset"
+                    android:scrollbars="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingTop="7dp"
+                        android:paddingBottom="10dp">
+
+                        <ImageView
+                            android:id="@+id/rolePreviewImage"
+                            android:layout_width="128dp"
+                            android:layout_height="146dp"
+                            android:adjustViewBounds="true"
+                            android:contentDescription="Carta de rol ampliada"
+                            android:scaleType="fitCenter" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="start"
+                            android:text="QUE HACE"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/rolePreviewFunction"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:fontFamily="@font/cormorant_garamond"
+                            android:gravity="start"
+                            android:lineSpacingExtra="1dp"
+                            android:textColor="@color/text_primary"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="9dp"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="start"
+                            android:text="CONSEJO"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/rolePreviewAdvice"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:fontFamily="@font/cormorant_garamond"
+                            android:gravity="start"
+                            android:lineSpacingExtra="1dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </ScrollView>
+
+                <Button
+                    android:id="@+id/btnContinueRolePreview"
+                    android:layout_width="150dp"
+                    android:layout_height="38dp"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_btn_gold"
+                    android:fontFamily="@font/grenze"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:padding="0dp"
+                    android:text="ENTENDIDO"
+                    android:textColor="#24170D"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <ImageButton
                 android:id="@+id/btnCloseRolePreview"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="30dp"
+                android:layout_height="30dp"
                 android:layout_gravity="top|end"
                 android:background="@drawable/bg_btn_dark"
                 android:contentDescription="Cerrar carta ampliada"
-                android:padding="8dp"
+                android:padding="7dp"
                 android:src="@drawable/ic_close"
                 app:tint="@color/text_secondary" />
         </FrameLayout>
@@ -958,7 +1278,7 @@
             android:layout_height="match_parent"
             android:layout_gravity="center"
             android:layout_marginHorizontal="36dp"
-            android:layout_marginVertical="16dp">
+            android:layout_marginVertical="6dp">
 
             <ImageView
                 android:id="@+id/winnerRevealBackground"
@@ -975,20 +1295,32 @@
                 android:alpha="0"
                 android:background="#55FFF1BD" />
 
-            <LinearLayout
-                android:id="@+id/winnerRevealContent"
+            <ScrollView
+                android:id="@+id/winnerRevealScroll"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingHorizontal="42dp"
-                android:paddingTop="16dp"
-                android:paddingBottom="12dp">
+                android:fadeScrollbars="false"
+                android:fillViewport="true"
+                android:overScrollMode="ifContentScrolls"
+                android:scrollbarAlwaysDrawVerticalTrack="true"
+                android:scrollbarStyle="insideInset"
+                android:scrollbars="vertical">
+
+                <LinearLayout
+                    android:id="@+id/winnerRevealContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="42dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="8dp">
 
                 <TextView
                     android:id="@+id/winnerRevealTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="28dp"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:includeFontPadding="false"
@@ -999,45 +1331,138 @@
                     android:shadowRadius="5"
                     android:text="EL PUEBLO HA GANADO"
                     android:textColor="#3A2413"
-                    android:textSize="25sp"
-                    android:textStyle="bold" />
+                    android:textSize="23sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="23sp"
+                    app:autoSizeMinTextSize="17sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <TextView
                     android:id="@+id/winnerRevealPersonalResult"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:layout_marginTop="3dp"
+                    android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="VICTORIA"
                     android:textColor="#765019"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="22sp"
+                    app:autoSizeMinTextSize="17sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <LinearLayout
                     android:id="@+id/winnerRevealCards"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:layout_weight="1"
                     android:gravity="center"
                     android:orientation="vertical" />
+
+                <LinearLayout
+                    android:id="@+id/winnerSummaryPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="12dp"
+                    android:layout_marginTop="5dp"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="3dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="22dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/winnerSummaryRounds"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="4 RONDAS"
+                            android:textColor="#3A2413"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/winnerSummaryDuration"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="TIEMPO 08:42"
+                            android:textColor="#3A2413"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/winnerSummaryPlayers"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="3 ELIMINADOS"
+                            android:textColor="#3A2413"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/winnerSummaryHighlight"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="4"
+                        android:text="ELIMINADOS: MARTINA, TOMAS"
+                        android:textColor="#3A2413"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/winnerSummaryTimeline"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:text="Día 1: murió Martina y se silenció a Tomas.&#10;Día 2: no murió nadie y nadie fue silenciado."
+                        android:textColor="#4F321A"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/btnWinnerReturnLobby"
                     style="@style/BtnDark"
                     android:layout_width="154dp"
                     android:layout_height="32dp"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="0dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginBottom="8dp"
                     android:minHeight="0dp"
                     android:minWidth="0dp"
                     android:padding="0dp"
                     android:text="VOLVER A SALA"
                     android:textSize="11sp" />
-            </LinearLayout>
+                </LinearLayout>
+            </ScrollView>
         </FrameLayout>
     </FrameLayout>
 
