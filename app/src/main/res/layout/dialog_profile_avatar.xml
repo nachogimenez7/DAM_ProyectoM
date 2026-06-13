@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="300dp"
+    android:layout_height="300dp"
+    android:background="@android:color/transparent"
+    android:padding="10dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_profile_avatar_frame"
+        android:elevation="10dp"
+        android:padding="7dp">
+
+        <ImageView
+            android:id="@+id/expandedProfileAvatar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/bg_profile_avatar_clip"
+            android:clipToOutline="true"
+            android:contentDescription="Foto de perfil ampliada"
+            android:outlineProvider="background"
+            android:scaleType="matrix"
+            android:src="@drawable/rol_aldeano_gaucho" />
+    </FrameLayout>
+</FrameLayout>

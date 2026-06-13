@@ -255,6 +255,8 @@ class LobbyActivity : BaseActivity() {
         content.addView(dialogTitle("TIEMPOS DE PARTIDA"))
 
         val valueViews = linkedMapOf<TimingField, TextView>()
+        val minusButtons = linkedMapOf<TimingField, Button>()
+        val plusButtons = linkedMapOf<TimingField, Button>()
         val presetButtons = linkedMapOf<GameTimingPreset, Button>()
         var customButton: Button? = null
         var customMode = draft.preset() == null
@@ -268,6 +270,15 @@ class LobbyActivity : BaseActivity() {
         fun refreshValues() {
             valueViews.forEach { (field, view) ->
                 view.text = "${field.value(draft)} s"
+                val currentValue = field.value(draft)
+                updateTimingStepButton(
+                    minusButtons.getValue(field),
+                    enabled = currentValue > field.minimum
+                )
+                updateTimingStepButton(
+                    plusButtons.getValue(field),
+                    enabled = currentValue < field.maximum
+                )
             }
             val selectedPreset = draft.preset()
             presetButtons.forEach { (preset, button) ->
@@ -365,6 +376,8 @@ class LobbyActivity : BaseActivity() {
             }
             val plus = compactDialogButton("+")
             valueViews[field] = value
+            minusButtons[field] = minus
+            plusButtons[field] = plus
             minus.setOnClickListener {
                 customMode = true
                 draft = field.update(draft, field.value(draft) - field.step)
@@ -532,6 +545,17 @@ class LobbyActivity : BaseActivity() {
         }
     }
 
+    private fun updateTimingStepButton(button: Button, enabled: Boolean) {
+        button.isEnabled = enabled
+        button.setBackgroundResource(
+            if (enabled) R.drawable.bg_btn_dark else R.drawable.bg_btn_gold
+        )
+        button.setTextColor(
+            getColor(if (enabled) R.color.text_primary else R.color.bg_dark)
+        )
+        button.alpha = if (enabled) 1f else 0.45f
+    }
+
     private fun showLandscapeDialog(dialog: AlertDialog, widthDp: Int) {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -617,12 +641,34 @@ class LobbyActivity : BaseActivity() {
 
     private enum class TimingField(
         val label: String,
-        val step: Int
+        val step: Int,
+        val minimum: Int,
+        val maximum: Int
     ) {
-        TRANSITION("ENTRE FASES", GameTimingConfig.TRANSITION_STEP_SECONDS),
-        NIGHT("ACCION NOCTURNA", GameTimingConfig.NIGHT_STEP_SECONDS),
-        DISCUSSION("DISCUSION", GameTimingConfig.DISCUSSION_STEP_SECONDS),
-        VOTING("VOTACION", GameTimingConfig.VOTING_STEP_SECONDS);
+        TRANSITION(
+            "ENTRE FASES",
+            GameTimingConfig.TRANSITION_STEP_SECONDS,
+            GameTimingConfig.MIN_TRANSITION_SECONDS,
+            GameTimingConfig.MAX_TRANSITION_SECONDS
+        ),
+        NIGHT(
+            "ACCION NOCTURNA",
+            GameTimingConfig.NIGHT_STEP_SECONDS,
+            GameTimingConfig.MIN_NIGHT_SECONDS,
+            GameTimingConfig.MAX_NIGHT_SECONDS
+        ),
+        DISCUSSION(
+            "DISCUSION",
+            GameTimingConfig.DISCUSSION_STEP_SECONDS,
+            GameTimingConfig.MIN_DISCUSSION_SECONDS,
+            GameTimingConfig.MAX_DISCUSSION_SECONDS
+        ),
+        VOTING(
+            "VOTACION",
+            GameTimingConfig.VOTING_STEP_SECONDS,
+            GameTimingConfig.MIN_VOTING_SECONDS,
+            GameTimingConfig.MAX_VOTING_SECONDS
+        );
 
         fun value(config: GameTimingConfig): Int {
             return when (this) {

@@ -39,6 +39,17 @@
         <item name="android:fontFamily">@font/grenze</item>
         <item name="android:letterSpacing">0.04</item>
     </style>
+
+    <style name="ProfileEditIcon">
+        <item name="android:layout_width">28dp</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:background">@drawable/bg_btn_dark</item>
+        <item name="android:contentDescription">Editar</item>
+        <item name="android:padding">7dp</item>
+        <item name="android:src">@drawable/ic_edit_pencil</item>
+        <item name="android:tint">@color/accent_gold</item>
+        <item name="android:visibility">gone</item>
+    </style>
 </resources>
 
 

@@ -50,9 +50,14 @@ class LobbyBrowserActivity : BaseActivity() {
             )
         }
         row.findViewById<Button>(R.id.btnEnterLobby).apply {
-            isEnabled = lobby.canJoin && lobby.players < lobby.limit
+            val isFull = lobby.players >= lobby.limit
+            isEnabled = lobby.canJoin && !isFull
             alpha = if (isEnabled) 1f else 0.42f
-            text = if (isEnabled) "ENTRAR" else "NO DISPONIBLE"
+            text = when {
+                isFull -> "LLENA"
+                isEnabled -> "ENTRAR"
+                else -> "NO DISPONIBLE"
+            }
             setOnClickListener { enterLobby(lobby) }
         }
         return row

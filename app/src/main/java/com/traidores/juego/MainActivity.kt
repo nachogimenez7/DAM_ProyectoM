@@ -23,6 +23,7 @@ class MainActivity : BaseActivity() {
 
         // Bind bottom-bar action
         val btnSound: ImageButton = findViewById(R.id.btnSound)
+        val btnProfile: ImageButton = findViewById(R.id.btnProfile)
 
         // Load sound preference
         val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
@@ -44,6 +45,10 @@ class MainActivity : BaseActivity() {
 
         btnOptions.setOnClickListener {
             startActivity(Intent(this, OpcionesActivity::class.java))
+        }
+
+        btnProfile.setOnClickListener {
+            startActivity(Intent(this, ProfileActivity::class.java))
         }
 
         btnSound.setOnClickListener {
