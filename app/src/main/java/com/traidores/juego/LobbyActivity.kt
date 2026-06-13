@@ -46,6 +46,7 @@ class LobbyActivity : BaseActivity() {
         "medico" to "MEDICO",
         "alcalde" to "ALCALDE",
         "payador" to "PAYADOR",
+        "bufon" to "BUFON",
         "desertor" to "DESERTOR",
         "espia" to "ESPIA",
         "aldeano" to "ALDEANO"
@@ -134,10 +135,14 @@ class LobbyActivity : BaseActivity() {
         startButton.setOnClickListener {
             val selectedRoleKey = debugRoles[debugRoleIndex].first
             val minimumPlayers = LocalGameFactory.minimumPlayersForRole(selectedRoleKey)
-            if (selectedRoleKey == "payador" && session.mapKey != "pampa") {
+            val selectedRoleMap = RoleMap.fromSessionKey(session.mapKey)
+            if (
+                selectedRoleKey.isNotBlank() &&
+                !RoleCatalog.isAvailableOnMap(selectedRoleKey, selectedRoleMap)
+            ) {
                 Toast.makeText(
                     this,
-                    "El Payador solo aparece en el mapa Pampa.",
+                    "${debugRoles[debugRoleIndex].second} no esta disponible en este mapa.",
                     Toast.LENGTH_SHORT
                 ).show()
             } else if (session.players.size < minimumPlayers) {
@@ -427,6 +432,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun showAdvancedOptionsDialog() {
         var revealRolesOnDeath = session.revealRolesOnDeath
+        var debugBotsObeyVoteCommands = session.debugBotsObeyVoteCommands
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
         val revealRolesSwitch = SwitchCompat(this).apply {
@@ -447,6 +453,26 @@ class LobbyActivity : BaseActivity() {
             textSize = 11f
             setPadding(dp(4), 0, dp(4), dp(8))
         })
+        val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (isDebugBuild && lobbyMode == MODE_LOCAL) {
+            content.addView(SwitchCompat(this).apply {
+                text = "IA DE PRUEBA: OBEDECER VOTOS"
+                isChecked = debugBotsObeyVoteCommands
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 14f
+                setPadding(dp(4), dp(2), dp(4), dp(4))
+                setOnCheckedChangeListener { _, checked ->
+                    debugBotsObeyVoteCommands = checked
+                }
+            })
+            content.addView(TextView(this).apply {
+                text = "Reconoce ordenes del chat como \"votenme\" o \"voten a Nombre\"."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), 0, dp(4), dp(8))
+            })
+        }
         content.addView(TextView(this).apply {
             text = "COMPOSICION ACTUAL - EDICION PROXIMAMENTE"
             gravity = Gravity.CENTER
@@ -493,7 +519,10 @@ class LobbyActivity : BaseActivity() {
             .setView(content)
             .setNegativeButton("CANCELAR", null)
             .setPositiveButton("APLICAR") { _, _ ->
-                session = session.copy(revealRolesOnDeath = revealRolesOnDeath)
+                session = session.copy(
+                    revealRolesOnDeath = revealRolesOnDeath,
+                    debugBotsObeyVoteCommands = debugBotsObeyVoteCommands
+                )
             }
             .create()
         showLandscapeDialog(dialog, widthDp = 500)

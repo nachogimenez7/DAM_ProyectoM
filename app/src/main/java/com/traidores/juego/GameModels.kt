@@ -10,6 +10,7 @@ data class GameSession(
     val timingConfig: GameTimingConfig = GameTimingConfig(),
     val roleRevealConfig: RoleRevealConfig = RoleRevealConfig(),
     val revealRolesOnDeath: Boolean = false,
+    val debugBotsObeyVoteCommands: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",

@@ -1182,6 +1182,70 @@ class GameEngineTest {
     }
 
     @Test
+    fun debugVoteCommandMakesBotsVoteForHuman() {
+        val session = publicNameSession().copy(
+            code = "DEBUG-VOTE-ME",
+            phase = GamePhase.VOTACION,
+            debugBotsObeyVoteCommands = true,
+            chatHistory = listOf(
+                GameChatMessage("Ana", "no se a quien votar"),
+                GameChatMessage("Humano", "Vótenme, quiero probar algo")
+            )
+        )
+
+        session.players.filterNot { it.isHuman }.forEach { bot ->
+            assertEquals("Humano", LocalBotAi.chooseVoteTarget(session, bot))
+        }
+    }
+
+    @Test
+    fun debugVoteCommandCanNameAnotherLivingPlayer() {
+        val session = publicNameSession().copy(
+            code = "DEBUG-VOTE-NAMED",
+            phase = GamePhase.VOTACION,
+            debugBotsObeyVoteCommands = true,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "voten a Dina")
+            )
+        )
+        val beto = GameEngine.playerByName(session, "Beto")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, beto))
+    }
+
+    @Test
+    fun debugVoteCommandIsIgnoredWhenOptionIsOff() {
+        val session = publicNameSession().copy(
+            code = "DEBUG-VOTE-OFF",
+            phase = GamePhase.VOTACION,
+            debugBotsObeyVoteCommands = false,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "para mi Dina esta re rara, voto a Dina"),
+                GameChatMessage("Humano", "votenme")
+            )
+        )
+        val beto = GameEngine.playerByName(session, "Beto")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, beto))
+    }
+
+    @Test
+    fun debugVoteCommandIgnoresOrdersWrittenByBots() {
+        val session = publicNameSession().copy(
+            code = "DEBUG-VOTE-SPOOF",
+            phase = GamePhase.VOTACION,
+            debugBotsObeyVoteCommands = true,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "votenme"),
+                GameChatMessage("Humano", "voten a Dina")
+            )
+        )
+        val ana = GameEngine.playerByName(session, "Ana")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, ana))
+    }
+
+    @Test
     fun traitorBotsUsuallyAvoidVotingForLivingAllies() {
         val base = GameSession(
             code = "ALLY-VOTE",

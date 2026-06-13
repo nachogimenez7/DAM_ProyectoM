@@ -110,6 +110,7 @@ internal object LocalBotAi {
     }
 
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {
+        debugVoteCommandTarget(session, voter)?.let { return it }
         val ranked = rankedPublicSuspects(session, voter)
         val declaredTarget = declaredSuspicionTarget(session, voter)
         val coordinated = if (isTraitor(voter)) {
@@ -132,6 +133,29 @@ internal object LocalBotAi {
             ?.player
             ?.name
             ?: fallbackTarget(session, voter)
+    }
+
+    private fun debugVoteCommandTarget(session: GameSession, voter: GamePlayer): String? {
+        if (!session.debugBotsObeyVoteCommands || voter.isHuman) return null
+        val human = session.players.firstOrNull { it.isHuman && it.alive } ?: return null
+        val message = session.chatHistory
+            .asReversed()
+            .firstOrNull { !it.isGod && it.speaker == human.name }
+            ?.message
+            ?.let(::normalizedVoteCommand)
+            ?: return null
+        val targetName = when {
+            message.contains("votenme") || message.contains("voten por mi") -> human.name
+            else -> session.players
+                .filter { it.alive && it.name != voter.name }
+                .firstOrNull { player ->
+                    val name = normalizedVoteCommand(player.name)
+                    message.contains("voten a $name") ||
+                        message.contains("voten por $name")
+                }
+                ?.name
+        } ?: return null
+        return targetName.takeIf { GameEngine.isValidVoteTarget(session, it, voter) }
     }
 
     fun openingDebateMessages(session: GameSession, limit: Int = 3): List<Pair<String, String>> {
@@ -606,6 +630,19 @@ internal object LocalBotAi {
 
     private fun normalized(value: String): String {
         return value.lowercase()
+    }
+
+    private fun normalizedVoteCommand(value: String): String {
+        return normalized(value)
+            .replace('á', 'a')
+            .replace('é', 'e')
+            .replace('í', 'i')
+            .replace('ó', 'o')
+            .replace('ú', 'u')
+            .replace('ü', 'u')
+            .replace(Regex("[^a-z0-9ñ ]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     private fun stableNoise(seed: String): Int {
