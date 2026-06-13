@@ -1,50 +1,107 @@
+# Coding Conventions
+
+**Analysis Date:** 2026-06-13
+
+## Naming Patterns
+
+**Files and Types:**
+- PascalCase for Kotlin classes, objects, enums, and data classes.
+- Activities end in `Activity`; adapters end in `Adapter`; animation coordinators end in `Animator`.
+- Resource names are lowercase snake_case.
+
+**Functions:**
+- camelCase for functions.
+- UI event orchestration commonly uses `show*`, `render*`, `update*`, `handle*`, `toggle*`, and `resolve*`.
+- Guard/query helpers commonly use `is*`, `can*`, `should*`, and `needs*`.
+
+**Variables:**
+- camelCase for fields and locals.
+- `lateinit var` is common for Activity-bound views.
+- Constants use `UPPER_SNAKE_CASE` in companion objects.
+
+## Code Style
+
+**Formatting:**
+- Kotlin official style is enabled in `gradle.properties`.
+- Four-space indentation and trailing commas in multiline Kotlin declarations are common.
+- XML attributes are generally one per line.
+- No standalone formatter or lint configuration beyond Android/Kotlin defaults is committed.
+
+**Strings:**
+- Kotlin and XML contain many hardcoded Spanish strings.
+- `app/src/main/res/values/strings.xml` contains only a small subset of visible copy.
+- New correction work should avoid expanding hardcoded duplication and should move repeated/accessibility text to resources when touching a screen.
+
+## Import Organization
+
+**Order:**
+- Android framework imports first.
+- AndroidX imports next.
+- Kotlin/Java standard library imports last.
+- No path aliases or barrel modules exist.
+
+## Error Handling
+
+**Patterns:**
+- Use early returns for invalid state or actions.
+- Use `Toast` for recoverable user feedback.
+- Use `AlertDialog` for confirmation and editable values.
+- Use safe fallbacks when an Intent extra or drawable resource is missing.
+- Avoid non-null assertions; production code primarily relies on guards and `lateinit`.
+
+**Navigation Errors:**
+- There is no central route abstraction or route validation.
+- Every Activity owns its own click and back behavior.
+
+## Logging
+
+**Framework:**
+- No application logging framework is used.
+- No consistent `Log.d/e` diagnostic strategy is present.
+
+**Correction Guidance:**
+- Visual fixes should be verified through repeatable test cases or screenshots rather than temporary production logs.
+
+## Comments
+
+**Current Pattern:**
+- Comments are sparse and usually identify a UI section or explain a business exception.
+- Most domain behavior is expressed through named functions and tests.
+
+**Guidance:**
+- Comment only non-obvious layout calculations, lifecycle workarounds, and state ordering.
+- Do not narrate basic view binding or assignments.
+
+## Function Design
+
+**Preferred Existing Pattern:**
+- Guard clauses followed by immutable `copy()` state updates.
+- Extract pure rules into `GameEngine`, `GameplayTableUi`, or geometry helpers.
+- Keep dynamic Android view construction in renderer/adapter classes when practical.
+
+**Current Deviations:**
+- `GameplayMockActivity.kt` and `LobbyActivity.kt` contain long methods and many responsibilities.
+- Programmatic dialog construction in `LobbyActivity.kt` makes visual consistency harder to review than XML-based components.
+
+## Module Design
+
+**Exports:**
+- Kotlin top-level package visibility is simple; most helpers are objects or classes.
+- `internal` is used for testable implementation details such as `GameplayFeedbackState`.
+
+**State:**
+- Prefer immutable model transformations for game state.
+- Activity UI flags are mutable and lifecycle-sensitive.
+- Any visual/navigation correction should preserve state ordering around animations and callbacks.
+
+## XML/UI Conventions
+
+- Shared primary/dark buttons use `BtnGold` and `BtnDark` from `themes.xml`.
+- The visual system uses dark brown panels, gold borders/accents, custom fonts, and map artwork.
+- Touch targets are commonly 44dp; new work should meet or exceed 48dp where layout permits.
+- Avoid adding fixed widths/heights to `activity_gameplay_mock.xml`; it already contains 99 fixed dimensions.
+- Use `ScrollView`/RecyclerView or responsive constraints for screens that can overflow with large fonts or small displays.
+
 ---
-last_mapped: 2026-06-03
-focus: quality
----
-
-# Conventions
-
-## Summary
-The app is a Kotlin Android prototype built around XML layouts, Activity-driven screens, and a small extracted game-domain layer. UI code remains imperative and direct, while local game rules now live mostly in `GameEngine` and immutable model copies.
-
-## Kotlin and Activity Style
-- Activities live under `app/src/main/java/com/traidores/juego`.
-- Screen classes extend `BaseActivity`, which centralizes music lifecycle hooks.
-- `onCreate` usually calls `setContentView`, resolves views with `findViewById`, then wires inline `setOnClickListener` handlers.
-- Navigation uses explicit `Intent(this, TargetActivity::class.java)`.
-- Long-running UI timers use `Handler(Looper.getMainLooper())` and remove callbacks in lifecycle cleanup.
-- There is no ViewBinding, DataBinding, Jetpack Compose, dependency injection, or MVVM layer.
-
-## Domain and State
-- Core local game state is represented by immutable `data class` models: `GameSession`, `GamePlayer`, `GameRole`, `GameChatMessage`, and `GameMap`.
-- Game progression is expressed with the `GamePhase` enum.
-- `GameEngine` owns phase resolution, winner checks, target validation, chat permissions, auto-advance decisions, and private/public announcement logic.
-- `LocalGameFactory` owns mock session creation, map selection, player add/remove, and random role assignment.
-- Activity state is still stored in mutable Activity fields, especially in `GameplayMockActivity`.
-- Cross-screen session transfer uses `Serializable` extras through `LobbyActivity.EXTRA_SESSION`.
-
-## UI and Resources
-- Layouts are XML-first and mostly use `RelativeLayout` with nested `LinearLayout`; gameplay also builds player cards programmatically in a `FrameLayout`.
-- Shared visual identity comes from XML drawable backgrounds, custom fonts, image assets, and centralized colors in `res/values/colors.xml`.
-- Button and theme styling is in `res/values/themes.xml` and drawable shape resources such as `bg_btn_gold.xml`.
-- Role/map image lookup is partly dynamic via `resources.getIdentifier`, with Android fallback drawables when a resource name is missing.
-- Text is predominantly Spanish, but many strings are hardcoded in Kotlin or layout XML rather than centralized in `strings.xml`.
-
-## Persistence and Integrations
-- Sound/music settings use `SharedPreferences` named `TraidoresPrefs` with keys such as `sound_on`, `music_volume`, and `voices_volume`.
-- `MusicManager` owns menu music playback and observes Activity start/stop events through `BaseActivity`.
-- Online mode and login/register flows are currently mock UI flows; no remote API, database, or auth provider is wired.
-
-## Error Handling and Validation
-- Invalid local-game actions are usually blocked by guards and surfaced with `Toast` messages.
-- Engine methods return the unchanged `GameSession` for invalid target/action inputs.
-- Dynamic image lookup falls back to a generic gallery drawable.
-- There is no structured logging, crash reporting, or app-wide error boundary.
-
-## Quality Risks
-- `GameplayMockActivity` is large and mixes rendering, timers, input routing, and state mutation.
-- `LocalGameFactory.assignRoles` uses unseeded `shuffled()`, so role assignment is intentionally random and not deterministic.
-- Hardcoded user-facing strings make localization and copy review difficult.
-- `Serializable` is simple for the prototype but can become fragile as model shape changes.
-- No lint/style configuration beyond Android/Gradle defaults is visible.
+*Convention analysis: 2026-06-13*
+*Update when linting, resources, or navigation standards are formalized*

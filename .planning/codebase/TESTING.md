@@ -1,53 +1,124 @@
+# Testing Patterns
+
+**Analysis Date:** 2026-06-13
+
+## Test Framework
+
+**Runner:**
+- JUnit 4.13.2 local JVM tests.
+- Android Gradle default unit-test task; no custom test configuration.
+
+**Assertion Library:**
+- `org.junit.Assert` with `assertEquals`, `assertTrue`, `assertFalse`, and `assertNull`.
+
+**Run Commands:**
+```powershell
+.\gradlew.bat test
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat testDebugUnitTest --tests "com.traidores.juego.GameEngineTest"
+```
+
+## Test File Organization
+
+**Location:**
+- All tests are under `app/src/test/java/com/traidores/juego/`.
+- Tests mirror the production package.
+
+**Naming:**
+- `<Subject>Test.kt`.
+- Method names describe expected behavior in camelCase.
+
+**Current Inventory:**
+- `GameEngineTest.kt` - 72 tests.
+- `GameplayTableUiTest.kt` - 24 tests.
+- `GameplayCountdownTest.kt` - 4 tests.
+- `GameplayFeedbackStateTest.kt` - 3 tests.
+- `RoleCatalogTest.kt` - 3 tests.
+- `GameTableLayoutTest.kt` - 2 tests.
+
+## Test Structure
+
+**Suite Organization:**
+```kotlin
+class GameplayCountdownTest {
+    @Test
+    fun countdownPausesAndResumesWithoutLosingRemainingTime() {
+        val countdown = GameplayCountdown()
+        countdown.ensurePhase(3, 5_000L)
+
+        val result = countdown.start(1_000L)
+
+        assertEquals(GameplayCountdown.StartResult.STARTED, result)
+    }
+}
+```
+
+**Patterns:**
+- Direct arrange/act/assert flow without explicit section comments.
+- Test models are created inline or through helper functions at the bottom of a test class.
+- Tests favor pure domain/presentation logic and avoid Android framework dependencies.
+
+## Mocking
+
+**Framework:**
+- No mocking library.
+- No Robolectric.
+
+**Current Approach:**
+- Construct real `GameSession`, `GamePlayer`, and helper objects.
+- Keep production logic pure enough to execute on the JVM.
+
+## Fixtures and Factories
+
+**Test Data:**
+- Private factory helpers inside large test classes.
+- Inline roles and sessions for narrow cases.
+- No shared fixture directory.
+
+## Coverage
+
+**Requirements:**
+- No enforced line or branch coverage target.
+- No coverage report task is documented.
+- CI does not enforce test execution.
+
+**Strong Areas:**
+- Phase progression, voting, AFK handling, role behavior, winner presentation, countdown state, and pure table geometry.
+
+**Weak Areas:**
+- Activity navigation and back-stack behavior.
+- XML layout fit on small screens, tablets, and large font scales.
+- Keyboard/insets/chat interaction.
+- Dialog size and accessibility.
+- Profile edit cancellation across rotation/process recreation.
+- Music behavior across Activity transitions.
+
+## Test Types
+
+**Unit Tests:**
+- Present and substantial for domain logic.
+- Fast and Android-independent.
+
+**Integration Tests:**
+- No Activity-to-Activity navigation tests.
+- No tests that inflate layouts or assert view visibility/enabled state.
+
+**E2E/Visual Tests:**
+- None.
+- Existing root screenshots are manual artifacts, not automated baselines.
+
+## Recommended Stabilization Verification
+
+**First Additions:**
+- Instrumented smoke tests for every manifest Activity opening successfully.
+- Navigation tests for menu -> mode -> lobby -> role assignment -> gameplay and back behavior.
+- Layout checks at compact portrait, common portrait, compact landscape, and large font scale.
+- Screenshot/manual checklist for profile, lobby dialogs, gameplay overlays, keyboard-open chat, and winner screen.
+
+**Regression Rule:**
+- Every fixed navigation bug should get an Activity/instrumentation test where feasible.
+- Every fixed pure state bug should get a JVM test in the existing style.
+
 ---
-last_mapped: 2026-06-03
-focus: quality
----
-
-# Testing
-
-## Summary
-The project now has a JVM unit-test source set with JUnit 4 coverage for the local game engine. There are still no instrumented UI tests, so Activity navigation, XML rendering, media lifecycle, and device-specific behavior remain manually verified.
-
-## Test Setup
-- Unit tests live in `app/src/test/java/com/traidores/juego`.
-- `app/build.gradle` includes `testImplementation 'junit:junit:4.13.2'`.
-- No `app/src/androidTest` directory was observed.
-- No Espresso, Robolectric, Mockito, Compose test, or AndroidX test dependencies are configured.
-- The Gradle wrapper is present, so the normal local command is `.\gradlew.bat test`.
-
-## Existing Coverage
-- `GameEngineTest.kt` contains 17 JUnit tests.
-- Current tests cover role assignment, assassin kills, medic protection, private police hints, muted-player restrictions, bot debate privacy, auto-advance gating, target action labels, voting resolution, chat permissions, and win conditions.
-- Tests exercise pure Kotlin/domain behavior through `GameEngine`, `LocalGameFactory`, and `GameSession` fixtures.
-
-## Current Verification Commands
-- Run JVM unit tests:
-  - `.\gradlew.bat test`
-- Build a debug APK:
-  - `.\gradlew.bat assembleDebug`
-- Useful output paths:
-  - Unit test reports: `app/build/reports/tests/testDebugUnitTest/index.html`
-  - Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
-
-## Manual Scenarios Still Needed
-- Main menu routes to play, roles, help, options, and back navigation.
-- Sound toggle and options sliders update `TraidoresPrefs` and affect `MusicManager`.
-- Local flow from `MainActivity` to lobby to role assignment to gameplay.
-- Lobby map selector updates visible map, selected map key, and role image suffix.
-- Add/remove mock players, including host removal protection and min/max player limits.
-- Gameplay renders readable player seats across 5 to 15 players.
-- Chat panel opens/closes, respects muted/read-only states, and does not overlap critical gameplay controls.
-- Role card reveal/hide behavior works across phase transitions.
-
-## High-Value Next Tests
-- Add unit tests for `LocalGameFactory.selectMap`, `addMockPlayer`, `removeLastPlayer`, and `removePlayer`.
-- Add deterministic role-assignment testing by injecting or controlling shuffle behavior if rules become more complex.
-- Add instrumented tests for Activity navigation and lobby/gameplay smoke flows.
-- Add UI assertions for chat visibility, card action buttons, and muted-player controls.
-- Add regression tests around dynamic drawable names for each map/role suffix.
-
-## Known Gaps
-- Activity code, XML layout behavior, timers, Toast messages, and `SharedPreferences` integration are not covered by automated tests.
-- Media playback lifecycle in `MusicManager` is untested.
-- No coverage report or minimum coverage threshold is configured.
-- No CI workflow was observed in the workspace.
+*Testing analysis: 2026-06-13*
+*Update after adding instrumentation or screenshot testing*

@@ -1,57 +1,91 @@
+# External Integrations
+
+**Analysis Date:** 2026-06-13
+
+## APIs & External Services
+
+**Current State:**
+- No HTTP client, REST API, WebSocket, Firebase SDK, or external service client exists in `app/build.gradle`.
+- The apparent online flows in `OnlineModeActivity.kt`, `LobbyBrowserActivity.kt`, and `LobbyActivity.kt` are local simulations.
+- Mock lobbies are hardcoded in `app/src/main/java/com/traidores/juego/LobbyBrowserActivity.kt`.
+
+## Data Storage
+
+**Databases:**
+- None.
+- Game sessions live in memory as serializable `GameSession` objects from `app/src/main/java/com/traidores/juego/GameModels.kt`.
+
+**Local Preferences:**
+- Android `SharedPreferences` stores sound, language, player name, profile fields, display scale, and other options.
+- Main access points include `MainActivity.kt`, `OpcionesActivity.kt`, `ProfileActivity.kt`, `MusicManager.kt`, and `GameplayMockActivity.kt`.
+- There is no schema versioning or migration layer for preference keys.
+
+**File Storage:**
+- No user file storage or gallery integration.
+- Avatars, banners, role images, and map artwork are packaged application resources.
+
+**Caching:**
+- None beyond in-memory Activity/session state and Android resource caching.
+
+## Authentication & Identity
+
+**Current Implementation:**
+- Login and registration controls in `OpcionesActivity.kt` are simulated.
+- No credentials are sent or stored by a backend provider.
+- The current player identity is a locally stored display name.
+
+**Planned but Not Integrated:**
+- Firebase/Google account concepts are documented product direction, not runtime dependencies.
+- They must remain out of the current visual/navigation stabilization milestone.
+
+## Monitoring & Observability
+
+**Error Tracking:**
+- No Crashlytics, Sentry, or equivalent integration.
+
+**Analytics:**
+- None.
+
+**Logs:**
+- No structured logging layer.
+- User-visible failures are primarily communicated with `Toast` or dialog messages.
+
+## CI/CD & Deployment
+
+**Hosting:**
+- Not applicable; this is an Android APK.
+
+**CI Pipeline:**
+- No `.github/workflows/` pipeline is present.
+- Builds, tests, and manual device checks currently depend on local Android Studio execution.
+
+## Environment Configuration
+
+**Development:**
+- Android SDK location is machine-specific in gitignored `local.properties`.
+- No API keys or service secrets are required.
+- Mock online state requires no network connection.
+
+**Staging:**
+- No staging environment.
+
+**Production:**
+- No production backend or remote configuration.
+
+## Webhooks & Callbacks
+
+**Incoming:**
+- None.
+
+**Outgoing:**
+- None.
+
+## Stabilization Implications
+
+- Route and empty-state testing can be deterministic because current data is local.
+- Online labels must clearly remain coherent even though data is simulated.
+- No new service integration should be introduced while fixing visual and navigation bugs.
+
 ---
-last_mapped: 2026-06-03
-focus: tech
----
-
-# Integrations
-
-## Summary
-The app currently has no real backend, database, authentication provider, matchmaking service, analytics, ads, push notifications, or external API client. Integrations are Android-platform local services plus mocked online/game flows.
-
-## Android Manifest
-- Permission declared: `android.permission.INTERNET`.
-- No network client dependency or network call was observed, so this appears reserved for future online play.
-- Launcher activity: `.MainActivity`.
-- App theme: `@style/Theme.Traidores`.
-- Backup is enabled with `android:allowBackup="true"`.
-- Activities are explicitly registered and screen orientation is fixed per screen.
-
-## Activity Navigation
-- Navigation uses explicit `Intent` launches.
-- Main flow: `MainActivity` -> `JugarActivity` -> local/online mode screens.
-- Local flow: `LocalModeActivity` -> `LobbyActivity` -> `AssigningRolesActivity` -> `GameplayMockActivity`.
-- Online buttons currently show `Toast` feedback and open `GameplayMockActivity`.
-- `RolesActivity`, `AyudaActivity`, and `OpcionesActivity` are standalone menu destinations.
-
-## Game State Passing
-- `GameSession`, `GamePlayer`, `GameRole`, and `GameChatMessage` implement `Serializable`.
-- `LobbyActivity.EXTRA_SESSION` is the primary intent extra key for local game session transfer.
-- `LocalGameFactory` creates local sessions, selects maps, changes mock players, and assigns roles.
-- There is no persistent game-state store; session state is passed in memory between activities.
-
-## Local Preferences
-- Preferences file: `TraidoresPrefs`.
-- `MainActivity` reads/writes `sound_on`.
-- `MusicManager` reads `sound_on` and `music_volume`.
-- `OpcionesActivity` manages `music_volume`, `voice_volume`, `language`, and simulated account form values.
-- Preferences use Android `SharedPreferences`; no Room, SQLite wrapper, DataStore, or remote sync is present.
-
-## Media
-- `MusicManager` uses Android `MediaPlayer` to loop `R.raw.menu_music`.
-- `BaseActivity` calls `MusicManager.onActivityStarted` and `onActivityStopped` for all screens that inherit from it.
-- Playback is controlled by `SharedPreferences` and delayed pause handling via `Handler`.
-
-## Resource Lookup
-- The app uses generated `R` references for most layouts, drawables, raw assets, strings, colors, and fonts.
-- Some role/map images are resolved dynamically from resource names with `Resources.getIdentifier`.
-- Dynamic lookup is used in roles and gameplay rendering, so missing drawable names may fail at runtime rather than compile time.
-
-## Mocked Online and Auth
-- `OnlineModeActivity` has quick match, search, and create actions, but all are local mocks.
-- `OpcionesActivity` includes simulated login/register UI.
-- No credentials are stored or transmitted.
-- No Firebase, OAuth, REST, websocket, or local-network integration was observed.
-
-## External Service Surface
-- No API keys, tokens, service config files, analytics SDKs, crash reporters, ads, payments, cloud storage, or push notification setup were observed.
-- Security-sensitive external integration surface is currently minimal, with `INTERNET` and `allowBackup` as the main production-readiness review points.
+*Integration audit: 2026-06-13*
+*Update when a real backend, authentication provider, or telemetry service is added*

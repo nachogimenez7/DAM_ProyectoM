@@ -1,102 +1,127 @@
----
-last_mapped: 2026-06-03
-focus: arch
----
+# Codebase Structure
 
-# Structure
+**Analysis Date:** 2026-06-13
 
-## Summary
-The repository is a compact Android project with one Gradle application module. Source is concentrated in `app/src/main/java/com/traidores/juego`, resources in `app/src/main/res`, local unit tests in `app/src/test`, and planning docs in `.planning/codebase`.
+## Directory Layout
 
-## Root Layout
-- `settings.gradle` names the root project `TraidoresMenu` and includes `:app`.
-- `build.gradle` declares Android Gradle Plugin and Kotlin plugin versions.
-- `app/build.gradle` configures namespace, SDK levels, app version, dependencies, and JUnit tests.
-- `gradle/wrapper/gradle-wrapper.properties`, `gradlew`, `gradlew.bat`, and `gradle/wrapper/gradle-wrapper.jar` provide the Gradle wrapper.
-- `README.md` describes the menu/navigation prototype.
-- `.planning/codebase` contains codebase reference docs.
-- `.idea`, `.gradle`, and `app/build` are local/generated directories.
+```text
+App Traidores/
+|-- app/
+|   |-- build.gradle                 # Android module configuration
+|   `-- src/
+|       |-- main/
+|       |   |-- AndroidManifest.xml  # Activities, orientation, theme
+|       |   |-- java/com/traidores/juego/
+|       |   `-- res/                 # Layouts, drawables, fonts, audio, strings
+|       `-- test/java/com/traidores/juego/
+|-- docs/                            # Product/role behavior notes
+|-- gradle/wrapper/                  # Gradle wrapper runtime
+|-- roles_gauchos/                   # Source artwork outside Android resources
+|-- roles_griegos/                   # Source artwork outside Android resources
+|-- roles_medievales/                # Source artwork outside Android resources
+|-- .planning/codebase/              # GSD codebase map
+|-- build.gradle                     # Root plugin versions
+|-- settings.gradle                  # Repositories and module list
+`-- README.md                        # Basic project instructions
+```
 
-## App Source Directory
-Package root: `app/src/main/java/com/traidores/juego`.
+## Directory Purposes
 
-Activities:
-- `MainActivity.kt` - launcher menu, sound toggle, top-level navigation.
-- `JugarActivity.kt` - local/online mode selection.
-- `LocalModeActivity.kt` - local room create/join mock entry.
-- `LobbyActivity.kt` - map selection, player list management, role assignment handoff.
-- `AssigningRolesActivity.kt` - timed transition into gameplay.
-- `GameplayMockActivity.kt` - local match renderer/controller.
-- `OnlineModeActivity.kt` - mocked online actions that open gameplay.
-- `RolesActivity.kt` - role catalog and detail dialog.
-- `AyudaActivity.kt` - help screen.
-- `OpcionesActivity.kt` - options, language/account/volume UI, and preferences.
+**`app/src/main/java/com/traidores/juego/`:**
+- Purpose: All production Kotlin code in a flat package.
+- Contains: Activities, models, game engine, bots, catalogs, adapters, animation coordinators, and audio helpers.
+- Largest files: `GameplayMockActivity.kt`, `GameEngine.kt`, `LobbyActivity.kt`, `LocalBotAi.kt`, and `GameplayTableUi.kt`.
+- No feature subpackages currently separate menu, profile, lobby, or gameplay concerns.
 
-Shared and domain classes:
-- `BaseActivity.kt` - common music lifecycle hook.
-- `MusicManager.kt` - singleton `MediaPlayer` controller.
-- `GameModels.kt` - session, player, role, chat, phase, map, and local factory models.
-- `GameEngine.kt` - local game state machine and rule resolution.
-- `Role.kt`, `RoleListItem.kt`, `MapInfo.kt` - role catalog models.
-- `RoleAdapter.kt` - RecyclerView adapter for map headers, sections, and role cards.
+**`app/src/main/res/layout/`:**
+- Purpose: Activity, dialog, and item XML layouts.
+- Key files: `activity_gameplay_mock.xml`, `activity_profile.xml`, `activity_lobby.xml`, and `activity_opciones.xml`.
+- `activity_gameplay_mock.xml` is the largest and most dimension-heavy layout.
 
-## Manifest
-- File: `app/src/main/AndroidManifest.xml`.
-- Declares `android.permission.INTERNET`.
-- Registers all Activity classes in package-relative form.
-- Launcher: `.MainActivity`.
-- Landscape: `.LobbyActivity`, `.AssigningRolesActivity`, `.GameplayMockActivity`.
-- Portrait: main/menu/setup/reference/options screens.
+**`app/src/main/res/drawable*/`:**
+- Purpose: UI backgrounds, icons, map art, role images, profile banners, and animation elements.
+- `drawable-nodpi/` contains artwork that should not be density-scaled automatically.
 
-## Layout Resources
-Activity layouts:
-- `app/src/main/res/layout/activity_main.xml`
-- `app/src/main/res/layout/activity_jugar.xml`
-- `app/src/main/res/layout/activity_local_mode.xml`
-- `app/src/main/res/layout/activity_online_mode.xml`
-- `app/src/main/res/layout/activity_lobby.xml`
-- `app/src/main/res/layout/activity_assigning_roles.xml`
-- `app/src/main/res/layout/activity_gameplay_mock.xml`
-- `app/src/main/res/layout/activity_roles.xml`
-- `app/src/main/res/layout/activity_ayuda.xml`
-- `app/src/main/res/layout/activity_opciones.xml`
+**`app/src/main/res/raw/`:**
+- Purpose: Music and gameplay sound effects.
 
-Repeated/detail layouts:
-- `app/src/main/res/layout/item_lobby_player.xml`
-- `app/src/main/res/layout/item_role.xml`
-- `app/src/main/res/layout/item_map.xml`
-- `app/src/main/res/layout/item_section_header.xml`
-- `app/src/main/res/layout/item_mock_player_left.xml`
-- `app/src/main/res/layout/item_mock_player_right.xml`
-- `app/src/main/res/layout/dialog_role_detail.xml`
+**`app/src/test/java/com/traidores/juego/`:**
+- Purpose: JVM unit tests for domain and presentation helpers.
+- Key files: `GameEngineTest.kt` and `GameplayTableUiTest.kt`.
+- No `app/src/androidTest/` tree exists.
 
-## Drawable And Media Resources
-- UI chrome: `bg_btn_dark.xml`, `bg_btn_gold.xml`, `bg_game_panel.xml`, `bg_hud_parchment.xml`, `bg_chat_panel.xml`, `bg_chat_input.xml`, `bg_chat_fab.xml`, `bg_player_seat.xml`, `bg_player_avatar.xml`, `bg_player_chip.xml`, `bg_role_card.xml`, `bg_card_back.xml`, `bg_center_event.xml`.
-- Menu/mode assets: `fondo_menu.png`, `logo_traidores.png`, `logo_traidores_transparente.png`, `modo_juego_local.png`, `modo_jugar_online.png`.
-- Map assets: `mapa_pampa.png`, `mapa_pampa_noche.png`, `mapa_grecia.png`, `mapa_grecia_noche.png`, `mapa_medieval.png`, `mapa_medieval_noche.png`.
-- Role assets: `rol_<role>.jpg` legacy/base images plus `rol_<role>_<map-suffix>.png` variants.
-- Audio: `app/src/main/res/raw/menu_music.mp3`.
-- Fonts: `app/src/main/res/font/*.ttf`.
+**`docs/`:**
+- Purpose: Rules and future integration decisions.
+- Current files: `lan-role-readiness.md` and `map-exclusive-roles.md`.
 
-## Values And Theme
-- `app/src/main/res/values/colors.xml` - app palette and semantic colors.
-- `app/src/main/res/values/strings.xml` - app strings.
-- `app/src/main/res/values/themes.xml` - app theme.
+## Key File Locations
 
-## Tests
-- `app/src/test/java/com/traidores/juego/GameEngineTest.kt` contains local JUnit tests for game rules.
-- No `app/src/androidTest` directory was observed.
+**Entry Points:**
+- `app/src/main/java/com/traidores/juego/MainActivity.kt` - Launcher menu.
+- `app/src/main/java/com/traidores/juego/LobbyActivity.kt` - Local/simulated online room.
+- `app/src/main/java/com/traidores/juego/GameplayMockActivity.kt` - Match UI.
+
+**Configuration:**
+- `app/src/main/AndroidManifest.xml` - Activities and orientation locks.
+- `app/build.gradle` - SDK and dependencies.
+- `app/src/main/res/values/themes.xml` - Theme and shared button styles.
+- `app/src/main/res/values/colors.xml` - Core palette.
+
+**Core Logic:**
+- `app/src/main/java/com/traidores/juego/GameEngine.kt` - Game rules.
+- `app/src/main/java/com/traidores/juego/GameModels.kt` - Session/model definitions.
+- `app/src/main/java/com/traidores/juego/GameplayTableUi.kt` - Presentation derivation.
+- `app/src/main/java/com/traidores/juego/RoleCatalog.kt` - Role metadata.
+
+**Testing:**
+- `app/src/test/java/com/traidores/juego/GameEngineTest.kt` - Domain regression coverage.
+- `app/src/test/java/com/traidores/juego/GameplayTableUiTest.kt` - Presentation rules.
+- `app/src/test/java/com/traidores/juego/GameTableLayoutTest.kt` - Pure table geometry.
 
 ## Naming Conventions
-- Activity classes end with `Activity`.
-- Activity layouts use `activity_<screen>.xml`.
-- Repeated rows and cards use `item_<thing>.xml`.
-- Dialog layouts use `dialog_<thing>.xml`.
-- Drawable backgrounds use `bg_<component>.xml`.
-- Map keys are lowercase strings such as `pampa`, `grecia`, and `medieval`.
-- Role image names follow `rol_<role>_<suffix>` where suffix is `gaucho`, `griego`, or `medieval`.
 
-## Non-App Artifacts In The Workspace
-- Top-level folders `roles_gauchos`, `roles_griegos`, and `roles_medievales` contain role art outside the Android resource tree.
-- Top-level screenshots such as `traidores-current.png`, `traidores-gameplay-new.png`, and `traidores-chat-visible.png` appear to be QA/reference captures.
-- Top-level `lobby.xml` and `window.xml` appear to be exported or inspection artifacts, not Android source files.
+**Files:**
+- PascalCase Kotlin files matching primary class/object names.
+- Android resource files use lowercase snake_case.
+- Activity layouts use `activity_<screen>.xml`; rows use `item_<entity>.xml`; dialogs use `dialog_<purpose>.xml`.
+- Unit tests use `<Subject>Test.kt`.
+
+**Resources:**
+- Backgrounds use `bg_` prefixes.
+- Icons use `ic_` prefixes.
+- Role images use `rol_<role>_<map suffix>`.
+- Map-specific suffixes are `gaucho`, `griego`, and `medieval`.
+
+## Where to Add Correction Work
+
+**Visual Layout Fix:**
+- XML: `app/src/main/res/layout/`.
+- Shared control styling: `app/src/main/res/values/themes.xml`.
+- Colors/drawables: `app/src/main/res/values/` and `app/src/main/res/drawable/`.
+- Prefer dimensions based on constraints/weights over adding more fixed sizes.
+
+**Navigation Fix:**
+- Activity click/back handling in `app/src/main/java/com/traidores/juego/*Activity.kt`.
+- Manifest orientation/window behavior in `app/src/main/AndroidManifest.xml`.
+
+**Regression Test:**
+- Pure logic test in `app/src/test/java/com/traidores/juego/`.
+- Activity/layout/navigation verification requires creating `app/src/androidTest/`.
+
+## Special Directories and Root Artifacts
+
+**`.gradle/`, `.idea/`, `app/build/`:**
+- Generated tooling/build output.
+- Gitignored and not source.
+
+**`roles_*`:**
+- Original role artwork source folders.
+- Separate from packaged Android resources.
+
+**Root screenshots and XML captures:**
+- Files matching `traidores-*.png`, `window.xml`, and `lobby.xml` are debug artifacts and gitignored.
+- They are useful for visual comparison but are not production inputs.
+
+---
+*Structure analysis: 2026-06-13*
+*Update when modules or feature packages are introduced*

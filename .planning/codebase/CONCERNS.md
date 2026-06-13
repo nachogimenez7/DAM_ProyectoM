@@ -1,68 +1,150 @@
+# Codebase Concerns
+
+**Analysis Date:** 2026-06-13
+
+## Priority Summary
+
+1. Mobile layout resilience and font scaling.
+2. Back-stack and exit behavior through lobby/gameplay/profile.
+3. Empty, disabled, and loading-like states in simulated online/profile surfaces.
+4. Instrumented coverage for Activities, keyboard, dialogs, and orientation.
+5. Reduction of visual-state coupling in gameplay and lobby.
+
+## Tech Debt
+
+**Oversized gameplay Activity and layout:**
+- Issue: `GameplayMockActivity.kt` has about 2,730 lines and `activity_gameplay_mock.xml` about 1,504 lines with 99 fixed width/height values.
+- Impact: Small visual changes can affect overlays, keyboard behavior, transitions, chat, cards, and the bottom panel simultaneously.
+- Fix approach: Stabilize behavior first, then extract cohesive renderers/controllers and replace rigid dimensions with measured constraints.
+
+**Lobby presentation constructed partly in Kotlin:**
+- Issue: `LobbyActivity.kt` builds timing and advanced-option dialogs programmatically.
+- Impact: Text wrapping, dialog width, touch targets, and styles are difficult to validate consistently across devices.
+- Fix approach: Move stable dialog structure to XML or shared builders after visual behavior is locked.
+
+**Hardcoded UI copy:**
+- Issue: At least 172 layout text/hint/content-description values are hardcoded; more strings exist in Activities.
+- Impact: Encoding inconsistencies, inaccessible labels, duplicated wording, and unreliable future localization.
+- Fix approach: Migrate strings screen-by-screen while correcting the affected UI, starting with navigation labels and accessibility descriptions.
+
+**Flat production package:**
+- Issue: Menu, profile, lobby, gameplay, domain, and renderer code all live in `com.traidores.juego`.
+- Impact: Ownership and safe modification boundaries are unclear.
+- Fix approach: Do not reorganize during bug fixing; document boundaries now and defer package moves until stabilization is complete.
+
+## Known and Likely Visual Bugs
+
+**Small-screen and large-font clipping:**
+- Evidence: Portrait menu/mode screens use centered non-scroll containers; gameplay has many fixed dimensions.
+- Files: `activity_main.xml`, `activity_local_mode.xml`, `activity_online_mode.xml`, `activity_gameplay_mock.xml`.
+- Trigger: Short displays, display zoom, or increased font scale.
+- Fix approach: Add scroll/responsive constraints, autosizing only where appropriate, and test at multiple configurations.
+
+**Gameplay chat/insets fragility:**
+- Evidence: Chat dimensions are changed programmatically based on IME visibility while gameplay also uses `adjustResize`.
+- Files: `GameplayMockActivity.kt`, `activity_gameplay_mock.xml`, `AndroidManifest.xml`.
+- Trigger: Open keyboard in landscape, rotate/recreate, receive messages while typing, or use a split keyboard.
+- Fix approach: Treat chat+IME as one tested state machine and verify content remains visible above the keyboard.
+
+**Bottom gameplay information competes for vertical space:**
+- Evidence: The bottom panel contains role art, three text rows, and multiple actions with fixed heights.
+- Files: `activity_gameplay_mock.xml`.
+- Trigger: Long role hints or increased text scale.
+- Fix approach: Define minimum/maximum text behavior and reserve panel height using constraints rather than repeated fixed values.
+
+**Dialogs may overflow compact landscape:**
+- Evidence: Lobby dialogs receive fixed dp widths through `showLandscapeDialog()`.
+- Files: `LobbyActivity.kt`.
+- Trigger: Small landscape devices or large text.
+- Fix approach: Cap width against available window bounds and ensure dialog content scrolls independently from actions.
+
+## Navigation Risks
+
+**Gameplay back behavior is implicit and multi-step:**
+- Symptoms: Back first closes reveal/chat/event-log states; with the event log expanded by default, the first back may appear not to leave gameplay.
+- File: `GameplayMockActivity.kt`.
+- Risk: Users may interpret back as broken or accidentally leave the match after dismissing overlays.
+- Fix approach: Define explicit priority and add an exit confirmation for an active match without changing game features.
+
+**Route behavior is duplicated:**
+- Issue: Each Activity manually starts the next Activity and calls `finish()` independently.
+- Files: All `*Activity.kt` navigation handlers.
+- Impact: Back-stack regressions can be introduced without compiler or unit-test feedback.
+- Fix approach: Add route smoke tests before centralizing navigation decisions.
+
+**Profile edit draft is not saved across recreation:**
+- Evidence: `ProfileActivity.kt` creates `draftProfile` in `onCreate` but has no `onSaveInstanceState`.
+- Trigger: Process recreation or configuration change while editing.
+- Impact: Unsaved edits and editing mode can reset unexpectedly.
+- Fix approach: Save draft/edit mode or intentionally lock orientation with a documented discard flow.
+
+## Empty and Disabled States
+
+**Lobby browser has no real empty state:**
+- Evidence: `LobbyBrowserActivity.kt` always renders a hardcoded list.
+- Risk: Future remote empty/error results have no designed container.
+- Current-scope fix: Add a reusable empty-state presentation without connecting a backend.
+
+**Online mode labels describe simulated behavior as real:**
+- Evidence: Simulated lobbies and local factories are used behind online actions.
+- Risk: Disabled/full/unavailable state semantics can become inconsistent.
+- Current-scope fix: Ensure buttons, status labels, and unreachable actions are visually and verbally coherent; do not add networking.
+
+**Profile statistics and achievements are placeholder-driven:**
+- Risk: Empty/locked/no-selection states may be visually ambiguous.
+- Files: `ProfileActivity.kt`, `activity_profile.xml`.
+- Current-scope fix: Define stable placeholder and no-data presentation only.
+
+## Accessibility and Usability
+
+**Touch targets:**
+- Several icon buttons use 44dp dimensions.
+- Recommendation: Move important navigation/actions toward 48dp minimum where layout permits.
+
+**Content descriptions:**
+- Many descriptions are hardcoded and decorative images use mixed conventions.
+- Recommendation: Audit interactive images/buttons; use `@null` only for genuinely decorative artwork.
+
+**Contrast and disabled states:**
+- Disabled controls often rely mainly on alpha.
+- Recommendation: Verify label contrast and add semantic disabled copy where state is not obvious.
+
+## Performance and Lifecycle
+
+**Dynamic view recreation:**
+- Gameplay rebuilds chat bubbles and player/card views during renders.
+- Risk: Extra allocations and animation churn on lower-end devices.
+- Improvement path: Measure before optimizing; reuse adapters/holders only after correctness.
+
+**Handlers and animations:**
+- Gameplay coordinates several `Handler` callbacks and animators.
+- Risk: Ordering bugs around pause/resume and overlay dismissal.
+- Mitigation: Existing cleanup is substantial, but Activity-level instrumentation is missing.
+
+**Large packaged artwork/audio:**
+- Risk: APK size and memory pressure, especially with full-resolution drawable images.
+- Improvement path: Audit resource dimensions and move non-density-scaled art deliberately; avoid visual quality regressions.
+
+## Test Coverage Gaps
+
+**No Android instrumentation tests:**
+- What's not tested: Activity startup, view binding, click routes, back stack, dialogs, keyboard, orientation, and process recreation.
+- Priority: Critical for the requested stabilization milestone.
+
+**No visual regression baseline:**
+- What's not tested: Clipping, overlap, typography, spacing, and empty states.
+- Priority: High.
+
+**No CI:**
+- What's not tested automatically on push: build health and unit regressions.
+- Priority: Medium during stabilization; a simple Gradle test workflow would reduce accidental breakage.
+
+## Scope Guard
+
+- Do not add new roles, Firebase, real online networking, account systems, purchases, or gallery uploads in this milestone.
+- Avoid broad architecture rewrites while correcting bugs.
+- Preserve the established medieval/gold visual identity while improving responsive behavior.
+
 ---
-last_mapped: 2026-06-03
-focus: concerns
-scope: Android app source, Gradle config, manifest, unit tests
----
-
-# Concerns
-
-## Summary
-The app has moved past a pure mock: `GameEngine` and `GameEngineTest` now cover core local-game rules. The remaining risks are concentrated around prototype infrastructure, Activity-heavy runtime flow, simulated online/account features, and release/security defaults.
-
-## High Priority
-
-### Prototype online and account flows
-- `OnlineModeActivity.kt` still routes quick play, lobby search, and lobby creation into `GameplayMockActivity` with Toasts that explicitly describe mock behavior.
-- `LocalModeActivity.kt` accepts a mock join code and creates local sessions without validation or persistence.
-- `OpcionesActivity.kt` simulates login/register messages locally; there is no backend, credential persistence, or authenticated online state.
-- Risk: users can mistake UI affordances for real multiplayer/account support.
-
-### Activity-owned game runtime
-- `GameplayMockActivity.kt` still owns rendering, target selection, chat UI, timers, auto-advance scheduling, and session mutation around the extracted `GameEngine`.
-- Handler-based auto-advance is lifecycle-sensitive and only in-memory; leaving/recreating the Activity can reset or lose game state.
-- Risk: UI regressions or lifecycle events can affect game progression even when engine rules are correct.
-
-### Intent-passed Serializable session state
-- `GameSession`, players, roles, chat messages, and phases implement `Serializable`; Activities pass sessions with deprecated `getSerializableExtra`.
-- This is acceptable for a small prototype, but the session now contains growing lists and gameplay history.
-- Risk: fragile navigation contracts, possible performance cost, and no durable recovery after process death.
-
-## Medium Priority
-
-### Release and security defaults need review
-- `AndroidManifest.xml` declares `INTERNET` while current app behavior is still local/mock.
-- `android:allowBackup="true"` is enabled.
-- `app/build.gradle` has release `minifyEnabled false`.
-- Risk: release builds may expose unnecessary platform surface or ship without shrink/obfuscation review.
-
-### Test coverage is useful but narrow
-- `GameEngineTest.kt` covers role assignment, night actions, voting, chat permissions, mute behavior, and win conditions.
-- Coverage does not yet exercise Activity navigation, lifecycle/timer behavior, XML layout rendering, account/options behavior, or online-mode handoffs.
-- Verification in this environment is blocked because `JAVA_HOME` is not set and `java` is missing from `PATH`.
-
-### Random role assignment is nondeterministic
-- `LocalGameFactory.assignRoles` uses `roles.shuffled()` directly.
-- Existing tests validate role counts but cannot reproduce a specific assignment order without controlling randomness.
-- Risk: future tests for role-specific UI and private information may become flaky or require brittle workarounds.
-
-## Lower Priority
-
-### Dynamic drawable lookup
-- Role/map images still use resource-name strings and `resources.getIdentifier` in role-related UI paths.
-- Missing or renamed assets silently fall back to generic gallery icons in several places.
-- Risk: asset regressions are detected late instead of at compile time.
-
-### Hardcoded copy and manual language handling
-- Gameplay, lobby, options, and navigation strings are largely hardcoded in Kotlin/XML.
-- `OpcionesActivity.kt` manually changes visible labels instead of using Android locale resources.
-- Risk: localization will require broad UI rewrites and manual copy synchronization.
-
-### Shared music singleton lifecycle
-- `MusicManager.kt` owns a singleton `MediaPlayer` and delayed pause behavior.
-- There is no explicit release path for long idle sessions or app shutdown.
-- Risk: low for prototype, but worth monitoring before release or broader device testing.
-
-## Watchlist
-- `GameEngine.humanPlayer` falls back to `session.players.first()`, so empty sessions can crash if a future flow creates one.
-- `GameSession.phaseIndex` exists but is not part of observed phase progression.
-- The working tree contains many modified/untracked IDE, wrapper, screenshot, layout, and Kotlin files; treat source-control cleanup separately from app concerns.
+*Concerns audit: 2026-06-13*
+*Update as stabilization issues are verified and resolved*
