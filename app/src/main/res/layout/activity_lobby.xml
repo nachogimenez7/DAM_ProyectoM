@@ -17,7 +17,7 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_margin="10dp"
-        android:background="@drawable/bg_btn_dark"
+        android:background="@drawable/bg_btn_dark_ripple"
         android:contentDescription="Volver"
         android:padding="8dp"
         android:src="@android:drawable/ic_media_previous"
@@ -153,6 +153,7 @@
                         android:clickable="true"
                         android:contentDescription="Mapa Pampa"
                         android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground"
                         android:padding="2dp"
                         android:scaleType="centerCrop" />
 
@@ -165,6 +166,7 @@
                         android:clickable="true"
                         android:contentDescription="Mapa Grecia"
                         android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground"
                         android:padding="2dp"
                         android:scaleType="centerCrop" />
 
@@ -176,6 +178,7 @@
                         android:clickable="true"
                         android:contentDescription="Mapa Medieval"
                         android:focusable="true"
+                        android:foreground="?attr/selectableItemBackground"
                         android:padding="2dp"
                         android:scaleType="centerCrop" />
                 </LinearLayout>
@@ -215,15 +218,28 @@
                         style="@style/BtnDark"
                         android:layout_height="34dp"
                         android:layout_marginBottom="0dp"
+                        android:background="@drawable/bg_btn_dark_ripple"
                         android:text="ROL: AZAR"
                         android:textSize="10sp" />
                 </LinearLayout>
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:fontFamily="@font/grenze"
+                    android:letterSpacing="0.08"
+                    android:text="CONFIGURACION"
+                    android:textColor="@color/text_muted"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
                 <Button
                     android:id="@+id/btnTimingOptions"
                     style="@style/BtnDark"
-                    android:layout_height="40dp"
+                    android:layout_height="38dp"
                     android:layout_marginBottom="6dp"
+                    android:background="@drawable/bg_btn_dark_ripple"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="TIEMPOS"
@@ -236,8 +252,9 @@
                 <Button
                     android:id="@+id/btnAdvancedOptions"
                     style="@style/BtnDark"
-                    android:layout_height="36dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_height="38dp"
+                    android:layout_marginBottom="6dp"
+                    android:background="@drawable/bg_btn_dark_ripple"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="OPCIONES AVANZADAS"
@@ -247,25 +264,62 @@
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
-                <Button
-                    android:id="@+id/btnAddPlayer"
-                    style="@style/BtnDark"
-                    android:layout_height="34dp"
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="2dp"
                     android:layout_marginBottom="6dp"
-                    android:text="AGREGAR" />
+                    android:alpha="0.25"
+                    android:background="@color/text_secondary" />
 
-                <Button
-                    android:id="@+id/btnRemovePlayer"
-                    style="@style/BtnDark"
-                    android:layout_height="34dp"
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:fontFamily="@font/grenze"
+                    android:letterSpacing="0.08"
+                    android:text="JUGADORES"
+                    android:textColor="@color/text_muted"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
                     android:layout_marginBottom="6dp"
-                    android:text="QUITAR" />
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnAddPlayer"
+                        style="@style/BtnDark"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="4dp"
+                        android:layout_marginBottom="0dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_dark_ripple"
+                        android:text="AGREGAR"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnRemovePlayer"
+                        style="@style/BtnDark"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginBottom="0dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_btn_dark_ripple"
+                        android:text="QUITAR"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/btnStartGame"
                     style="@style/BtnGold"
-                    android:layout_height="42dp"
+                    android:layout_height="46dp"
                     android:layout_marginBottom="0dp"
+                    android:background="@drawable/bg_btn_gold_ripple"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="INICIAR"

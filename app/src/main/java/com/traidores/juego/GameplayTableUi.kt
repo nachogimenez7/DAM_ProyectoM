@@ -45,7 +45,8 @@ data class GameplayTransitionSpec(
 data class GameWinnerPresentation(
     val winningPlayers: List<GamePlayer>,
     val humanWon: Boolean,
-    val summary: GameSummaryPresentation
+    val summary: GameSummaryPresentation,
+    val specialVictories: List<GameSpecialVictory> = emptyList()
 )
 
 data class GameSummaryPresentation(
@@ -351,11 +352,12 @@ object GameplayTableUi {
             return GameWinnerPresentation(
                 emptyList(),
                 humanWon = false,
+                specialVictories = session.specialVictories,
                 summary = gameSummary(session)
             )
         }
 
-        val winningPlayers = session.players.filter { player ->
+        val factionWinningPlayers = session.players.filter { player ->
             when {
                 player.role?.key == "desertor" -> session.desertorTeam == session.winner
                 session.winner == GameRules.TOWN_WINNER ->
@@ -365,9 +367,13 @@ object GameplayTableUi {
                 else -> false
             }
         }
+        val specialWinnerNames = session.specialVictories.map { it.playerName }.toSet()
+        val specialWinningPlayers = session.players.filter { it.name in specialWinnerNames }
+        val winningPlayers = (factionWinningPlayers + specialWinningPlayers).distinctBy { it.name }
         return GameWinnerPresentation(
             winningPlayers = winningPlayers,
             humanWon = winningPlayers.any { it.isHuman },
+            specialVictories = session.specialVictories,
             summary = gameSummary(session)
         )
     }

@@ -27,7 +27,10 @@
         <activity android:name=".LobbyBrowserActivity" android:screenOrientation="landscape" />
         <activity android:name=".LobbyActivity" android:screenOrientation="landscape" />
         <activity android:name=".AssigningRolesActivity" android:screenOrientation="landscape" />
-        <activity android:name=".GameplayMockActivity" android:screenOrientation="landscape" />
+        <activity
+            android:name=".GameplayMockActivity"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RolesActivity" android:screenOrientation="portrait" />
         <activity android:name=".AyudaActivity" android:screenOrientation="portrait" />
         <activity android:name=".OpcionesActivity" android:screenOrientation="portrait" />

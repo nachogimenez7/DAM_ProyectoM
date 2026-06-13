@@ -237,6 +237,38 @@ class GameplayTableUiTest {
     }
 
     @Test
+    fun finalPresentationAlsoIncludesEarlierSpecialWinners() {
+        val town = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_medieval")
+        val assassin = GameRole("asesino", "Asesino", "Traidores", "rol_asesino_medieval")
+        val jester = GameRole("bufon", "Bufon", "Neutral", "rol_bufon_medieval")
+        val session = GameSession(
+            code = "TEST",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = listOf(
+                GamePlayer("Pueblo", "P", role = town),
+                GamePlayer("Traidor", "T", role = assassin),
+                GamePlayer("Bufon", "B", role = jester, alive = false, isHuman = true)
+            ),
+            specialVictories = listOf(
+                GameSpecialVictory(
+                    key = "bufon_expulsado",
+                    playerName = "Bufon",
+                    roleKey = "bufon",
+                    round = 2
+                )
+            ),
+            winner = GameRules.TOWN_WINNER
+        )
+
+        val presentation = GameplayTableUi.winnerPresentation(session)
+
+        assertEquals(listOf("Pueblo", "Bufon"), presentation.winningPlayers.map { it.name })
+        assertEquals("Bufon", presentation.specialVictories.single().playerName)
+        assertTrue(presentation.humanWon)
+    }
+
+    @Test
     fun winnerPresentationIsEmptyBeforeGameEnds() {
         val presentation = GameplayTableUi.winnerPresentation(
             transitionSession(GamePhase.RESULTADO, round = 2)

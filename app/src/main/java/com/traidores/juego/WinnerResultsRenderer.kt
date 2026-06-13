@@ -31,6 +31,7 @@ class WinnerResultsRenderer(
     fun render(
         players: List<GamePlayer>,
         summary: GameSummaryPresentation,
+        specialVictories: List<GameSpecialVictory>,
         themeKey: String
     ): List<View> {
         applyThemeInsets(themeKey)
@@ -38,11 +39,21 @@ class WinnerResultsRenderer(
         rounds.text = "${summary.roundsPlayed} RONDAS"
         duration.text = "TIEMPO ${summary.durationLabel}"
         eliminatedCount.text = "${summary.eliminated} ELIMINADOS"
-        eliminatedPlayers.text = if (summary.eliminatedPlayers.isEmpty()) {
+        val eliminatedLabel = if (summary.eliminatedPlayers.isEmpty()) {
             "ELIMINADOS: NINGUNO"
         } else {
             "ELIMINADOS: ${summary.eliminatedPlayers.joinToString(", ")}"
         }
+        val specialVictoriesLabel = specialVictories
+            .joinToString(", ") { victory ->
+                "${victory.playerName} (${victory.roleKey.uppercase()})"
+            }
+            .takeIf { it.isNotBlank() }
+            ?.let { "VICTORIAS ESPECIALES: $it" }
+        eliminatedPlayers.text = listOfNotNull(
+            eliminatedLabel,
+            specialVictoriesLabel
+        ).joinToString("\n")
         timeline.text = summary.daySummaries
             .joinToString("\n")
             .ifBlank { "Dia 1: no murio nadie y nadie fue silenciado." }

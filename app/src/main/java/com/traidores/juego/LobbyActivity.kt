@@ -264,7 +264,7 @@ class LobbyActivity : BaseActivity() {
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.text_secondary))
             textSize = 12f
-            setPadding(dp(6), dp(4), dp(6), dp(8))
+            setPadding(dp(6), dp(3), dp(6), dp(4))
             maxLines = 2
         }
         fun refreshValues() {
@@ -283,13 +283,19 @@ class LobbyActivity : BaseActivity() {
             val selectedPreset = draft.preset()
             presetButtons.forEach { (preset, button) ->
                 val selected = !customMode && preset == selectedPreset
-                button.setBackgroundResource(if (selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
                 button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
                 button.alpha = if (selected) 1f else 0.82f
             }
             customButton?.apply {
                 setBackgroundResource(
-                    if (customMode) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
+                    if (customMode) {
+                        R.drawable.bg_btn_gold_ripple
+                    } else {
+                        R.drawable.bg_btn_dark_ripple
+                    }
                 )
                 setTextColor(
                     getColor(if (customMode) R.color.bg_dark else R.color.text_primary)
@@ -318,7 +324,7 @@ class LobbyActivity : BaseActivity() {
                 }
             }
             presetButtons[preset] = button
-            val params = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+            val params = LinearLayout.LayoutParams(0, dp(40), 1f).apply {
                 if (index > 0) marginStart = dp(7)
             }
             presetRow.addView(button, params)
@@ -326,7 +332,7 @@ class LobbyActivity : BaseActivity() {
         val customPresetButton = compactDialogButton("PERSONALIZADO").apply {
             TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
                 this,
-                8,
+                10,
                 11,
                 1,
                 TypedValue.COMPLEX_UNIT_SP
@@ -342,7 +348,7 @@ class LobbyActivity : BaseActivity() {
         customButton = customPresetButton
         presetRow.addView(
             customPresetButton,
-            LinearLayout.LayoutParams(0, dp(38), 1.18f).apply { marginStart = dp(7) }
+            LinearLayout.LayoutParams(0, dp(40), 1.18f).apply { marginStart = dp(7) }
         )
         content.addView(
             presetRow,
@@ -357,7 +363,7 @@ class LobbyActivity : BaseActivity() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(3), 0, dp(3))
+                setPadding(0, dp(1), 0, dp(1))
             }
             val label = TextView(this).apply {
                 text = field.label
@@ -388,9 +394,9 @@ class LobbyActivity : BaseActivity() {
                 draft = field.update(draft, field.value(draft) + field.step)
                 refreshValues()
             }
-            row.addView(minus, LinearLayout.LayoutParams(dp(36), dp(32)))
-            row.addView(value, LinearLayout.LayoutParams(dp(64), dp(32)))
-            row.addView(plus, LinearLayout.LayoutParams(dp(36), dp(32)))
+            row.addView(minus, LinearLayout.LayoutParams(dp(40), dp(36)))
+            row.addView(value, LinearLayout.LayoutParams(dp(64), dp(36)))
+            row.addView(plus, LinearLayout.LayoutParams(dp(40), dp(36)))
             content.addView(
                 row,
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -442,7 +448,7 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(4), 0, dp(4), dp(8))
         })
         content.addView(TextView(this).apply {
-            text = "COMPOSICION AUTOMATICA - PROXIMAMENTE"
+            text = "COMPOSICION ACTUAL - EDICION PROXIMAMENTE"
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.text_muted))
             textSize = 11f
@@ -462,26 +468,26 @@ class LobbyActivity : BaseActivity() {
             row.addView(TextView(this).apply {
                 text = entry.label
                 setTextColor(getColor(R.color.text_primary))
-                textSize = 12f
-            }, LinearLayout.LayoutParams(0, dp(30), 1f))
-            row.addView(compactDialogButton("-").apply {
-                isEnabled = false
-                alpha = 0.35f
-            }, LinearLayout.LayoutParams(dp(34), dp(28)))
+                textSize = 13f
+            }, LinearLayout.LayoutParams(0, dp(34), 1f))
             row.addView(TextView(this).apply {
                 text = entry.count.toString()
                 gravity = Gravity.CENTER
+                setBackgroundResource(R.drawable.bg_btn_dark)
                 setTextColor(getColor(R.color.accent_gold))
-                textSize = 13f
-            }, LinearLayout.LayoutParams(dp(48), dp(28)))
-            row.addView(compactDialogButton("+").apply {
-                isEnabled = false
-                alpha = 0.35f
-            }, LinearLayout.LayoutParams(dp(34), dp(28)))
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(dp(54), dp(32)))
             roles.addView(row)
         }
         scroll.addView(roles)
-        content.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(230)))
+        content.addView(
+            scroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(142)
+            )
+        )
 
         val dialog = AlertDialog.Builder(this)
             .setView(content)
@@ -518,8 +524,8 @@ class LobbyActivity : BaseActivity() {
     private fun dialogColumn(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), dp(8))
-            setBackgroundResource(R.drawable.bg_translucent_game_panel)
+            setPadding(dp(18), dp(10), dp(18), dp(4))
+            setBackgroundResource(R.drawable.bg_dialog_game_panel)
         }
     }
 
@@ -528,7 +534,7 @@ class LobbyActivity : BaseActivity() {
             this.text = text
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.accent_gold))
-            textSize = 18f
+            textSize = 20f
             setPadding(0, 0, 0, dp(8))
         }
     }
@@ -541,14 +547,14 @@ class LobbyActivity : BaseActivity() {
             minHeight = 0
             setPadding(0, 0, 0, 0)
             setTextColor(getColor(R.color.text_primary))
-            setBackgroundResource(R.drawable.bg_btn_dark)
+            setBackgroundResource(R.drawable.bg_btn_dark_ripple)
         }
     }
 
     private fun updateTimingStepButton(button: Button, enabled: Boolean) {
         button.isEnabled = enabled
         button.setBackgroundResource(
-            if (enabled) R.drawable.bg_btn_dark else R.drawable.bg_btn_gold
+            if (enabled) R.drawable.bg_btn_dark_ripple else R.drawable.bg_btn_gold_ripple
         )
         button.setTextColor(
             getColor(if (enabled) R.color.text_primary else R.color.bg_dark)
@@ -562,6 +568,16 @@ class LobbyActivity : BaseActivity() {
         dialog.window?.setLayout(dp(widthDp), WindowManager.LayoutParams.WRAP_CONTENT)
         dialog.window?.setDimAmount(0.55f)
         dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        listOf(
+            AlertDialog.BUTTON_NEGATIVE,
+            AlertDialog.BUTTON_NEUTRAL,
+            AlertDialog.BUTTON_POSITIVE
+        ).forEach { buttonId ->
+            dialog.getButton(buttonId)?.apply {
+                minHeight = dp(44)
+                setTextColor(getColor(R.color.accent_gold))
+            }
+        }
     }
 
     private fun dp(value: Int): Int {

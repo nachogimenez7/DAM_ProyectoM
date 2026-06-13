@@ -34,6 +34,7 @@ data class GameSession(
     val desertorChangedTeam: Boolean = false,
     val initialPlayerCount: Int = players.size,
     val startedAtEpochMs: Long = System.currentTimeMillis(),
+    val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0
 ) : Serializable
@@ -235,6 +236,13 @@ data class GameAction(
     val publiclyKnown: Boolean = false
 ) : Serializable
 
+data class GameSpecialVictory(
+    val key: String,
+    val playerName: String,
+    val roleKey: String,
+    val round: Int
+) : Serializable
+
 enum class GameActionType : Serializable {
     KILL,
     SILENCE,
@@ -399,23 +407,15 @@ object LocalGameFactory {
     }
 
     fun minimumPlayersForRole(roleKey: String): Int {
-        return when (roleKey) {
-            "mercenario" -> 7
-            "alcalde" -> 8
-            "payador" -> 8
-            "desertor" -> 9
-            "espia" -> 10
-            else -> MIN_PLAYERS
-        }
+        return RoleCatalog.minimumPlayers(roleKey)
     }
 
     fun assignRoles(session: GameSession, forcedHumanRoleKey: String = ""): GameSession {
         val suffix = maps.firstOrNull { it.key == session.mapKey }?.roleSuffix ?: "gaucho"
-        val effectiveForcedRole = if (forcedHumanRoleKey == "payador" && suffix != "gaucho") {
-            ""
-        } else {
-            forcedHumanRoleKey
-        }
+        val roleMap = RoleMap.fromSessionKey(session.mapKey)
+        val effectiveForcedRole = forcedHumanRoleKey.takeIf {
+            it.isBlank() || RoleCatalog.isAvailableOnMap(it, roleMap)
+        }.orEmpty()
         val roles = roleDeckFor(session.players.size, suffix, effectiveForcedRole)
 
         val shuffledRoles = roles.shuffled()
@@ -459,6 +459,7 @@ object LocalGameFactory {
             desertorChangedTeam = false,
             initialPlayerCount = assignedPlayers.size,
             startedAtEpochMs = System.currentTimeMillis(),
+            specialVictories = emptyList(),
             winner = "",
             phaseIndex = 0
         )
@@ -527,27 +528,8 @@ object LocalGameFactory {
     }
 
     private fun roleForKey(key: String, suffix: String): GameRole {
-        return when (key) {
-            "policia" -> GameRole(
-                "policia",
-                if (suffix == "gaucho") "Comisario" else "Detective",
-                "Pueblo",
-                "rol_detective_$suffix"
-            )
-            "asesino" -> GameRole("asesino", "Asesino", "Traidores", "rol_asesino_$suffix")
-            "medico" -> GameRole("medico", "Medico", "Pueblo", "rol_medico_$suffix")
-            "mercenario" -> GameRole("mercenario", "Mercenario", "Traidores", "rol_mercenario_$suffix")
-            "alcalde" -> GameRole("alcalde", "Alcalde", "Pueblo", "rol_alcalde_$suffix")
-            "payador" -> GameRole("payador", "Payador", "Pueblo", "rol_payador_$suffix")
-            "desertor" -> GameRole(
-                "desertor",
-                if (suffix == "gaucho") "Desertora" else "Desertor",
-                "Neutral",
-                "rol_desertor_$suffix"
-            )
-            "espia" -> GameRole("espia", "Espia", "Traidores", "rol_espia_$suffix")
-            else -> GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_$suffix")
-        }
+        val map = RoleMap.entries.firstOrNull { it.imageSuffix == suffix } ?: RoleMap.PAMPA
+        return RoleCatalog.gameRole(key, map)
     }
 }
 

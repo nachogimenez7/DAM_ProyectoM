@@ -21,6 +21,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -34,6 +35,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.TextViewCompat
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -45,6 +49,8 @@ class GameplayMockActivity : BaseActivity() {
     private var isCardRevealed = false
     private var appliedGameplayTextScale = 1f
     private var isChatOpen = false
+    private var isChatKeyboardCompact = false
+    private var newChatMessagesWhileTyping = 0
     private var isEventLogExpanded = false
     private var lastRenderedAnnouncement = ""
     private var lastRenderedPhase: GamePhase? = null
@@ -62,6 +68,7 @@ class GameplayMockActivity : BaseActivity() {
     private var lastPresentedTransitionKey: String? = null
     private var lastActionAttentionKey: String? = null
     private var presentedPeriod: GameplayPeriod? = null
+    private var blockingFeedbackPeriod: GameplayPeriod? = null
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
     private val countdown = GameplayCountdown()
@@ -97,10 +104,15 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var btnToggleChat: ImageButton
     private lateinit var btnToggleEventLog: Button
     private lateinit var btnSendChat: Button
+    private lateinit var chatCharacterCount: TextView
+    private lateinit var chatComposer: LinearLayout
+    private lateinit var chatHeader: LinearLayout
     private lateinit var chatInput: EditText
-    private lateinit var chatMessages: TextView
+    private lateinit var chatMessagesContainer: LinearLayout
     private lateinit var chatMessagesScroll: ScrollView
+    private lateinit var chatNewMessages: TextView
     private lateinit var chatPanel: LinearLayout
+    private lateinit var chatStatusRow: LinearLayout
     private lateinit var chatUnreadBadge: TextView
     private lateinit var currentPlayerHint: TextView
     private lateinit var currentPlayerName: TextView
@@ -227,6 +239,9 @@ class GameplayMockActivity : BaseActivity() {
         presentedPeriod = savedInstanceState
             ?.getString(STATE_PRESENTED_PERIOD)
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
+        blockingFeedbackPeriod = savedInstanceState
+            ?.getString(STATE_BLOCKING_FEEDBACK_PERIOD)
+            ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
         isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
@@ -259,10 +274,15 @@ class GameplayMockActivity : BaseActivity() {
         btnToggleChat = findViewById(R.id.btnToggleChat)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
         btnSendChat = findViewById(R.id.btnSendChat)
+        chatCharacterCount = findViewById(R.id.chatCharacterCount)
+        chatComposer = findViewById(R.id.chatComposer)
+        chatHeader = findViewById(R.id.chatHeader)
         chatInput = findViewById(R.id.chatInput)
-        chatMessages = findViewById(R.id.chatMessages)
+        chatMessagesContainer = findViewById(R.id.chatMessagesContainer)
         chatMessagesScroll = findViewById(R.id.chatMessagesScroll)
+        chatNewMessages = findViewById(R.id.chatNewMessages)
         chatPanel = findViewById(R.id.chatPanel)
+        chatStatusRow = findViewById(R.id.chatStatusRow)
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
@@ -451,6 +471,25 @@ class GameplayMockActivity : BaseActivity() {
             closeChatPanel()
         }
         btnSendChat.setOnClickListener { sendHumanChatMessage() }
+        chatInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                sendHumanChatMessage()
+                true
+            } else {
+                false
+            }
+        }
+        chatInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                setChatKeyboardCompact(true)
+            }
+        }
+        chatInput.doAfterTextChanged { text ->
+            renderChatCharacterCount(text?.length ?: 0)
+        }
+        chatNewMessages.setOnClickListener {
+            acknowledgeNewChatMessages()
+        }
         roleCard.setOnClickListener { showRolePreview() }
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
@@ -468,6 +507,7 @@ class GameplayMockActivity : BaseActivity() {
         findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
+        configureChatPanelLayout()
         renderChatPanelVisibility(animate = false)
         if (shouldPresentRolePreview) {
             isRolePreviewOpen = true
@@ -557,6 +597,7 @@ class GameplayMockActivity : BaseActivity() {
         outState.putSerializable(STATE_SESSION, session)
         outState.putString(STATE_TRANSITION_KEY, lastPresentedTransitionKey)
         outState.putString(STATE_PRESENTED_PERIOD, presentedPeriod?.name)
+        outState.putString(STATE_BLOCKING_FEEDBACK_PERIOD, blockingFeedbackPeriod?.name)
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
         outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
@@ -691,9 +732,22 @@ class GameplayMockActivity : BaseActivity() {
         session = resolved
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
-        renderGame()
-        if (feedbackPresentation == GameplayFeedbackState.Presentation.BANNER && feedback != null) {
-            showActionFeedbackBanner(feedback)
+        blockingFeedbackPeriod = if (
+            feedbackPresentation == GameplayFeedbackState.Presentation.PRIVATE
+        ) {
+            GameplayTableUi.transitionSpec(before).period
+        } else {
+            null
+        }
+        when (feedbackPresentation) {
+            GameplayFeedbackState.Presentation.PRIVATE -> showPendingPrivateFeedback()
+            GameplayFeedbackState.Presentation.BANNER -> {
+                renderGame()
+                if (feedback != null) {
+                    showActionFeedbackBanner(feedback)
+                }
+            }
+            GameplayFeedbackState.Presentation.NONE -> renderGame()
         }
     }
 
@@ -734,10 +788,10 @@ class GameplayMockActivity : BaseActivity() {
         }
         val eventChanged = lastRenderedPhase != session.phase || lastRenderedAnnouncement != publicMessage
         updateUnreadChatCount()
-        val visiblePeriod = if (isDayNightTransitionRunning) {
-            presentedPeriod ?: transitionSpec.period
-        } else {
-            transitionSpec.period
+        val visiblePeriod = when {
+            blockingFeedbackPending -> blockingFeedbackPeriod ?: GameplayPeriod.NIGHT
+            isDayNightTransitionRunning -> presentedPeriod ?: transitionSpec.period
+            else -> transitionSpec.period
         }
         renderThemedBackground(visiblePeriod)
         renderNarrator(phaseText, firstRoundRoleTip() ?: publicMessage, eventChanged)
@@ -1399,6 +1453,7 @@ class GameplayMockActivity : BaseActivity() {
         }
         isChatOpen = true
         unreadChatCount = 0
+        newChatMessagesWhileTyping = 0
         lastSeenChatCount = session.chatHistory.size
         renderChatPanelVisibility(animate = true)
         renderChatPanel()
@@ -1408,8 +1463,14 @@ class GameplayMockActivity : BaseActivity() {
     private fun closeChatPanel() {
         if (!isChatOpen) return
         isChatOpen = false
+        newChatMessagesWhileTyping = 0
+        chatInput.clearFocus()
+        ViewCompat.getWindowInsetsController(gameplayRoot)
+            ?.hide(WindowInsetsCompat.Type.ime())
+        setChatKeyboardCompact(false)
         renderChatPanelVisibility(animate = true)
         renderChatBadge()
+        renderNewChatMessageNotice()
     }
 
     private fun renderChatPanelVisibility(animate: Boolean) {
@@ -1452,35 +1513,198 @@ class GameplayMockActivity : BaseActivity() {
         if (!isChatOpen) return
 
         val messages = session.chatHistory.filterNot { it.isGod }.takeLast(12)
-        chatMessages.text = if (messages.isEmpty()) {
-            "Todavia no hay mensajes."
-        } else {
-            messages.joinToString("\n") { message -> "${message.speaker}: ${message.message}" }
-        }
+        renderChatMessages(messages)
 
         val canChat = GameEngine.canHumanChat(session)
         chatInput.isEnabled = canChat
         btnSendChat.isEnabled = canChat
         chatInput.hint = chatInputHint(canChat)
         btnSendChat.alpha = if (canChat) 1f else 0.45f
-        chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+        renderChatCharacterCount(chatInput.text.length)
+        renderNewChatMessageNotice()
+        if (newChatMessagesWhileTyping == 0) {
+            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun configureChatPanelLayout() {
+        centerColumn.post {
+            applyChatPanelDimensions()
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(gameplayRoot) { _, insets ->
+            setChatKeyboardCompact(insets.isVisible(WindowInsetsCompat.Type.ime()))
+            insets
+        }
+        ViewCompat.requestApplyInsets(gameplayRoot)
+    }
+
+    private fun setChatKeyboardCompact(compact: Boolean) {
+        if (isChatKeyboardCompact == compact && chatPanel.isLaidOut) return
+        isChatKeyboardCompact = compact
+        applyChatPanelDimensions()
+        if (compact) {
+            chatPanel.bringToFront()
+            chatPanel.visibility = View.VISIBLE
+            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    private fun applyChatPanelDimensions() {
+        if (!::chatPanel.isInitialized || gameplayRoot.width == 0) return
+        val params = chatPanel.layoutParams as FrameLayout.LayoutParams
+        val widthRatio = if (isChatKeyboardCompact) {
+            CHAT_PANEL_COMPACT_WIDTH_RATIO
+        } else {
+            CHAT_PANEL_WIDTH_RATIO
+        }
+        params.width = (gameplayRoot.width * widthRatio)
+            .toInt()
+            .coerceIn(
+                dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_WIDTH_DP else CHAT_PANEL_MIN_WIDTH_DP),
+                dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_WIDTH_DP else CHAT_PANEL_MAX_WIDTH_DP)
+            )
+        params.topMargin = dp(
+            if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else CHAT_PANEL_TOP_MARGIN_DP
+        )
+        params.bottomMargin = dp(
+            if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else CHAT_PANEL_BOTTOM_MARGIN_DP
+        )
+        chatPanel.layoutParams = params
+        chatPanel.setPadding(
+            dp(if (isChatKeyboardCompact) 6 else 9),
+            dp(if (isChatKeyboardCompact) 4 else 9),
+            dp(if (isChatKeyboardCompact) 6 else 9),
+            dp(if (isChatKeyboardCompact) 5 else 9)
+        )
+        chatHeader.layoutParams = chatHeader.layoutParams.apply {
+            height = dp(if (isChatKeyboardCompact) 22 else 28)
+        }
+        chatComposer.layoutParams = chatComposer.layoutParams.apply {
+            height = dp(if (isChatKeyboardCompact) 34 else 40)
+        }
+        chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
+            height = dp(if (isChatKeyboardCompact) 18 else 20)
+        }
+        chatInput.layoutParams = chatInput.layoutParams.apply {
+            height = dp(if (isChatKeyboardCompact) 34 else 40)
+        }
+        btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
+            height = dp(if (isChatKeyboardCompact) 34 else 40)
+        }
+    }
+
+    private fun renderChatMessages(messages: List<GameChatMessage>) {
+        chatMessagesContainer.removeAllViews()
+        if (messages.isEmpty()) {
+            chatMessagesContainer.addView(TextView(this).apply {
+                text = "Todavia no hay mensajes."
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(16), dp(8), dp(16))
+                setTextColor(getColor(R.color.text_muted))
+                textSize = 11f * appliedGameplayTextScale
+            })
+            return
+        }
+
+        val humanName = GameEngine.humanPlayer(session).name
+        messages.forEach { message ->
+            val ownMessage = message.speaker == humanName
+            val row = LinearLayout(this).apply {
+                gravity = if (ownMessage) Gravity.END else Gravity.START
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(3), 0, dp(3))
+            }
+            val bubble = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), dp(7), dp(10), dp(8))
+                setBackgroundResource(
+                    if (ownMessage) {
+                        R.drawable.bg_chat_bubble_own
+                    } else {
+                        R.drawable.bg_chat_bubble_other
+                    }
+                )
+            }
+            bubble.addView(TextView(this).apply {
+                text = if (ownMessage) "VOS" else message.speaker.uppercase()
+                maxLines = 1
+                setTextColor(
+                    getColor(if (ownMessage) R.color.bg_dark else R.color.accent_gold)
+                )
+                textSize = 8f * appliedGameplayTextScale
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            bubble.addView(TextView(this).apply {
+                text = message.message
+                maxWidth = dp(250)
+                setTextColor(
+                    getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary)
+                )
+                textSize = 11f * appliedGameplayTextScale
+            })
+            row.addView(
+                bubble,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    if (ownMessage) marginStart = dp(30) else marginEnd = dp(30)
+                }
+            )
+            chatMessagesContainer.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
     }
 
     private fun updateUnreadChatCount() {
         val currentCount = session.chatHistory.size
-        if (isChatOpen) {
-            unreadChatCount = 0
-            lastSeenChatCount = currentCount
-            return
-        }
-
         if (currentCount > lastSeenChatCount) {
             val humanName = GameEngine.humanPlayer(session).name
             val newMessages = session.chatHistory.drop(lastSeenChatCount)
                 .count { !it.isGod && it.speaker != humanName }
-            unreadChatCount += newMessages
+            if (isChatOpen) {
+                unreadChatCount = 0
+                if (chatInput.hasFocus()) {
+                    newChatMessagesWhileTyping += newMessages
+                }
+            } else {
+                unreadChatCount += newMessages
+            }
             lastSeenChatCount = currentCount
         }
+    }
+
+    private fun renderChatCharacterCount(length: Int) {
+        chatCharacterCount.text = "$length/$CHAT_MESSAGE_MAX_LENGTH"
+        chatCharacterCount.setTextColor(
+            getColor(
+                when {
+                    length >= CHAT_MESSAGE_MAX_LENGTH -> R.color.accent_red
+                    length >= CHAT_MESSAGE_WARNING_LENGTH -> R.color.accent_gold
+                    else -> R.color.text_muted
+                }
+            )
+        )
+    }
+
+    private fun renderNewChatMessageNotice() {
+        chatNewMessages.visibility =
+            if (newChatMessagesWhileTyping > 0) View.VISIBLE else View.INVISIBLE
+        if (newChatMessagesWhileTyping > 0) {
+            val label = if (newChatMessagesWhileTyping == 1) "MENSAJE NUEVO" else "MENSAJES NUEVOS"
+            chatNewMessages.text = "$newChatMessagesWhileTyping $label - VER"
+        }
+    }
+
+    private fun acknowledgeNewChatMessages() {
+        newChatMessagesWhileTyping = 0
+        renderNewChatMessageNotice()
+        chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun renderChatBadge() {
@@ -1965,6 +2189,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showPendingPrivateFeedback() {
         val spec = feedbackState.privateToPresent() ?: return
         pauseCountdown()
+        MusicManager.pauseForTransition()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
@@ -2015,6 +2240,7 @@ class GameplayMockActivity : BaseActivity() {
                 override fun onAnimationEnd(animation: Animator) {
                     feedbackAnimator = null
                     feedbackState.finishPrivateDismissal()
+                    blockingFeedbackPeriod = null
                     privateFeedbackOverlay.visibility = View.GONE
                     privateFeedbackOverlay.alpha = 1f
                     privateFeedbackPanel.alpha = 1f
@@ -2043,6 +2269,9 @@ class GameplayMockActivity : BaseActivity() {
         privateFeedbackPanel.scaleX = 1f
         privateFeedbackPanel.scaleY = 1f
         feedbackState.cancel(keepPending)
+        if (!keepPending) {
+            blockingFeedbackPeriod = null
+        }
     }
 
     private fun clearSelection() {
@@ -2180,6 +2409,7 @@ class GameplayMockActivity : BaseActivity() {
         val cardViews = winnerResultsRenderer.render(
             players = presentation.winningPlayers,
             summary = presentation.summary,
+            specialVictories = presentation.specialVictories,
             themeKey = themeKey
         )
         winnerRevealScroll.scrollTo(0, 0)
@@ -2463,6 +2693,17 @@ class GameplayMockActivity : BaseActivity() {
     )
 
     companion object {
+        private const val CHAT_PANEL_WIDTH_RATIO = 0.42f
+        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.52f
+        private const val CHAT_PANEL_MIN_WIDTH_DP = 300
+        private const val CHAT_PANEL_MAX_WIDTH_DP = 380
+        private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 340
+        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 440
+        private const val CHAT_PANEL_COMPACT_MARGIN_DP = 4
+        private const val CHAT_PANEL_TOP_MARGIN_DP = 86
+        private const val CHAT_PANEL_BOTTOM_MARGIN_DP = 96
+        private const val CHAT_MESSAGE_MAX_LENGTH = 140
+        private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"
@@ -2475,6 +2716,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_COUNTDOWN_TOTAL_MS = "countdown_total_ms"
         private const val STATE_PENDING_FEEDBACK = "pending_feedback"
         private const val STATE_PRESENTED_PERIOD = "presented_period"
+        private const val STATE_BLOCKING_FEEDBACK_PERIOD = "blocking_feedback_period"
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
         private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
