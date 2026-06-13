@@ -62,36 +62,34 @@
 
 ## Traceability
 
-La asignación a fases se completa al crear el roadmap.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GAME-01 | Pending | Pending |
-| GAME-02 | Pending | Pending |
-| GAME-03 | Pending | Pending |
-| GAME-04 | Pending | Pending |
-| CHAT-01 | Pending | Pending |
-| CHAT-02 | Pending | Pending |
-| CHAT-03 | Pending | Pending |
-| CHAT-04 | Pending | Pending |
-| LOBBY-01 | Pending | Pending |
-| LOBBY-02 | Pending | Pending |
-| LOBBY-03 | Pending | Pending |
-| LOBBY-04 | Pending | Pending |
-| PROF-01 | Pending | Pending |
-| PROF-02 | Pending | Pending |
-| PROF-03 | Pending | Pending |
-| PROF-04 | Pending | Pending |
-| NAV-01 | Pending | Pending |
-| NAV-02 | Pending | Pending |
-| NAV-03 | Pending | Pending |
-| USE-01 | Pending | Pending |
+| GAME-01 | Phase 1 | Pending |
+| GAME-02 | Phase 1 | Pending |
+| GAME-03 | Phase 1 | Pending |
+| GAME-04 | Phase 1 | Pending |
+| CHAT-01 | Phase 2 | Pending |
+| CHAT-02 | Phase 2 | Pending |
+| CHAT-03 | Phase 2 | Pending |
+| CHAT-04 | Phase 2 | Pending |
+| LOBBY-01 | Phase 3 | Pending |
+| LOBBY-02 | Phase 3 | Pending |
+| LOBBY-03 | Phase 3 | Pending |
+| LOBBY-04 | Phase 3 | Pending |
+| PROF-01 | Phase 4 | Pending |
+| PROF-02 | Phase 4 | Pending |
+| PROF-03 | Phase 4 | Pending |
+| PROF-04 | Phase 4 | Pending |
+| NAV-01 | Phase 5 | Pending |
+| NAV-02 | Phase 5 | Pending |
+| NAV-03 | Phase 5 | Pending |
+| USE-01 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-13*
-*Last updated: 2026-06-13 after initial definition*
+*Last updated: 2026-06-13 after roadmap creation*
