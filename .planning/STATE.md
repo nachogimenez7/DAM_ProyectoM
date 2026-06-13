@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 Phase: 1 of 5 (Gameplay Visual Stability)
 Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-06-13 - Completed quick task 260613-qun: implementar Bufon medieval
+Last activity: 2026-06-13 - Completed quick task 260613-r4s: ayudas de prueba del Bufon
 
 Progress: [----------] 0%
 
@@ -70,6 +70,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260613-qun | Implementar Bufon medieval y celebracion especial | 2026-06-13 | cca00e3 | [260613-qun-implementar-bufon-medieval-victoria-espe](./quick/260613-qun-implementar-bufon-medieval-victoria-espe/) |
+| 260613-r4s | Agregar Bufon al selector debug e IA que obedece votos | 2026-06-13 | 0251fba | [260613-r4s-agregar-bufon-al-selector-debug-del-lobb](./quick/260613-r4s-agregar-bufon-al-selector-debug-del-lobb/) |
 
 ## Deferred Items
 
