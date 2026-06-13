@@ -155,7 +155,10 @@ internal object LocalBotAi {
                 }
                 ?.name
         } ?: return null
-        return targetName.takeIf { GameEngine.isValidVoteTarget(session, it, voter) }
+        return targetName.takeIf { name ->
+            val target = GameEngine.playerByName(session, name)
+            target != null && target.alive && target.name != voter.name
+        }
     }
 
     fun openingDebateMessages(session: GameSession, limit: Int = 3): List<Pair<String, String>> {
