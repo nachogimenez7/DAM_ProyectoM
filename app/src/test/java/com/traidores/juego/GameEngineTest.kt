@@ -389,6 +389,7 @@ class GameEngineTest {
         assertEquals(7, LocalGameFactory.minimumPlayersForRole("mercenario"))
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("alcalde"))
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("payador"))
+        assertEquals(8, LocalGameFactory.minimumPlayersForRole("bufon"))
         assertEquals(9, LocalGameFactory.minimumPlayersForRole("desertor"))
         assertEquals(10, LocalGameFactory.minimumPlayersForRole("espia"))
     }
@@ -458,6 +459,82 @@ class GameEngineTest {
         assertFalse(greece.players.any { it.role?.key == "payador" })
         assertFalse(medieval.players.any { it.role?.key == "payador" })
         assertFalse(forcedGreekPayador.players.any { it.role?.key == "payador" })
+    }
+
+    @Test
+    fun bufonIsAssignedOnceOnMedievalMapFromEightPlayers() {
+        var setup = LocalGameFactory.createSession()
+        repeat(3) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+
+        val medieval = LocalGameFactory.assignRoles(LocalGameFactory.selectMap(setup, "medieval"))
+        val pampa = LocalGameFactory.assignRoles(LocalGameFactory.selectMap(setup, "pampa"))
+
+        assertEquals(1, medieval.players.count { it.role?.key == RoleCatalog.BUFON })
+        assertEquals(0, pampa.players.count { it.role?.key == RoleCatalog.BUFON })
+    }
+
+    @Test
+    fun bufonWinsSpecialConditionWhenExpelledAndGameContinues() {
+        val session = jesterSession(
+            players = listOf(
+                GamePlayer("Bufon", "B", role = role("bufon", "Bufon", "Neutral"), isHuman = true),
+                GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Pueblo1", "1", role = role("aldeano", "Aldeano", "Pueblo")),
+                GamePlayer("Pueblo2", "2", role = role("medico", "Medico", "Pueblo")),
+                GamePlayer("Pueblo3", "3", role = role("policia", "Detective", "Pueblo"))
+            ),
+            target = "Bufon"
+        )
+
+        val resolved = GameEngine.resolveResult(session)
+
+        assertFalse(GameEngine.playerByName(resolved, "Bufon")!!.alive)
+        assertEquals("", resolved.winner)
+        assertEquals(GamePhase.NOCHE_ASESINO, resolved.phase)
+        assertEquals(2, resolved.round)
+        assertEquals("bufon_expulsado", resolved.specialVictories.single().key)
+        assertTrue(resolved.publicHistory.any { it.contains("era el Bufon") })
+    }
+
+    @Test
+    fun bufonDoesNotWinWhenKilledAtNight() {
+        val session = jesterSession(
+            players = listOf(
+                GamePlayer("Bufon", "B", role = role("bufon", "Bufon", "Neutral"), isHuman = true),
+                GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Pueblo1", "1", role = role("aldeano", "Aldeano", "Pueblo")),
+                GamePlayer("Pueblo2", "2", role = role("medico", "Medico", "Pueblo")),
+                GamePlayer("Pueblo3", "3", role = role("policia", "Detective", "Pueblo"))
+            ),
+            target = ""
+        ).copy(
+            phase = GamePhase.AMANECER,
+            nightKillTarget = "Bufon"
+        )
+
+        val resolved = GameEngine.resolveDawn(session)
+
+        assertFalse(GameEngine.playerByName(resolved, "Bufon")!!.alive)
+        assertTrue(resolved.specialVictories.isEmpty())
+    }
+
+    @Test
+    fun bufonSpecialVictoryIsKeptWhenFactionAlsoWins() {
+        val session = jesterSession(
+            players = listOf(
+                GamePlayer("Bufon", "B", role = role("bufon", "Bufon", "Neutral")),
+                GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Pueblo", "P", role = role("aldeano", "Aldeano", "Pueblo"), isHuman = true)
+            ),
+            target = "Bufon"
+        )
+
+        val resolved = GameEngine.resolveResult(session)
+
+        assertEquals(GameRules.TRAITOR_WINNER, resolved.winner)
+        assertEquals("Bufon", resolved.specialVictories.single().playerName)
     }
 
     @Test
@@ -1347,6 +1424,19 @@ class GameEngineTest {
             mapName = "Pampa",
             players = basePlayers(),
             privateHint = "Aldeano - Pueblo."
+        )
+    }
+
+    private fun jesterSession(players: List<GamePlayer>, target: String): GameSession {
+        return GameSession(
+            code = "JESTER",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = players,
+            phase = GamePhase.RESULTADO,
+            round = 1,
+            dayEliminationTarget = target,
+            initialPlayerCount = players.size
         )
     }
 

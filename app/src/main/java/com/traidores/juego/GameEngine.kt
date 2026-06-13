@@ -411,9 +411,30 @@ object GameEngine {
         val updatedPlayers = session.players.map { player ->
             if (player.name == target) player.copy(alive = false, muted = false) else player
         }
-        val message = "Dia ${session.round}: $target fue expulsado."
+        val expelledPlayer = targetPlayer.copy(alive = false, muted = false)
+        val jesterVictory = expelledPlayer.role?.key == RoleCatalog.BUFON &&
+            session.specialVictories.none {
+                it.key == JESTER_VICTORY_KEY && it.playerName == target
+            }
+        val message = if (jesterVictory) {
+            "Dia ${session.round}: $target fue expulsado. " +
+                "$target era el Bufon y gano al ser expulsado por el pueblo."
+        } else {
+            "Dia ${session.round}: $target fue expulsado."
+        }
+        val specialVictories = if (jesterVictory) {
+            session.specialVictories + GameSpecialVictory(
+                key = JESTER_VICTORY_KEY,
+                playerName = target,
+                roleKey = RoleCatalog.BUFON,
+                round = session.round
+            )
+        } else {
+            session.specialVictories
+        }
         val resolved = session.copy(
             players = updatedPlayers,
+            specialVictories = specialVictories,
             publicAnnouncement = message,
             privateHint = privateRoleHint(session.copy(players = updatedPlayers))
         ).withPublicHistory(message)
@@ -1053,6 +1074,8 @@ object GameEngine {
         }
         return prepared.copy(winner = winner)
     }
+
+    private const val JESTER_VICTORY_KEY = "bufon_expulsado"
 
     private fun autoRevealBotAlcalde(session: GameSession): GameSession {
         if (session.alcaldeRevealed) return session

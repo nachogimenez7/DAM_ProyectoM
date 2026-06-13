@@ -1299,6 +1299,126 @@
     </FrameLayout>
 
     <FrameLayout
+        android:id="@+id/jesterVictoryOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#D9000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:id="@+id/jesterConfettiLayer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:id="@+id/jesterHornLeft"
+            android:layout_width="124dp"
+            android:layout_height="80dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="10dp"
+            android:contentDescription="@null"
+            android:rotation="-10"
+            android:src="@drawable/ic_jester_horn" />
+
+        <ImageView
+            android:id="@+id/jesterHornRight"
+            android:layout_width="124dp"
+            android:layout_height="80dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="20dp"
+            android:contentDescription="@null"
+            android:rotation="10"
+            android:scaleX="-1"
+            android:src="@drawable/ic_jester_horn" />
+
+        <LinearLayout
+            android:id="@+id/jesterVictoryPanel"
+            android:layout_width="400dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_jester_victory_panel"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="28dp"
+            android:paddingTop="16dp"
+            android:paddingBottom="14dp">
+
+            <TextView
+                android:id="@+id/jesterVictoryTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/grenze"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="2"
+                android:shadowColor="#55FFFFFF"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:text="¡EL BUFÓN LOS ENGAÑÓ!"
+                android:textColor="#6A241B"
+                android:textSize="27sp"
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="27sp"
+                app:autoSizeMinTextSize="20sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
+
+            <ImageView
+                android:id="@+id/jesterVictoryImage"
+                android:layout_width="108dp"
+                android:layout_height="108dp"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/bg_profile_avatar_frame"
+                android:contentDescription="Bufón revelado"
+                android:padding="5dp"
+                android:scaleType="centerCrop"
+                android:src="@drawable/rol_bufon_medieval" />
+
+            <TextView
+                android:id="@+id/jesterVictoryPlayer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
+                android:fontFamily="@font/grenze"
+                android:gravity="center"
+                android:text="PEPITO ERA EL BUFÓN"
+                android:textColor="#3D2415"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/jesterVictoryMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="@font/cormorant_garamond"
+                android:gravity="center"
+                android:text="Ganó su condición especial al ser expulsado por votación. La partida continúa."
+                android:textColor="#4C321F"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnContinueJesterVictory"
+                style="@style/BtnDark"
+                android:layout_width="190dp"
+                android:layout_height="40dp"
+                android:layout_marginTop="9dp"
+                android:alpha="0"
+                android:enabled="false"
+                android:text="CONTINUAR PARTIDA"
+                android:textSize="12sp"
+                android:visibility="invisible" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
         android:id="@+id/winnerRevealOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

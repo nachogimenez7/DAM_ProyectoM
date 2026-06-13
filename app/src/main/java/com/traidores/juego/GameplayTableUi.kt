@@ -397,6 +397,11 @@ object GameplayTableUi {
             "alcalde" -> if (session.alcaldeRevealed) "Alcalde revelado" else "Alcalde en secreto"
             "payador" -> if (session.payadorUsed) "Contrapunto utilizado" else "Contrapunto sin usar"
             "desertor" -> "Bando final: ${session.desertorTeam.ifBlank { "sin elegir" }}"
+            "bufon" -> if (session.specialVictories.any { it.playerName == human.name }) {
+                "Engaño completado: expulsado por votación"
+            } else {
+                "No fue expulsado por votación"
+            }
             else -> "${humanActions.count { it.type == GameActionType.VOTE }} votos emitidos"
         }
         return GameSummaryPresentation(

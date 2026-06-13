@@ -485,6 +485,9 @@ object LocalGameFactory {
             // El Payador es exclusivo del mapa gaucho.
             roles += roleForKey("payador", suffix)
         }
+        if (playerCount >= 8 && suffix == "medieval") {
+            roles += roleForKey("bufon", suffix)
+        }
         if (playerCount >= 9) {
             roles += roleForKey("desertor", suffix)
         }

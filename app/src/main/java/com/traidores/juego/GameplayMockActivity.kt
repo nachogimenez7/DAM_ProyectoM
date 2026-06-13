@@ -63,6 +63,7 @@ class GameplayMockActivity : BaseActivity() {
     private var isRolePreviewOpen = false
     private var restoreRolePreviewOnResume = false
     private var isWinnerRevealVisible = false
+    private var isJesterVictoryVisible = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
     private var lastPresentedTransitionKey: String? = null
@@ -71,6 +72,7 @@ class GameplayMockActivity : BaseActivity() {
     private var blockingFeedbackPeriod: GameplayPeriod? = null
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
+    private var presentedSpecialVictoryCount = 0
     private val countdown = GameplayCountdown()
     private var lastCountdownSecond = -1
     private var knownDeadPlayers = emptySet<String>()
@@ -94,6 +96,7 @@ class GameplayMockActivity : BaseActivity() {
     private var feedbackAnimator: AnimatorSet? = null
     private lateinit var rolePreviewAnimator: RolePreviewAnimator
     private lateinit var traitorRevealAnimator: TraitorRevealAnimator
+    private lateinit var jesterVictoryAnimator: JesterVictoryAnimator
 
     private lateinit var actionFeedbackBanner: LinearLayout
     private lateinit var actionFeedbackBannerMessage: TextView
@@ -187,6 +190,15 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var traitorRevealCards: LinearLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
+    private lateinit var btnContinueJesterVictory: Button
+    private lateinit var jesterConfettiLayer: FrameLayout
+    private lateinit var jesterHornLeft: ImageView
+    private lateinit var jesterHornRight: ImageView
+    private lateinit var jesterVictoryImage: ImageView
+    private lateinit var jesterVictoryMessage: TextView
+    private lateinit var jesterVictoryOverlay: FrameLayout
+    private lateinit var jesterVictoryPanel: LinearLayout
+    private lateinit var jesterVictoryPlayer: TextView
     private lateinit var winnerRevealBackground: ImageView
     private lateinit var winnerRevealCards: LinearLayout
     private lateinit var winnerRevealContent: LinearLayout
@@ -225,6 +237,10 @@ class GameplayMockActivity : BaseActivity() {
         @Suppress("DEPRECATION")
         val restoredSession = savedInstanceState?.getSerializable(STATE_SESSION) as? GameSession
         session = restoredSession ?: readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        presentedSpecialVictoryCount = savedInstanceState
+            ?.getInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT)
+            ?.coerceAtMost(session.specialVictories.size)
+            ?: 0
         themeKey = themeFromIntentOrSession()
         val shouldShowInitialRoleReveal = savedInstanceState == null &&
             session.phase == GamePhase.REPARTO
@@ -421,6 +437,23 @@ class GameplayMockActivity : BaseActivity() {
             cards = traitorRevealCards,
             handler = autoAdvanceHandler
         )
+        btnContinueJesterVictory = findViewById(R.id.btnContinueJesterVictory)
+        jesterConfettiLayer = findViewById(R.id.jesterConfettiLayer)
+        jesterHornLeft = findViewById(R.id.jesterHornLeft)
+        jesterHornRight = findViewById(R.id.jesterHornRight)
+        jesterVictoryImage = findViewById(R.id.jesterVictoryImage)
+        jesterVictoryMessage = findViewById(R.id.jesterVictoryMessage)
+        jesterVictoryOverlay = findViewById(R.id.jesterVictoryOverlay)
+        jesterVictoryPanel = findViewById(R.id.jesterVictoryPanel)
+        jesterVictoryPlayer = findViewById(R.id.jesterVictoryPlayer)
+        jesterVictoryAnimator = JesterVictoryAnimator(
+            overlay = jesterVictoryOverlay,
+            panel = jesterVictoryPanel,
+            hornLeft = jesterHornLeft,
+            hornRight = jesterHornRight,
+            confettiLayer = jesterConfettiLayer,
+            continueButton = btnContinueJesterVictory
+        )
         winnerRevealBackground = findViewById(R.id.winnerRevealBackground)
         winnerRevealCards = findViewById(R.id.winnerRevealCards)
         winnerRevealContent = findViewById(R.id.winnerRevealContent)
@@ -504,6 +537,8 @@ class GameplayMockActivity : BaseActivity() {
             closeRolePreview()
         }
         traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
+        jesterVictoryOverlay.setOnClickListener { }
+        btnContinueJesterVictory.setOnClickListener { dismissJesterVictory() }
         findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
@@ -528,6 +563,7 @@ class GameplayMockActivity : BaseActivity() {
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelTraitorReveal()
+        cancelJesterVictory(requeue = false)
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = false)
@@ -552,6 +588,7 @@ class GameplayMockActivity : BaseActivity() {
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelTraitorReveal()
+        cancelJesterVictory(requeue = true)
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = true)
@@ -600,6 +637,7 @@ class GameplayMockActivity : BaseActivity() {
         outState.putString(STATE_BLOCKING_FEEDBACK_PERIOD, blockingFeedbackPeriod?.name)
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
+        outState.putInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT, presentedSpecialVictoryCount)
         outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
         outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
         outState.putBoolean(
@@ -620,6 +658,7 @@ class GameplayMockActivity : BaseActivity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (isDeathRevealRunning || isSilenceRevealRunning || feedbackState.privateVisible) return
+        if (isJesterVictoryVisible) return
         if (isWinnerRevealVisible) {
             returnToLobby()
             return
@@ -763,10 +802,13 @@ class GameplayMockActivity : BaseActivity() {
         collectNewlyMutedPlayers()
         val transitionSpec = GameplayTableUi.transitionSpec(session)
         val blockingFeedbackPending = feedbackState.blocksGameplay()
+        val specialVictoryPending =
+            session.specialVictories.size > presentedSpecialVictoryCount
         val shouldStartTransition = !blockingFeedbackPending &&
+            !specialVictoryPending &&
             !isDayNightTransitionRunning &&
             GameplayTableUi.shouldPresentTransition(transitionSpec, lastPresentedTransitionKey)
-        if (blockingFeedbackPending) {
+        if (blockingFeedbackPending || specialVictoryPending) {
             MusicManager.pauseForTransition()
         } else if (shouldStartTransition) {
             isDayNightTransitionRunning = true
@@ -790,6 +832,7 @@ class GameplayMockActivity : BaseActivity() {
         updateUnreadChatCount()
         val visiblePeriod = when {
             blockingFeedbackPending -> blockingFeedbackPeriod ?: GameplayPeriod.NIGHT
+            specialVictoryPending -> presentedPeriod ?: GameplayPeriod.DAY
             isDayNightTransitionRunning -> presentedPeriod ?: transitionSpec.period
             else -> transitionSpec.period
         }
@@ -1758,6 +1801,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
             isTraitorRevealRunning ||
@@ -2022,6 +2066,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isTraitorRevealRunning ||
             feedbackState.privateVisible ||
@@ -2297,6 +2342,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
             feedbackState.privateVisible
@@ -2309,6 +2355,7 @@ class GameplayMockActivity : BaseActivity() {
         }
         if (maybeShowNextDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
+        if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
         maybeShowDesertorChoice()
@@ -2388,6 +2435,49 @@ class GameplayMockActivity : BaseActivity() {
         if (isWinnerRevealVisible) return true
         showWinnerReveal(animate = !winnerRevealPresented)
         return true
+    }
+
+    private fun maybeShowJesterVictory(): Boolean {
+        if (isJesterVictoryVisible) return true
+        val victory = session.specialVictories.getOrNull(presentedSpecialVictoryCount)
+            ?.takeIf { it.roleKey == RoleCatalog.BUFON }
+            ?: return false
+        showJesterVictory(victory)
+        return true
+    }
+
+    private fun showJesterVictory(victory: GameSpecialVictory) {
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        eventLogHeightAnimator?.cancel()
+        isJesterVictoryVisible = true
+        presentedSpecialVictoryCount += 1
+        jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÓN"
+        jesterVictoryMessage.text =
+            "Ganó su condición especial al ser expulsado por votación. La partida continúa."
+        val player = session.players.firstOrNull { it.name == victory.playerName }
+        jesterVictoryImage.setImageResource(roleImageFor(player?.role))
+        MusicManager.playVictoryMusic(this)
+        jesterVictoryAnimator.show(JESTER_VICTORY_DURATION_MS)
+    }
+
+    private fun dismissJesterVictory() {
+        if (!isJesterVictoryVisible || !btnContinueJesterVictory.isEnabled) return
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        jesterVictoryAnimator.hide()
+        isJesterVictoryVisible = false
+        MusicManager.stopVictoryMusic()
+        renderGame()
+    }
+
+    private fun cancelJesterVictory(requeue: Boolean) {
+        if (!::jesterVictoryAnimator.isInitialized || !isJesterVictoryVisible) return
+        jesterVictoryAnimator.hide()
+        isJesterVictoryVisible = false
+        if (requeue) {
+            presentedSpecialVictoryCount = (presentedSpecialVictoryCount - 1).coerceAtLeast(0)
+        }
+        MusicManager.stopVictoryMusic()
     }
 
     private fun showWinnerReveal(animate: Boolean) {
@@ -2720,7 +2810,10 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
         private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
+        private const val STATE_PRESENTED_SPECIAL_VICTORY_COUNT =
+            "presented_special_victory_count"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
+        private const val JESTER_VICTORY_DURATION_MS = 5000L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
 

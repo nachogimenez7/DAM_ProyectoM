@@ -514,7 +514,7 @@ class LobbyActivity : BaseActivity() {
         when (session.mapKey) {
             "pampa" -> entries += RoleCountPreview("PAYADOR", if (count >= 8) 1 else 0)
             "grecia" -> entries += RoleCountPreview("ORACULO", 0)
-            "medieval" -> entries += RoleCountPreview("BUFON", 0)
+            "medieval" -> entries += RoleCountPreview("BUFON", if (count >= 8) 1 else 0)
         }
         val specialRoles = entries.drop(1).sumOf { it.count }
         entries[0] = entries[0].copy(count = (count - specialRoles).coerceAtLeast(0))
@@ -628,7 +628,7 @@ class LobbyActivity : BaseActivity() {
             "grecia" ->
                 "Intriga entre templos y plazas. Rol exclusivo futuro: Oraculo."
             "medieval" ->
-                "Secretos entre murallas y castillos. Rol exclusivo futuro: Bufon."
+                "Secretos entre murallas y castillos. Rol exclusivo: Bufon."
             else ->
                 "Sospechas en la pampa y el pueblo. Rol exclusivo: Payador."
         }
