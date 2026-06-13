@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 Phase: 1 of 5 (Gameplay Visual Stability)
 Plan: 0 of 2 in current phase
 Status: Ready to plan
-Last activity: 2026-06-13 - Roadmap initialized after codebase mapping and Android UI research
+Last activity: 2026-06-13 - Completed quick task 260613-qun: implementar Bufon medieval
 
 Progress: [----------] 0%
 
@@ -64,6 +64,12 @@ None yet.
 - Exact compact-phone behavior requires screenshots or manual checks on the user's target device.
 - Keyboard behavior must be checked with the user's real IME.
 - Do not compile or execute the app automatically.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260613-qun | Implementar Bufon medieval y celebracion especial | 2026-06-13 | cca00e3 | [260613-qun-implementar-bufon-medieval-victoria-espe](./quick/260613-qun-implementar-bufon-medieval-victoria-espe/) |
 
 ## Deferred Items
 
