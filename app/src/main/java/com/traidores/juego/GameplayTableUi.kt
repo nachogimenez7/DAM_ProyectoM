@@ -330,6 +330,60 @@ object GameplayTableUi {
         }
     }
 
+    fun centralPhaseMessage(session: GameSession, fallback: String): String {
+        if (session.winner.isNotBlank()) {
+            return "Fin de partida. Gano ${session.winner}."
+        }
+        return when (session.phase) {
+            GamePhase.REPARTO -> fallback
+            GamePhase.NOCHE_ASESINO -> if (isHumanTurn(session, RoleCatalog.ASESINO)) {
+                "Elegi a quien eliminar esta noche."
+            } else {
+                "Los Traidores eligen a su victima."
+            }
+            GamePhase.NOCHE_MERCENARIO -> if (isHumanTurn(session, RoleCatalog.MERCENARIO)) {
+                "Elegi a quien silenciar durante el proximo dia."
+            } else {
+                "El Mercenario decide que voz callar."
+            }
+            GamePhase.NOCHE_POLICIA -> if (isHumanTurn(session, RoleCatalog.POLICIA)) {
+                "Elegi a quien investigar esta noche."
+            } else {
+                "El Detective busca una pista en secreto."
+            }
+            GamePhase.NOCHE_MEDICO -> if (isHumanTurn(session, RoleCatalog.MEDICO)) {
+                "Elegi a quien proteger esta noche."
+            } else {
+                "El Medico decide a quien proteger."
+            }
+            GamePhase.NOCHE_ORACULO -> if (isHumanTurn(session, RoleCatalog.ORACULO)) {
+                "Elegi una voz para el debate o guarda tu poder."
+            } else {
+                "El Oraculo decide si devuelve una voz al pueblo."
+            }
+            GamePhase.AMANECER -> session.publicAnnouncement.ifBlank { fallback }
+            GamePhase.DIA_DEBATE -> {
+                val muted = session.players.filter { it.alive && it.muted }.joinToString(", ") { it.name }
+                if (muted.isBlank()) {
+                    "Debatan, comparen versiones y preparen la votacion."
+                } else {
+                    "Debatan antes de votar. $muted no puede hablar ni votar hoy."
+                }
+            }
+            GamePhase.CONTRAPUNTO ->
+                "Escucha a los participantes y senala al mas sospechoso."
+            GamePhase.VOTACION ->
+                "Elegi a un jugador y confirma tu voto."
+            GamePhase.ALCALDE_DESEMPATE ->
+                "El Alcalde debe decidir entre los jugadores empatados."
+            GamePhase.RESULTADO -> session.publicAnnouncement.ifBlank { fallback }
+        }
+    }
+
+    private fun isHumanTurn(session: GameSession, roleKey: String): Boolean {
+        return GameEngine.isHumanRoleTurn(session, roleKey)
+    }
+
     fun newlyKilledAtDawn(
         session: GameSession,
         knownDeadPlayers: Set<String>

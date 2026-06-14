@@ -104,7 +104,7 @@ class GameplayMockActivity : BaseActivity() {
     private val clearPhaseAdviceRunnable = Runnable {
         if (activePhaseAdvice != null && ::phaseSubtitle.isInitialized) {
             activePhaseAdvice = null
-            phaseSubtitle.text = currentPublicMessage()
+            phaseSubtitle.text = currentNarratorMessage()
         }
     }
     private val countdownRunnable = object : Runnable {
@@ -896,8 +896,10 @@ class GameplayMockActivity : BaseActivity() {
         } else {
             session.publicAnnouncement.ifBlank { phaseText.subtitle }
         }
-        refreshPhaseAdvice(publicMessage)
-        val eventChanged = lastRenderedPhase != session.phase || lastRenderedAnnouncement != publicMessage
+        val narratorMessage = GameplayTableUi.centralPhaseMessage(session, phaseText.subtitle)
+        refreshPhaseAdvice(narratorMessage)
+        val eventChanged =
+            lastRenderedPhase != session.phase || lastRenderedAnnouncement != narratorMessage
         updateUnreadChatCount()
         val visiblePeriod = when {
             blockingFeedbackPending -> blockingFeedbackPeriod ?: GameplayPeriod.NIGHT
@@ -906,7 +908,7 @@ class GameplayMockActivity : BaseActivity() {
             else -> transitionSpec.period
         }
         renderThemedBackground(visiblePeriod)
-        renderNarrator(phaseText, activePhaseAdvice ?: publicMessage, eventChanged)
+        renderNarrator(phaseText, activePhaseAdvice ?: narratorMessage, eventChanged)
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
         currentPlayerName.text = GameEngine.humanPlayer(session).name
@@ -918,7 +920,7 @@ class GameplayMockActivity : BaseActivity() {
         renderChatPanel()
         renderChatBadge()
         lastRenderedPhase = session.phase
-        lastRenderedAnnouncement = publicMessage
+        lastRenderedAnnouncement = narratorMessage
         if (blockingFeedbackPending) {
             showPendingPrivateFeedback()
         } else if (shouldStartTransition) {
@@ -2199,11 +2201,7 @@ class GameplayMockActivity : BaseActivity() {
             )
         )
         rolePreviewFunction.text = roleFunction(role.key)
-        rolePreviewAdvice.text = if (role.key == "mercenario") {
-            "Silencia a quien este guiando bien la discusion, pero evita repetir siempre el mismo patron."
-        } else {
-            roleAdvice(role.key)
-        }
+        rolePreviewAdvice.text = RoleCatalog.advice(role.key)
         rolePreviewScroll.scrollTo(0, 0)
         initialRoleReadingActive = initialReveal
         autoAdvanceHandler.removeCallbacks(enableInitialRoleReadyRunnable)
@@ -2213,10 +2211,15 @@ class GameplayMockActivity : BaseActivity() {
             btnContinueRolePreview.isEnabled = false
             btnContinueRolePreview.alpha = 1f
             btnContinueRolePreview.text = "EMPEZAR"
-            autoAdvanceHandler.postDelayed(
-                enableInitialRoleReadyRunnable,
-                INITIAL_ROLE_READING_MS
-            )
+            val readingDelayMs = initialRoleReadingDelayMs()
+            if (readingDelayMs == 0L) {
+                enableInitialRoleReadyRunnable.run()
+            } else {
+                autoAdvanceHandler.postDelayed(
+                    enableInitialRoleReadyRunnable,
+                    readingDelayMs
+                )
+            }
         } else {
             btnCloseRolePreview.visibility = View.VISIBLE
             btnContinueRolePreview.visibility = View.VISIBLE
@@ -2271,20 +2274,6 @@ class GameplayMockActivity : BaseActivity() {
         "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votacion. Esa es tu unica condicion de victoria."
         "oraculo" -> "Una vez por partida podes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
         else -> "No tenes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
-    }
-
-    private fun roleAdvice(roleKey: String): String = when (roleKey) {
-        "asesino" -> "Actua con calma. Acusar demasiado o defender siempre a tus aliados puede delatarte."
-        "mercenario" -> "Ganas con los Traidores. De noche silencia a quien pueda convencer al pueblo; de dia evita defender demasiado a tus compañeros."
-        "policia" -> "No reveles todos tus resultados enseguida. Orienta al Pueblo sin exponerte demasiado pronto."
-        "medico" -> "No confies demasiado pronto. Protegerte puede darte tiempo para reconocer aliados."
-        "alcalde" -> "Podes revelarte para dirigir al pueblo o guardar tu autoridad para un empate decisivo."
-        "payador" -> "Usa el Contrapunto cuando dos jugadores generen dudas y escucha bien sus respuestas."
-        "desertor" -> "Observa la ventaja de cada bando antes de comprometerte. Cuando elijas, trabaja para hacerlo ganar."
-        "espia" -> "Podes parecer inocente ante una investigacion. Aprovechalo sin llamar demasiado la atencion."
-        "bufon" -> "Contradicete, interrumpe y provoca, pero evita parecer desesperado por recibir votos."
-        "oraculo" -> "Elegi a quien devolverle la voz: alguien experimentado puede orientar el debate y un acusado puede defenderse."
-        else -> "Pregunta, escucha y compara versiones. Vota usando solo lo que todos pudieron ver y escuchar."
     }
 
     private fun refreshPhaseAdvice(publicMessage: String) {
@@ -2371,13 +2360,9 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
-    private fun currentPublicMessage(): String {
+    private fun currentNarratorMessage(): String {
         val text = phaseText(session.phase)
-        return if (session.winner.isNotBlank()) {
-            "Fin de partida. Gano ${session.winner}."
-        } else {
-            session.publicAnnouncement.ifBlank { text.subtitle }
-        }
+        return GameplayTableUi.centralPhaseMessage(session, text.subtitle)
     }
 
     private fun privateHintText(): String {
@@ -2808,6 +2793,12 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun initialRoleReadingDelayMs(): Long {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
+            .coerceIn(0, 10) * 1000L
+    }
+
     private fun scaleTextRecursively(view: View, scale: Float) {
         if (view is TextView) {
             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.textSize * scale)
@@ -3097,8 +3088,9 @@ class GameplayMockActivity : BaseActivity() {
         private const val JESTER_VICTORY_DURATION_MS = 5000L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
-        private const val INITIAL_ROLE_READING_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 6_000L
+        private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
+        private const val DEFAULT_ROLE_READING_SECONDS = 6
 
         const val EXTRA_TEMA = "tema"
         const val EXTRA_ES_NOCHE = "es_noche"

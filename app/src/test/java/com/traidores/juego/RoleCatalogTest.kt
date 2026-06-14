@@ -47,4 +47,17 @@ class RoleCatalogTest {
         assertEquals(screenRole.imageResName, gameRole.imageResName)
         assertEquals(screenRole.name, gameRole.name)
     }
+
+    @Test
+    fun helpGuideCoversEveryPlayableRole() {
+        val keys = RoleCatalog.guideKeys()
+
+        assertEquals(11, keys.distinct().size)
+        keys.forEach { key ->
+            assertTrue(RoleCatalog.guideName(key).isNotBlank())
+            assertTrue(RoleCatalog.definition(key).function.isNotBlank())
+            assertTrue(RoleCatalog.advice(key).isNotBlank())
+            assertTrue(RoleCatalog.guideAvailability(key).isNotBlank())
+        }
+    }
 }

@@ -30,6 +30,8 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var labelTextSize: TextView
     private lateinit var descTextSize: TextView
     private lateinit var textSizePreview: TextView
+    private lateinit var labelRoleReading: TextView
+    private lateinit var descRoleReading: TextView
     private lateinit var titleLanguage: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var descLanguage: TextView
@@ -41,6 +43,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
+    private lateinit var spinnerRoleReading: Spinner
     private lateinit var spinnerLanguage: Spinner
     private lateinit var optionsScroll: ScrollView
     private lateinit var accountCard: LinearLayout
@@ -74,6 +77,8 @@ class OpcionesActivity : BaseActivity() {
         labelTextSize = findViewById(R.id.labelTextSize)
         descTextSize = findViewById(R.id.descTextSize)
         textSizePreview = findViewById(R.id.textSizePreview)
+        labelRoleReading = findViewById(R.id.labelRoleReading)
+        descRoleReading = findViewById(R.id.descRoleReading)
         titleLanguage = findViewById(R.id.titleLanguage)
         labelLanguage = findViewById(R.id.labelLanguage)
         descLanguage = findViewById(R.id.descLanguage)
@@ -85,6 +90,7 @@ class OpcionesActivity : BaseActivity() {
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
+        spinnerRoleReading = findViewById(R.id.spinnerRoleReading)
         spinnerLanguage = findViewById(R.id.spinnerLanguage)
         optionsScroll = findViewById(R.id.optionsScroll)
         accountCard = findViewById(R.id.accountCard)
@@ -107,6 +113,9 @@ class OpcionesActivity : BaseActivity() {
                 preferences.edit().putString(PREF_LANGUAGE, currentLanguage).apply()
                 updateOptionTexts()
                 configureTextSizeAdapter(spinnerTextSize.selectedItemPosition.coerceIn(0, 2))
+                configureRoleReadingAdapter(
+                    spinnerRoleReading.selectedItemPosition.coerceIn(0, 2)
+                )
                 if (changed) {
                     Toast.makeText(
                         this@OpcionesActivity,
@@ -131,6 +140,22 @@ class OpcionesActivity : BaseActivity() {
                 val normalized = position.coerceIn(0, 2)
                 preferences.edit().putInt(PREF_GAMEPLAY_TEXT_SIZE, normalized).apply()
                 updateTextSizePreview(normalized)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        spinnerRoleReading.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                if (updatingControls) return
+                preferences.edit()
+                    .putInt(PREF_ROLE_READING_SECONDS, roleReadingSeconds(position))
+                    .apply()
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
@@ -168,6 +193,14 @@ class OpcionesActivity : BaseActivity() {
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
         )
+        configureRoleReadingAdapter(
+            roleReadingPosition(
+                preferences.getInt(
+                    PREF_ROLE_READING_SECONDS,
+                    DEFAULT_ROLE_READING_SECONDS
+                )
+            )
+        )
         updatingControls = false
         languageListenerReady = true
         updateAudioControlState(switchSound.isChecked)
@@ -182,6 +215,14 @@ class OpcionesActivity : BaseActivity() {
         spinnerTextSize.setSelection(selection.coerceIn(0, 2), false)
         updatingControls = previousState
         updateTextSizePreview(selection)
+    }
+
+    private fun configureRoleReadingAdapter(selection: Int) {
+        val previousState = updatingControls
+        updatingControls = true
+        spinnerRoleReading.adapter = optionAdapter(roleReadingOptions())
+        spinnerRoleReading.setSelection(selection.coerceIn(0, 2), false)
+        updatingControls = previousState
     }
 
     private fun optionAdapter(values: Array<String>): ArrayAdapter<String> {
@@ -253,6 +294,8 @@ class OpcionesActivity : BaseActivity() {
             titleTextSize.text = "READABILITY AND ACCESSIBILITY"
             labelTextSize.text = "Text size"
             descTextSize.text = "Applied to messages, buttons and information during gameplay."
+            labelRoleReading.text = "Initial role reading"
+            descRoleReading.text = "Choose when START appears after receiving your card."
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
@@ -271,6 +314,8 @@ class OpcionesActivity : BaseActivity() {
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
             labelTextSize.text = "Tamano del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
+            labelRoleReading.text = "Lectura inicial del rol"
+            descRoleReading.text = "Define cuando aparece EMPEZAR al recibir tu carta."
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traduccion completa sigue en desarrollo."
@@ -291,6 +336,7 @@ class OpcionesActivity : BaseActivity() {
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
+            .putInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
             .apply()
 
@@ -302,6 +348,9 @@ class OpcionesActivity : BaseActivity() {
         switchVibration.isChecked = false
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
+        configureRoleReadingAdapter(
+            roleReadingPosition(DEFAULT_ROLE_READING_SECONDS)
+        )
         updatingControls = false
         updateAudioControlState(true)
         updateOptionTexts()
@@ -337,6 +386,30 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
+    private fun roleReadingOptions(): Array<String> {
+        return if (currentLanguage == LANGUAGE_ENGLISH) {
+            arrayOf("Immediate", "6 seconds", "10 seconds")
+        } else {
+            arrayOf("Inmediato", "6 segundos", "10 segundos")
+        }
+    }
+
+    private fun roleReadingSeconds(position: Int): Int {
+        return when (position.coerceIn(0, 2)) {
+            0 -> 0
+            1 -> 6
+            else -> 10
+        }
+    }
+
+    private fun roleReadingPosition(seconds: Int): Int {
+        return when {
+            seconds <= 0 -> 0
+            seconds <= 6 -> 1
+            else -> 2
+        }
+    }
+
     private fun languageChangedMessage(): String {
         return if (currentLanguage == LANGUAGE_ENGLISH) {
             "Language changed to English."
@@ -368,9 +441,11 @@ class OpcionesActivity : BaseActivity() {
         private const val PREF_VOICE_VOLUME = "voice_volume"
         private const val PREF_VIBRATION_ON = "vibration_on"
         private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
+        private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val PREF_LANGUAGE = "language"
         private const val DEFAULT_VOLUME = 80
         private const val DEFAULT_TEXT_SIZE = 1
+        private const val DEFAULT_ROLE_READING_SECONDS = 6
         private const val LANGUAGE_SPANISH = "Espanol (ES)"
         private const val LANGUAGE_ENGLISH = "English (EN)"
 

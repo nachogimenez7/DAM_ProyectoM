@@ -124,8 +124,80 @@ object RoleCatalog {
         DESERTOR
     )
 
+    private val guideRoleKeys = listOf(
+        ALDEANO,
+        POLICIA,
+        MEDICO,
+        ALCALDE,
+        ASESINO,
+        ESPIA,
+        MERCENARIO,
+        DESERTOR,
+        PAYADOR,
+        BUFON,
+        ORACULO
+    )
+
+    private val adviceByKey = mapOf(
+        ALDEANO to
+            "Pregunta, escucha y compara versiones. No tener una habilidad no te quita influencia: recorda quien acuso, defendio o cambio su historia.",
+        POLICIA to
+            "No reveles todos tus resultados enseguida. Orienta al pueblo sin exponerte demasiado pronto y busca una forma segura de transmitir tus pistas.",
+        MEDICO to
+            "No confies en nadie durante la primera noche. Protegerte puede darte tiempo; mas adelante, aliarte con el Detective puede sostener la informacion del pueblo.",
+        ALCALDE to
+            "Podes revelarte para ordenar el debate o guardar tu autoridad para un empate decisivo. Una revelacion temprana tambien te convierte en objetivo.",
+        ASESINO to
+            "Actua con calma. Acusar demasiado o defender siempre a tus aliados puede delatarte. Mentir con seguridad suele funcionar mejor que controlar cada conversacion.",
+        ESPIA to
+            "El Detective te vera como inocente. Aprovecha esa ventaja para proteger al bando traidor sin confiarte ni defender a tus aliados de forma demasiado evidente.",
+        MERCENARIO to
+            "Silencia a quien pueda convencer al pueblo o compartir informacion importante. De dia, evita que tus defensas revelen quienes son tus companeros.",
+        DESERTOR to
+            "Observa la ventaja de cada bando antes de elegir. Una vez comprometido, debes ayudar a ese equipo y sobrevivir hasta su victoria.",
+        PAYADOR to
+            "Reserva el Contrapunto para dos jugadores cuyas versiones realmente se contradigan. Escucha bien: tu senal agrega peso a la votacion.",
+        BUFON to
+            "Contradicete, interrumpe y provoca, pero evita parecer desesperado por recibir votos. Solo ganas si el pueblo te expulsa durante la votacion.",
+        ORACULO to
+            "Elegi bien cuando devolver una voz. Un jugador experimentado puede ordenar el debate, mientras que un acusado puede usar esa oportunidad para defenderse o enganar."
+    )
+
     fun definition(key: String): RoleDefinition {
         return definitions[key] ?: definitions.getValue(ALDEANO)
+    }
+
+    fun guideKeys(): List<String> = guideRoleKeys
+
+    fun advice(key: String): String =
+        adviceByKey[key] ?: adviceByKey.getValue(ALDEANO)
+
+    fun guideName(key: String): String {
+        return when (key) {
+            ALDEANO -> "Aldeano"
+            POLICIA -> "Detective / Comisario"
+            MEDICO -> "Medico"
+            ALCALDE -> "Alcalde"
+            ASESINO -> "Asesino"
+            ESPIA -> "Espia"
+            MERCENARIO -> "Mercenario"
+            DESERTOR -> "Desertor"
+            PAYADOR -> "Payador"
+            BUFON -> "Bufon"
+            ORACULO -> "Oraculo"
+            else -> "Aldeano"
+        }
+    }
+
+    fun guideAvailability(key: String): String {
+        val definition = definition(key)
+        val map = when (definition.exclusiveMap) {
+            RoleMap.PAMPA -> "Solo mapa Pampa"
+            RoleMap.MEDIEVAL -> "Solo mapa Medieval"
+            RoleMap.GREECE -> "Solo mapa Grecia"
+            null -> "Todos los mapas"
+        }
+        return "$map - Desde ${definition.minimumPlayers} jugadores"
     }
 
     fun minimumPlayers(key: String): Int = definition(key).minimumPlayers

@@ -11,13 +11,19 @@
         android:scaleType="centerCrop"
         android:src="@drawable/fondo_menu" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#58000000" />
+
     <ImageButton
         android:id="@+id/btnBack"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_margin="16dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="14dp"
         android:background="@drawable/bg_btn_dark"
         android:contentDescription="Volver"
+        android:padding="10dp"
         android:src="@android:drawable/ic_media_previous"
         app:tint="@color/text_secondary" />
 
@@ -26,8 +32,9 @@
         android:layout_height="match_parent"
         android:layout_below="@id/btnBack"
         android:clipToPadding="false"
-        android:paddingHorizontal="24dp"
-        android:paddingBottom="32dp">
+        android:fillViewport="true"
+        android:paddingHorizontal="20dp"
+        android:paddingBottom="36dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -37,106 +44,92 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginBottom="24dp"
+                android:layout_gravity="center_horizontal"
                 android:fontFamily="@font/grenze"
                 android:letterSpacing="0.04"
                 android:text="AYUDA"
                 android:textColor="@color/accent_gold"
-                android:textSize="24sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/grenze"
-                android:text="COMO SE JUEGA"
-                android:textColor="@color/accent_gold"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                android:background="@drawable/bg_btn_dark"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="22dp"
                 android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="4dp"
-                android:padding="16dp"
-                android:text="Traidores es un juego de deduccion social para 5 a 15 jugadores. Cada jugador recibe un rol secreto que pertenece a uno de tres bandos: Pueblo, Asesinos o Neutrales. La partida alterna entre Noche, con acciones secretas, y Dia, con debate y votacion."
+                android:gravity="center"
+                android:text="Todo lo necesario para entrar al pueblo y sobrevivir a sus sospechas."
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="16sp" />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="DE QUE TRATA" />
+
+            <TextView
+                style="@style/HelpBodyCard"
+                android:text="Traidores es un juego de deduccion social, engaño y debate para 5 a 15 jugadores. Cada participante recibe un rol secreto. Algunos protegen al pueblo; otros intentan controlarlo desde las sombras; y ciertos neutrales persiguen una victoria propia.\n\nNo alcanza con descubrir la verdad: tambien hay que lograr que los demas te crean." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="COMO SE JUEGA" />
+
+            <TextView
+                style="@style/HelpBodyCard"
+                android:text="1. ROL SECRETO\nLee tu carta y recorda tu objetivo. No se la muestres a nadie.\n\n2. NOCHE\nEl pueblo duerme. Los roles nocturnos actuan en secreto: los Traidores atacan, el Detective investiga, el Medico protege y otros roles usan sus habilidades.\n\n3. AMANECER Y DEBATE\nSe anuncia lo ocurrido. Los sobrevivientes preguntan, acusan, se defienden y forman alianzas.\n\n4. VOTACION\nCada jugador habilitado elige a un sospechoso. El resultado puede expulsar a un jugador o activar una condicion especial.\n\n5. NUEVA RONDA\nSi ningun bando alcanzo su victoria, vuelve a caer la noche." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="COMO SE GANA" />
+
+            <TextView
+                style="@style/HelpBodyCard"
+                android:text="PUEBLO\nGana cuando ya no queda ningun Asesino capaz de matar.\n\nTRAIDORES\nGanan cuando igualan o superan en numero al resto del pueblo.\n\nBUFON\nObtiene su victoria especial si el pueblo lo expulsa durante una votacion. La partida principal continua.\n\nDESERTOR\nDebe sobrevivir y conseguir que gane el bando que eligio finalmente." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="EL ENGAÑO ES PARTE DEL JUEGO" />
+
+            <TextView
+                style="@style/HelpHighlightCard"
+                android:text="Se permite mentir sobre tu rol, inventar una investigacion, negar una accion, acusar para desviar sospechas o fingir que tenes informacion.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar informacion externa para demostrar que decis la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="REGLAS IMPORTANTES" />
+
+            <TextView
+                style="@style/HelpBodyCard"
+                android:text="- Tu rol es secreto hasta que una regla indique lo contrario.\n\n- Los jugadores eliminados no hablan ni votan. La excepcion es una voz invocada por el Oraculo: puede debatir, pero no votar ni usar habilidades.\n\n- Un jugador silenciado no puede hablar ni votar durante ese dia.\n\n- El Alcalde revelado tiene voto doble y puede resolver ciertos empates.\n\n- Las habilidades de uso unico no se recuperan en la ronda siguiente.\n\n- Mentir dentro del juego esta permitido; insultar, molestar fuera del personaje o atacar personalmente a otro jugador, no." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="CONSEJOS GENERALES" />
+
+            <TextView
+                style="@style/HelpBodyCard"
+                android:text="- Presta atencion a quien acusa primero y quien cambia de version.\n\n- No reveles informacion privada sin pensar quien puede protegerte.\n\n- Hablar mucho no demuestra inocencia, pero guardar silencio tampoco.\n\n- Un aliado puede equivocarse y un enemigo puede decir la verdad.\n\n- Recorda las votaciones anteriores: suelen revelar alianzas mejor que los discursos." />
+
+            <TextView
+                style="@style/HelpSectionTitle"
+                android:text="CONSEJOS POR ROL" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/grenze"
-                android:text="CONSEJOS"
-                android:textColor="@color/accent_gold"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                android:background="@drawable/bg_btn_dark"
+                android:layout_marginBottom="10dp"
                 android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="4dp"
-                android:padding="16dp"
-                android:text="No reveles tu rol demasiado pronto. Presta atencion a las reacciones durante el debate. Si sos Detective, guarda informacion clave; si sos Asesino, no defiendas siempre a tus companeros. El silencio tambien puede ser sospechoso."
+                android:text="Toca un rol para consultar su funcion y su consejo."
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="15sp" />
 
-            <TextView
+            <LinearLayout
+                android:id="@+id/roleGuidesContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/grenze"
-                android:text="LA NOCHE"
-                android:textColor="@color/accent_gold"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                android:background="@drawable/bg_btn_dark"
-                android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="4dp"
-                android:padding="16dp"
-                android:text="Durante la noche, los Asesinos eligen a su victima en secreto. Los roles especiales actuan: el Detective investiga y el Medico protege. Nadie sabe quien es quien."
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="@font/grenze"
-                android:text="EL DIA"
-                android:textColor="@color/accent_gold"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
-                android:background="@drawable/bg_btn_dark"
-                android:fontFamily="@font/cormorant_garamond"
-                android:lineSpacingExtra="4dp"
-                android:padding="16dp"
-                android:text="Al amanecer se revela quien cayo. Empieza el debate con acusaciones, defensas y alianzas. Luego se vota para eliminar al sospechoso, pero los Asesinos tambien votan."
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:orientation="vertical" />
 
         </LinearLayout>
     </ScrollView>
 </RelativeLayout>
-
-
-

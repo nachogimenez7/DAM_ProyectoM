@@ -584,6 +584,58 @@ class GameplayTableUiTest {
     }
 
     @Test
+    fun centralMessageUsesPhaseInstructionsInsteadOfRepeatingRoutineEvents() {
+        val assassinTurn = actionSession("asesino", GamePhase.NOCHE_ASESINO).copy(
+            publicAnnouncement = "Noche 1: el pueblo apaga los faroles."
+        )
+        val debate = assassinTurn.copy(
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Dia 1: el pueblo despierta y se junta a discutir."
+        )
+
+        assertEquals(
+            "Elegi a quien eliminar esta noche.",
+            GameplayTableUi.centralPhaseMessage(assassinTurn, "Texto de respaldo")
+        )
+        assertEquals(
+            "Debatan, comparen versiones y preparen la votacion.",
+            GameplayTableUi.centralPhaseMessage(debate, "Texto de respaldo")
+        )
+        assertFalse(
+            GameplayTableUi.centralPhaseMessage(debate, "Texto de respaldo") ==
+                debate.publicAnnouncement
+        )
+    }
+
+    @Test
+    fun centralMessageHighlightsImmediateConsequencesAndVoting() {
+        val base = actionSession("aldeano", GamePhase.AMANECER)
+        val dawnMessage = "Amanecer: murio Objetivo. Testigo no puede hablar ni votar hoy."
+        val dawn = base.copy(publicAnnouncement = dawnMessage)
+        val resultMessage = "El pueblo expulso a Objetivo."
+        val result = base.copy(
+            phase = GamePhase.RESULTADO,
+            publicAnnouncement = resultMessage
+        )
+
+        assertEquals(
+            dawnMessage,
+            GameplayTableUi.centralPhaseMessage(dawn, "El pueblo despierta.")
+        )
+        assertEquals(
+            "Elegi a un jugador y confirma tu voto.",
+            GameplayTableUi.centralPhaseMessage(
+                base.copy(phase = GamePhase.VOTACION),
+                "Votacion"
+            )
+        )
+        assertEquals(
+            resultMessage,
+            GameplayTableUi.centralPhaseMessage(result, "Resultado")
+        )
+    }
+
+    @Test
     fun nightActionsProduceBlockingPrivateFeedbackWithoutRoleLeaks() {
         val cases = listOf(
             actionSession("asesino", GamePhase.NOCHE_ASESINO) to GameplayActionTone.KILL,
