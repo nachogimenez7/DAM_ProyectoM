@@ -36,6 +36,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.TextViewCompat
@@ -43,6 +44,7 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import java.util.ArrayDeque
+import kotlin.math.ceil
 
 class GameplayMockActivity : BaseActivity() {
 
@@ -60,6 +62,7 @@ class GameplayMockActivity : BaseActivity() {
     private var isDayNightTransitionRunning = false
     private var isDeathRevealRunning = false
     private var isSilenceRevealRunning = false
+    private var isOracleRevealVisible = false
     private var isRolePreviewOpen = false
     private var restoreRolePreviewOnResume = false
     private var isWinnerRevealVisible = false
@@ -187,6 +190,10 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var dayNightTransitionAnimator: DayNightTransitionAnimator
     private lateinit var deathRevealAnimator: DeathRevealAnimator
     private lateinit var silenceRevealAnimator: SilenceRevealAnimator
+    private lateinit var oracleRevealOverlay: FrameLayout
+    private lateinit var oracleRevealPanel: FrameLayout
+    private lateinit var oracleRevealPlayer: TextView
+    private lateinit var btnContinueOracleReveal: Button
     private lateinit var traitorRevealCards: LinearLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
@@ -197,7 +204,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var jesterVictoryImage: ImageView
     private lateinit var jesterVictoryMessage: TextView
     private lateinit var jesterVictoryOverlay: FrameLayout
-    private lateinit var jesterVictoryPanel: LinearLayout
+    private lateinit var jesterVictoryPanel: FrameLayout
     private lateinit var jesterVictoryPlayer: TextView
     private lateinit var winnerRevealBackground: ImageView
     private lateinit var winnerRevealCards: LinearLayout
@@ -428,6 +435,11 @@ class GameplayMockActivity : BaseActivity() {
             dp = ::dp,
             onFinished = ::finishSilenceReveal
         )
+        oracleRevealOverlay = findViewById(R.id.oracleRevealOverlay)
+        oracleRevealPanel = findViewById(R.id.oracleRevealPanel)
+        oracleRevealPlayer = findViewById(R.id.oracleRevealPlayer)
+        btnContinueOracleReveal = findViewById(R.id.btnContinueOracleReveal)
+        btnContinueOracleReveal.setOnClickListener { dismissOracleReveal() }
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
         traitorRevealContent = findViewById(R.id.traitorRevealContent)
         traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
@@ -562,6 +574,7 @@ class GameplayMockActivity : BaseActivity() {
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
+        hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = false)
         settleWinnerReveal()
@@ -587,6 +600,7 @@ class GameplayMockActivity : BaseActivity() {
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
+        hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = true)
         settleWinnerReveal()
@@ -657,7 +671,12 @@ class GameplayMockActivity : BaseActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (isDeathRevealRunning || isSilenceRevealRunning || feedbackState.privateVisible) return
+        if (
+            isDeathRevealRunning ||
+            isSilenceRevealRunning ||
+            isOracleRevealVisible ||
+            feedbackState.privateVisible
+        ) return
         if (isJesterVictoryVisible) return
         if (isWinnerRevealVisible) {
             returnToLobby()
@@ -709,6 +728,14 @@ class GameplayMockActivity : BaseActivity() {
 
         val human = GameEngine.humanPlayer(session)
         if (
+            session.phase == GamePhase.NOCHE_ORACULO &&
+            human.role?.key == RoleCatalog.ORACULO
+        ) {
+            session = GameEngine.skipOraclePower(session)
+            renderGame()
+            return
+        }
+        if (
             session.phase == GamePhase.DIA_DEBATE &&
             human.role?.key == "alcalde" &&
             !session.alcaldeRevealed
@@ -738,6 +765,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(session, "")
             GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(session, "")
             GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
+            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(session, "")
             GamePhase.AMANECER -> GameEngine.resolveDawn(session)
             GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
             GamePhase.CONTRAPUNTO -> GameEngine.resolveContrapunto(session, "")
@@ -1029,6 +1057,8 @@ class GameplayMockActivity : BaseActivity() {
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
+            (session.phase == GamePhase.NOCHE_ORACULO &&
+                GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) ||
             (session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "alcalde" &&
                 !session.alcaldeRevealed)
@@ -1038,6 +1068,8 @@ class GameplayMockActivity : BaseActivity() {
             canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
+            session.phase == GamePhase.NOCHE_ORACULO &&
+                GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO) -> "GUARDAR PODER"
             session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "alcalde" &&
                 !session.alcaldeRevealed -> "REVELARME"
@@ -1336,6 +1368,9 @@ class GameplayMockActivity : BaseActivity() {
         metrics: CompanionCardMetrics
     ) {
         val isAlive = GameEngine.isAlive(player)
+        val isOracleGuest =
+            session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == player.name
         val actionLabel = GameEngine.targetActionLabel(session, player.name)
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val isActionable = actionLabel.isNotBlank() && !transitionLocked
@@ -1358,8 +1393,13 @@ class GameplayMockActivity : BaseActivity() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         }
-        holder.avatar.text = if (isAlive) GameplayTableUi.playerInitial(player) else "\u2620"
-        holder.avatar.textSize = if (isAlive) metrics.nameTextSp else metrics.nameTextSp + 1f
+        holder.avatar.text = if (isAlive || isOracleGuest) {
+            GameplayTableUi.playerInitial(player)
+        } else {
+            "\u2620"
+        }
+        holder.avatar.textSize =
+            if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
         holder.mutedBadge.visibility = if (isAlive && player.muted) View.VISIBLE else View.GONE
 
         holder.name.layoutParams = (holder.name.layoutParams as LinearLayout.LayoutParams).apply {
@@ -1369,13 +1409,14 @@ class GameplayMockActivity : BaseActivity() {
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             holder.name,
             7,
-            metrics.nameTextSp.toInt().coerceAtLeast(7),
+            ceil(metrics.nameTextSp.toDouble()).toInt().coerceAtLeast(8),
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
         holder.name.setTextColor(
             getColor(
                 when {
+                    isOracleGuest -> R.color.accent_gold
                     !isAlive -> R.color.text_muted
                     isSelected -> R.color.accent_gold
                     else -> R.color.text_primary
@@ -1406,7 +1447,7 @@ class GameplayMockActivity : BaseActivity() {
             holder.selected = isSelected
         }
 
-        holder.root.alpha = if (isAlive) 1f else 0.4f
+        holder.root.alpha = if (isAlive || isActionable || isOracleGuest) 1f else 0.4f
         holder.root.setOnClickListener {
             when {
                 isActionable -> {
@@ -1424,6 +1465,7 @@ class GameplayMockActivity : BaseActivity() {
             }
         }
         holder.root.contentDescription = when {
+            isOracleGuest -> "${player.name}, invocado para discutir"
             !isAlive -> "${player.name}, eliminado"
             player.muted -> "${player.name}, muteado durante el dia"
             isSelected -> "${player.name}, objetivo seleccionado"
@@ -1458,6 +1500,15 @@ class GameplayMockActivity : BaseActivity() {
                 "NOCHE ${session.round}",
                 "Alguien intenta proteger a un jugador.",
                 if (GameEngine.isHumanRoleTurn(session, "medico")) "SALVAR" else "ACELERAR"
+            )
+            GamePhase.NOCHE_ORACULO -> PhaseText(
+                "NOCHE ${session.round}",
+                "El Oraculo puede llamar a una voz que ya abandono la mesa.",
+                if (GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) {
+                    "GUARDAR PODER"
+                } else {
+                    "ACELERAR"
+                }
             )
             GamePhase.AMANECER -> PhaseText("AMANECER", "La mesa despierta y escucha lo ocurrido.", "AMANECER")
             GamePhase.DIA_DEBATE -> PhaseText("DIA ${session.round}", "La mesa debate antes de votar.", "VOTAR")
@@ -1508,8 +1559,8 @@ class GameplayMockActivity : BaseActivity() {
         isChatOpen = false
         newChatMessagesWhileTyping = 0
         chatInput.clearFocus()
-        ViewCompat.getWindowInsetsController(gameplayRoot)
-            ?.hide(WindowInsetsCompat.Type.ime())
+        WindowCompat.getInsetsController(window, gameplayRoot)
+            .hide(WindowInsetsCompat.Type.ime())
         setChatKeyboardCompact(false)
         renderChatPanelVisibility(animate = true)
         renderChatBadge()
@@ -1775,7 +1826,9 @@ class GameplayMockActivity : BaseActivity() {
             }
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
-        renderGame()
+        updateUnreadChatCount()
+        renderChatPanel()
+        renderChatBadge()
     }
 
     private fun chatInputHint(canChat: Boolean): String {
@@ -1788,6 +1841,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> "La mesa duerme"
+            GamePhase.NOCHE_ORACULO -> "La mesa duerme"
             GamePhase.REPARTO,
             GamePhase.AMANECER,
             GamePhase.RESULTADO -> "Solo lectura"
@@ -1801,6 +1855,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isOracleRevealVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
@@ -1919,7 +1974,8 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
-            GamePhase.NOCHE_MEDICO -> {
+            GamePhase.NOCHE_MEDICO,
+            GamePhase.NOCHE_ORACULO -> {
                 if (GameEngine.requiresHumanInput(session)) {
                     GameEngine.resolveHumanTimeout(session)
                 } else {
@@ -1956,6 +2012,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(session, "")
             GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(session, "")
             GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
+            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(session, "")
             else -> session
         }
     }
@@ -1966,7 +2023,8 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
-            GamePhase.NOCHE_MEDICO -> timing.nightSeconds.takeIf {
+            GamePhase.NOCHE_MEDICO,
+            GamePhase.NOCHE_ORACULO -> timing.nightSeconds.takeIf {
                 GameEngine.requiresHumanInput(session)
             }
             GamePhase.DIA_DEBATE,
@@ -2066,6 +2124,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isOracleRevealVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isTraitorRevealRunning ||
@@ -2132,6 +2191,8 @@ class GameplayMockActivity : BaseActivity() {
         "payador" -> "Una vez por partida inicias un Contrapunto entre dos jugadores y agregas un voto al mas sospechoso."
         "desertor" -> "Elegis un bando al comenzar y ganas con ese equipo si sobrevivis. Mas adelante podes cambiarlo una sola vez."
         "espia" -> "Formas parte de los Traidores, pero cuando te investiga el Detective apareces como inocente."
+        "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votacion. Esa es tu unica condicion de victoria."
+        "oraculo" -> "Una vez por partida podes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
         else -> "No tenes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
     }
 
@@ -2162,6 +2223,7 @@ class GameplayMockActivity : BaseActivity() {
             "payador" -> "usa el contrapunto cuando dos jugadores generen dudas."
             "desertor" -> "elegi un bando y trata de sobrevivir."
             "espia" -> "ayuda a los Traidores sin revelar tu bando."
+            "oraculo" -> "elegi bien cuando y a quien devolverle la voz."
             else -> "pregunta, escucha y busca contradicciones."
         }
         return "Consejo: $advice"
@@ -2185,6 +2247,7 @@ class GameplayMockActivity : BaseActivity() {
             "ELIMINADO" -> Color.parseColor("#A83232")
             "SILENCIADO" -> Color.parseColor("#9A6A32")
             "PROTEGIDO" -> Color.parseColor("#5A8A3C")
+            "INVOCADO" -> Color.parseColor("#78C9E8")
             else -> getColor(R.color.accent_gold)
         }
         currentPlayerStatus.background = GradientDrawable().apply {
@@ -2329,6 +2392,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_MERCENARIO -> "Selecciona un jugador y confirma SILENCIAR."
             GamePhase.NOCHE_POLICIA -> "Selecciona un jugador y confirma INVESTIGAR."
             GamePhase.NOCHE_MEDICO -> "Selecciona un jugador y confirma SALVAR."
+            GamePhase.NOCHE_ORACULO -> "Selecciona un jugador muerto para INVOCAR o guarda el poder."
             GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o continuar a la votacion."
             GamePhase.CONTRAPUNTO -> "Selecciona un participante y confirma SENALAR."
             GamePhase.VOTACION -> "Selecciona un jugador y confirma VOTAR."
@@ -2342,6 +2406,7 @@ class GameplayMockActivity : BaseActivity() {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isOracleRevealVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
@@ -2355,6 +2420,7 @@ class GameplayMockActivity : BaseActivity() {
         }
         if (maybeShowNextDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
+        if (maybeShowOracleReveal()) return
         if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
@@ -2430,6 +2496,65 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun maybeShowOracleReveal(): Boolean {
+        if (isOracleRevealVisible) return true
+        if (!session.oracleRevealPending || session.oracleInvitedPlayer.isBlank()) return false
+        showOracleReveal()
+        return true
+    }
+
+    private fun showOracleReveal() {
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        MusicManager.pauseForTransition()
+        isOracleRevealVisible = true
+        oracleRevealPlayer.text = session.oracleInvitedPlayer.uppercase()
+        oracleRevealOverlay.visibility = View.VISIBLE
+        oracleRevealOverlay.alpha = 0f
+        oracleRevealPanel.alpha = 0f
+        oracleRevealPanel.scaleX = 0.86f
+        oracleRevealPanel.scaleY = 0.86f
+        oracleRevealOverlay.animate()
+            .alpha(1f)
+            .setDuration(260L)
+            .start()
+        oracleRevealPanel.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(620L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    private fun dismissOracleReveal() {
+        if (!isOracleRevealVisible) return
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        session = GameEngine.acknowledgeOracleReveal(session)
+        isOracleRevealVisible = false
+        oracleRevealOverlay.animate()
+            .alpha(0f)
+            .setDuration(220L)
+            .withEndAction {
+                oracleRevealOverlay.visibility = View.GONE
+                MusicManager.resumeGamePhaseAfterTransition(this, session)
+                renderGame()
+            }
+            .start()
+    }
+
+    private fun hideOracleReveal() {
+        if (!::oracleRevealOverlay.isInitialized) return
+        oracleRevealOverlay.animate().cancel()
+        oracleRevealPanel.animate().cancel()
+        oracleRevealOverlay.visibility = View.GONE
+        oracleRevealOverlay.alpha = 1f
+        oracleRevealPanel.alpha = 1f
+        oracleRevealPanel.scaleX = 1f
+        oracleRevealPanel.scaleY = 1f
+        isOracleRevealVisible = false
+    }
+
     private fun maybeShowWinnerReveal(): Boolean {
         if (session.winner.isBlank()) return false
         if (isWinnerRevealVisible) return true
@@ -2454,7 +2579,7 @@ class GameplayMockActivity : BaseActivity() {
         presentedSpecialVictoryCount += 1
         jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÓN"
         jesterVictoryMessage.text =
-            "Ganó su condición especial al ser expulsado por votación. La partida continúa."
+            "Consiguió que el pueblo lo expulsara durante la votación."
         val player = session.players.firstOrNull { it.name == victory.playerName }
         jesterVictoryImage.setImageResource(roleImageFor(player?.role))
         MusicManager.playVictoryMusic(this)

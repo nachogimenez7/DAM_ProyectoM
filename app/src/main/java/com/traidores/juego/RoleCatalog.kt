@@ -98,7 +98,7 @@ object RoleCatalog {
         RoleDefinition(
             BUFON,
             "Neutral",
-            "Quiere ser eliminado por votacion del pueblo. Si lo consiguen votar, gana su propia condicion especial.",
+            "Molesta, interrumpe y busca hacerse odiar para que el pueblo lo expulse durante la votacion. Esa es su unica condicion de victoria: no gana si muere de noche ni por otra causa.",
             8,
             RoleMap.MEDIEVAL,
             "Rol de Mapa"
@@ -106,7 +106,7 @@ object RoleCatalog {
         RoleDefinition(
             ORACULO,
             GameRules.TOWN_WINNER,
-            "Una vez por partida trae a un jugador muerto al debate del dia siguiente. Puede hablar, pero no votar ni usar habilidades.",
+            "Una vez por partida puede invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades.",
             8,
             RoleMap.GREECE,
             "Rol de Mapa"
@@ -234,7 +234,7 @@ object RoleCatalog {
             ESPIA to "Aconseja al alcalde desde muy cerca, eligiendo que verdades llegan completas y cuales llegan torcidas. Su arma no es una daga, sino una voz tranquila que alimenta la paranoia del poder.",
             MERCENARIO to "No sirve a ningun linaje, solo al contrato correcto. Ha peleado por senores que olvidaron su nombre y ahora cobra para que ciertas conversaciones terminen antes de tiempo.",
             DESERTOR to "Una vez juro proteger el feudo, hasta que entendio a quien estaba protegiendo realmente. Desde entonces vive entre caminos y nombres falsos, cargando con la duda de si huyo por cobardia o por lucidez.",
-            BUFON to "Sobrevive haciendo reir a quienes podrian mandarlo a morir. Mientras el feudo se hunde en acusaciones, el tropieza, exagera y dice verdades que todos prefieren tomar como broma. Si lo votan, al menos tendra publico completo."
+            BUFON to "Molesta, interrumpe y se esfuerza por caer mal. Mientras el feudo se hunde en acusaciones, exagera, provoca y dice lo necesario para que todos quieran expulsarlo. Solo gana si el pueblo lo elimina durante la votacion."
         ),
         RoleMap.GREECE to mapOf(
             ALDEANO to "Vende aceite, pan o telas bajo estatuas demasiado grandes para una ciudad tan pequena. Escucha a los hombres hablar de gloria en la plaza mientras ella cuenta monedas para llegar al invierno. No cree en discursos: cree en sobrevivir al proximo decreto.",

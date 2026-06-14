@@ -180,7 +180,8 @@ object MusicManager {
         return phase == GamePhase.NOCHE_ASESINO ||
             phase == GamePhase.NOCHE_MERCENARIO ||
             phase == GamePhase.NOCHE_POLICIA ||
-            phase == GamePhase.NOCHE_MEDICO
+            phase == GamePhase.NOCHE_MEDICO ||
+            phase == GamePhase.NOCHE_ORACULO
     }
 
     private fun isDecisiveDebate(session: GameSession): Boolean {

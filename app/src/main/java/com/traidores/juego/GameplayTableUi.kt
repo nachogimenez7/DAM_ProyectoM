@@ -118,7 +118,8 @@ object GameplayTableUi {
         return phase == GamePhase.NOCHE_ASESINO ||
             phase == GamePhase.NOCHE_MERCENARIO ||
             phase == GamePhase.NOCHE_POLICIA ||
-            phase == GamePhase.NOCHE_MEDICO
+            phase == GamePhase.NOCHE_MEDICO ||
+            phase == GamePhase.NOCHE_ORACULO
     }
 
     fun transitionSpec(session: GameSession): GameplayTransitionSpec {
@@ -162,7 +163,8 @@ object GameplayTableUi {
         return when (label.uppercase()) {
             "MATAR" -> GameplayActionTone.KILL
             "SALVAR", "SALVARME" -> GameplayActionTone.SAVE
-            "INVESTIGAR" -> GameplayActionTone.INVESTIGATE
+            "INVESTIGAR",
+            "INVOCAR" -> GameplayActionTone.INVESTIGATE
             "SILENCIAR" -> GameplayActionTone.SILENCE
             "VOTAR",
             "DECIDIR",
@@ -213,6 +215,12 @@ object GameplayTableUi {
                 target = target,
                 tone = GameplayActionTone.SAVE
             )
+            GamePhase.NOCHE_ORACULO -> privateFeedback(
+                title = "INVOCACION REGISTRADA",
+                message = "$target regresara para discutir durante el proximo dia.",
+                target = target,
+                tone = GameplayActionTone.INVESTIGATE
+            )
             GamePhase.DIA_DEBATE -> actionConfirmation(
                 title = "CONTRAPUNTO",
                 message = "Elegiste a $target.",
@@ -257,6 +265,8 @@ object GameplayTableUi {
     fun personalStatus(session: GameSession): String? {
         val human = GameEngine.humanPlayer(session)
         return when {
+            session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == human.name -> "INVOCADO"
             !human.alive -> "ELIMINADO"
             human.muted -> "SILENCIADO"
             session.protectedPlayer == human.name &&
@@ -401,6 +411,11 @@ object GameplayTableUi {
                 "Engaño completado: expulsado por votación"
             } else {
                 "No fue expulsado por votación"
+            }
+            "oraculo" -> if (session.oracleUsed) {
+                "Invocacion utilizada"
+            } else {
+                "Invocacion conservada"
             }
             else -> "${humanActions.count { it.type == GameActionType.VOTE }} votos emitidos"
         }

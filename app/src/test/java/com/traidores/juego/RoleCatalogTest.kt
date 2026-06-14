@@ -29,6 +29,16 @@ class RoleCatalogTest {
     }
 
     @Test
+    fun jesterDescriptionStatesItsOnlyVictoryCondition() {
+        val function = RoleCatalog.definition(RoleCatalog.BUFON).function
+
+        assertTrue(function.contains("molesta", ignoreCase = true))
+        assertTrue(function.contains("interrumpe", ignoreCase = true))
+        assertTrue(function.contains("unica condicion de victoria", ignoreCase = true))
+        assertTrue(function.contains("durante la votacion", ignoreCase = true))
+    }
+
+    @Test
     fun rolesScreenAndGameRoleUseTheSameDefinition() {
         val screenRole = RoleCatalog.role(RoleCatalog.MERCENARIO, RoleMap.GREECE)
         val gameRole = RoleCatalog.gameRole(RoleCatalog.MERCENARIO, RoleMap.GREECE)

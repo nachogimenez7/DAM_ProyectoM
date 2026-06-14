@@ -118,14 +118,14 @@ object GameEngine {
         if (!canResolve(session, GamePhase.NOCHE_MEDICO)) return session
 
         val medic = alivePlayers(session).firstOrNull { it.role?.key == "medico" }
-            ?: return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+            ?: return advanceNight(session, nextPhaseAfterMedic(session), "La noche continua.")
 
         val target = if (medic.isHuman) selectedTarget else LocalBotAi.chooseProtectionTarget(session, medic)
         if (!isValidNightTarget(session, target, medic, allowSelf = true)) {
             return if (medic.isHuman) {
                 session
             } else {
-                advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+                advanceNight(session, nextPhaseAfterMedic(session), "La noche continua.")
             }
         }
 
@@ -139,7 +139,48 @@ object GameEngine {
             protectedPlayer = target,
             actionHistory = recordAction(session, GameActionType.PROTECT, medic.name, target)
         )
-        return updated.transitionTo(GamePhase.AMANECER, "La noche llega a su fin.", privateHint)
+        return updated.transitionTo(nextPhaseAfterMedic(updated), "La noche continua.", privateHint)
+    }
+
+    fun resolveOracle(session: GameSession, selectedTarget: String): GameSession {
+        if (!canResolve(session, GamePhase.NOCHE_ORACULO)) return session
+        val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
+            ?: return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+        if (session.oracleUsed || oracleCandidates(session).isEmpty()) {
+            return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+        }
+
+        val target = if (oracle.isHuman) {
+            selectedTarget
+        } else {
+            LocalBotAi.chooseOracleTarget(session, oracle)
+        }
+        if (target.isBlank()) {
+            return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+        }
+        if (!isValidOracleTarget(session, target, oracle)) {
+            return if (oracle.isHuman) {
+                session
+            } else {
+                advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+            }
+        }
+
+        val privateHint = if (oracle.isHuman) {
+            "Invocacion registrada. La identidad del Oraculo permanecera oculta."
+        } else {
+            session.privateHint.ifBlank { privateRoleHint(session) }
+        }
+        val updated = session.copy(
+            oracleUsed = true,
+            oracleInvitedPlayer = target,
+            actionHistory = recordAction(session, GameActionType.INVITE_DEAD, oracle.name, target)
+        )
+        return updated.transitionTo(
+            GamePhase.AMANECER,
+            "La noche llega a su fin.",
+            privateHint
+        )
     }
 
     fun resolveDawn(session: GameSession): GameSession {
@@ -171,7 +212,10 @@ object GameEngine {
         } else {
             ""
         }
-        val publicMessage = listOf(killMessage, silenceMessage)
+        val oracleMessage = session.oracleInvitedPlayer.takeIf { it.isNotBlank() }?.let { invited ->
+            "El Oraculo ha permitido que $invited regrese para discutir durante este dia."
+        }.orEmpty()
+        val publicMessage = listOf(killMessage, silenceMessage, oracleMessage)
             .filter { it.isNotBlank() }
             .joinToString(" ")
 
@@ -180,6 +224,7 @@ object GameEngine {
             phase = GamePhase.DIA_DEBATE,
             publicAnnouncement = publicMessage,
             privateHint = privateRoleHint(session.copy(players = updatedPlayers)),
+            oracleRevealPending = oracleMessage.isNotBlank(),
             phaseIndex = session.phaseIndex + 1
         ).withPublicHistory(publicMessage)
             .withWinnerCheck()
@@ -210,7 +255,10 @@ object GameEngine {
         } else {
             "Dia ${session.round}: debatan. Muteados: $muted."
         }
-        return session.transitionTo(
+        return session.copy(
+            oracleInvitedPlayer = "",
+            oracleRevealPending = false
+        ).transitionTo(
             GamePhase.VOTACION,
             message,
             privateRoleHint(session)
@@ -471,6 +519,9 @@ object GameEngine {
             ""
         }
         val statusHint = when {
+            session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == human.name ->
+                " El Oraculo te devolvio la voz durante este debate. No podes votar."
             !human.alive -> " Estas eliminado."
             human.muted -> " Estas muteado durante el dia."
             else -> ""
@@ -504,6 +555,8 @@ object GameEngine {
                 canActOnTarget(session, selectedTarget)
             GamePhase.NOCHE_MEDICO -> !isHumanRoleTurn(session, "medico") ||
                 canActOnTarget(session, selectedTarget)
+            GamePhase.NOCHE_ORACULO -> !isHumanRoleTurn(session, RoleCatalog.ORACULO) ||
+                canActOnTarget(session, selectedTarget)
             GamePhase.CONTRAPUNTO -> false
             GamePhase.ALCALDE_DESEMPATE -> false
             GamePhase.VOTACION -> !canVote(humanPlayer(session)) || canActOnTarget(session, selectedTarget)
@@ -523,6 +576,8 @@ object GameEngine {
                 isValidNightTarget(session, targetName, human, allowSelf = false)
             GamePhase.NOCHE_MEDICO -> canActAs(session, human, "medico") &&
                 isValidNightTarget(session, targetName, human, allowSelf = true)
+            GamePhase.NOCHE_ORACULO -> canActAs(session, human, RoleCatalog.ORACULO) &&
+                isValidOracleTarget(session, targetName, human)
             GamePhase.DIA_DEBATE -> human.role?.key == "payador" &&
                 !session.payadorUsed &&
                 isValidContrapuntoTarget(session, targetName, human)
@@ -543,6 +598,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO -> "SILENCIAR"
             GamePhase.NOCHE_POLICIA -> "INVESTIGAR"
             GamePhase.NOCHE_MEDICO -> "SALVAR"
+            GamePhase.NOCHE_ORACULO -> "INVOCAR"
             GamePhase.DIA_DEBATE -> "CONTRAPUNTO"
             GamePhase.CONTRAPUNTO -> "SENALAR"
             GamePhase.ALCALDE_DESEMPATE -> "DECIDIR"
@@ -558,6 +614,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> resetHumanAfkStreak(session, night = true)
+            GamePhase.NOCHE_ORACULO -> resetHumanAfkStreak(session, night = true)
             GamePhase.VOTACION -> resetHumanAfkStreak(session, night = false)
             else -> session
         }
@@ -566,6 +623,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO -> resolveMercenary(prepared, targetName)
             GamePhase.NOCHE_POLICIA -> resolvePolice(prepared, targetName)
             GamePhase.NOCHE_MEDICO -> resolveMedic(prepared, targetName)
+            GamePhase.NOCHE_ORACULO -> resolveOracle(prepared, targetName)
             GamePhase.DIA_DEBATE -> chooseContrapuntoPlayer(session, targetName)
             GamePhase.CONTRAPUNTO -> resolveContrapunto(session, targetName)
             GamePhase.ALCALDE_DESEMPATE -> chooseAlcaldeTie(session, targetName)
@@ -581,6 +639,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> resolveNightTimeout(session)
+            GamePhase.NOCHE_ORACULO -> resolveNightTimeout(session)
             GamePhase.VOTACION -> resolveVotingTimeout(session)
             GamePhase.ALCALDE_DESEMPATE -> resolveAlcaldeTieTimeout(session)
             GamePhase.CONTRAPUNTO -> resolveContrapuntoTimeout(session)
@@ -615,13 +674,20 @@ object GameEngine {
         return player.alive && !player.muted
     }
 
+    fun canSpeak(session: GameSession, player: GamePlayer): Boolean {
+        return canSpeak(player) || (
+            session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == player.name
+            )
+    }
+
     fun canVote(player: GamePlayer): Boolean {
         return player.alive && !player.muted
     }
 
     fun canHumanChat(session: GameSession): Boolean {
         val human = humanPlayer(session)
-        if (!canSpeak(human) || session.winner.isNotBlank()) return false
+        if (!canSpeak(session, human) || session.winner.isNotBlank()) return false
 
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
@@ -633,6 +699,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> false
+            GamePhase.NOCHE_ORACULO -> false
             else -> false
         }
     }
@@ -641,11 +708,18 @@ object GameEngine {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         if (message.isBlank() || !canHumanChat(session)) return session
         val withHumanMessage = session.withChatMessage(humanPlayer(session).name, message)
+        if (LocalBotAi.isDebugVoteCommand(withHumanMessage, message)) {
+            return withHumanMessage
+        }
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
-            GamePhase.VOTACION -> withHumanMessage.withBotMessages(
-                LocalBotAi.reactionsToHumanMessage(withHumanMessage, message)
-            )
+            GamePhase.VOTACION -> try {
+                withHumanMessage.withBotMessages(
+                    LocalBotAi.reactionsToHumanMessage(withHumanMessage, message)
+                )
+            } catch (_: RuntimeException) {
+                withHumanMessage
+            }
             else -> withHumanMessage
         }
     }
@@ -657,6 +731,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO -> isHumanRoleTurn(session, "mercenario")
             GamePhase.NOCHE_POLICIA -> isHumanRoleTurn(session, "policia")
             GamePhase.NOCHE_MEDICO -> isHumanRoleTurn(session, "medico")
+            GamePhase.NOCHE_ORACULO -> isHumanRoleTurn(session, RoleCatalog.ORACULO)
             GamePhase.CONTRAPUNTO ->
                 isAlive(human) && human.role?.key == "payador"
             GamePhase.ALCALDE_DESEMPATE ->
@@ -683,6 +758,7 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> timing.nightSeconds
+            GamePhase.NOCHE_ORACULO -> timing.nightSeconds
             GamePhase.REPARTO,
             GamePhase.AMANECER,
             GamePhase.RESULTADO -> timing.transitionSeconds
@@ -717,6 +793,15 @@ object GameEngine {
                 missed.session.privateHint
             )
             GamePhase.NOCHE_MEDICO -> missed.session.transitionTo(
+                nextPhaseAfterMedic(missed.session),
+                if (missed.expelled) {
+                    "${missed.humanName} fue expulsado por inactividad. La noche continua."
+                } else {
+                    "La noche continua."
+                },
+                missed.session.privateHint
+            )
+            GamePhase.NOCHE_ORACULO -> missed.session.transitionTo(
                 GamePhase.AMANECER,
                 if (missed.expelled) {
                     "${missed.humanName} fue expulsado por inactividad. La noche llega a su fin."
@@ -834,6 +919,8 @@ object GameEngine {
             nightSilenceTarget = "",
             investigatedPlayer = "",
             investigatedResult = "",
+            oracleInvitedPlayer = "",
+            oracleRevealPending = false,
             dayEliminationTarget = "",
             votes = emptyMap(),
             contrapuntoPlayers = emptyList(),
@@ -854,6 +941,19 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO
         } else {
             GamePhase.NOCHE_POLICIA
+        }
+    }
+
+    private fun nextPhaseAfterMedic(session: GameSession): GamePhase {
+        val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
+        return if (
+            oracle != null &&
+            !session.oracleUsed &&
+            oracleCandidates(session).isNotEmpty()
+        ) {
+            GamePhase.NOCHE_ORACULO
+        } else {
+            GamePhase.AMANECER
         }
     }
 
@@ -903,6 +1003,44 @@ object GameEngine {
         if (!isAlive(actor)) return false
         val target = playerByName(session, selectedTarget)
         return target != null && isAlive(target) && (allowSelf || target.name != actor.name)
+    }
+
+    internal fun oracleCandidates(session: GameSession): List<GamePlayer> {
+        return session.players.filter { !it.alive }
+    }
+
+    internal fun isValidOracleTarget(
+        session: GameSession,
+        selectedTarget: String,
+        oracle: GamePlayer
+    ): Boolean {
+        if (!isAlive(oracle) || oracle.role?.key != RoleCatalog.ORACULO || session.oracleUsed) {
+            return false
+        }
+        val target = playerByName(session, selectedTarget)
+        return target != null && !target.alive
+    }
+
+    fun skipOraclePower(session: GameSession): GameSession {
+        if (
+            session.phase != GamePhase.NOCHE_ORACULO ||
+            !isHumanRoleTurn(session, RoleCatalog.ORACULO)
+        ) {
+            return session
+        }
+        return session.transitionTo(
+            GamePhase.AMANECER,
+            "La noche llega a su fin.",
+            "Guardaste tu poder para otra noche."
+        )
+    }
+
+    fun acknowledgeOracleReveal(session: GameSession): GameSession {
+        return if (session.oracleRevealPending) {
+            session.copy(oracleRevealPending = false)
+        } else {
+            session
+        }
     }
 
     private fun isValidVoteTarget(session: GameSession, selectedTarget: String, voter: GamePlayer): Boolean {

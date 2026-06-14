@@ -29,6 +29,9 @@ data class GameSession(
     val payadorUsed: Boolean = false,
     val contrapuntoPlayers: List<String> = emptyList(),
     val contrapuntoSuspicion: String = "",
+    val oracleUsed: Boolean = false,
+    val oracleInvitedPlayer: String = "",
+    val oracleRevealPending: Boolean = false,
     val alcaldeRevealed: Boolean = false,
     val alcaldeTieCandidates: List<String> = emptyList(),
     val desertorTeam: String = "",
@@ -249,6 +252,7 @@ enum class GameActionType : Serializable {
     SILENCE,
     INVESTIGATE,
     PROTECT,
+    INVITE_DEAD,
     VOTE
 }
 
@@ -258,6 +262,7 @@ enum class GamePhase : Serializable {
     NOCHE_MERCENARIO,
     NOCHE_POLICIA,
     NOCHE_MEDICO,
+    NOCHE_ORACULO,
     AMANECER,
     DIA_DEBATE,
     CONTRAPUNTO,
@@ -454,6 +459,9 @@ object LocalGameFactory {
             payadorUsed = false,
             contrapuntoPlayers = emptyList(),
             contrapuntoSuspicion = "",
+            oracleUsed = false,
+            oracleInvitedPlayer = "",
+            oracleRevealPending = false,
             alcaldeRevealed = false,
             alcaldeTieCandidates = emptyList(),
             desertorTeam = initialDesertorTeam(assignedPlayers, session.code),
@@ -488,6 +496,9 @@ object LocalGameFactory {
         }
         if (playerCount >= 8 && suffix == "medieval") {
             roles += roleForKey("bufon", suffix)
+        }
+        if (playerCount >= 8 && suffix == "griego") {
+            roles += roleForKey("oraculo", suffix)
         }
         if (playerCount >= 9) {
             roles += roleForKey("desertor", suffix)

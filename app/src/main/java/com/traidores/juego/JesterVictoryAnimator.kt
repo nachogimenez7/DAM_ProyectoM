@@ -13,12 +13,11 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import kotlin.random.Random
 
 class JesterVictoryAnimator(
     private val overlay: FrameLayout,
-    private val panel: LinearLayout,
+    private val panel: FrameLayout,
     private val hornLeft: ImageView,
     private val hornRight: ImageView,
     private val confettiLayer: FrameLayout,
@@ -36,6 +35,10 @@ class JesterVictoryAnimator(
         panel.alpha = 0f
         panel.scaleX = 0.78f
         panel.scaleY = 0.78f
+        hornLeft.alpha = 0f
+        hornRight.alpha = 0f
+        hornLeft.translationX = -dp(42).toFloat()
+        hornRight.translationX = dp(42).toFloat()
         continueButton.visibility = View.INVISIBLE
         continueButton.isEnabled = false
         continueButton.alpha = 0f
@@ -50,6 +53,8 @@ class JesterVictoryAnimator(
             interpolator = DecelerateInterpolator()
             start()
         }
+        animateHornEntrance(hornLeft)
+        animateHornEntrance(hornRight)
         animateHorn(hornLeft, -10f, 6f)
         animateHorn(hornRight, 10f, -6f)
         overlay.post { launchConfetti() }
@@ -67,6 +72,8 @@ class JesterVictoryAnimator(
             panel.alpha = 1f
             panel.scaleX = 1f
             panel.scaleY = 1f
+            settleHorn(hornLeft)
+            settleHorn(hornRight)
             revealContinueButton()
         }
     }
@@ -107,6 +114,26 @@ class JesterVictoryAnimator(
         }
         runningAnimators += rotation
         runningAnimators += scale
+    }
+
+    private fun animateHornEntrance(view: ImageView) {
+        val entrance = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(view, View.TRANSLATION_X, view.translationX, 0f)
+            )
+            startDelay = 180L
+            duration = 480L
+            interpolator = DecelerateInterpolator()
+            start()
+        }
+        runningAnimators += entrance
+    }
+
+    private fun settleHorn(view: ImageView) {
+        view.alpha = 1f
+        view.translationX = 0f
+        view.scaleY = 1f
     }
 
     private fun launchConfetti() {
@@ -177,11 +204,12 @@ class JesterVictoryAnimator(
     }
 
     companion object {
-        private const val CONFETTI_COUNT = 54
+        private const val CONFETTI_COUNT = 72
         private val CONFETTI_COLORS = intArrayOf(
             Color.parseColor("#E7B83F"),
             Color.parseColor("#9C3029"),
-            Color.parseColor("#3E6B42")
+            Color.parseColor("#26706A"),
+            Color.parseColor("#F3D98C")
         )
     }
 }

@@ -441,7 +441,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun payadorIsExclusiveToPampaMap() {
+    fun eachMapAssignsOnlyItsExclusiveRole() {
         var setup = LocalGameFactory.createSession()
         repeat(3) {
             setup = LocalGameFactory.addMockPlayer(setup)
@@ -456,8 +456,14 @@ class GameEngineTest {
         )
 
         assertTrue(pampa.players.any { it.role?.key == "payador" })
+        assertFalse(pampa.players.any { it.role?.key == RoleCatalog.ORACULO })
+        assertFalse(pampa.players.any { it.role?.key == RoleCatalog.BUFON })
         assertFalse(greece.players.any { it.role?.key == "payador" })
+        assertTrue(greece.players.any { it.role?.key == RoleCatalog.ORACULO })
+        assertFalse(greece.players.any { it.role?.key == RoleCatalog.BUFON })
         assertFalse(medieval.players.any { it.role?.key == "payador" })
+        assertFalse(medieval.players.any { it.role?.key == RoleCatalog.ORACULO })
+        assertTrue(medieval.players.any { it.role?.key == RoleCatalog.BUFON })
         assertFalse(forcedGreekPayador.players.any { it.role?.key == "payador" })
     }
 
@@ -473,6 +479,44 @@ class GameEngineTest {
 
         assertEquals(1, medieval.players.count { it.role?.key == RoleCatalog.BUFON })
         assertEquals(0, pampa.players.count { it.role?.key == RoleCatalog.BUFON })
+    }
+
+    @Test
+    fun oracleCanSavePowerForAnotherNight() {
+        val session = oracleSession()
+
+        val skipped = GameEngine.skipOraclePower(session)
+
+        assertEquals(GamePhase.AMANECER, skipped.phase)
+        assertFalse(skipped.oracleUsed)
+        assertEquals("", skipped.oracleInvitedPlayer)
+        assertTrue(skipped.privateHint.contains("Guardaste tu poder"))
+    }
+
+    @Test
+    fun oracleInvitesOneDeadPlayerAnonymouslyForDiscussionOnly() {
+        val session = oracleSession()
+
+        val invoked = GameEngine.resolveOracle(session, "Fallecido")
+        val dawn = GameEngine.resolveDawn(invoked)
+        val invited = dawn.players.first { it.name == "Fallecido" }
+
+        assertEquals(GamePhase.AMANECER, invoked.phase)
+        assertTrue(invoked.oracleUsed)
+        assertEquals("Fallecido", invoked.oracleInvitedPlayer)
+        assertEquals(GameActionType.INVITE_DEAD, invoked.actionHistory.last().type)
+        assertEquals(GamePhase.DIA_DEBATE, dawn.phase)
+        assertTrue(dawn.oracleRevealPending)
+        assertTrue(dawn.publicAnnouncement.contains("Fallecido"))
+        assertFalse(dawn.publicAnnouncement.contains("Humano"))
+        assertFalse(invited.alive)
+        assertTrue(GameEngine.canSpeak(dawn, invited))
+        assertFalse(GameEngine.canVote(invited))
+
+        val voting = GameEngine.resolveDayDebate(dawn)
+        assertEquals(GamePhase.VOTACION, voting.phase)
+        assertEquals("", voting.oracleInvitedPlayer)
+        assertFalse(GameEngine.canSpeak(voting, invited))
     }
 
     @Test
@@ -1005,6 +1049,49 @@ class GameEngineTest {
     }
 
     @Test
+    fun jesterDebugVoteCommandIsSentWithoutGeneratingBotReactions() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            debugBotsObeyVoteCommands = true,
+            players = publicNameSession().players.map { player ->
+                if (player.isHuman) {
+                    player.copy(role = RoleCatalog.gameRole(RoleCatalog.BUFON, RoleMap.MEDIEVAL))
+                } else {
+                    player
+                }
+            }
+        )
+
+        val resolved = GameEngine.addHumanChatMessage(session, "Votenme, quiero probar el Bufon")
+        val addedMessages = resolved.chatHistory.drop(session.chatHistory.size)
+
+        assertEquals(1, addedMessages.size)
+        assertEquals("Humano", addedMessages.single().speaker)
+        assertEquals("Votenme, quiero probar el Bufon", addedMessages.single().message)
+    }
+
+    @Test
+    fun jesterCanSendRegularChatAndReceiveBotReaction() {
+        val base = publicNameSession()
+        val session = base.copy(
+            phase = GamePhase.DIA_DEBATE,
+            players = base.players.map { player ->
+                if (player.isHuman) {
+                    player.copy(role = RoleCatalog.gameRole(RoleCatalog.BUFON, RoleMap.MEDIEVAL))
+                } else {
+                    player
+                }
+            }
+        )
+
+        val resolved = GameEngine.addHumanChatMessage(session, "No confio en nadie")
+        val addedMessages = resolved.chatHistory.drop(session.chatHistory.size)
+
+        assertEquals("Humano", addedMessages.first().speaker)
+        assertTrue(addedMessages.any { it.speaker != "Humano" })
+    }
+
+    @Test
     fun botReactionDoesNotEchoHiddenRoleClaims() {
         val session = publicNameSession().copy(phase = GamePhase.DIA_DEBATE)
 
@@ -1460,6 +1547,39 @@ class GameEngineTest {
                     else -> player
                 }
             }
+        )
+    }
+
+    private fun oracleSession(): GameSession {
+        return GameSession(
+            code = "ORACLE",
+            mapKey = "grecia",
+            mapName = "Grecia",
+            players = listOf(
+                GamePlayer(
+                    "Humano",
+                    "H",
+                    role = RoleCatalog.gameRole(RoleCatalog.ORACULO, RoleMap.GREECE),
+                    isHuman = true
+                ),
+                GamePlayer(
+                    "Fallecido",
+                    "F",
+                    role = RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.GREECE),
+                    alive = false
+                ),
+                GamePlayer(
+                    "Asesina",
+                    "A",
+                    role = RoleCatalog.gameRole(RoleCatalog.ASESINO, RoleMap.GREECE)
+                ),
+                GamePlayer(
+                    "Ciudadana",
+                    "C",
+                    role = RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.GREECE)
+                )
+            ),
+            phase = GamePhase.NOCHE_ORACULO
         )
     }
 

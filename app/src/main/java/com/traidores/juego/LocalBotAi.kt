@@ -109,6 +109,26 @@ internal object LocalBotAi {
             ?: medic.name
     }
 
+    fun chooseOracleTarget(session: GameSession, oracle: GamePlayer): String {
+        if (!oracle.alive || oracle.role?.key != RoleCatalog.ORACULO) return ""
+        val candidates = GameEngine.oracleCandidates(session)
+        if (candidates.isEmpty()) return ""
+        val shouldWait = session.round == 1 && candidates.size == 1 &&
+            stableNoise("${session.code}:${oracle.name}:oracle-wait") % 3 != 0
+        if (shouldWait) return ""
+        return candidates
+            .sortedWith(
+                compareByDescending<GamePlayer> { player ->
+                    session.chatHistory.count { it.speaker == player.name } +
+                        session.actionHistory.count { it.actor == player.name }
+                }.thenByDescending { player ->
+                    session.publicHistory.indexOfLast { it.contains(player.name) }
+                }.thenBy { it.name }
+            )
+            .first()
+            .name
+    }
+
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {
         debugVoteCommandTarget(session, voter)?.let { return it }
         val ranked = rankedPublicSuspects(session, voter)
@@ -158,6 +178,24 @@ internal object LocalBotAi {
         return targetName.takeIf { name ->
             val target = GameEngine.playerByName(session, name)
             target != null && target.alive && target.name != voter.name
+        }
+    }
+
+    fun isDebugVoteCommand(session: GameSession, message: String): Boolean {
+        if (!session.debugBotsObeyVoteCommands) return false
+        val normalizedMessage = normalizedVoteCommand(message)
+        if (
+            normalizedMessage.contains("votenme") ||
+            normalizedMessage.contains("voten por mi")
+        ) {
+            return true
+        }
+        return session.players.any { player ->
+            val name = normalizedVoteCommand(player.name)
+            name.isNotBlank() && (
+                normalizedMessage.contains("voten a $name") ||
+                    normalizedMessage.contains("voten por $name")
+                )
         }
     }
 
@@ -563,8 +601,8 @@ internal object LocalBotAi {
     }
 
     private fun messageBots(session: GameSession, limit: Int): List<GamePlayer> {
-        return GameEngine.alivePlayers(session)
-            .filter { !it.isHuman && GameEngine.canSpeak(it) }
+        return session.players
+            .filter { !it.isHuman && GameEngine.canSpeak(session, it) }
             .sortedBy { stableNoise("${session.code}:${session.round}:${session.chatHistory.size}:${it.name}:talk") }
             .take(limit)
     }

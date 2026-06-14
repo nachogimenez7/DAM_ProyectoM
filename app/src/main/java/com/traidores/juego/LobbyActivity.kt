@@ -47,6 +47,7 @@ class LobbyActivity : BaseActivity() {
         "alcalde" to "ALCALDE",
         "payador" to "PAYADOR",
         "bufon" to "BUFON",
+        "oraculo" to "ORACULO",
         "desertor" to "DESERTOR",
         "espia" to "ESPIA",
         "aldeano" to "ALDEANO"
@@ -542,7 +543,7 @@ class LobbyActivity : BaseActivity() {
         )
         when (session.mapKey) {
             "pampa" -> entries += RoleCountPreview("PAYADOR", if (count >= 8) 1 else 0)
-            "grecia" -> entries += RoleCountPreview("ORACULO", 0)
+            "grecia" -> entries += RoleCountPreview("ORACULO", if (count >= 8) 1 else 0)
             "medieval" -> entries += RoleCountPreview("BUFON", if (count >= 8) 1 else 0)
         }
         val specialRoles = entries.drop(1).sumOf { it.count }
@@ -655,7 +656,7 @@ class LobbyActivity : BaseActivity() {
     private fun mapDescriptionFor(mapKey: String): String {
         return when (mapKey) {
             "grecia" ->
-                "Intriga entre templos y plazas. Rol exclusivo futuro: Oraculo."
+                "Intriga entre templos y plazas. Rol exclusivo: Oraculo."
             "medieval" ->
                 "Secretos entre murallas y castillos. Rol exclusivo: Bufon."
             else ->

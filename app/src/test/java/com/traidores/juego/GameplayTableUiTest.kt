@@ -356,6 +356,8 @@ class GameplayTableUiTest {
         )
         val desertor = actionSession("desertor", GamePhase.RESULTADO)
             .copy(desertorTeam = GameRules.TOWN_WINNER)
+        val oracle = actionSession(RoleCatalog.ORACULO, GamePhase.RESULTADO)
+            .copy(oracleUsed = true)
 
         assertEquals(
             "1 ataques elegidos",
@@ -368,6 +370,10 @@ class GameplayTableUiTest {
         assertEquals(
             "Bando final: Pueblo",
             GameplayTableUi.gameSummary(desertor, desertor.startedAtEpochMs).humanHighlight
+        )
+        assertEquals(
+            "Invocacion utilizada",
+            GameplayTableUi.gameSummary(oracle, oracle.startedAtEpochMs).humanHighlight
         )
     }
 
@@ -385,6 +391,7 @@ class GameplayTableUiTest {
         assertTrue(GameplayTableUi.isNightPhase(GamePhase.NOCHE_MERCENARIO))
         assertTrue(GameplayTableUi.isNightPhase(GamePhase.NOCHE_POLICIA))
         assertTrue(GameplayTableUi.isNightPhase(GamePhase.NOCHE_MEDICO))
+        assertTrue(GameplayTableUi.isNightPhase(GamePhase.NOCHE_ORACULO))
 
         assertFalse(GameplayTableUi.isNightPhase(GamePhase.REPARTO))
         assertFalse(GameplayTableUi.isNightPhase(GamePhase.AMANECER))
@@ -530,6 +537,7 @@ class GameplayTableUiTest {
         assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR"))
         assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("SALVARME"))
         assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVESTIGAR"))
+        assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVOCAR"))
         assertEquals(GameplayActionTone.SILENCE, GameplayTableUi.actionToneFor("SILENCIAR"))
         assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("VOTAR"))
         assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("REVELARME"))
