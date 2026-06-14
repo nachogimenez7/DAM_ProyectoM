@@ -173,7 +173,7 @@ data class GameTimingConfig(
     }
 
     companion object {
-        const val DEFAULT_TRANSITION_SECONDS = 5
+        const val DEFAULT_TRANSITION_SECONDS = 3
         const val DEFAULT_NIGHT_SECONDS = 40
         const val DEFAULT_DISCUSSION_SECONDS = 120
         const val DEFAULT_VOTING_SECONDS = 20
@@ -203,18 +203,18 @@ enum class GameTimingPreset(
 ) {
     SLOW(
         "LENTO",
-        "Ideal para partidas online o mesas con mucha gente.",
-        GameTimingConfig(7, 90, 180, 60)
+        "Ideal para partidas online o grupos con mucha gente.",
+        GameTimingConfig(5, 90, 180, 60)
     ),
     NORMAL(
         "NORMAL",
         "Ritmo equilibrado para la mayoria de las partidas.",
-        GameTimingConfig(5, 40, 120, 20)
+        GameTimingConfig(3, 40, 120, 20)
     ),
     FAST(
         "RAPIDO",
         "Ideal para partidas cortas y jugadores que ya conocen el juego.",
-        GameTimingConfig(3, 20, 60, 15)
+        GameTimingConfig(2, 20, 60, 15)
     )
 }
 

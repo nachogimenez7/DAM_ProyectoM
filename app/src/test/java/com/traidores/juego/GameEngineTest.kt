@@ -94,7 +94,7 @@ class GameEngineTest {
 
     @Test
     fun timingConfigUsesDefaultsAndClampsEveryField() {
-        assertEquals("5 / 40 / 120 / 20", GameTimingConfig().summary())
+        assertEquals("3 / 40 / 120 / 20", GameTimingConfig().summary())
         assertEquals(GameTimingPreset.NORMAL, GameTimingConfig().preset())
 
         val minimums = GameTimingConfig(
@@ -122,9 +122,9 @@ class GameEngineTest {
 
     @Test
     fun timingPresetsUseExpectedValues() {
-        assertEquals(GameTimingConfig(7, 90, 180, 60), GameTimingPreset.SLOW.config)
-        assertEquals(GameTimingConfig(5, 40, 120, 20), GameTimingPreset.NORMAL.config)
-        assertEquals(GameTimingConfig(3, 20, 60, 15), GameTimingPreset.FAST.config)
+        assertEquals(GameTimingConfig(5, 90, 180, 60), GameTimingPreset.SLOW.config)
+        assertEquals(GameTimingConfig(3, 40, 120, 20), GameTimingPreset.NORMAL.config)
+        assertEquals(GameTimingConfig(2, 20, 60, 15), GameTimingPreset.FAST.config)
         assertEquals(GameTimingPreset.SLOW, GameTimingPreset.SLOW.config.preset())
         assertEquals(null, GameTimingConfig(4, 35, 90, 25).preset())
     }
@@ -1360,7 +1360,7 @@ class GameEngineTest {
             phase = GamePhase.DIA_DEBATE,
             publicAnnouncement = "Amanecer: murio Dina.",
             publicHistory = listOf(
-                "La mesa expulso a Ema.",
+                "El pueblo expulso a Ema.",
                 "Amanecer: murio Dina."
             )
         )

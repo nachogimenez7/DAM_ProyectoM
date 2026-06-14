@@ -127,7 +127,7 @@ class GameplayTableUiTest {
         )
         assertTrue(
             GameplayTableUi.newlyKilledAtDawn(
-                dawn.copy(publicAnnouncement = "La mesa expulso a Martina."),
+                dawn.copy(publicAnnouncement = "El pueblo expulso a Martina."),
                 knownDeadPlayers = setOf("Tomas")
             ).isEmpty()
         )

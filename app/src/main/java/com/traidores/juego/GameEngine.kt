@@ -8,7 +8,7 @@ object GameEngine {
         if (session.winner.isNotBlank()) return session
 
         val prepared = clearTemporaryMutes(session)
-        val message = "Noche ${prepared.round}: todos guardan silencio. Las acciones nocturnas se resuelven en secreto."
+        val message = nightStartMessage(prepared)
         return prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
             publicAnnouncement = message,
@@ -28,14 +28,22 @@ object GameEngine {
         if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
 
         val assassin = activeKiller(session)
-            ?: return advanceNight(session, nextPhaseAfterAssassin(session), "La noche continua.")
+            ?: return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
 
         val target = if (assassin.isHuman) selectedTarget else LocalBotAi.chooseAssassinTarget(session, assassin)
         if (!isValidKillTarget(session, target, assassin)) {
             return if (assassin.isHuman) {
                 session
             } else {
-                advanceNight(session, nextPhaseAfterAssassin(session), "La noche continua.")
+                advanceNight(
+                    session,
+                    nextPhaseAfterAssassin(session),
+                    nightContinuesMessage(session)
+                )
             }
         }
 
@@ -51,7 +59,7 @@ object GameEngine {
         )
         return updated.transitionTo(
             nextPhaseAfterAssassin(updated),
-            "La noche continua.",
+            nightContinuesMessage(updated),
             privateHint
         )
     }
@@ -60,14 +68,14 @@ object GameEngine {
         if (!canResolve(session, GamePhase.NOCHE_MERCENARIO)) return session
 
         val mercenary = alivePlayers(session).firstOrNull { it.role?.key == "mercenario" }
-            ?: return advanceNight(session, GamePhase.NOCHE_POLICIA, "La noche continua.")
+            ?: return advanceNight(session, GamePhase.NOCHE_POLICIA, nightContinuesMessage(session))
 
         val target = if (mercenary.isHuman) selectedTarget else LocalBotAi.chooseSilenceTarget(session, mercenary)
         if (!isValidSilenceTarget(session, target, mercenary)) {
             return if (mercenary.isHuman) {
                 session
             } else {
-                advanceNight(session, GamePhase.NOCHE_POLICIA, "La noche continua.")
+                advanceNight(session, GamePhase.NOCHE_POLICIA, nightContinuesMessage(session))
             }
         }
 
@@ -81,21 +89,25 @@ object GameEngine {
             nightSilenceTarget = target,
             actionHistory = recordAction(session, GameActionType.SILENCE, mercenary.name, target)
         )
-        return updated.transitionTo(GamePhase.NOCHE_POLICIA, "La noche continua.", privateHint)
+        return updated.transitionTo(
+            GamePhase.NOCHE_POLICIA,
+            nightContinuesMessage(updated),
+            privateHint
+        )
     }
 
     fun resolvePolice(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_POLICIA)) return session
 
         val police = alivePlayers(session).firstOrNull { it.role?.key == "policia" }
-            ?: return advanceNight(session, GamePhase.NOCHE_MEDICO, "La noche continua.")
+            ?: return advanceNight(session, GamePhase.NOCHE_MEDICO, nightContinuesMessage(session))
 
         val target = if (police.isHuman) selectedTarget else LocalBotAi.chooseInvestigationTarget(session, police)
         if (!isValidNightTarget(session, target, police, allowSelf = false)) {
             return if (police.isHuman) {
                 session
             } else {
-                advanceNight(session, GamePhase.NOCHE_MEDICO, "La noche continua.")
+                advanceNight(session, GamePhase.NOCHE_MEDICO, nightContinuesMessage(session))
             }
         }
 
@@ -111,21 +123,25 @@ object GameEngine {
             investigatedResult = result,
             actionHistory = recordAction(session, GameActionType.INVESTIGATE, police.name, target)
         )
-        return updated.transitionTo(GamePhase.NOCHE_MEDICO, "La noche continua.", privateHint)
+        return updated.transitionTo(
+            GamePhase.NOCHE_MEDICO,
+            nightContinuesMessage(updated),
+            privateHint
+        )
     }
 
     fun resolveMedic(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_MEDICO)) return session
 
         val medic = alivePlayers(session).firstOrNull { it.role?.key == "medico" }
-            ?: return advanceNight(session, nextPhaseAfterMedic(session), "La noche continua.")
+            ?: return advanceAfterMedic(session)
 
         val target = if (medic.isHuman) selectedTarget else LocalBotAi.chooseProtectionTarget(session, medic)
         if (!isValidNightTarget(session, target, medic, allowSelf = true)) {
             return if (medic.isHuman) {
                 session
             } else {
-                advanceNight(session, nextPhaseAfterMedic(session), "La noche continua.")
+                advanceAfterMedic(session)
             }
         }
 
@@ -139,15 +155,24 @@ object GameEngine {
             protectedPlayer = target,
             actionHistory = recordAction(session, GameActionType.PROTECT, medic.name, target)
         )
-        return updated.transitionTo(nextPhaseAfterMedic(updated), "La noche continua.", privateHint)
+        val nextPhase = nextPhaseAfterMedic(updated)
+        return updated.transitionTo(
+            nextPhase,
+            if (nextPhase == GamePhase.AMANECER) {
+                dawnApproachesMessage()
+            } else {
+                nightContinuesMessage(updated)
+            },
+            privateHint
+        )
     }
 
     fun resolveOracle(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ORACULO)) return session
         val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
-            ?: return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+            ?: return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
         if (session.oracleUsed || oracleCandidates(session).isEmpty()) {
-            return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
         }
 
         val target = if (oracle.isHuman) {
@@ -156,13 +181,13 @@ object GameEngine {
             LocalBotAi.chooseOracleTarget(session, oracle)
         }
         if (target.isBlank()) {
-            return advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
         }
         if (!isValidOracleTarget(session, target, oracle)) {
             return if (oracle.isHuman) {
                 session
             } else {
-                advanceNight(session, GamePhase.AMANECER, "La noche llega a su fin.")
+                advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
             }
         }
 
@@ -178,7 +203,7 @@ object GameEngine {
         )
         return updated.transitionTo(
             GamePhase.AMANECER,
-            "La noche llega a su fin.",
+            dawnApproachesMessage(),
             privateHint
         )
     }
@@ -250,11 +275,7 @@ object GameEngine {
         }
 
         val muted = mutedSummary(session)
-        val message = if (muted.isBlank()) {
-            "Dia ${session.round}: debatan. No hay jugadores muteados."
-        } else {
-            "Dia ${session.round}: debatan. Muteados: $muted."
-        }
+        val message = dayDebateMessage(session, muted)
         return session.copy(
             oracleInvitedPlayer = "",
             oracleRevealPending = false
@@ -772,9 +793,9 @@ object GameEngine {
         if (missed.session.winner.isNotBlank()) return missed.session
 
         val publicMessage = if (missed.expelled) {
-            "${missed.humanName} fue expulsado por inactividad. La noche continua."
+            "${missed.humanName} fue expulsado por inactividad. ${nightContinuesMessage(session)}"
         } else {
-            "La noche continua."
+            nightContinuesMessage(session)
         }
         val advanced = when (session.phase) {
             GamePhase.NOCHE_ASESINO -> missed.session.transitionTo(
@@ -795,18 +816,27 @@ object GameEngine {
             GamePhase.NOCHE_MEDICO -> missed.session.transitionTo(
                 nextPhaseAfterMedic(missed.session),
                 if (missed.expelled) {
-                    "${missed.humanName} fue expulsado por inactividad. La noche continua."
+                    "${missed.humanName} fue expulsado por inactividad. " +
+                        if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
+                            dawnApproachesMessage()
+                        } else {
+                            nightContinuesMessage(missed.session)
+                        }
                 } else {
-                    "La noche continua."
+                    if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
+                        dawnApproachesMessage()
+                    } else {
+                        nightContinuesMessage(missed.session)
+                    }
                 },
                 missed.session.privateHint
             )
             GamePhase.NOCHE_ORACULO -> missed.session.transitionTo(
                 GamePhase.AMANECER,
                 if (missed.expelled) {
-                    "${missed.humanName} fue expulsado por inactividad. La noche llega a su fin."
+                    "${missed.humanName} fue expulsado por inactividad. ${dawnApproachesMessage()}"
                 } else {
-                    "La noche llega a su fin."
+                    dawnApproachesMessage()
                 },
                 missed.session.privateHint
             )
@@ -909,7 +939,7 @@ object GameEngine {
 
     private fun startNextRound(session: GameSession, previousMessage: String): GameSession {
         val prepared = clearTemporaryMutes(session)
-        val message = "$previousMessage Noche ${prepared.round + 1}: todos guardan silencio."
+        val message = "$previousMessage ${nextNightMessage(prepared)}"
         // payadorUsed no se reinicia: el Contrapunto se usa una sola vez por partida.
         return prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
@@ -934,6 +964,58 @@ object GameEngine {
 
     private fun advanceNight(session: GameSession, nextPhase: GamePhase, publicMessage: String): GameSession {
         return session.transitionTo(nextPhase, publicMessage, privateRoleHint(session))
+    }
+
+    private fun advanceAfterMedic(session: GameSession): GameSession {
+        val nextPhase = nextPhaseAfterMedic(session)
+        val message = if (nextPhase == GamePhase.AMANECER) {
+            dawnApproachesMessage()
+        } else {
+            nightContinuesMessage(session)
+        }
+        return advanceNight(session, nextPhase, message)
+    }
+
+    private fun nightStartMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" ->
+                "Noche ${session.round}: el pueblo atranca sus puertas. Afuera, nadie espera misericordia."
+            "grecia" ->
+                "Noche ${session.round}: el pueblo guarda silencio. Hasta los sabios temen a las sombras."
+            else ->
+                "Noche ${session.round}: el pueblo apaga los faroles. Entre el polvo, nadie distingue los pasos."
+        }
+    }
+
+    private fun nightContinuesMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" -> "La noche aprieta su mano sobre el pueblo."
+            "grecia" -> "La noche sigue su curso y el pueblo permanece en silencio."
+            else -> "La noche sigue su curso; en el pueblo no se oye ni un susurro."
+        }
+    }
+
+    private fun dawnApproachesMessage(): String = "El amanecer se acerca."
+
+    private fun dayDebateMessage(session: GameSession, muted: String): String {
+        val opening = when (session.mapKey) {
+            "medieval" -> "El pueblo despierta con miedo. Cada palabra puede condenar a alguien."
+            "grecia" -> "El pueblo despierta. Que la razon separe la verdad del engaño."
+            else -> "El pueblo despierta y se junta a discutir antes de votar."
+        }
+        return if (muted.isBlank()) {
+            "Dia ${session.round}: $opening"
+        } else {
+            "Dia ${session.round}: $opening Muteados: $muted."
+        }
+    }
+
+    private fun nextNightMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" -> "La oscuridad vuelve a caer y el pueblo cierra sus puertas."
+            "grecia" -> "La oscuridad vuelve a caer sobre el pueblo y sus dudas."
+            else -> "La oscuridad vuelve a caer sobre el pueblo."
+        }
     }
 
     private fun nextPhaseAfterAssassin(session: GameSession): GamePhase {
@@ -1030,7 +1112,7 @@ object GameEngine {
         }
         return session.transitionTo(
             GamePhase.AMANECER,
-            "La noche llega a su fin.",
+            dawnApproachesMessage(),
             "Guardaste tu poder para otra noche."
         )
     }

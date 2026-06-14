@@ -463,7 +463,7 @@ internal object LocalBotAi {
 
     private fun informalReason(reason: String?): String {
         return when (reason) {
-            "lo nombraron en la mesa" -> "lo vienen nombrando todos"
+            "lo nombraron en el pueblo" -> "lo vienen nombrando todos"
             "le pidieron explicaciones" -> "le preguntaron y no aclaro mucho"
             "aparecio demasiado en la charla" -> "esta metido en todas"
             "esta hablando poco" -> "no esta diciendo nada"
@@ -544,7 +544,7 @@ internal object LocalBotAi {
 
         if (candidate.name in focusNames) {
             score += 8
-            reasons += "lo nombraron en la mesa"
+            reasons += "lo nombraron en el pueblo"
         }
 
         val mentions = recent.filter { mentionsName(it.message, candidate.name) }

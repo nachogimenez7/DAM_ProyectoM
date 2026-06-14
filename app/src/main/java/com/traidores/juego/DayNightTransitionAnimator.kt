@@ -33,12 +33,18 @@ internal class DayNightTransitionAnimator(
 
     private var animator: AnimatorSet? = null
     private var soundPlayer: MediaPlayer? = null
+    private var durationScale = 1f
     private val musicCue = Runnable {
         if (running) onMusicCue()
     }
 
-    fun start(spec: GameplayTransitionSpec, fromPeriod: GameplayPeriod) {
+    fun start(
+        spec: GameplayTransitionSpec,
+        fromPeriod: GameplayPeriod,
+        durationMs: Long
+    ) {
         cancel()
+        durationScale = durationMs.coerceAtLeast(MIN_DURATION_MS).toFloat() / BASE_DURATION_MS
         running = true
         fromBackground.setImageResource(backgroundFor(fromPeriod))
         toBackground.setImageResource(backgroundFor(spec.period))
@@ -52,7 +58,7 @@ internal class DayNightTransitionAnimator(
         overlay.visibility = View.VISIBLE
 
         playSound(spec.period)
-        handler.postDelayed(musicCue, MUSIC_DELAY_MS)
+        handler.postDelayed(musicCue, scaled(MUSIC_DELAY_MS))
         overlay.post {
             if (running) animate(spec, fromPeriod)
         }
@@ -142,15 +148,15 @@ internal class DayNightTransitionAnimator(
             View.ALPHA,
             toBackground.alpha,
             1f
-        ).apply { duration = 1450L }
+        ).apply { duration = scaled(1450L) }
         animators += fadeAnimator(title, 0f, 1f, 480L, 420L)
         animators += ObjectAnimator.ofFloat(title, View.SCALE_X, 0.86f, 1f).apply {
-            startDelay = 480L
-            duration = 420L
+            startDelay = scaled(480L)
+            duration = scaled(420L)
         }
         animators += ObjectAnimator.ofFloat(title, View.SCALE_Y, 0.86f, 1f).apply {
-            startDelay = 480L
-            duration = 420L
+            startDelay = scaled(480L)
+            duration = scaled(420L)
         }
         animators += fadeAnimator(title, 1f, 0f, 1600L, 360L)
         animators += fadeAnimator(overlay, 1f, 0f, 1850L, 350L)
@@ -210,7 +216,7 @@ internal class DayNightTransitionAnimator(
             quadTo(controlX, controlY, endX, endY)
         }
         return ObjectAnimator.ofFloat(view, View.X, View.Y, path).apply {
-            duration = 1800L
+            duration = scaled(1800L)
         }
     }
 
@@ -222,9 +228,13 @@ internal class DayNightTransitionAnimator(
         durationMs: Long
     ): ObjectAnimator {
         return ObjectAnimator.ofFloat(view, View.ALPHA, from, to).apply {
-            startDelay = delayMs
-            duration = durationMs
+            startDelay = scaled(delayMs)
+            duration = scaled(durationMs)
         }
+    }
+
+    private fun scaled(valueMs: Long): Long {
+        return (valueMs * durationScale).toLong().coerceAtLeast(1L)
     }
 
     private fun playSound(period: GameplayPeriod) {
@@ -260,5 +270,7 @@ internal class DayNightTransitionAnimator(
     private companion object {
         const val PREFS_NAME = "TraidoresPrefs"
         const val MUSIC_DELAY_MS = 1600L
+        const val BASE_DURATION_MS = 2200f
+        const val MIN_DURATION_MS = 1000L
     }
 }

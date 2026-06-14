@@ -11,22 +11,30 @@
         android:scaleType="centerCrop"
         android:src="@drawable/fondo_menu" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#52000000" />
+
     <ImageButton
         android:id="@+id/btnBack"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_margin="16dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_margin="14dp"
         android:background="@drawable/bg_btn_dark"
         android:contentDescription="Volver"
+        android:padding="10dp"
         android:src="@android:drawable/ic_media_previous"
         app:tint="@color/text_secondary" />
 
     <ScrollView
+        android:id="@+id/optionsScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/btnBack"
         android:clipToPadding="false"
-        android:paddingHorizontal="24dp"
+        android:fillViewport="true"
+        android:paddingHorizontal="20dp"
         android:paddingBottom="32dp">
 
         <LinearLayout
@@ -38,14 +46,25 @@
                 android:id="@+id/titleOptions"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginBottom="24dp"
+                android:layout_gravity="center_horizontal"
                 android:fontFamily="@font/grenze"
-                android:letterSpacing="0.02"
+                android:letterSpacing="0.03"
                 android:text="OPCIONES"
                 android:textColor="@color/accent_gold"
-                android:textSize="24sp"
+                android:textSize="28sp"
                 android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/subtitleOptions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="22dp"
+                android:fontFamily="@font/cormorant_garamond"
+                android:gravity="center"
+                android:text="Ajusta el juego para que sea comodo de leer y escuchar."
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/titleAudio"
@@ -53,18 +72,40 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
                 android:fontFamily="@font/grenze"
-                android:text="SONIDO Y AUDIO"
+                android:text="SONIDO Y RESPUESTA"
                 android:textColor="@color/accent_gold"
-                android:textSize="16sp"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="22dp"
                 android:background="@drawable/bg_btn_dark"
                 android:orientation="vertical"
                 android:padding="16dp">
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchSound"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center_vertical"
+                    android:text="Sonido general"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    app:thumbTint="@color/accent_gold"
+                    app:trackTint="@color/divider" />
+
+                <TextView
+                    android:id="@+id/descSound"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:text="Apaga musica, voces y efectos sin perder sus niveles."
+                    android:textColor="@color/text_muted"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/labelMusic"
@@ -73,12 +114,12 @@
                     android:fontFamily="@font/cormorant_garamond"
                     android:text="Musica: 80%"
                     android:textColor="@color/text_primary"
-                    android:textSize="15sp" />
+                    android:textSize="17sp" />
 
                 <SeekBar
                     android:id="@+id/seekMusic"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:max="100"
                     android:progress="80"
                     android:progressTint="@color/accent_gold"
@@ -88,16 +129,16 @@
                     android:id="@+id/labelVoices"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="6dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Voces: 80%"
+                    android:text="Voces y efectos: 80%"
                     android:textColor="@color/text_primary"
-                    android:textSize="15sp" />
+                    android:textSize="17sp" />
 
                 <SeekBar
                     android:id="@+id/seekVoices"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:max="100"
                     android:progress="80"
                     android:progressTint="@color/accent_gold"
@@ -106,13 +147,13 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switchVibration"
                     android:layout_width="match_parent"
-                    android:layout_height="44dp"
-                    android:layout_marginTop="8dp"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="4dp"
                     android:fontFamily="@font/cormorant_garamond"
                     android:gravity="center_vertical"
-                    android:text="Vibracion"
+                    android:text="Vibracion al interactuar"
                     android:textColor="@color/text_primary"
-                    android:textSize="15sp"
+                    android:textSize="17sp"
                     app:thumbTint="@color/accent_gold"
                     app:trackTint="@color/divider" />
             </LinearLayout>
@@ -123,37 +164,68 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
                 android:fontFamily="@font/grenze"
-                android:text="TAMAÑO DEL TEXTO"
+                android:text="LECTURA Y ACCESIBILIDAD"
                 android:textColor="@color/accent_gold"
-                android:textSize="16sp"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="22dp"
                 android:background="@drawable/bg_btn_dark"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:padding="12dp">
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/labelTextSize"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:text="Tamano del texto"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp" />
+
+                    <Spinner
+                        android:id="@+id/spinnerTextSize"
+                        android:layout_width="156dp"
+                        android:layout_height="48dp"
+                        android:backgroundTint="@color/accent_gold"
+                        android:popupBackground="@color/bg_card"
+                        android:spinnerMode="dropdown" />
+                </LinearLayout>
 
                 <TextView
-                    android:id="@+id/labelTextSize"
-                    android:layout_width="0dp"
+                    android:id="@+id/descTextSize"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:layout_weight="1"
+                    android:layout_marginTop="4dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Texto del gameplay"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp" />
+                    android:text="Se aplica a mensajes, botones y datos durante la partida."
+                    android:textColor="@color/text_muted"
+                    android:textSize="14sp" />
 
-                <Spinner
-                    android:id="@+id/spinnerTextSize"
-                    android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/textSizePreview"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:backgroundTint="@color/accent_gold"
-                    android:spinnerMode="dropdown" />
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/bg_btn_dark"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center"
+                    android:minHeight="64dp"
+                    android:padding="10dp"
+                    android:text="El pueblo despierta. Escucha, debate y decide."
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="italic" />
             </LinearLayout>
 
             <TextView
@@ -162,36 +234,52 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
                 android:fontFamily="@font/grenze"
-                android:text="IDIOMA DEL JUEGO"
+                android:text="IDIOMA"
                 android:textColor="@color/accent_gold"
-                android:textSize="16sp"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="22dp"
                 android:background="@drawable/bg_btn_dark"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="12dp">
+                android:padding="16dp">
 
-                <TextView
-                    android:id="@+id/labelLanguage"
+                <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
                     android:layout_weight="1"
-                    android:fontFamily="@font/cormorant_garamond"
-                    android:text="Seleccionar idioma"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp" />
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/labelLanguage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:text="Idioma del juego"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp" />
+
+                    <TextView
+                        android:id="@+id/descLanguage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:text="La traduccion completa sigue en desarrollo."
+                        android:textColor="@color/text_muted"
+                        android:textSize="14sp" />
+                </LinearLayout>
 
                 <Spinner
                     android:id="@+id/spinnerLanguage"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="150dp"
+                    android:layout_height="48dp"
                     android:backgroundTint="@color/accent_gold"
+                    android:popupBackground="@color/bg_card"
                     android:spinnerMode="dropdown" />
             </LinearLayout>
 
@@ -201,95 +289,53 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="8dp"
                 android:fontFamily="@font/grenze"
-                android:text="CUENTA DEL JUGADOR"
+                android:text="CUENTA Y PERFIL"
                 android:textColor="@color/accent_gold"
-                android:textSize="16sp"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <LinearLayout
+                android:id="@+id/accountCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="20dp"
+                android:layout_marginBottom="22dp"
                 android:background="@drawable/bg_btn_dark"
                 android:orientation="vertical"
                 android:padding="16dp">
 
                 <TextView
-                    android:id="@+id/titleLogin"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/accountStatus"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="12dp"
                     android:fontFamily="@font/grenze"
-                    android:text="INICIAR SESION / REGISTRARSE"
+                    android:text="CUENTA ONLINE - PROXIMAMENTE"
                     android:textColor="@color/text_primary"
-                    android:textSize="14sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
-                <EditText
-                    android:id="@+id/etUsername"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginBottom="10dp"
-                    android:background="@drawable/bg_btn_dark"
-                    android:fontFamily="@font/cormorant_garamond"
-                    android:hint="Nombre de usuario"
-                    android:inputType="text"
-                    android:maxLines="1"
-                    android:paddingHorizontal="12dp"
-                    android:textColor="@color/text_primary"
-                    android:textColorHint="@color/text_muted"
-                    android:textSize="15sp" />
-
-                <EditText
-                    android:id="@+id/etPassword"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginBottom="16dp"
-                    android:background="@drawable/bg_btn_dark"
-                    android:fontFamily="@font/cormorant_garamond"
-                    android:hint="Contrasena"
-                    android:inputType="textPassword"
-                    android:maxLines="1"
-                    android:paddingHorizontal="12dp"
-                    android:textColor="@color/text_primary"
-                    android:textColorHint="@color/text_muted"
-                    android:textSize="15sp" />
-
-                <LinearLayout
+                <TextView
+                    android:id="@+id/accountDescription"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/btnLogin"
-                        style="?android:attr/buttonStyleSmall"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_btn_gold"
-                        android:fontFamily="@font/grenze"
-                        android:text="INGRESAR"
-                        android:textColor="@color/bg_dark"
-                        android:textStyle="bold" />
-
-                    <Button
-                        android:id="@+id/btnRegister"
-                        style="?android:attr/buttonStyleSmall"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_btn_dark"
-                        android:fontFamily="@font/grenze"
-                        android:text="REGISTRARSE"
-                        android:textColor="@color/text_primary"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:text="Cuando se implemente el online, desde aqui podras iniciar sesion y conservar estadisticas, logros y personalizacion."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
             </LinearLayout>
+
+            <Button
+                android:id="@+id/btnResetOptions"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/bg_btn_dark"
+                android:fontFamily="@font/grenze"
+                android:text="RESTABLECER OPCIONES"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
         </LinearLayout>
     </ScrollView>
 </RelativeLayout>
-
-

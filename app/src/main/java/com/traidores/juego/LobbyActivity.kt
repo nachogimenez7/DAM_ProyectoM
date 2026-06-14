@@ -692,7 +692,7 @@ class LobbyActivity : BaseActivity() {
         val maximum: Int
     ) {
         TRANSITION(
-            "ENTRE FASES",
+            "CAMBIO DIA/NOCHE",
             GameTimingConfig.TRANSITION_STEP_SECONDS,
             GameTimingConfig.MIN_TRANSITION_SECONDS,
             GameTimingConfig.MAX_TRANSITION_SECONDS

@@ -1166,10 +1166,11 @@
                     android:minHeight="0dp"
                     android:minWidth="0dp"
                     android:padding="0dp"
-                    android:text="ENTENDIDO"
+                    android:text="EMPEZAR"
                     android:textColor="#24170D"
                     android:textSize="13sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <ImageButton
