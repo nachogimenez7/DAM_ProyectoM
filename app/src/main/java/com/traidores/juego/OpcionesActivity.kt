@@ -30,20 +30,18 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var labelTextSize: TextView
     private lateinit var descTextSize: TextView
     private lateinit var textSizePreview: TextView
-    private lateinit var labelRoleReading: TextView
-    private lateinit var descRoleReading: TextView
     private lateinit var titleLanguage: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var descLanguage: TextView
     private lateinit var titleAccount: TextView
     private lateinit var accountStatus: TextView
     private lateinit var accountDescription: TextView
-    private lateinit var switchSound: SwitchCompat
+    private lateinit var switchMusic: SwitchCompat
+    private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
-    private lateinit var spinnerRoleReading: Spinner
     private lateinit var spinnerLanguage: Spinner
     private lateinit var optionsScroll: ScrollView
     private lateinit var accountCard: LinearLayout
@@ -77,20 +75,18 @@ class OpcionesActivity : BaseActivity() {
         labelTextSize = findViewById(R.id.labelTextSize)
         descTextSize = findViewById(R.id.descTextSize)
         textSizePreview = findViewById(R.id.textSizePreview)
-        labelRoleReading = findViewById(R.id.labelRoleReading)
-        descRoleReading = findViewById(R.id.descRoleReading)
         titleLanguage = findViewById(R.id.titleLanguage)
         labelLanguage = findViewById(R.id.labelLanguage)
         descLanguage = findViewById(R.id.descLanguage)
         titleAccount = findViewById(R.id.titleAccount)
         accountStatus = findViewById(R.id.accountStatus)
         accountDescription = findViewById(R.id.accountDescription)
-        switchSound = findViewById(R.id.switchSound)
+        switchMusic = findViewById(R.id.switchMusic)
+        switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
-        spinnerRoleReading = findViewById(R.id.spinnerRoleReading)
         spinnerLanguage = findViewById(R.id.spinnerLanguage)
         optionsScroll = findViewById(R.id.optionsScroll)
         accountCard = findViewById(R.id.accountCard)
@@ -113,9 +109,6 @@ class OpcionesActivity : BaseActivity() {
                 preferences.edit().putString(PREF_LANGUAGE, currentLanguage).apply()
                 updateOptionTexts()
                 configureTextSizeAdapter(spinnerTextSize.selectedItemPosition.coerceIn(0, 2))
-                configureRoleReadingAdapter(
-                    spinnerRoleReading.selectedItemPosition.coerceIn(0, 2)
-                )
                 if (changed) {
                     Toast.makeText(
                         this@OpcionesActivity,
@@ -145,27 +138,17 @@ class OpcionesActivity : BaseActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        spinnerRoleReading.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: AdapterView<*>?,
-                view: View?,
-                position: Int,
-                id: Long
-            ) {
-                if (updatingControls) return
-                preferences.edit()
-                    .putInt(PREF_ROLE_READING_SECONDS, roleReadingSeconds(position))
-                    .apply()
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        switchMusic.setOnCheckedChangeListener { _, enabled ->
+            if (updatingControls) return@setOnCheckedChangeListener
+            preferences.edit().putBoolean(AudioPreferences.MUSIC_ENABLED, enabled).apply()
+            updateAudioControlState()
+            MusicManager.refresh(this)
         }
 
-        switchSound.setOnCheckedChangeListener { _, enabled ->
+        switchEffects.setOnCheckedChangeListener { _, enabled ->
             if (updatingControls) return@setOnCheckedChangeListener
-            preferences.edit().putBoolean(PREF_SOUND_ON, enabled).apply()
-            updateAudioControlState(enabled)
-            MusicManager.refresh(this)
+            preferences.edit().putBoolean(AudioPreferences.EFFECTS_ENABLED, enabled).apply()
+            updateAudioControlState()
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
 
@@ -187,23 +170,16 @@ class OpcionesActivity : BaseActivity() {
             ?: LANGUAGE_SPANISH
         seekMusic.progress = preferences.getInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
         seekVoices.progress = preferences.getInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
-        switchSound.isChecked = preferences.getBoolean(PREF_SOUND_ON, true)
+        switchMusic.isChecked = AudioPreferences.isMusicEnabled(preferences)
+        switchEffects.isChecked = AudioPreferences.areEffectsEnabled(preferences)
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
         )
-        configureRoleReadingAdapter(
-            roleReadingPosition(
-                preferences.getInt(
-                    PREF_ROLE_READING_SECONDS,
-                    DEFAULT_ROLE_READING_SECONDS
-                )
-            )
-        )
         updatingControls = false
         languageListenerReady = true
-        updateAudioControlState(switchSound.isChecked)
+        updateAudioControlState()
         updateVolumeLabels()
         updateTextSizePreview(spinnerTextSize.selectedItemPosition.coerceIn(0, 2))
     }
@@ -215,14 +191,6 @@ class OpcionesActivity : BaseActivity() {
         spinnerTextSize.setSelection(selection.coerceIn(0, 2), false)
         updatingControls = previousState
         updateTextSizePreview(selection)
-    }
-
-    private fun configureRoleReadingAdapter(selection: Int) {
-        val previousState = updatingControls
-        updatingControls = true
-        spinnerRoleReading.adapter = optionAdapter(roleReadingOptions())
-        spinnerRoleReading.setSelection(selection.coerceIn(0, 2), false)
-        updatingControls = previousState
     }
 
     private fun optionAdapter(values: Array<String>): ArrayAdapter<String> {
@@ -249,31 +217,32 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
-    private fun updateAudioControlState(enabled: Boolean) {
-        seekMusic.isEnabled = enabled
-        seekVoices.isEnabled = enabled
-        val alpha = if (enabled) 1f else 0.42f
-        seekMusic.alpha = alpha
-        seekVoices.alpha = alpha
-        labelMusic.alpha = alpha
-        labelVoices.alpha = alpha
+    private fun updateAudioControlState() {
+        seekMusic.isEnabled = switchMusic.isChecked
+        seekVoices.isEnabled = switchEffects.isChecked
+        val musicAlpha = if (switchMusic.isChecked) 1f else 0.42f
+        val effectsAlpha = if (switchEffects.isChecked) 1f else 0.42f
+        seekMusic.alpha = musicAlpha
+        labelMusic.alpha = musicAlpha
+        seekVoices.alpha = effectsAlpha
+        labelVoices.alpha = effectsAlpha
     }
 
     private fun updateVolumeLabels() {
         if (currentLanguage == LANGUAGE_ENGLISH) {
             labelMusic.text = "Music: ${seekMusic.progress}%"
-            labelVoices.text = "Voices and effects: ${seekVoices.progress}%"
+            labelVoices.text = "Effects: ${seekVoices.progress}%"
         } else {
             labelMusic.text = "Musica: ${seekMusic.progress}%"
-            labelVoices.text = "Voces y efectos: ${seekVoices.progress}%"
+            labelVoices.text = "Efectos: ${seekVoices.progress}%"
         }
     }
 
     private fun updateTextSizePreview(position: Int) {
         val previewSize = when (position.coerceIn(0, 2)) {
-            0 -> 15f
-            2 -> 19f
-            else -> 17f
+            0 -> 14f
+            2 -> 18f
+            else -> 16f
         }
         textSizePreview.setTextSize(TypedValue.COMPLEX_UNIT_SP, previewSize)
         textSizePreview.text = if (currentLanguage == LANGUAGE_ENGLISH) {
@@ -288,14 +257,13 @@ class OpcionesActivity : BaseActivity() {
             titleOptions.text = "OPTIONS"
             subtitleOptions.text = "Adjust the game so it is comfortable to read and hear."
             titleAudio.text = "SOUND AND FEEDBACK"
-            switchSound.text = "Master sound"
-            descSound.text = "Mute music, voices and effects without losing their levels."
+            switchMusic.text = "Music"
+            switchEffects.text = "Sound effects"
+            descSound.text = "Control music and game effects independently."
             switchVibration.text = "Vibration on interaction"
             titleTextSize.text = "READABILITY AND ACCESSIBILITY"
             labelTextSize.text = "Text size"
             descTextSize.text = "Applied to messages, buttons and information during gameplay."
-            labelRoleReading.text = "Initial role reading"
-            descRoleReading.text = "Choose when START appears after receiving your card."
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
@@ -308,14 +276,13 @@ class OpcionesActivity : BaseActivity() {
             titleOptions.text = "OPCIONES"
             subtitleOptions.text = "Ajusta el juego para que sea comodo de leer y escuchar."
             titleAudio.text = "SONIDO Y RESPUESTA"
-            switchSound.text = "Sonido general"
-            descSound.text = "Apaga musica, voces y efectos sin perder sus niveles."
+            switchMusic.text = "Musica"
+            switchEffects.text = "Efectos de sonido"
+            descSound.text = "Controla por separado la musica y los efectos del juego."
             switchVibration.text = "Vibracion al interactuar"
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
             labelTextSize.text = "Tamano del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
-            labelRoleReading.text = "Lectura inicial del rol"
-            descRoleReading.text = "Define cuando aparece EMPEZAR al recibir tu carta."
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traduccion completa sigue en desarrollo."
@@ -331,12 +298,12 @@ class OpcionesActivity : BaseActivity() {
 
     private fun resetOptions() {
         preferences.edit()
-            .putBoolean(PREF_SOUND_ON, true)
+            .putBoolean(AudioPreferences.MUSIC_ENABLED, true)
+            .putBoolean(AudioPreferences.EFFECTS_ENABLED, true)
             .putInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
-            .putInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
             .apply()
 
@@ -344,15 +311,13 @@ class OpcionesActivity : BaseActivity() {
         currentLanguage = LANGUAGE_SPANISH
         seekMusic.progress = DEFAULT_VOLUME
         seekVoices.progress = DEFAULT_VOLUME
-        switchSound.isChecked = true
+        switchMusic.isChecked = true
+        switchEffects.isChecked = true
         switchVibration.isChecked = false
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
-        configureRoleReadingAdapter(
-            roleReadingPosition(DEFAULT_ROLE_READING_SECONDS)
-        )
         updatingControls = false
-        updateAudioControlState(true)
+        updateAudioControlState()
         updateOptionTexts()
         MusicManager.refresh(this)
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
@@ -386,30 +351,6 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
-    private fun roleReadingOptions(): Array<String> {
-        return if (currentLanguage == LANGUAGE_ENGLISH) {
-            arrayOf("Immediate", "6 seconds", "10 seconds")
-        } else {
-            arrayOf("Inmediato", "6 segundos", "10 segundos")
-        }
-    }
-
-    private fun roleReadingSeconds(position: Int): Int {
-        return when (position.coerceIn(0, 2)) {
-            0 -> 0
-            1 -> 6
-            else -> 10
-        }
-    }
-
-    private fun roleReadingPosition(seconds: Int): Int {
-        return when {
-            seconds <= 0 -> 0
-            seconds <= 6 -> 1
-            else -> 2
-        }
-    }
-
     private fun languageChangedMessage(): String {
         return if (currentLanguage == LANGUAGE_ENGLISH) {
             "Language changed to English."
@@ -436,16 +377,13 @@ class OpcionesActivity : BaseActivity() {
 
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
-        private const val PREF_SOUND_ON = "sound_on"
         private const val PREF_MUSIC_VOLUME = "music_volume"
         private const val PREF_VOICE_VOLUME = "voice_volume"
         private const val PREF_VIBRATION_ON = "vibration_on"
         private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
-        private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val PREF_LANGUAGE = "language"
         private const val DEFAULT_VOLUME = 80
         private const val DEFAULT_TEXT_SIZE = 1
-        private const val DEFAULT_ROLE_READING_SECONDS = 6
         private const val LANGUAGE_SPANISH = "Espanol (ES)"
         private const val LANGUAGE_ENGLISH = "English (EN)"
 

@@ -236,6 +236,11 @@ object GameplayTableUi {
                 message = "Votaste a $target.",
                 target = target
             )
+            GamePhase.DESEMPATE_VOTACION -> actionConfirmation(
+                title = "VOTO DE DESEMPATE",
+                message = "Votaste a $target.",
+                target = target
+            )
             GamePhase.ALCALDE_DESEMPATE -> actionConfirmation(
                 title = "DECISION DEL ALCALDE",
                 message = "Elegiste expulsar a $target.",
@@ -374,6 +379,10 @@ object GameplayTableUi {
                 "Escucha a los participantes y senala al mas sospechoso."
             GamePhase.VOTACION ->
                 "Elegi a un jugador y confirma tu voto."
+            GamePhase.RECUENTO_VOTOS ->
+                "El pueblo cuenta los votos recibidos."
+            GamePhase.DESEMPATE_VOTACION ->
+                "Vota solamente entre los jugadores empatados."
             GamePhase.ALCALDE_DESEMPATE ->
                 "El Alcalde debe decidir entre los jugadores empatados."
             GamePhase.RESULTADO -> session.publicAnnouncement.ifBlank { fallback }
@@ -631,7 +640,10 @@ object GameplayTableUi {
             (text.contains("murio") || text.contains("muerte")) && !text.contains("no murio") ->
                 PublicEventType.DEATH
             text.contains("votacion") || text.contains("votar") || text.contains("expuls") ||
-                phase == GamePhase.VOTACION || phase == GamePhase.RESULTADO ->
+                phase == GamePhase.VOTACION ||
+                phase == GamePhase.RECUENTO_VOTOS ||
+                phase == GamePhase.DESEMPATE_VOTACION ||
+                phase == GamePhase.RESULTADO ->
                 PublicEventType.VOTING
             text.contains("debat") || phase == GamePhase.DIA_DEBATE ->
                 PublicEventType.DISCUSSION

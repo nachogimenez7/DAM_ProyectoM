@@ -1,6 +1,5 @@
 package com.traidores.juego
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -9,7 +8,8 @@ import android.widget.Toast
 
 class MainActivity : BaseActivity() {
 
-    private var isSoundOn = true
+    private lateinit var btnMusic: ImageButton
+    private var isMusicOn = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,13 +22,11 @@ class MainActivity : BaseActivity() {
         val btnOptions: Button = findViewById(R.id.btnOptions)
 
         // Bind bottom-bar action
-        val btnSound: ImageButton = findViewById(R.id.btnSound)
+        btnMusic = findViewById(R.id.btnMusic)
         val btnProfile: ImageButton = findViewById(R.id.btnProfile)
 
-        // Load sound preference
-        val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-        isSoundOn = sharedPref.getBoolean("sound_on", true)
-        updateSoundButtonIcon(btnSound)
+        val sharedPref = AudioPreferences.preferences(this)
+        loadAudioState(sharedPref)
 
         // On clicks
         btnPlay.setOnClickListener {
@@ -51,29 +49,32 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, ProfileActivity::class.java))
         }
 
-        btnSound.setOnClickListener {
-            isSoundOn = !isSoundOn
-            sharedPref.edit().putBoolean("sound_on", isSoundOn).apply()
-            updateSoundButtonIcon(btnSound)
+        btnMusic.setOnClickListener {
+            isMusicOn = !isMusicOn
+            sharedPref.edit().putBoolean(AudioPreferences.MUSIC_ENABLED, isMusicOn).apply()
+            updateAudioButtonIcon()
             MusicManager.refresh(this)
-            val msg = if (isSoundOn) "Sonido Activado" else "Sonido Silenciado"
+            val msg = if (isMusicOn) "Musica activada" else "Musica silenciada"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+
     }
 
     override fun onResume() {
         super.onResume()
-        val sharedPref = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-        isSoundOn = sharedPref.getBoolean("sound_on", true)
+        loadAudioState(AudioPreferences.preferences(this))
         MusicManager.playMenuMusic(this)
     }
 
-    private fun updateSoundButtonIcon(btnSound: ImageButton) {
-        if (isSoundOn) {
-            btnSound.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
-        } else {
-            btnSound.setImageResource(android.R.drawable.ic_lock_silent_mode)
-        }
+    private fun loadAudioState(sharedPref: android.content.SharedPreferences) {
+        isMusicOn = AudioPreferences.isMusicEnabled(sharedPref)
+        if (::btnMusic.isInitialized) updateAudioButtonIcon()
+    }
+
+    private fun updateAudioButtonIcon() {
+        btnMusic.setImageResource(if (isMusicOn) R.drawable.ic_music_note else R.drawable.ic_music_off)
+        btnMusic.alpha = if (isMusicOn) 1f else 0.55f
+        btnMusic.contentDescription = if (isMusicOn) "Silenciar musica" else "Activar musica"
     }
 
 }

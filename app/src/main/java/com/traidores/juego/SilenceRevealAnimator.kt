@@ -150,10 +150,10 @@ internal class SilenceRevealAnimator(
 
     private fun playSound() {
         releaseSound()
-        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val soundOn = preferences.getBoolean("sound_on", true)
-        val volume = preferences.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
+        val preferences = AudioPreferences.preferences(context)
+        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
+        val volume = AudioPreferences.effectsVolume(preferences)
+        if (!effectsOn || volume <= 0f) return
         soundPlayer = MediaPlayer.create(context, R.raw.silence_reveal)?.apply {
             setVolume(volume, volume)
             setOnCompletionListener { completed ->
@@ -173,7 +173,6 @@ internal class SilenceRevealAnimator(
     }
 
     private companion object {
-        const val PREFS_NAME = "TraidoresPrefs"
         const val REVEAL_GAP_MS = 300L
     }
 }

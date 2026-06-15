@@ -195,6 +195,20 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp" />
 
+                <Button
+                    android:id="@+id/btnStartGame"
+                    style="@style/BtnGold"
+                    android:layout_height="46dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/bg_btn_gold_ripple"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="INICIAR"
+                    app:autoSizeMaxTextSize="15sp"
+                    app:autoSizeMinTextSize="9sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+
                 <LinearLayout
                     android:id="@+id/debugRoleSection"
                     android:layout_width="match_parent"
@@ -313,20 +327,6 @@
                         android:text="QUITAR"
                         android:textSize="12sp" />
                 </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnStartGame"
-                    style="@style/BtnGold"
-                    android:layout_height="46dp"
-                    android:layout_marginBottom="0dp"
-                    android:background="@drawable/bg_btn_gold_ripple"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:text="INICIAR"
-                    app:autoSizeMaxTextSize="15sp"
-                    app:autoSizeMinTextSize="9sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
             </LinearLayout>
         </ScrollView>
     </LinearLayout>

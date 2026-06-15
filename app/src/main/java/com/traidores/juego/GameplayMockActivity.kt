@@ -25,6 +25,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -71,6 +72,11 @@ class GameplayMockActivity : BaseActivity() {
     private var restoreInitialRoleReadingOnResume = false
     private var isWinnerRevealVisible = false
     private var isJesterVictoryVisible = false
+    private var isVoteResultVisible = false
+    private var isTieVoteVisible = false
+    private var restoreTieVoteAfterChat = false
+    private var voteExpulsionComplete = false
+    private var voteNoExpulsionPresented = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
     private var lastPresentedTransitionKey: String? = null
@@ -118,11 +124,13 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var rolePreviewAnimator: RolePreviewAnimator
     private lateinit var traitorRevealAnimator: TraitorRevealAnimator
     private lateinit var jesterVictoryAnimator: JesterVictoryAnimator
+    private lateinit var voteResultAnimator: VoteResultAnimator
 
     private lateinit var actionFeedbackBanner: LinearLayout
     private lateinit var actionFeedbackBannerMessage: TextView
     private lateinit var actionFeedbackBannerTitle: TextView
     private lateinit var actionFeedbackBannerTone: View
+    private lateinit var actionControls: LinearLayout
     private lateinit var btnAction: Button
     private lateinit var btnCloseRolePreview: ImageButton
     private lateinit var btnContinueRolePreview: Button
@@ -153,6 +161,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var deathRevealOverlay: FrameLayout
     private lateinit var deathRevealPlayerName: TextView
     private lateinit var deathRevealRoleName: TextView
+    private lateinit var eliminatedStatePanel: LinearLayout
     private lateinit var eventLogBackground: ImageView
     private lateinit var eventLogColorBar: View
     private lateinit var eventLogContent: FrameLayout
@@ -240,6 +249,24 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var winnerSummaryPlayers: TextView
     private lateinit var winnerSummaryRounds: TextView
     private lateinit var winnerSummaryTimeline: TextView
+    private lateinit var voteResultOverlay: FrameLayout
+    private lateinit var voteResultPanel: LinearLayout
+    private lateinit var voteResultCards: LinearLayout
+    private lateinit var voteResultScroll: HorizontalScrollView
+    private lateinit var voteResultTitle: TextView
+    private lateinit var voteResultSubtitle: TextView
+    private lateinit var voteResultNotice: TextView
+    private lateinit var btnContinueVoteResult: Button
+    private lateinit var voteKickBoot: ImageView
+    private lateinit var tieVoteOverlay: FrameLayout
+    private lateinit var tieVotePanel: LinearLayout
+    private lateinit var tieVoteCards: GridLayout
+    private lateinit var tieVoteCountdown: TextView
+    private lateinit var tieVoteSubtitle: TextView
+    private lateinit var tieVoteNotice: TextView
+    private lateinit var btnTieVoteChat: Button
+    private lateinit var btnTieRevealMayor: Button
+    private lateinit var btnConfirmTieVote: Button
     private lateinit var themeKey: String
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
@@ -296,6 +323,8 @@ class GameplayMockActivity : BaseActivity() {
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
         isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
         isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: true
+        voteNoExpulsionPresented =
+            savedInstanceState?.getBoolean(STATE_VOTE_NO_EXPULSION_PRESENTED) ?: false
         selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
         val restoredCountdownStage = savedInstanceState
             ?.getString(STATE_COUNTDOWN_STAGE)
@@ -319,6 +348,7 @@ class GameplayMockActivity : BaseActivity() {
         actionFeedbackBannerMessage = findViewById(R.id.actionFeedbackBannerMessage)
         actionFeedbackBannerTitle = findViewById(R.id.actionFeedbackBannerTitle)
         actionFeedbackBannerTone = findViewById(R.id.actionFeedbackBannerTone)
+        actionControls = findViewById(R.id.actionControls)
         btnAction = findViewById(R.id.btnVote)
         btnCloseRolePreview = findViewById(R.id.btnCloseRolePreview)
         btnContinueRolePreview = findViewById(R.id.btnContinueRolePreview)
@@ -350,6 +380,7 @@ class GameplayMockActivity : BaseActivity() {
         deathRevealOverlay = findViewById(R.id.deathRevealOverlay)
         deathRevealPlayerName = findViewById(R.id.deathRevealPlayerName)
         deathRevealRoleName = findViewById(R.id.deathRevealRoleName)
+        eliminatedStatePanel = findViewById(R.id.eliminatedStatePanel)
         eventLogBackground = findViewById(R.id.eventLogBackground)
         eventLogColorBar = findViewById(R.id.eventLogColorBar)
         eventLogContent = findViewById(R.id.eventLogContent)
@@ -469,6 +500,43 @@ class GameplayMockActivity : BaseActivity() {
         oracleRevealPlayer = findViewById(R.id.oracleRevealPlayer)
         btnContinueOracleReveal = findViewById(R.id.btnContinueOracleReveal)
         btnContinueOracleReveal.setOnClickListener { dismissOracleReveal() }
+        voteResultOverlay = findViewById(R.id.voteResultOverlay)
+        voteResultPanel = findViewById(R.id.voteResultPanel)
+        voteResultCards = findViewById(R.id.voteResultCards)
+        voteResultScroll = findViewById(R.id.voteResultScroll)
+        voteResultTitle = findViewById(R.id.voteResultTitle)
+        voteResultSubtitle = findViewById(R.id.voteResultSubtitle)
+        voteResultNotice = findViewById(R.id.voteResultNotice)
+        btnContinueVoteResult = findViewById(R.id.btnContinueVoteResult)
+        voteKickBoot = findViewById(R.id.voteKickBoot)
+        voteResultAnimator = VoteResultAnimator(
+            context = this,
+            handler = autoAdvanceHandler,
+            overlay = voteResultOverlay,
+            panel = voteResultPanel,
+            cards = voteResultCards,
+            scroll = voteResultScroll,
+            title = voteResultTitle,
+            subtitle = voteResultSubtitle,
+            notice = voteResultNotice,
+            continueButton = btnContinueVoteResult,
+            boot = voteKickBoot,
+            roleImageFor = ::roleImageFor,
+            dp = ::dp
+        )
+        btnContinueVoteResult.setOnClickListener { handleVoteResultContinue() }
+        tieVoteOverlay = findViewById(R.id.tieVoteOverlay)
+        tieVotePanel = findViewById(R.id.tieVotePanel)
+        tieVoteCards = findViewById(R.id.tieVoteCards)
+        tieVoteCountdown = findViewById(R.id.tieVoteCountdown)
+        tieVoteSubtitle = findViewById(R.id.tieVoteSubtitle)
+        tieVoteNotice = findViewById(R.id.tieVoteNotice)
+        btnTieVoteChat = findViewById(R.id.btnTieVoteChat)
+        btnTieRevealMayor = findViewById(R.id.btnTieRevealMayor)
+        btnConfirmTieVote = findViewById(R.id.btnConfirmTieVote)
+        btnTieVoteChat.setOnClickListener { openChatFromTieVote() }
+        btnTieRevealMayor.setOnClickListener { revealMayorFromTieVote() }
+        btnConfirmTieVote.setOnClickListener { confirmTieVoteSelection() }
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
         traitorRevealContent = findViewById(R.id.traitorRevealContent)
         traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
@@ -610,6 +678,8 @@ class GameplayMockActivity : BaseActivity() {
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = false)
+        cancelVoteResult()
+        hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = false)
@@ -637,6 +707,8 @@ class GameplayMockActivity : BaseActivity() {
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = true)
+        cancelVoteResult()
+        hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
         cancelFeedbackPresentation(keepPending = true)
@@ -671,6 +743,18 @@ class GameplayMockActivity : BaseActivity() {
         }
         if (
             ::session.isInitialized &&
+            voteNoExpulsionPresented &&
+            !isVoteResultVisible &&
+            session.phase == GamePhase.RESULTADO &&
+            session.dayEliminationTarget.isBlank()
+        ) {
+            isVoteResultVisible = true
+            voteResultAnimator.show(session)
+            voteResultAnimator.showNoExpulsion()
+            return
+        }
+        if (
+            ::session.isInitialized &&
             !isDayNightTransitionRunning &&
             !isDeathRevealRunning &&
             !isSilenceRevealRunning
@@ -690,6 +774,10 @@ class GameplayMockActivity : BaseActivity() {
         outState.putInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT, presentedSpecialVictoryCount)
         outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
         outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
+        outState.putBoolean(
+            STATE_VOTE_NO_EXPULSION_PRESENTED,
+            voteNoExpulsionPresented
+        )
         outState.putBoolean(
             STATE_ROLE_PREVIEW_OPEN,
             isRolePreviewOpen || restoreRolePreviewOnResume
@@ -715,6 +803,8 @@ class GameplayMockActivity : BaseActivity() {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isOracleRevealVisible ||
+            isVoteResultVisible ||
+            isTieVoteVisible ||
             feedbackState.privateVisible
         ) return
         if (isJesterVictoryVisible) return
@@ -776,7 +866,9 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
         if (
-            session.phase == GamePhase.DIA_DEBATE &&
+            (session.phase == GamePhase.DIA_DEBATE ||
+                session.phase == GamePhase.VOTACION ||
+                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
             human.role?.key == "alcalde" &&
             !session.alcaldeRevealed
         ) {
@@ -810,6 +902,8 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
             GamePhase.CONTRAPUNTO -> GameEngine.resolveContrapunto(session, "")
             GamePhase.VOTACION -> GameEngine.resolveVoting(session, "")
+            GamePhase.RECUENTO_VOTOS -> session
+            GamePhase.DESEMPATE_VOTACION -> GameEngine.resolveTieVoting(session, "")
             GamePhase.ALCALDE_DESEMPATE -> session
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
         }
@@ -1102,7 +1196,9 @@ class GameplayMockActivity : BaseActivity() {
             GameEngine.canDesertorReconsider(session) ||
             (session.phase == GamePhase.NOCHE_ORACULO &&
                 GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) ||
-            (session.phase == GamePhase.DIA_DEBATE &&
+            ((session.phase == GamePhase.DIA_DEBATE ||
+                session.phase == GamePhase.VOTACION ||
+                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
                 GameEngine.humanPlayer(session).role?.key == "alcalde" &&
                 !session.alcaldeRevealed)
         val label = when {
@@ -1113,7 +1209,9 @@ class GameplayMockActivity : BaseActivity() {
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
             session.phase == GamePhase.NOCHE_ORACULO &&
                 GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO) -> "GUARDAR PODER"
-            session.phase == GamePhase.DIA_DEBATE &&
+            (session.phase == GamePhase.DIA_DEBATE ||
+                session.phase == GamePhase.VOTACION ||
+                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
                 GameEngine.humanPlayer(session).role?.key == "alcalde" &&
                 !session.alcaldeRevealed -> "REVELARME"
             mandatoryTargetSelection -> "ELEGIR OBJETIVO"
@@ -1565,6 +1663,16 @@ class GameplayMockActivity : BaseActivity() {
                 "Selecciona un jugador y confirma tu voto.",
                 "VOTAR"
             )
+            GamePhase.RECUENTO_VOTOS -> PhaseText(
+                "RECUENTO",
+                "El pueblo cuenta los votos.",
+                "CONTINUAR"
+            )
+            GamePhase.DESEMPATE_VOTACION -> PhaseText(
+                "DESEMPATE",
+                "Vota solamente entre los jugadores empatados.",
+                "VOTAR"
+            )
             GamePhase.ALCALDE_DESEMPATE -> PhaseText(
                 "DESEMPATE",
                 "El Alcalde decide entre los jugadores empatados.",
@@ -1608,6 +1716,13 @@ class GameplayMockActivity : BaseActivity() {
         renderChatPanelVisibility(animate = true)
         renderChatBadge()
         renderNewChatMessageNotice()
+        if (
+            restoreTieVoteAfterChat &&
+            session.phase == GamePhase.DESEMPATE_VOTACION
+        ) {
+            restoreTieVoteAfterChat = false
+            gameplayRoot.post { showTieVoteWindow() }
+        }
     }
 
     private fun renderChatPanelVisibility(animate: Boolean) {
@@ -1708,25 +1823,25 @@ class GameplayMockActivity : BaseActivity() {
         )
         chatPanel.layoutParams = params
         chatPanel.setPadding(
-            dp(if (isChatKeyboardCompact) 6 else 9),
-            dp(if (isChatKeyboardCompact) 4 else 9),
-            dp(if (isChatKeyboardCompact) 6 else 9),
-            dp(if (isChatKeyboardCompact) 5 else 9)
+            dp(if (isChatKeyboardCompact) 7 else 11),
+            dp(if (isChatKeyboardCompact) 5 else 11),
+            dp(if (isChatKeyboardCompact) 7 else 11),
+            dp(if (isChatKeyboardCompact) 6 else 11)
         )
         chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 22 else 28)
+            height = dp(if (isChatKeyboardCompact) 26 else 34)
         }
         chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 40)
+            height = dp(if (isChatKeyboardCompact) 36 else 42)
         }
         chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 18 else 20)
+            height = dp(if (isChatKeyboardCompact) 19 else 22)
         }
         chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 40)
+            height = dp(if (isChatKeyboardCompact) 36 else 42)
         }
         btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 40)
+            height = dp(if (isChatKeyboardCompact) 36 else 42)
         }
     }
 
@@ -1737,8 +1852,8 @@ class GameplayMockActivity : BaseActivity() {
                 text = "Todavia no hay mensajes."
                 gravity = Gravity.CENTER
                 setPadding(dp(8), dp(16), dp(8), dp(16))
-                setTextColor(getColor(R.color.text_muted))
-                textSize = 11f * appliedGameplayTextScale
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 12f * appliedGameplayTextScale
             })
             return
         }
@@ -1768,7 +1883,7 @@ class GameplayMockActivity : BaseActivity() {
                 setTextColor(
                     getColor(if (ownMessage) R.color.bg_dark else R.color.accent_gold)
                 )
-                textSize = 8f * appliedGameplayTextScale
+                textSize = 9f * appliedGameplayTextScale
                 typeface = Typeface.DEFAULT_BOLD
             })
             bubble.addView(TextView(this).apply {
@@ -1777,7 +1892,7 @@ class GameplayMockActivity : BaseActivity() {
                 setTextColor(
                     getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary)
                 )
-                textSize = 11f * appliedGameplayTextScale
+                textSize = 12f * appliedGameplayTextScale
             })
             row.addView(
                 bubble,
@@ -1901,6 +2016,7 @@ class GameplayMockActivity : BaseActivity() {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isOracleRevealVisible ||
+            isVoteResultVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
@@ -1955,6 +2071,9 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun renderCountdown(seconds: Int) {
         phaseCountdown.text = seconds.coerceAtLeast(0).toString()
+        if (::tieVoteCountdown.isInitialized && session.phase == GamePhase.DESEMPATE_VOTACION) {
+            tieVoteCountdown.text = seconds.coerceAtLeast(0).toString()
+        }
         val urgent = seconds in 1..5
         phaseCountdown.setTextColor(getColor(R.color.text_primary))
         phaseProgressFill.setBackgroundColor(getColor(R.color.accent_gold))
@@ -2014,6 +2133,7 @@ class GameplayMockActivity : BaseActivity() {
             }
         }
 
+        val expiredPhase = session.phase
         clearCountdown()
         session = when (session.phase) {
             GamePhase.NOCHE_ASESINO,
@@ -2042,10 +2162,21 @@ class GameplayMockActivity : BaseActivity() {
                     GameEngine.resolveVoting(session, "")
                 }
             }
+            GamePhase.RECUENTO_VOTOS -> session
+            GamePhase.DESEMPATE_VOTACION -> {
+                if (GameEngine.requiresHumanInput(session)) {
+                    GameEngine.resolveHumanTimeout(session)
+                } else {
+                    GameEngine.resolveTieVoting(session, "")
+                }
+            }
             GamePhase.ALCALDE_DESEMPATE -> GameEngine.resolveAlcaldeTieTimeout(session)
             GamePhase.REPARTO -> GameEngine.startNight(session)
             GamePhase.AMANECER -> GameEngine.resolveDawn(session)
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
+        }
+        if (expiredPhase == GamePhase.DESEMPATE_VOTACION) {
+            hideTieVoteWindow(clearSelection = true)
         }
         clearSelection()
         renderGame()
@@ -2076,8 +2207,10 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.CONTRAPUNTO -> timing.discussionSeconds
             GamePhase.VOTACION,
             GamePhase.ALCALDE_DESEMPATE -> timing.votingSeconds
+            GamePhase.DESEMPATE_VOTACION -> (timing.votingSeconds / 2).coerceAtLeast(10)
             GamePhase.REPARTO,
             GamePhase.AMANECER,
+            GamePhase.RECUENTO_VOTOS,
             GamePhase.RESULTADO -> null
         }
     }
@@ -2170,6 +2303,8 @@ class GameplayMockActivity : BaseActivity() {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isOracleRevealVisible ||
+            isVoteResultVisible ||
+            isTieVoteVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isTraitorRevealRunning ||
@@ -2377,7 +2512,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun renderPersonalStatus() {
         val status = GameplayTableUi.personalStatus(session)
-        currentPlayerStatus.visibility = if (status == null) View.GONE else View.VISIBLE
+        val eliminated = !GameEngine.humanPlayer(session).alive
+        actionControls.visibility = if (eliminated) View.GONE else View.VISIBLE
+        eliminatedStatePanel.visibility = if (eliminated) View.VISIBLE else View.GONE
+        currentPlayerStatus.visibility =
+            if (status == null || eliminated) View.GONE else View.VISIBLE
         currentPlayerStatus.text = status.orEmpty()
         val color = when (status) {
             "ELIMINADO" -> Color.parseColor("#A83232")
@@ -2532,6 +2671,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o continuar a la votacion."
             GamePhase.CONTRAPUNTO -> "Selecciona un participante y confirma SENALAR."
             GamePhase.VOTACION -> "Selecciona un jugador y confirma VOTAR."
+            GamePhase.DESEMPATE_VOTACION -> "Selecciona un jugador empatado y confirma VOTAR."
             GamePhase.ALCALDE_DESEMPATE -> "Selecciona un jugador empatado y confirma DECIDIR."
             else -> "Toca una carta valida."
         }
@@ -2543,6 +2683,8 @@ class GameplayMockActivity : BaseActivity() {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isOracleRevealVisible ||
+            isVoteResultVisible ||
+            isTieVoteVisible ||
             isJesterVictoryVisible ||
             isWinnerRevealVisible ||
             isRolePreviewOpen ||
@@ -2554,9 +2696,21 @@ class GameplayMockActivity : BaseActivity() {
             showPendingPrivateFeedback()
             return
         }
+        if (
+            voteNoExpulsionPresented &&
+            session.phase == GamePhase.RESULTADO &&
+            session.dayEliminationTarget.isBlank()
+        ) {
+            isVoteResultVisible = true
+            voteResultAnimator.show(session)
+            voteResultAnimator.showNoExpulsion()
+            return
+        }
         if (maybeShowNextDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
         if (maybeShowOracleReveal()) return
+        if (maybeShowTieVote()) return
+        if (maybeShowVoteResult()) return
         if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
@@ -2604,6 +2758,277 @@ class GameplayMockActivity : BaseActivity() {
         val player = pendingSilenceReveals.pollFirst() ?: return false
         showSilenceReveal(player)
         return true
+    }
+
+    private fun maybeShowVoteResult(): Boolean {
+        if (isVoteResultVisible) return true
+        if (session.phase != GamePhase.RECUENTO_VOTOS) return false
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        MusicManager.pauseForTransition()
+        voteExpulsionComplete = false
+        voteNoExpulsionPresented = false
+        isVoteResultVisible = true
+        voteResultAnimator.show(session)
+        return true
+    }
+
+    private fun maybeShowTieVote(): Boolean {
+        if (isTieVoteVisible) return true
+        if (
+            session.phase != GamePhase.DESEMPATE_VOTACION ||
+            isChatOpen ||
+            restoreTieVoteAfterChat
+        ) {
+            return false
+        }
+        showTieVoteWindow()
+        return true
+    }
+
+    private fun showTieVoteWindow() {
+        if (session.phase != GamePhase.DESEMPATE_VOTACION) return
+        isTieVoteVisible = true
+        tieVoteOverlay.visibility = View.VISIBLE
+        tieVoteOverlay.alpha = 0f
+        tieVotePanel.scaleX = 0.96f
+        tieVotePanel.scaleY = 0.96f
+        renderTieVoteWindow()
+        tieVoteOverlay.animate().alpha(1f).setDuration(180L).start()
+        tieVotePanel.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
+        ensureCountdownForCurrentPhase()
+    }
+
+    private fun renderTieVoteWindow() {
+        val candidates = session.tieVoteCandidates.mapNotNull { candidate ->
+            GameEngine.playerByName(session, candidate)
+        }
+        tieVoteCards.removeAllViews()
+        tieVoteCards.columnCount = if (candidates.size <= 2) candidates.size.coerceAtLeast(1) else 2
+        tieVoteCards.rowCount = if (candidates.size <= 2) 1 else 2
+        val cardWidth = if (candidates.size <= 2) 132 else 116
+        candidates.forEach { player ->
+            val card = createTieVoteCard(player)
+            tieVoteCards.addView(
+                card,
+                GridLayout.LayoutParams().apply {
+                    width = dp(cardWidth)
+                    height = dp(if (candidates.size <= 2) 150 else 124)
+                    setMargins(dp(6), dp(4), dp(6), dp(4))
+                }
+            )
+        }
+
+        val human = GameEngine.humanPlayer(session)
+        val hiddenHumanMayor =
+            human.alive && human.role?.key == "alcalde" && !session.alcaldeRevealed
+        btnTieRevealMayor.visibility = if (hiddenHumanMayor) View.VISIBLE else View.GONE
+        btnTieVoteChat.isEnabled = GameEngine.canHumanChat(session)
+        btnTieVoteChat.alpha = if (btnTieVoteChat.isEnabled) 1f else 0.45f
+        tieVoteSubtitle.text = when {
+            session.alcaldeRevealed && human.role?.key == "alcalde" ->
+                "Tu voto vale doble. Elegi entre las cartas empatadas."
+            else -> "Vota nuevamente entre los jugadores empatados."
+        }
+        tieVoteNotice.text =
+            "SI EL EMPATE SE REPITE, NADIE SERA EXPULSADO."
+        renderTieVoteSelection()
+    }
+
+    private fun createTieVoteCard(player: GamePlayer): View {
+        val actionable = GameEngine.canActOnTarget(session, player.name)
+        val selected = selectedTarget == player.name
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(7), dp(7), dp(7), dp(5))
+            alpha = if (actionable) 1f else 0.5f
+            background = tieVoteCardBackground(selected, actionable)
+            isClickable = actionable
+            isFocusable = actionable
+            contentDescription = when {
+                player.isHuman -> "${player.name}, tu carta empatada"
+                actionable -> "${player.name}, tocar para votar"
+                else -> "${player.name}, no disponible"
+            }
+            setOnClickListener {
+                if (!actionable) {
+                    GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.ERROR)
+                    return@setOnClickListener
+                }
+                GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.SELECT)
+                selectedTarget = player.name
+                renderTieVoteWindow()
+            }
+        }
+        val card = FrameLayout(this)
+        card.addView(
+            ImageView(this).apply {
+                setImageResource(R.drawable.card_back_traidores)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            },
+            FrameLayout.LayoutParams(dp(54), dp(72), Gravity.CENTER)
+        )
+        card.addView(
+            TextView(this).apply {
+                text = player.initial
+                gravity = Gravity.CENTER
+                setBackgroundResource(R.drawable.bg_player_avatar)
+                setTextColor(getColor(R.color.bg_dark))
+                textSize = 15f
+                setTypeface(null, Typeface.BOLD)
+            },
+            FrameLayout.LayoutParams(dp(30), dp(30), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(8)
+            }
+        )
+        container.addView(card, LinearLayout.LayoutParams(dp(62), dp(78)))
+        container.addView(
+            TextView(this).apply {
+                text = player.name
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
+                textSize = 12f
+                typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
+                setTypeface(typeface, Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24))
+        )
+        container.addView(
+            TextView(this).apply {
+                text = when {
+                    player.isHuman -> "TU CARTA"
+                    selected -> "SELECCIONADO"
+                    else -> "TOCAR PARA VOTAR"
+                }
+                gravity = Gravity.CENTER
+                setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_secondary))
+                textSize = 8f
+                setTypeface(null, Typeface.BOLD)
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(18))
+        )
+        return container
+    }
+
+    private fun tieVoteCardBackground(selected: Boolean, enabled: Boolean): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor(if (selected) "#F03A2B1C" else "#E6241C14"))
+            setStroke(
+                dp(if (selected) 3 else 1),
+                getColor(
+                    when {
+                        selected -> R.color.accent_gold
+                        enabled -> R.color.btn_dark_border
+                        else -> R.color.text_muted
+                    }
+                )
+            )
+            cornerRadius = dp(10).toFloat()
+        }
+    }
+
+    private fun renderTieVoteSelection() {
+        val validSelection = selectedTarget.isNotBlank() &&
+            GameEngine.canActOnTarget(session, selectedTarget)
+        btnConfirmTieVote.isEnabled = validSelection
+        btnConfirmTieVote.alpha = if (validSelection) 1f else 0.55f
+        btnConfirmTieVote.text = if (validSelection) {
+            "VOTAR A ${selectedTarget.uppercase()}"
+        } else {
+            "ELEGIR CARTA"
+        }
+    }
+
+    private fun confirmTieVoteSelection() {
+        if (!GameEngine.canActOnTarget(session, selectedTarget)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            return
+        }
+        hideTieVoteWindow(clearSelection = false)
+        performTargetAction(selectedTarget)
+    }
+
+    private fun revealMayorFromTieVote() {
+        val before = session
+        session = GameEngine.revealAlcalde(session)
+        if (before == session) return
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        renderTieVoteWindow()
+    }
+
+    private fun openChatFromTieVote() {
+        if (!GameEngine.canHumanChat(session)) return
+        restoreTieVoteAfterChat = true
+        hideTieVoteWindow(clearSelection = false)
+        toggleChatPanel()
+    }
+
+    private fun hideTieVoteWindow(clearSelection: Boolean) {
+        if (!::tieVoteOverlay.isInitialized) return
+        tieVoteOverlay.animate().cancel()
+        tieVotePanel.animate().cancel()
+        tieVoteOverlay.visibility = View.GONE
+        tieVoteOverlay.alpha = 1f
+        tieVotePanel.scaleX = 1f
+        tieVotePanel.scaleY = 1f
+        isTieVoteVisible = false
+        if (clearSelection) clearSelection()
+    }
+
+    private fun handleVoteResultContinue() {
+        if (!isVoteResultVisible || !btnContinueVoteResult.isEnabled) return
+        GameplayEffects.play(this, GameplayEffect.PANEL)
+
+        if (voteNoExpulsionPresented) {
+            voteNoExpulsionPresented = false
+            isVoteResultVisible = false
+            voteResultAnimator.hide()
+            MusicManager.resumeGamePhaseAfterTransition(this, session)
+            renderGame()
+            return
+        }
+
+        if (
+            session.phase == GamePhase.RECUENTO_VOTOS &&
+            session.tieVoteCandidates.isEmpty() &&
+            session.dayEliminationTarget.isNotBlank() &&
+            !voteExpulsionComplete
+        ) {
+            voteResultAnimator.playExpulsion(session) {
+                voteExpulsionComplete = true
+            }
+            return
+        }
+
+        val advanced = GameEngine.continueAfterVoteRecount(session)
+        if (
+            advanced.phase == GamePhase.RESULTADO &&
+            advanced.dayEliminationTarget.isBlank()
+        ) {
+            session = advanced
+            voteNoExpulsionPresented = true
+            voteResultAnimator.showNoExpulsion()
+            return
+        }
+
+        session = advanced
+        isVoteResultVisible = false
+        voteExpulsionComplete = false
+        voteResultAnimator.hide()
+        clearSelection()
+        MusicManager.resumeGamePhaseAfterTransition(this, session)
+        renderGame()
+    }
+
+    private fun cancelVoteResult() {
+        if (!::voteResultAnimator.isInitialized) return
+        voteResultAnimator.hide()
+        isVoteResultVisible = false
+        voteExpulsionComplete = false
     }
 
     private fun showSilenceReveal(player: GamePlayer) {
@@ -2782,9 +3207,9 @@ class GameplayMockActivity : BaseActivity() {
             .getInt("gameplay_text_size", 1)
             .coerceIn(0, 2)
         val requestedScale = when (preference) {
-            0 -> 1f
-            2 -> 1.24f
-            else -> 1.12f
+            0 -> 0.9f
+            2 -> 1.15f
+            else -> 1f
         }
         val relativeScale = requestedScale / appliedGameplayTextScale
         if (relativeScale != 1f) {
@@ -3054,10 +3479,10 @@ class GameplayMockActivity : BaseActivity() {
     )
 
     companion object {
-        private const val CHAT_PANEL_WIDTH_RATIO = 0.42f
+        private const val CHAT_PANEL_WIDTH_RATIO = 0.46f
         private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.52f
-        private const val CHAT_PANEL_MIN_WIDTH_DP = 300
-        private const val CHAT_PANEL_MAX_WIDTH_DP = 380
+        private const val CHAT_PANEL_MIN_WIDTH_DP = 320
+        private const val CHAT_PANEL_MAX_WIDTH_DP = 420
         private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 340
         private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 440
         private const val CHAT_PANEL_COMPACT_MARGIN_DP = 4
@@ -3069,6 +3494,8 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
+        private const val STATE_VOTE_NO_EXPULSION_PRESENTED =
+            "vote_no_expulsion_presented"
         private const val STATE_ROLE_PREVIEW_OPEN = "role_preview_open"
         private const val STATE_INITIAL_ROLE_READING = "initial_role_reading"
         private const val STATE_SELECTED_TARGET = "selected_target"

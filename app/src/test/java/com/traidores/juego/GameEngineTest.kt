@@ -215,7 +215,7 @@ class GameEngineTest {
         val firstMiss = GameEngine.resolveHumanTimeout(firstVote)
         val warnedHuman = GameEngine.humanPlayer(firstMiss)
 
-        assertEquals(GamePhase.RESULTADO, firstMiss.phase)
+        assertEquals(GamePhase.RECUENTO_VOTOS, firstMiss.phase)
         assertTrue(warnedHuman.alive)
         assertEquals(1, warnedHuman.consecutiveVoteAfk)
         assertTrue(firstMiss.privateHint.contains("proxima votacion"))
@@ -659,8 +659,166 @@ class GameEngineTest {
         val resolved = GameEngine.chooseAlcaldeTie(tied, "Asesino")
 
         assertTrue(revealed.alcaldeRevealed)
-        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
+        assertEquals(3, resolved.voteRound)
         assertEquals("Asesino", resolved.dayEliminationTarget)
+    }
+
+    @Test
+    fun firstTieOpensRestrictedSecondVoteAndKeepsChatAvailable() {
+        val recount = baseSession().copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            voteRound = 1,
+            tieVoteCandidates = listOf("Asesino", "Policia"),
+            votes = mapOf(
+                "Humano" to "Asesino",
+                "Asesino" to "Policia"
+            )
+        )
+
+        val tieVote = GameEngine.continueAfterVoteRecount(recount)
+
+        assertEquals(GamePhase.DESEMPATE_VOTACION, tieVote.phase)
+        assertTrue(GameEngine.canHumanChat(tieVote))
+        assertTrue(GameEngine.canActOnTarget(tieVote, "Asesino"))
+        assertFalse(GameEngine.canActOnTarget(tieVote, "Medico"))
+        assertEquals("VOTAR", GameEngine.targetActionLabel(tieVote, "Asesino"))
+    }
+
+    @Test
+    fun secondVoteOnlyAcceptsTiedCandidatesAndCandidatesCannotVoteThemselves() {
+        val tieVote = baseSession().copy(
+            phase = GamePhase.DESEMPATE_VOTACION,
+            tieVoteCandidates = listOf("Asesino", "Policia")
+        )
+
+        val invalid = GameEngine.resolveTieVoting(tieVote, "Medico")
+        val resolved = GameEngine.resolveTieVoting(tieVote, "Asesino")
+
+        assertEquals(tieVote, invalid)
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
+        assertEquals(2, resolved.voteRound)
+        assertTrue(resolved.votes.values.all { it in tieVote.tieVoteCandidates })
+        assertTrue(resolved.votes.all { (voter, target) -> voter != target })
+    }
+
+    @Test
+    fun repeatedTieWithoutMayorEndsTheDayWithoutExpulsion() {
+        val recount = baseSession().copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            players = basePlayers().filterNot { it.role?.key == "alcalde" },
+            voteRound = 2,
+            tieVoteCandidates = listOf("Asesino", "Policia"),
+            dayEliminationTarget = ""
+        )
+
+        val result = GameEngine.continueAfterVoteRecount(recount)
+
+        assertEquals(GamePhase.RESULTADO, result.phase)
+        assertEquals("", result.dayEliminationTarget)
+        assertTrue(result.publicAnnouncement.contains("Nadie sera expulsado"))
+    }
+
+    @Test
+    fun hiddenHumanMayorMayRevealAfterRepeatedTieAndChooseTheExpelledPlayer() {
+        val recount = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            alcaldeRevealed = false,
+            voteRound = 2,
+            tieVoteCandidates = listOf("Asesino", "Policia"),
+            dayEliminationTarget = ""
+        )
+
+        val mayorDecision = GameEngine.continueAfterVoteRecount(recount)
+        val revealed = GameEngine.revealAlcalde(mayorDecision)
+        val result = GameEngine.chooseAlcaldeTie(revealed, "Asesino")
+
+        assertEquals(GamePhase.ALCALDE_DESEMPATE, mayorDecision.phase)
+        assertFalse(mayorDecision.alcaldeRevealed)
+        assertTrue(revealed.alcaldeRevealed)
+        assertTrue(GameEngine.canActOnTarget(revealed, "Asesino"))
+        assertEquals(GamePhase.RECUENTO_VOTOS, result.phase)
+        assertEquals(3, result.voteRound)
+        assertEquals("Asesino", result.dayEliminationTarget)
+    }
+
+    @Test
+    fun humanMayorCanRevealDuringTheSecondVote() {
+        val tieVote = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.DESEMPATE_VOTACION,
+            alcaldeRevealed = false,
+            tieVoteCandidates = listOf("Asesino", "Policia")
+        )
+
+        val revealed = GameEngine.revealAlcalde(tieVote)
+
+        assertTrue(revealed.alcaldeRevealed)
+        assertEquals(GamePhase.DESEMPATE_VOTACION, revealed.phase)
+        assertTrue(revealed.publicAnnouncement.contains("Alcalde"))
+    }
+
+    @Test
+    fun mayorCandidateSurvivesARepeatedTwoPlayerTieThroughCorruption() {
+        val recount = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            alcaldeRevealed = false,
+            voteRound = 2,
+            tieVoteCandidates = listOf("Humano", "Asesino"),
+            dayEliminationTarget = ""
+        )
+
+        val corruption = GameEngine.continueAfterVoteRecount(recount)
+
+        assertEquals(GamePhase.RECUENTO_VOTOS, corruption.phase)
+        assertTrue(corruption.alcaldeRevealed)
+        assertTrue(corruption.alcaldeCorruption)
+        assertEquals(4, corruption.voteRound)
+        assertEquals("Asesino", corruption.dayEliminationTarget)
+        assertTrue(corruption.publicAnnouncement.contains("Corrupcion"))
+    }
+
+    @Test
+    fun voteVisibilityDefaultsToShowingIndividualVoters() {
+        assertTrue(baseSession().showIndividualVotes)
+    }
+
+    @Test
+    fun debugTieOptionForcesTheInitialVoteToEndTied() {
+        val session = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            debugForceVoteTies = true
+        )
+
+        val recount = GameEngine.resolveVoting(session, "Asesino")
+
+        assertEquals(GamePhase.RECUENTO_VOTOS, recount.phase)
+        assertTrue(recount.tieVoteCandidates.size >= 2)
+        assertEquals("", recount.dayEliminationTarget)
+        assertTrue(recount.votes.all { (voter, target) -> voter != target })
+        assertTrue(GameEngine.weightedVoteLeaders(recount, recount.votes).size >= 2)
+    }
+
+    @Test
+    fun debugTieOptionAlsoForcesTheSecondVoteToEndTied() {
+        val initialRecount = GameEngine.resolveVoting(
+            baseSession().copy(
+                phase = GamePhase.VOTACION,
+                debugForceVoteTies = true
+            ),
+            "Asesino"
+        )
+        val tieVote = GameEngine.continueAfterVoteRecount(initialRecount)
+        val selectedTarget = tieVote.tieVoteCandidates.first {
+            it != GameEngine.humanPlayer(tieVote).name
+        }
+
+        val finalRecount = GameEngine.resolveTieVoting(tieVote, selectedTarget)
+
+        assertEquals(GamePhase.RECUENTO_VOTOS, finalRecount.phase)
+        assertEquals(2, finalRecount.voteRound)
+        assertTrue(finalRecount.tieVoteCandidates.size >= 2)
+        assertEquals("", finalRecount.dayEliminationTarget)
+        assertTrue(finalRecount.votes.all { (voter, target) -> voter != target })
     }
 
     @Test
@@ -897,9 +1055,15 @@ class GameEngineTest {
 
         val resolved = GameEngine.resolveVoting(session, "Asesino")
 
-        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
         assertEquals("", resolved.dayEliminationTarget)
-        assertTrue(resolved.publicAnnouncement.contains("No hubo mayoria clara"))
+        assertEquals(1, resolved.voteRound)
+        assertEquals(setOf("Humano", "Asesino"), resolved.tieVoteCandidates.toSet())
+
+        val tieVote = GameEngine.continueAfterVoteRecount(resolved)
+
+        assertEquals(GamePhase.DESEMPATE_VOTACION, tieVote.phase)
+        assertTrue(tieVote.publicAnnouncement.contains("Si el empate se repite"))
     }
 
     @Test
@@ -1028,9 +1192,10 @@ class GameEngineTest {
 
         val resolved = GameEngine.resolveHumanTargetAction(session, "Asesino")
 
-        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
         assertTrue(resolved.votes.containsKey("Humano"))
         assertEquals("Asesino", resolved.votes["Humano"])
+        assertEquals(1, resolved.voteRound)
     }
 
     @Test
@@ -1509,7 +1674,7 @@ class GameEngineTest {
 
         assertFalse(GameEngine.requiresHumanInput(session))
         assertTrue(GameEngine.shouldAutoAdvance(session))
-        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
         assertFalse(resolved.votes.containsKey("Humano"))
         assertTrue(resolved.votes.isNotEmpty())
     }

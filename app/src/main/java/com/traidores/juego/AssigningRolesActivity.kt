@@ -256,10 +256,10 @@ class AssigningRolesActivity : BaseActivity() {
 
     private fun playDealingSound() {
         releaseDealingSound()
-        val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        val soundOn = preferences.getBoolean("sound_on", true)
-        val volume = preferences.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
+        val preferences = AudioPreferences.preferences(this)
+        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
+        val volume = AudioPreferences.effectsVolume(preferences)
+        if (!effectsOn || volume <= 0f) return
 
         dealingSoundPlayer = MediaPlayer.create(this, R.raw.card_shuffle_deal)?.apply {
             setVolume(volume, volume)

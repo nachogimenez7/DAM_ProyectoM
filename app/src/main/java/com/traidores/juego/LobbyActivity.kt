@@ -410,8 +410,12 @@ class LobbyActivity : BaseActivity() {
         }
         refreshValues()
 
+        val dialogContent = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
         val dialog = AlertDialog.Builder(this)
-            .setView(content)
+            .setView(dialogContent)
             .setNegativeButton("CANCELAR", null)
             .setNeutralButton("RESTABLECER", null)
             .setPositiveButton("APLICAR", null)
@@ -433,7 +437,19 @@ class LobbyActivity : BaseActivity() {
 
     private fun showAdvancedOptionsDialog() {
         var revealRolesOnDeath = session.revealRolesOnDeath
+        var showIndividualVotes = session.showIndividualVotes
         var debugBotsObeyVoteCommands = session.debugBotsObeyVoteCommands
+        var debugForceVoteTies = session.debugForceVoteTies
+        val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        var roleReadingSeconds = preferences
+            .getInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
+            .let {
+                when {
+                    it <= 0 -> 0
+                    it <= 6 -> 6
+                    else -> 10
+                }
+            }
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
         val revealRolesSwitch = SwitchCompat(this).apply {
@@ -454,6 +470,79 @@ class LobbyActivity : BaseActivity() {
             textSize = 11f
             setPadding(dp(4), 0, dp(4), dp(8))
         })
+        val individualVotesSwitch = SwitchCompat(this).apply {
+            text = "MOSTRAR VOTOS INDIVIDUALES"
+            isChecked = showIndividualVotes
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(2), dp(4), dp(4))
+            setOnCheckedChangeListener { _, checked ->
+                showIndividualVotes = checked
+            }
+        }
+        content.addView(individualVotesSwitch)
+        content.addView(TextView(this).apply {
+            text = "Activado por defecto: muestra quien voto a cada jugador. " +
+                "Desactivado: solo muestra los votos recibidos."
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        })
+        content.addView(TextView(this).apply {
+            text = "LECTURA INICIAL DEL ROL"
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(4), dp(2), dp(4), dp(4))
+        })
+        content.addView(TextView(this).apply {
+            text = "Define cuando aparece EMPEZAR despues de recibir la carta."
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(5))
+        })
+        val readingButtons = mutableListOf<Pair<Int, Button>>()
+        val readingRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun refreshReadingButtons() {
+            readingButtons.forEach { (seconds, button) ->
+                val selected = seconds == roleReadingSeconds
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(
+                    getColor(if (selected) R.color.bg_dark else R.color.text_primary)
+                )
+            }
+        }
+        listOf(0 to "INMEDIATO", 6 to "6 S", 10 to "10 S").forEachIndexed {
+                index, (seconds, label) ->
+            val button = compactDialogButton(label)
+            readingButtons += seconds to button
+            button.setOnClickListener {
+                roleReadingSeconds = seconds
+                refreshReadingButtons()
+            }
+            readingRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(36), 1f).apply {
+                    if (index > 0) marginStart = dp(6)
+                }
+            )
+        }
+        refreshReadingButtons()
+        content.addView(
+            readingRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(8)
+            }
+        )
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         if (isDebugBuild && lobbyMode == MODE_LOCAL) {
             content.addView(SwitchCompat(this).apply {
@@ -468,6 +557,23 @@ class LobbyActivity : BaseActivity() {
             })
             content.addView(TextView(this).apply {
                 text = "Reconoce ordenes del chat como \"votenme\" o \"voten a Nombre\"."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), 0, dp(4), dp(8))
+            })
+            content.addView(SwitchCompat(this).apply {
+                text = "PRUEBA: FORZAR EMPATES"
+                isChecked = debugForceVoteTies
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 14f
+                setPadding(dp(4), dp(2), dp(4), dp(4))
+                setOnCheckedChangeListener { _, checked ->
+                    debugForceVoteTies = checked
+                }
+            })
+            content.addView(TextView(this).apply {
+                text = "Fuerza un empate en la votacion inicial y vuelve a empatar el desempate."
                 gravity = Gravity.CENTER
                 setTextColor(getColor(R.color.text_secondary))
                 textSize = 11f
@@ -516,13 +622,22 @@ class LobbyActivity : BaseActivity() {
             )
         )
 
+        val advancedDialogContent = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
         val dialog = AlertDialog.Builder(this)
-            .setView(content)
+            .setView(advancedDialogContent)
             .setNegativeButton("CANCELAR", null)
             .setPositiveButton("APLICAR") { _, _ ->
+                preferences.edit()
+                    .putInt(PREF_ROLE_READING_SECONDS, roleReadingSeconds)
+                    .apply()
                 session = session.copy(
                     revealRolesOnDeath = revealRolesOnDeath,
-                    debugBotsObeyVoteCommands = debugBotsObeyVoteCommands
+                    showIndividualVotes = showIndividualVotes,
+                    debugBotsObeyVoteCommands = debugBotsObeyVoteCommands,
+                    debugForceVoteTies = debugForceVoteTies
                 )
             }
             .create()
@@ -681,6 +796,9 @@ class LobbyActivity : BaseActivity() {
         const val MODE_ONLINE_CREATE = "online_create"
         const val MODE_ONLINE_SEARCH = "online_search"
         const val MODE_ONLINE_QUICK = "online_quick"
+        private const val PREFS_NAME = "TraidoresPrefs"
+        private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
+        private const val DEFAULT_ROLE_READING_SECONDS = 6
     }
 
     private data class RoleCountPreview(val label: String, val count: Int)

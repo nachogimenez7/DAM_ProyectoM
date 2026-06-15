@@ -86,12 +86,12 @@
                 android:padding="16dp">
 
                 <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchSound"
+                    android:id="@+id/switchMusic"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:fontFamily="@font/cormorant_garamond"
                     android:gravity="center_vertical"
-                    android:text="Sonido general"
+                    android:text="Musica"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     app:thumbTint="@color/accent_gold"
@@ -103,7 +103,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="14dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Apaga musica, voces y efectos sin perder sus niveles."
+                    android:text="Controla por separado la musica y los efectos del juego."
                     android:textColor="@color/text_muted"
                     android:textSize="14sp" />
 
@@ -125,13 +125,26 @@
                     android:progressTint="@color/accent_gold"
                     android:thumbTint="@color/accent_gold" />
 
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchEffects"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center_vertical"
+                    android:text="Efectos de sonido"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    app:thumbTint="@color/accent_gold"
+                    app:trackTint="@color/divider" />
+
                 <TextView
                     android:id="@+id/labelVoices"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Voces y efectos: 80%"
+                    android:text="Efectos: 80%"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp" />
 
@@ -227,47 +240,6 @@
                     android:textSize="17sp"
                     android:textStyle="italic" />
 
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="12dp"
-                    android:background="@color/divider" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:id="@+id/labelRoleReading"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/cormorant_garamond"
-                        android:text="Lectura inicial del rol"
-                        android:textColor="@color/text_primary"
-                        android:textSize="17sp" />
-
-                    <Spinner
-                        android:id="@+id/spinnerRoleReading"
-                        android:layout_width="156dp"
-                        android:layout_height="48dp"
-                        android:backgroundTint="@color/accent_gold"
-                        android:popupBackground="@color/bg_card"
-                        android:spinnerMode="dropdown" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/descRoleReading"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="@font/cormorant_garamond"
-                    android:text="Define cuando aparece EMPEZAR al recibir tu carta."
-                    android:textColor="@color/text_muted"
-                    android:textSize="14sp" />
             </LinearLayout>
 
             <TextView

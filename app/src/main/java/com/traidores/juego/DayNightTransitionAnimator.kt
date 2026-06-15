@@ -239,10 +239,10 @@ internal class DayNightTransitionAnimator(
 
     private fun playSound(period: GameplayPeriod) {
         releaseSound()
-        val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val soundOn = preferences.getBoolean("sound_on", true)
-        val volume = preferences.getInt("voice_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
+        val preferences = AudioPreferences.preferences(context)
+        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
+        val volume = AudioPreferences.effectsVolume(preferences)
+        if (!effectsOn || volume <= 0f) return
 
         val soundRes = if (period == GameplayPeriod.NIGHT) {
             R.raw.transition_night
@@ -268,7 +268,6 @@ internal class DayNightTransitionAnimator(
     }
 
     private companion object {
-        const val PREFS_NAME = "TraidoresPrefs"
         const val MUSIC_DELAY_MS = 1600L
         const val BASE_DURATION_MS = 2200f
         const val MIN_DURATION_MS = 1000L

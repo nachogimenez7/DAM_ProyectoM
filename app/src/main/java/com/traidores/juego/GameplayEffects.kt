@@ -19,13 +19,11 @@ enum class GameplayEffect {
 }
 
 object GameplayEffects {
-    private const val PREFS = "TraidoresPrefs"
-
     fun play(context: Context, effect: GameplayEffect) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val soundOn = prefs.getBoolean("sound_on", true)
-        val volume = prefs.getInt("voice_volume", 80)
-        if (soundOn && volume > 0) {
+        val prefs = AudioPreferences.preferences(context)
+        val effectsOn = AudioPreferences.areEffectsEnabled(prefs)
+        val volume = (AudioPreferences.effectsVolume(prefs) * 100).toInt()
+        if (effectsOn && volume > 0) {
             val tone = when (effect) {
                 GameplayEffect.SELECT -> ToneGenerator.TONE_PROP_BEEP
                 GameplayEffect.CONFIRM -> ToneGenerator.TONE_PROP_ACK

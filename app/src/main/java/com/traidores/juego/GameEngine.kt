@@ -20,6 +20,10 @@ object GameEngine {
             investigatedResult = "",
             dayEliminationTarget = "",
             votes = emptyMap(),
+            voteRound = 0,
+            tieVoteCandidates = emptyList(),
+            alcaldeCorruption = false,
+            alcaldeTieCandidates = emptyList(),
             phaseIndex = prepared.phaseIndex + 1
         ).withPublicHistory(message)
     }
@@ -288,7 +292,15 @@ object GameEngine {
     }
 
     fun revealAlcalde(session: GameSession): GameSession {
-        if (session.phase != GamePhase.DIA_DEBATE || session.alcaldeRevealed) return session
+        if (
+            session.phase != GamePhase.DIA_DEBATE &&
+            session.phase != GamePhase.VOTACION &&
+            session.phase != GamePhase.DESEMPATE_VOTACION &&
+            session.phase != GamePhase.ALCALDE_DESEMPATE
+        ) {
+            return session
+        }
+        if (session.alcaldeRevealed) return session
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (!alcalde.isHuman) return session
         val message = "${alcalde.name} se revelo como Alcalde. Desde ahora su voto vale doble y decide los empates."
@@ -304,11 +316,18 @@ object GameEngine {
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (!session.alcaldeRevealed || targetName !in session.alcaldeTieCandidates) return session
         if (!alcalde.isHuman) return session
-        val message = "El Alcalde decidio el empate. Se resolvera la expulsion de $targetName."
+        val message = if (session.alcaldeCorruption) {
+            "Corrupcion en el pueblo: el Alcalde se protegio y decidio expulsar a $targetName."
+        } else {
+            "El Alcalde decidio el empate. Se resolvera la expulsion de $targetName."
+        }
         return session.copy(
             dayEliminationTarget = targetName,
+            votes = emptyMap(),
+            voteRound = if (session.alcaldeCorruption) 4 else 3,
+            tieVoteCandidates = emptyList(),
             alcaldeTieCandidates = emptyList()
-        ).transitionTo(GamePhase.RESULTADO, message, privateRoleHint(session))
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(session))
             .withPublicHistory(message)
     }
 
@@ -394,6 +413,10 @@ object GameEngine {
         return resolveVotingInternal(session, selectedTarget, allowHumanAbstention = false)
     }
 
+    fun resolveTieVoting(session: GameSession, selectedTarget: String): GameSession {
+        return resolveTieVotingInternal(session, selectedTarget, allowHumanAbstention = false)
+    }
+
     private fun resolveVotingInternal(
         session: GameSession,
         selectedTarget: String,
@@ -411,51 +434,241 @@ object GameEngine {
             return session
         }
 
-        val votes = mutableMapOf<String, String>()
-        session.players.filter { canVote(it) }.forEach { voter ->
-            val voteTarget = if (voter.isHuman) selectedTarget else LocalBotAi.chooseVoteTarget(session, voter)
-            if (isValidVoteTarget(session, voteTarget, voter)) {
-                votes[voter.name] = voteTarget
-            }
-        }
-
         val votingSession = autoRevealBotAlcalde(session)
-        val alcalde = alivePlayers(votingSession).firstOrNull { it.role?.key == "alcalde" }
+        val votes = debugForcedTieVotes(
+            votingSession,
+            alivePlayers(votingSession).map { it.name }
+        )?.takeIf { votingSession.debugForceVoteTies }?.toMutableMap()
+            ?: mutableMapOf<String, String>().apply {
+                votingSession.players.filter { canVote(it) }.forEach { voter ->
+                    val voteTarget = if (voter.isHuman) {
+                        selectedTarget
+                    } else {
+                        LocalBotAi.chooseVoteTarget(votingSession, voter)
+                    }
+                    if (isValidVoteTarget(votingSession, voteTarget, voter)) {
+                        this[voter.name] = voteTarget
+                    }
+                }
+            }
+
         val leaders = weightedVoteLeaders(votingSession, votes)
-        val humanAlcaldeMustChoose = leaders.size == 2 &&
-            votingSession.alcaldeRevealed &&
-            alcalde?.isHuman == true
-        val eliminated = when {
-            leaders.size == 1 -> leaders.first()
-            leaders.size == 2 && votingSession.alcaldeRevealed && alcalde != null ->
-                if (alcalde.isHuman) "" else LocalBotAi.chooseVoteTarget(votingSession, alcalde)
-                    .takeIf { it in leaders }
-                    ?: leaders.first()
-            else -> ""
-        }
-        val votingMessage = if (eliminated.isBlank()) {
-            "Dios cerro la votacion. No hubo mayoria clara."
-        } else {
-            "Dios cerro la votacion. Se resolvera la expulsion."
-        }
+        val eliminated = leaders.singleOrNull().orEmpty()
+        val votingMessage = "La votacion termino. Comienza el recuento."
         val message = listOf(leadingAnnouncement, votingMessage)
             .filter { it.isNotBlank() }
             .joinToString(" ")
 
-        val updated = votingSession.copy(
+        return votingSession.copy(
             votes = votes,
+            voteRound = 1,
+            tieVoteCandidates = if (leaders.size > 1) leaders else emptyList(),
             dayEliminationTarget = eliminated,
-            alcaldeTieCandidates = if (humanAlcaldeMustChoose) leaders else emptyList(),
+            alcaldeTieCandidates = emptyList(),
             actionHistory = recordVotes(session, votes)
-        )
-        if (humanAlcaldeMustChoose) {
-            return updated.transitionTo(
-                GamePhase.ALCALDE_DESEMPATE,
-                "La votacion termino empatada. El Alcalde debe decidir quien es expulsado.",
-                "Elegi entre ${leaders.joinToString(" o ")}."
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(votingSession))
+            .withPublicHistory(message)
+    }
+
+    private fun resolveTieVotingInternal(
+        session: GameSession,
+        selectedTarget: String,
+        allowHumanAbstention: Boolean,
+        leadingAnnouncement: String = ""
+    ): GameSession {
+        if (!canResolve(session, GamePhase.DESEMPATE_VOTACION)) return session
+        val candidates = session.tieVoteCandidates.filter { candidate ->
+            playerByName(session, candidate)?.alive == true
+        }
+        if (candidates.size < 2) {
+            return session.copy(
+                dayEliminationTarget = candidates.singleOrNull().orEmpty(),
+                votes = emptyMap(),
+                voteRound = 2
+            ).transitionTo(
+                GamePhase.RECUENTO_VOTOS,
+                "El desempate termino. Comienza el recuento final.",
+                privateRoleHint(session)
             )
         }
-        return updated.transitionTo(GamePhase.RESULTADO, message, privateRoleHint(updated))
+
+        val human = humanPlayer(session)
+        if (
+            canVote(human) &&
+            !allowHumanAbstention &&
+            !isValidTieVoteTarget(session, selectedTarget, human)
+        ) {
+            return session
+        }
+
+        val votes = debugForcedTieVotes(session, candidates)
+            ?.takeIf { session.debugForceVoteTies }
+            ?.toMutableMap()
+            ?: mutableMapOf<String, String>().apply {
+                session.players.filter { canVote(it) }.forEach { voter ->
+                    val preferred = if (voter.isHuman) {
+                        selectedTarget
+                    } else {
+                        LocalBotAi.chooseVoteTarget(session, voter)
+                    }
+                    val target = preferred.takeIf {
+                        isValidTieVoteTarget(session, it, voter)
+                    } ?: candidates.firstOrNull { it != voter.name }.orEmpty()
+                    if (isValidTieVoteTarget(session, target, voter)) {
+                        this[voter.name] = target
+                    }
+                }
+            }
+
+        val leaders = weightedVoteLeaders(session, votes)
+        val eliminated = leaders.singleOrNull().orEmpty()
+        val message = listOf(
+            leadingAnnouncement,
+            "El desempate termino. Comienza el recuento final."
+        ).filter { it.isNotBlank() }.joinToString(" ")
+        return session.copy(
+            votes = votes,
+            voteRound = 2,
+            tieVoteCandidates = if (leaders.size > 1) leaders else emptyList(),
+            dayEliminationTarget = eliminated,
+            alcaldeTieCandidates = emptyList(),
+            actionHistory = recordVotes(session, votes)
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(session))
+            .withPublicHistory(message)
+    }
+
+    fun continueAfterVoteRecount(session: GameSession): GameSession {
+        if (!canResolve(session, GamePhase.RECUENTO_VOTOS)) return session
+        if (session.voteRound == 1 && session.tieVoteCandidates.size > 1) {
+            val candidates = session.tieVoteCandidates.joinToString(", ")
+            val message = "Empate entre $candidates. Si el empate se repite, nadie sera expulsado."
+            return session.copy(
+                votes = emptyMap(),
+                dayEliminationTarget = ""
+            ).transitionTo(
+                GamePhase.DESEMPATE_VOTACION,
+                message,
+                "Vota solamente entre los jugadores empatados."
+            ).withPublicHistory(message)
+                .withBotVotingIntent()
+        }
+
+        if (session.voteRound == 2 && session.tieVoteCandidates.size > 1) {
+            return resolveSecondTie(session)
+        }
+
+        val message = if (session.dayEliminationTarget.isBlank()) {
+            "El pueblo no llego a un acuerdo. Nadie sera expulsado esta jornada."
+        } else {
+            "${session.dayEliminationTarget} recibio la mayoria. Se resolvera su expulsion."
+        }
+        return session.copy(
+            tieVoteCandidates = emptyList(),
+            alcaldeTieCandidates = emptyList()
+        ).transitionTo(GamePhase.RESULTADO, message, privateRoleHint(session))
+            .withPublicHistory(message)
+    }
+
+    private fun resolveSecondTie(session: GameSession): GameSession {
+        val candidates = session.tieVoteCandidates
+        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" }
+        if (alcalde == null) {
+            val message = "El empate se repitio. Nadie sera expulsado esta jornada."
+            return session.copy(
+                dayEliminationTarget = "",
+                tieVoteCandidates = emptyList(),
+                alcaldeTieCandidates = emptyList()
+            ).transitionTo(GamePhase.RESULTADO, message, privateRoleHint(session))
+                .withPublicHistory(message)
+        }
+
+        if (alcalde.name in candidates) {
+            val revealedSession = if (session.alcaldeRevealed) {
+                session
+            } else {
+                val revealMessage =
+                    "${alcalde.name} revelo su cargo cuando la votacion amenazo con expulsarlo."
+                session.copy(alcaldeRevealed = true).withPublicHistory(revealMessage)
+            }
+            val opponents = candidates.filter { it != alcalde.name }
+            if (opponents.size == 1) {
+                val expelled = opponents.single()
+                val message =
+                    "Corrupcion en el pueblo: el Alcalde impuso su autoridad y $expelled sera expulsado."
+                return revealedSession.copy(
+                    dayEliminationTarget = expelled,
+                    votes = emptyMap(),
+                    voteRound = 4,
+                    tieVoteCandidates = emptyList(),
+                    alcaldeCorruption = true,
+                    alcaldeTieCandidates = emptyList()
+                ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(revealedSession))
+                    .withPublicHistory(message)
+            }
+            if (!alcalde.isHuman) {
+                val expelled = LocalBotAi.chooseVoteTarget(revealedSession, alcalde)
+                    .takeIf { it in opponents }
+                    ?: opponents.first()
+                val message =
+                    "Corrupcion en el pueblo: el Alcalde se protegio y decidio expulsar a $expelled."
+                return revealedSession.copy(
+                    dayEliminationTarget = expelled,
+                    votes = emptyMap(),
+                    voteRound = 4,
+                    tieVoteCandidates = emptyList(),
+                    alcaldeCorruption = true,
+                    alcaldeTieCandidates = emptyList()
+                ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(revealedSession))
+                    .withPublicHistory(message)
+            }
+            return revealedSession.copy(
+                dayEliminationTarget = "",
+                tieVoteCandidates = emptyList(),
+                alcaldeCorruption = true,
+                alcaldeTieCandidates = opponents
+            ).transitionTo(
+                GamePhase.ALCALDE_DESEMPATE,
+                "Corrupcion en el pueblo: el Alcalde quedo protegido y decidira quien sera expulsado.",
+                "Tu cargo te protege. Elegi a quien expulsar entre ${opponents.joinToString(" o ")}."
+            )
+        }
+
+        if (alcalde.isHuman) {
+            val privateMessage = if (session.alcaldeRevealed) {
+                "Elegi quien sera expulsado entre ${candidates.joinToString(" o ")}."
+            } else {
+                "Podes revelarte como Alcalde y decidir el empate."
+            }
+            return session.copy(
+                dayEliminationTarget = "",
+                tieVoteCandidates = emptyList(),
+                alcaldeTieCandidates = candidates
+            ).transitionTo(
+                GamePhase.ALCALDE_DESEMPATE,
+                "El empate se repitio. El Alcalde puede decidir la expulsion.",
+                privateMessage
+            )
+        }
+
+        val revealedSession = if (session.alcaldeRevealed) {
+            session
+        } else {
+            val revealMessage = "${alcalde.name} se revelo como Alcalde para decidir el empate."
+            session.copy(alcaldeRevealed = true).withPublicHistory(revealMessage)
+        }
+        val chosen = LocalBotAi.chooseVoteTarget(revealedSession, alcalde)
+            .takeIf { it in candidates && it != alcalde.name }
+            ?: candidates.firstOrNull { it != alcalde.name }
+            ?: candidates.first()
+        val message = "El Alcalde decidio el empate. Se resolvera la expulsion de $chosen."
+        return revealedSession.copy(
+            dayEliminationTarget = chosen,
+            votes = emptyMap(),
+            voteRound = 3,
+            tieVoteCandidates = emptyList(),
+            alcaldeTieCandidates = emptyList()
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(revealedSession))
+            .withPublicHistory(message)
     }
 
     fun resolveResult(session: GameSession): GameSession {
@@ -581,6 +794,8 @@ object GameEngine {
             GamePhase.CONTRAPUNTO -> false
             GamePhase.ALCALDE_DESEMPATE -> false
             GamePhase.VOTACION -> !canVote(humanPlayer(session)) || canActOnTarget(session, selectedTarget)
+            GamePhase.DESEMPATE_VOTACION ->
+                !canVote(humanPlayer(session)) || canActOnTarget(session, selectedTarget)
             else -> true
         }
     }
@@ -608,6 +823,7 @@ object GameEngine {
                 session.alcaldeRevealed &&
                 targetName in session.alcaldeTieCandidates
             GamePhase.VOTACION -> isValidVoteTarget(session, targetName, human)
+            GamePhase.DESEMPATE_VOTACION -> isValidTieVoteTarget(session, targetName, human)
             else -> false
         }
     }
@@ -624,6 +840,7 @@ object GameEngine {
             GamePhase.CONTRAPUNTO -> "SENALAR"
             GamePhase.ALCALDE_DESEMPATE -> "DECIDIR"
             GamePhase.VOTACION -> "VOTAR"
+            GamePhase.DESEMPATE_VOTACION -> "VOTAR"
             else -> ""
         }
     }
@@ -636,7 +853,8 @@ object GameEngine {
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO -> resetHumanAfkStreak(session, night = true)
             GamePhase.NOCHE_ORACULO -> resetHumanAfkStreak(session, night = true)
-            GamePhase.VOTACION -> resetHumanAfkStreak(session, night = false)
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION -> resetHumanAfkStreak(session, night = false)
             else -> session
         }
         return when (prepared.phase) {
@@ -649,6 +867,7 @@ object GameEngine {
             GamePhase.CONTRAPUNTO -> resolveContrapunto(session, targetName)
             GamePhase.ALCALDE_DESEMPATE -> chooseAlcaldeTie(session, targetName)
             GamePhase.VOTACION -> resolveVoting(prepared, targetName)
+            GamePhase.DESEMPATE_VOTACION -> resolveTieVoting(prepared, targetName)
             else -> session
         }
     }
@@ -662,6 +881,7 @@ object GameEngine {
             GamePhase.NOCHE_MEDICO -> resolveNightTimeout(session)
             GamePhase.NOCHE_ORACULO -> resolveNightTimeout(session)
             GamePhase.VOTACION -> resolveVotingTimeout(session)
+            GamePhase.DESEMPATE_VOTACION -> resolveTieVotingTimeout(session)
             GamePhase.ALCALDE_DESEMPATE -> resolveAlcaldeTieTimeout(session)
             GamePhase.CONTRAPUNTO -> resolveContrapuntoTimeout(session)
             else -> session
@@ -712,7 +932,8 @@ object GameEngine {
 
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
-            GamePhase.VOTACION -> true
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION -> true
             GamePhase.CONTRAPUNTO ->
                 human.role?.key == "payador" || human.name in session.contrapuntoPlayers
             GamePhase.ALCALDE_DESEMPATE -> false
@@ -734,7 +955,8 @@ object GameEngine {
         }
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
-            GamePhase.VOTACION -> try {
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION -> try {
                 withHumanMessage.withBotMessages(
                     LocalBotAi.reactionsToHumanMessage(withHumanMessage, message)
                 )
@@ -758,12 +980,14 @@ object GameEngine {
             GamePhase.ALCALDE_DESEMPATE ->
                 isAlive(human) && human.role?.key == "alcalde"
             GamePhase.VOTACION -> canVote(human)
+            GamePhase.DESEMPATE_VOTACION -> canVote(human)
             else -> needsInitialDesertorChoice(session)
         }
     }
 
     fun shouldAutoAdvance(session: GameSession): Boolean {
         return session.winner.isBlank() &&
+            session.phase != GamePhase.RECUENTO_VOTOS &&
             !requiresHumanInput(session) &&
             !canDesertorReconsider(session)
     }
@@ -775,6 +999,7 @@ object GameEngine {
             GamePhase.CONTRAPUNTO -> timing.discussionSeconds
             GamePhase.VOTACION,
             GamePhase.ALCALDE_DESEMPATE -> timing.votingSeconds
+            GamePhase.DESEMPATE_VOTACION -> (timing.votingSeconds / 2).coerceAtLeast(10)
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
@@ -782,6 +1007,7 @@ object GameEngine {
             GamePhase.NOCHE_ORACULO -> timing.nightSeconds
             GamePhase.REPARTO,
             GamePhase.AMANECER,
+            GamePhase.RECUENTO_VOTOS,
             GamePhase.RESULTADO -> timing.transitionSeconds
         }
         return seconds * 1000L
@@ -859,6 +1085,32 @@ object GameEngine {
             ""
         }
         val resolved = resolveVotingInternal(
+            missed.session,
+            "",
+            allowHumanAbstention = true,
+            leadingAnnouncement = afkAnnouncement
+        )
+        return if (missed.expelled) {
+            resolved
+        } else {
+            resolved.copy(privateHint = missed.session.privateHint)
+        }
+    }
+
+    private fun resolveTieVotingTimeout(session: GameSession): GameSession {
+        val human = humanPlayer(session)
+        if (!canVote(human)) {
+            return resolveTieVotingInternal(session, "", allowHumanAbstention = true)
+        }
+
+        val missed = registerHumanAfkMiss(session, night = false)
+        if (missed.session.winner.isNotBlank()) return missed.session
+        val afkAnnouncement = if (missed.expelled) {
+            "${missed.humanName} fue expulsado por inactividad."
+        } else {
+            ""
+        }
+        val resolved = resolveTieVotingInternal(
             missed.session,
             "",
             allowHumanAbstention = true,
@@ -953,6 +1205,9 @@ object GameEngine {
             oracleRevealPending = false,
             dayEliminationTarget = "",
             votes = emptyMap(),
+            voteRound = 0,
+            tieVoteCandidates = emptyList(),
+            alcaldeCorruption = false,
             contrapuntoPlayers = emptyList(),
             contrapuntoSuspicion = "",
             alcaldeTieCandidates = emptyList(),
@@ -1131,6 +1386,106 @@ object GameEngine {
         return target != null && isAlive(target) && target.name != voter.name
     }
 
+    private fun isValidTieVoteTarget(
+        session: GameSession,
+        selectedTarget: String,
+        voter: GamePlayer
+    ): Boolean {
+        return isValidVoteTarget(session, selectedTarget, voter) &&
+            selectedTarget in session.tieVoteCandidates
+    }
+
+    private fun debugForcedTieVotes(
+        session: GameSession,
+        availableCandidates: List<String>
+    ): Map<String, String>? {
+        if (!session.debugForceVoteTies) return null
+        val candidates = availableCandidates.distinct().filter { candidate ->
+            playerByName(session, candidate)?.alive == true
+        }
+        for (firstIndex in 0 until candidates.lastIndex) {
+            for (secondIndex in firstIndex + 1 until candidates.size) {
+                forcedTiePlan(session, candidates[firstIndex], candidates[secondIndex])?.let {
+                    return it.votes
+                }
+            }
+        }
+        return null
+    }
+
+    private fun forcedTiePlan(
+        session: GameSession,
+        firstCandidate: String,
+        secondCandidate: String
+    ): ForcedTiePlan? {
+        val otherFixedVotes = if (
+            session.contrapuntoSuspicion.isNotBlank() &&
+            session.contrapuntoSuspicion != firstCandidate &&
+            session.contrapuntoSuspicion != secondCandidate
+        ) {
+            1
+        } else {
+            0
+        }
+        val firstFixedVotes = if (session.contrapuntoSuspicion == firstCandidate) 1 else 0
+        val secondFixedVotes = if (session.contrapuntoSuspicion == secondCandidate) 1 else 0
+        var plans = mutableMapOf(
+            firstFixedVotes - secondFixedVotes to ForcedTiePlan(
+                votes = emptyMap(),
+                firstWeight = firstFixedVotes,
+                secondWeight = secondFixedVotes
+            )
+        )
+        val mayor = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" }
+        session.players.filter { canVote(it) }.forEach { voter ->
+            val voteWeight = if (
+                session.alcaldeRevealed &&
+                mayor?.name == voter.name
+            ) {
+                2
+            } else {
+                1
+            }
+            val nextPlans = plans.toMutableMap()
+            plans.values.forEach { plan ->
+                if (voter.name != firstCandidate) {
+                    keepBetterTiePlan(
+                        nextPlans,
+                        plan.copy(
+                            votes = plan.votes + (voter.name to firstCandidate),
+                            firstWeight = plan.firstWeight + voteWeight
+                        )
+                    )
+                }
+                if (voter.name != secondCandidate) {
+                    keepBetterTiePlan(
+                        nextPlans,
+                        plan.copy(
+                            votes = plan.votes + (voter.name to secondCandidate),
+                            secondWeight = plan.secondWeight + voteWeight
+                        )
+                    )
+                }
+            }
+            plans = nextPlans
+        }
+        return plans[0]?.takeIf { plan ->
+            plan.firstWeight > otherFixedVotes &&
+                plan.secondWeight > otherFixedVotes
+        }
+    }
+
+    private fun keepBetterTiePlan(
+        plans: MutableMap<Int, ForcedTiePlan>,
+        candidate: ForcedTiePlan
+    ) {
+        val difference = candidate.firstWeight - candidate.secondWeight
+        val current = plans[difference]
+        if (current == null || candidate.votes.size > current.votes.size) {
+            plans[difference] = candidate
+        }
+    }
+
     private fun isValidContrapuntoTarget(
         session: GameSession,
         selectedTarget: String,
@@ -1265,6 +1620,12 @@ object GameEngine {
         val session: GameSession,
         val expelled: Boolean,
         val humanName: String
+    )
+
+    private data class ForcedTiePlan(
+        val votes: Map<String, String>,
+        val firstWeight: Int,
+        val secondWeight: Int
     )
 
     private fun GameSession.withBotDebate(): GameSession {

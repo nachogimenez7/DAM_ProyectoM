@@ -7,7 +7,6 @@ import android.os.Looper
 import kotlin.math.max
 
 object MusicManager {
-    private const val PREFS = "TraidoresPrefs"
     private const val PAUSE_DELAY_MS = 400L
 
     private val handler = Handler(Looper.getMainLooper())
@@ -39,9 +38,9 @@ object MusicManager {
 
     fun refresh(context: Context) {
         val appContext = context.applicationContext
-        val sharedPref = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val soundOn = sharedPref.getBoolean("sound_on", true)
-        val volume = sharedPref.getInt("music_volume", 80) / 100f
+        val sharedPref = AudioPreferences.preferences(appContext)
+        val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
+        val volume = AudioPreferences.musicVolume(sharedPref)
 
         if (player == null) {
             player = MediaPlayer.create(appContext, currentTrackRes).apply {
@@ -52,7 +51,7 @@ object MusicManager {
         player?.setVolume(volume, volume)
         victoryPlayer?.setVolume(volume, volume)
 
-        if (activeScreens > 0 && soundOn && volume > 0f && !transitionPaused) {
+        if (activeScreens > 0 && musicOn && volume > 0f && !transitionPaused) {
             if (player?.isPlaying == false) {
                 player?.start()
             }
@@ -60,11 +59,11 @@ object MusicManager {
             player?.pause()
         }
 
-        if (activeScreens > 0 && soundOn && volume > 0f && victoryPlayer != null) {
+        if (activeScreens > 0 && musicOn && volume > 0f && victoryPlayer != null) {
             if (victoryPlayer?.isPlaying == false) {
                 victoryPlayer?.start()
             }
-        } else if (!soundOn || volume <= 0f) {
+        } else if (!musicOn || volume <= 0f) {
             victoryPlayer?.pause()
         }
     }
@@ -123,10 +122,10 @@ object MusicManager {
         transitionPaused = true
         player?.pause()
         val appContext = context.applicationContext
-        val sharedPref = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val soundOn = sharedPref.getBoolean("sound_on", true)
-        val volume = sharedPref.getInt("music_volume", 80) / 100f
-        if (!soundOn || volume <= 0f) return
+        val sharedPref = AudioPreferences.preferences(appContext)
+        val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
+        val volume = AudioPreferences.musicVolume(sharedPref)
+        if (!musicOn || volume <= 0f) return
 
         victoryPlayer = MediaPlayer.create(appContext, R.raw.victory_music)?.apply {
             isLooping = false
@@ -187,6 +186,8 @@ object MusicManager {
     private fun isDecisiveDebate(session: GameSession): Boolean {
         val isDebatePhase = session.phase == GamePhase.DIA_DEBATE ||
             session.phase == GamePhase.VOTACION ||
+            session.phase == GamePhase.RECUENTO_VOTOS ||
+            session.phase == GamePhase.DESEMPATE_VOTACION ||
             session.phase == GamePhase.RESULTADO
         if (!isDebatePhase) return false
 
