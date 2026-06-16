@@ -6,7 +6,7 @@ Este roadmap estabiliza las cuatro superficies prioritarias sin agregar funcione
 
 ## Phases
 
-- [ ] **Phase 1: Gameplay Visual Stability** - Corregir la composición principal, capas y estados del gameplay.
+- [ ] **Phase 1: Gameplay Visual Stability** - Corregir la composición principal, capas y estados del gameplay. *(executed; pending visual validation)*
 - [ ] **Phase 2: Chat and Keyboard Stability** - Mantener conversación y controles utilizables con el teclado abierto o cerrado.
 - [ ] **Phase 3: Lobby Stability** - Corregir diálogos, disponibilidad de salas y estados vacíos.
 - [ ] **Phase 4: Profile Stability** - Corregir el perfil, selectores y persistencia del borrador.
@@ -27,8 +27,8 @@ Este roadmap estabiliza las cuatro superficies prioritarias sin agregar funcione
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Auditar estados y corregir la estructura visual principal del gameplay. *(Wave 1)*
-- [ ] 01-02: Consolidar renderizado de capas y estados disponibles, bloqueados y completados. *(Wave 2; blocked on 01-01)*
+- [x] 01-01: Auditar estados y corregir la estructura visual principal del gameplay. *(Wave 1)*
+- [x] 01-02: Consolidar renderizado de capas y estados disponibles, bloqueados y completados. *(Wave 2; blocked on 01-01)*
 
 Cross-cutting constraints:
 - No agregar funciones nuevas ni roles durante esta fase.
@@ -106,7 +106,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Gameplay Visual Stability | 0/2 | Planned | - |
+| 1. Gameplay Visual Stability | 2/2 | Pending visual validation | - |
 | 2. Chat and Keyboard Stability | 0/2 | Not started | - |
 | 3. Lobby Stability | 0/2 | Not started | - |
 | 4. Profile Stability | 0/2 | Not started | - |
