@@ -7,7 +7,7 @@ Este roadmap estabiliza las cuatro superficies prioritarias sin agregar funcione
 ## Phases
 
 - [ ] **Phase 1: Gameplay Visual Stability** - Corregir la composición principal, capas y estados del gameplay. *(executed; pending visual validation)*
-- [ ] **Phase 2: Chat and Keyboard Stability** - Mantener conversación y controles utilizables con el teclado abierto o cerrado.
+- [ ] **Phase 2: Chat and Keyboard Stability** - Mantener conversación y controles utilizables con el teclado abierto o cerrado. *(executed; pending visual validation)*
 - [ ] **Phase 3: Lobby Stability** - Corregir diálogos, disponibilidad de salas y estados vacíos.
 - [ ] **Phase 4: Profile Stability** - Corregir el perfil, selectores y persistencia del borrador.
 - [ ] **Phase 5: Navigation and Usability Guard** - Unificar Atrás, rutas, controles importantes y verificación final.
@@ -49,8 +49,8 @@ Cross-cutting constraints:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Reemplazar supuestos rígidos del teclado por un estado de viewport medido.
-- [ ] 02-02: Estabilizar lista, envío, scroll y transiciones de apertura y cierre del chat.
+- [x] 02-01: Reemplazar supuestos rígidos del teclado por un estado de viewport medido.
+- [x] 02-02: Estabilizar lista, envío, scroll y transiciones de apertura y cierre del chat.
 
 ### Phase 3: Lobby Stability
 **Goal**: El lobby y la búsqueda de partidas comunican y ejecutan correctamente sus estados actuales.
@@ -107,7 +107,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Gameplay Visual Stability | 2/2 | Pending visual validation | - |
-| 2. Chat and Keyboard Stability | 0/2 | Not started | - |
+| 2. Chat and Keyboard Stability | 2/2 | Pending visual validation | - |
 | 3. Lobby Stability | 0/2 | Not started | - |
 | 4. Profile Stability | 0/2 | Not started | - |
 | 5. Navigation and Usability Guard | 0/2 | Not started | - |
