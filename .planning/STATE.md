@@ -5,8 +5,8 @@ progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 10
-  completed_plans: 6
-  percent: 60
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -16,21 +16,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-13)
 
 **Core value:** El jugador puede utilizar las pantallas principales sin contenido cortado, controles confusos, rutas rotas ni pérdida inesperada de estado.
-**Current focus:** Phase 3 - Lobby Stability
+**Current focus:** Phase 4 - Profile Stability
 
 ## Current Position
 
-Phase: 3 of 5 (Lobby Stability)
+Phase: 4 of 5 (Profile Stability)
 Plan: 2 of 2 in current phase
 Status: Executed; pending user visual validation
-Last activity: 2026-06-16 - Executed Phase 3 lobby stability
+Last activity: 2026-06-16 - Executed Phase 4 profile stability
 
-Progress: [######----] 60%
+Progress: [########--] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 8
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -41,7 +41,7 @@ Progress: [######----] 60%
 | - | - | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 02-01, 02-02, 03-01, 03-02
+- Last 5 plans: 03-01, 03-02, 04-01, 04-02
 - Trend: Started
 
 ## Accumulated Context
@@ -60,13 +60,15 @@ Decisions are logged in PROJECT.md Key Decisions.
 - Visually validate Phase 1 gameplay changes on Android Studio/device.
 - Visually validate Phase 2 chat and keyboard behavior on Android Studio/device.
 - Visually validate Phase 3 lobby dialogs and room browser on Android Studio/device.
-- Continue to Phase 4: Profile Stability after validation.
+- Visually validate Phase 4 profile layout, selectors, and draft persistence on Android Studio/device.
+- Continue to Phase 5: Navigation and Usability Guard after validation.
 
 ### Blockers/Concerns
 
 - Exact compact-phone behavior requires screenshots or manual checks on the user's target device.
 - Keyboard behavior must be checked with the user's real IME.
 - Compact lobby and browser layouts still require screenshot-based visual confirmation.
+- Profile draft restoration and selector readability still require device validation.
 - Do not compile or execute the app automatically.
 
 ### Quick Tasks Completed
@@ -87,5 +89,5 @@ Decisions are logged in PROJECT.md Key Decisions.
 ## Session Continuity
 
 Last session: 2026-06-16
-Stopped at: Phase 3 executed; pending visual validation
+Stopped at: Phase 4 executed; pending visual validation
 Resume file: None
