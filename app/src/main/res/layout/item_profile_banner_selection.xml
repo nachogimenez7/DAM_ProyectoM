@@ -20,7 +20,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
+        android:ellipsize="end"
         android:fontFamily="@font/grenze"
+        android:maxLines="1"
         android:textColor="@color/accent_gold"
         android:textSize="18sp"
         android:textStyle="bold" />
@@ -30,8 +32,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
+        android:ellipsize="end"
         android:fontFamily="@font/grenze"
         android:letterSpacing="0.05"
+        android:maxLines="1"
         android:textColor="@color/text_muted"
         android:textSize="10sp"
         android:textStyle="bold" />

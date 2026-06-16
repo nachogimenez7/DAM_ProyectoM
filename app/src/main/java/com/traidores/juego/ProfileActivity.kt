@@ -43,6 +43,7 @@ class ProfileActivity : BaseActivity() {
     private lateinit var profileAvatar: ImageView
     private lateinit var profileBanner: View
     private lateinit var favoriteRoleImage: ImageView
+    private lateinit var favoriteRoleCard: LinearLayout
     private lateinit var profileName: TextView
     private lateinit var profilePublicId: TextView
     private lateinit var profileBio: TextView
@@ -57,9 +58,14 @@ class ProfileActivity : BaseActivity() {
 
         bindViews()
         savedProfile = loadProfile()
-        draftProfile = savedProfile.copy(achievements = savedProfile.achievements.toList())
+        val restoredEditing = savedInstanceState?.getBoolean(STATE_IS_EDITING) ?: false
+        draftProfile = if (restoredEditing) {
+            restoreDraft(savedInstanceState) ?: copyProfile(savedProfile)
+        } else {
+            copyProfile(savedProfile)
+        }
         renderProfile()
-        setEditing(false)
+        setEditing(restoredEditing)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -74,7 +80,7 @@ class ProfileActivity : BaseActivity() {
         profileBanner.setOnClickListener {
             if (isEditing) showBannerSelector()
         }
-        findViewById<LinearLayout>(R.id.favoriteRoleCard).setOnClickListener {
+        favoriteRoleCard.setOnClickListener {
             if (isEditing) {
                 showFavoriteRoleSelector()
             } else {
@@ -115,6 +121,7 @@ class ProfileActivity : BaseActivity() {
         profileAvatar = findViewById(R.id.profileAvatar)
         profileBanner = findViewById(R.id.profileBanner)
         favoriteRoleImage = findViewById(R.id.favoriteRoleImage)
+        favoriteRoleCard = findViewById(R.id.favoriteRoleCard)
         profileName = findViewById(R.id.profileName)
         profilePublicId = findViewById(R.id.profilePublicId)
         profileBio = findViewById(R.id.profileBio)
@@ -173,7 +180,15 @@ class ProfileActivity : BaseActivity() {
     private fun renderProfile() {
         profileName.text = draftProfile.name
         profilePublicId.text = "#${draftProfile.publicId}"
-        profileBio.text = "\"${draftProfile.bio}\""
+        val hasBio = draftProfile.bio.isNotBlank()
+        profileBio.text = if (hasBio) {
+            "\"${draftProfile.bio}\""
+        } else {
+            EMPTY_BIO_PLACEHOLDER
+        }
+        profileBio.setTextColor(
+            getColor(if (hasBio) R.color.text_secondary else R.color.text_muted)
+        )
 
         val avatar = ProfileRoleCatalog.find(draftProfile.avatarKey).role
         setRoleImage(profileAvatar, avatar)
@@ -186,8 +201,7 @@ class ProfileActivity : BaseActivity() {
         val favoriteRole = ProfileRoleCatalog.find(draftProfile.favoriteRoleKey).role
         favoriteRoleName.text = favoriteRole.name
         setRoleImage(favoriteRoleImage, favoriteRole)
-        findViewById<LinearLayout>(R.id.favoriteRoleCard).contentDescription =
-            "Ver informacion del rol ${favoriteRole.name}"
+        updateInteractiveContentDescriptions(favoriteRole.name)
 
         achievementViews.forEachIndexed { index, view ->
             val achievementName = draftProfile.achievements.getOrNull(index)
@@ -205,7 +219,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun startEditing() {
-        draftProfile = savedProfile.copy(achievements = savedProfile.achievements.toList())
+        draftProfile = copyProfile(savedProfile)
         setEditing(true)
         renderProfile()
     }
@@ -214,6 +228,7 @@ class ProfileActivity : BaseActivity() {
         isEditing = editing
         editIcons.forEach { it.visibility = if (editing) View.VISIBLE else View.GONE }
         editProfileButton.text = if (editing) "GUARDAR CAMBIOS" else "EDITAR PERFIL"
+        updateInteractiveContentDescriptions(favoriteRoleName.text.toString())
     }
 
     private fun saveChanges() {
@@ -260,6 +275,23 @@ class ProfileActivity : BaseActivity() {
             .show()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(STATE_IS_EDITING, isEditing)
+        if (isEditing) {
+            outState.putString(STATE_DRAFT_NAME, draftProfile.name)
+            outState.putString(STATE_DRAFT_PUBLIC_ID, draftProfile.publicId)
+            outState.putString(STATE_DRAFT_BIO, draftProfile.bio)
+            outState.putString(STATE_DRAFT_AVATAR, draftProfile.avatarKey)
+            outState.putString(STATE_DRAFT_BANNER, draftProfile.bannerKey)
+            outState.putString(STATE_DRAFT_FAVORITE_ROLE, draftProfile.favoriteRoleKey)
+            outState.putStringArrayList(
+                STATE_DRAFT_ACHIEVEMENTS,
+                ArrayList(draftProfile.achievements)
+            )
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     private fun showExpandedAvatar() {
         val content = layoutInflater.inflate(R.layout.dialog_profile_avatar, null)
         val expandedAvatar: ImageView = content.findViewById(R.id.expandedProfileAvatar)
@@ -272,7 +304,9 @@ class ProfileActivity : BaseActivity() {
         dialog.setOnShowListener {
             dialog.window?.apply {
                 setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                setLayout(dp(320), dp(320))
+                val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(220))
+                val maxHeight = (resources.displayMetrics.heightPixels - dp(48)).coerceAtLeast(dp(220))
+                setLayout(dp(320).coerceAtMost(maxWidth), dp(320).coerceAtMost(maxHeight))
             }
             alignAvatarToTop(expandedAvatar)
         }
@@ -434,13 +468,16 @@ class ProfileActivity : BaseActivity() {
             .toBooleanArray()
         val labels = achievements.map { it.name }.toTypedArray()
 
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Logros destacados")
             .setMultiChoiceItems(labels, selected) { _, index, checked ->
                 selected[index] = checked
             }
             .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Aplicar") { _, _ ->
+            .setPositiveButton("Aplicar", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val chosen = achievements
                     .filterIndexed { index, _ -> selected[index] }
                     .map { it.name }
@@ -453,9 +490,11 @@ class ProfileActivity : BaseActivity() {
                 } else {
                     draftProfile.achievements = chosen.take(MAX_FEATURED_ACHIEVEMENTS)
                     renderProfile()
+                    dialog.dismiss()
                 }
             }
-            .show()
+        }
+        dialog.show()
     }
 
     private fun showAchievementDetail(name: String) {
@@ -500,6 +539,53 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
+    private fun restoreDraft(savedInstanceState: Bundle?): ProfileDraft? {
+        if (savedInstanceState == null) return null
+        return ProfileDraft(
+            name = savedInstanceState.getString(STATE_DRAFT_NAME, savedProfile.name).orEmpty(),
+            publicId = savedInstanceState
+                .getString(STATE_DRAFT_PUBLIC_ID, savedProfile.publicId)
+                .orEmpty(),
+            bio = savedInstanceState.getString(STATE_DRAFT_BIO, savedProfile.bio).orEmpty(),
+            avatarKey = savedInstanceState
+                .getString(STATE_DRAFT_AVATAR, savedProfile.avatarKey)
+                .orEmpty(),
+            bannerKey = savedInstanceState
+                .getString(STATE_DRAFT_BANNER, savedProfile.bannerKey)
+                .orEmpty(),
+            favoriteRoleKey = savedInstanceState
+                .getString(STATE_DRAFT_FAVORITE_ROLE, savedProfile.favoriteRoleKey)
+                .orEmpty(),
+            achievements = savedInstanceState
+                .getStringArrayList(STATE_DRAFT_ACHIEVEMENTS)
+                ?.toList()
+                ?.ifEmpty { savedProfile.achievements }
+                ?: savedProfile.achievements
+        )
+    }
+
+    private fun copyProfile(source: ProfileDraft): ProfileDraft {
+        return source.copy(achievements = source.achievements.toList())
+    }
+
+    private fun updateInteractiveContentDescriptions(favoriteRole: String) {
+        profileAvatar.contentDescription = if (isEditing) {
+            "Cambiar foto de perfil"
+        } else {
+            "Ampliar foto de perfil"
+        }
+        profileBanner.contentDescription = if (isEditing) {
+            "Cambiar banner del perfil"
+        } else {
+            "Banner del perfil"
+        }
+        favoriteRoleCard.contentDescription = if (isEditing) {
+            "Elegir rol favorito"
+        } else {
+            "Ver informacion del rol $favoriteRole"
+        }
+    }
+
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
@@ -531,5 +617,14 @@ class ProfileActivity : BaseActivity() {
         const val MAX_FEATURED_ACHIEVEMENTS = 3
         val PUBLIC_ID_PATTERN = Regex("^[a-z0-9_]{4,16}$")
         val PUBLIC_ID_COOLDOWN_MS = TimeUnit.DAYS.toMillis(30)
+        const val EMPTY_BIO_PLACEHOLDER = "Agrega una frase breve para tu perfil."
+        const val STATE_IS_EDITING = "profile_state_is_editing"
+        const val STATE_DRAFT_NAME = "profile_state_draft_name"
+        const val STATE_DRAFT_PUBLIC_ID = "profile_state_draft_public_id"
+        const val STATE_DRAFT_BIO = "profile_state_draft_bio"
+        const val STATE_DRAFT_AVATAR = "profile_state_draft_avatar"
+        const val STATE_DRAFT_BANNER = "profile_state_draft_banner"
+        const val STATE_DRAFT_FAVORITE_ROLE = "profile_state_draft_favorite_role"
+        const val STATE_DRAFT_ACHIEVEMENTS = "profile_state_draft_achievements"
     }
 }

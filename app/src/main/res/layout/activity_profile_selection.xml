@@ -23,15 +23,22 @@
 
     <TextView
         android:id="@+id/selectionTitle"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="24dp"
+        android:ellipsize="end"
         android:fontFamily="@font/grenze"
+        android:gravity="center"
         android:letterSpacing="0.02"
+        android:maxLines="1"
         android:textColor="@color/accent_gold"
         android:textSize="24sp"
-        android:textStyle="bold" />
+        android:textStyle="bold"
+        app:autoSizeMaxTextSize="24sp"
+        app:autoSizeMinTextSize="18sp"
+        app:autoSizeStepGranularity="1sp"
+        app:autoSizeTextType="uniform" />
 
     <TextView
         android:id="@+id/selectionDescription"
@@ -42,6 +49,7 @@
         android:layout_marginTop="8dp"
         android:fontFamily="@font/cormorant_garamond"
         android:gravity="center"
+        android:maxLines="3"
         android:textColor="@color/text_secondary"
         android:textSize="14sp" />
 

@@ -118,6 +118,7 @@
                     android:id="@+id/profileName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:ellipsize="end"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:maxLines="1"
@@ -125,7 +126,11 @@
                     android:text="Jugador"
                     android:textColor="@color/text_primary"
                     android:textSize="25sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="25sp"
+                    app:autoSizeMinTextSize="18sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <ImageButton
                     android:id="@+id/editName"
@@ -142,13 +147,19 @@
                     android:id="@+id/profilePublicId"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:ellipsize="end"
                     android:fontFamily="@font/cormorant_garamond"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:paddingHorizontal="38dp"
                     android:text="#trd-a7k4p2"
                     android:textColor="@color/accent_gold"
                     android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="16sp"
+                    app:autoSizeMinTextSize="12sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <ImageButton
                     android:id="@+id/editPublicId"
@@ -211,15 +222,17 @@
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/statMatchesValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/grenze"
-                        android:text="24"
+                        android:text="--"
                         android:textColor="@color/text_primary"
                         android:textSize="22sp"
                         android:textStyle="bold" />
 
                     <TextView
+                        android:id="@+id/statMatchesLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/cormorant_garamond"
@@ -238,15 +251,17 @@
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/statWinsValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/grenze"
-                        android:text="14"
+                        android:text="--"
                         android:textColor="@color/accent_green"
                         android:textSize="22sp"
                         android:textStyle="bold" />
 
                     <TextView
+                        android:id="@+id/statWinsLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/cormorant_garamond"
@@ -265,23 +280,36 @@
                     android:orientation="vertical">
 
                     <TextView
+                        android:id="@+id/statWinRateValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/grenze"
-                        android:text="58%"
+                        android:text="--%"
                         android:textColor="@color/accent_gold"
                         android:textSize="22sp"
                         android:textStyle="bold" />
 
                     <TextView
+                        android:id="@+id/statWinRateLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/cormorant_garamond"
-                        android:text="Victorias"
+                        android:text="Porcentaje"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp" />
                 </LinearLayout>
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/profileStatsHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:fontFamily="@font/cormorant_garamond"
+                android:gravity="center"
+                android:text="Las estadisticas se mostraran cuando este perfil tenga progreso registrado."
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
 
             <LinearLayout
                 android:id="@+id/favoriteRoleCard"
@@ -321,13 +349,19 @@
 
                     <TextView
                         android:id="@+id/favoriteRoleName"
-                        android:layout_width="wrap_content"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:ellipsize="end"
                         android:fontFamily="@font/grenze"
+                        android:maxLines="1"
                         android:text="Detective"
                         android:textColor="@color/text_primary"
                         android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="18sp"
+                        app:autoSizeMinTextSize="13sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
                 </LinearLayout>
 
                 <ImageButton

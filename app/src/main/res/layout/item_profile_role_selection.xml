@@ -27,7 +27,9 @@
             android:id="@+id/selectionOptionTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
             android:fontFamily="@font/grenze"
+            android:maxLines="1"
             android:textColor="@color/text_primary"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -37,8 +39,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
+            android:ellipsize="end"
             android:fontFamily="@font/grenze"
             android:letterSpacing="0.05"
+            android:maxLines="1"
             android:textColor="@color/text_muted"
             android:textSize="11sp"
             android:textStyle="bold" />
