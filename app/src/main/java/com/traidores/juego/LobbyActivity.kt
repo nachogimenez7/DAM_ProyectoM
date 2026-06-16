@@ -687,12 +687,21 @@ class LobbyActivity : BaseActivity() {
     private fun compactDialogButton(label: String): Button {
         return Button(this).apply {
             text = label
-            textSize = 15f
+            textSize = 14f
             minWidth = 0
             minHeight = 0
             setPadding(0, 0, 0, 0)
+            isAllCaps = false
+            maxLines = 1
             setTextColor(getColor(R.color.text_primary))
             setBackgroundResource(R.drawable.bg_btn_dark_ripple)
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this,
+                10,
+                14,
+                1,
+                TypedValue.COMPLEX_UNIT_SP
+            )
         }
     }
 
@@ -710,7 +719,11 @@ class LobbyActivity : BaseActivity() {
     private fun showLandscapeDialog(dialog: AlertDialog, widthDp: Int) {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.window?.setLayout(dp(widthDp), WindowManager.LayoutParams.WRAP_CONTENT)
+        val availableWidth = resources.displayMetrics.widthPixels - dp(24)
+        dialog.window?.setLayout(
+            dp(widthDp).coerceAtMost(availableWidth),
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
         dialog.window?.setDimAmount(0.55f)
         dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         listOf(
@@ -720,7 +733,16 @@ class LobbyActivity : BaseActivity() {
         ).forEach { buttonId ->
             dialog.getButton(buttonId)?.apply {
                 minHeight = dp(44)
+                maxLines = 1
+                isAllCaps = false
                 setTextColor(getColor(R.color.accent_gold))
+                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                    this,
+                    10,
+                    14,
+                    1,
+                    TypedValue.COMPLEX_UNIT_SP
+                )
             }
         }
     }

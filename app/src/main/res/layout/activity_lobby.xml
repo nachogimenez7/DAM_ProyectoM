@@ -44,13 +44,19 @@
 
             <TextView
                 android:id="@+id/lobbyTitle"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
                 android:fontFamily="@font/grenze"
+                android:maxLines="1"
                 android:text="LOBBY LOCAL"
                 android:textColor="@color/accent_gold"
                 android:textSize="22sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="22sp"
+                app:autoSizeMinTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
 
             <TextView
                 android:id="@+id/playerCount"
@@ -113,221 +119,237 @@
                 android:orientation="vertical" />
         </ScrollView>
 
-        <ScrollView
-            android:layout_width="240dp"
+        <LinearLayout
+            android:layout_width="248dp"
             android:layout_height="match_parent"
             android:background="@drawable/bg_game_panel"
-            android:fillViewport="true"
+            android:orientation="vertical"
             android:padding="10dp">
 
-            <LinearLayout
+            <Button
+                android:id="@+id/btnStartGame"
+                style="@style/BtnGold"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:orientation="vertical">
+                android:layout_height="46dp"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/bg_btn_gold_ripple"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="INICIAR"
+                app:autoSizeMaxTextSize="15sp"
+                app:autoSizeMinTextSize="9sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
 
-                <TextView
-                    android:id="@+id/lobbyModeHint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:fontFamily="@font/grenze"
-                    android:gravity="center"
-                    android:text="MAPA"
-                    android:textColor="@color/accent_gold"
-                    android:textSize="16sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center"
-                    android:orientation="horizontal">
-
-                    <ImageView
-                        android:id="@+id/mapPampa"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Pampa"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
-
-                    <ImageView
-                        android:id="@+id/mapGrecia"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Grecia"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
-
-                    <ImageView
-                        android:id="@+id/mapMedieval"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Medieval"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/mapDescription"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
-                    android:fontFamily="@font/cormorant_garamond"
-                    android:gravity="center"
-                    android:lineSpacingExtra="1dp"
-                    android:text="Usa el perfil o la X de cada participante. Inicia con cinco o mas jugadores."
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp" />
-
-                <Button
-                    android:id="@+id/btnStartGame"
-                    style="@style/BtnGold"
-                    android:layout_height="46dp"
-                    android:layout_marginBottom="10dp"
-                    android:background="@drawable/bg_btn_gold_ripple"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:text="INICIAR"
-                    app:autoSizeMaxTextSize="15sp"
-                    app:autoSizeMinTextSize="9sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:fillViewport="true">
 
                 <LinearLayout
-                    android:id="@+id/debugRoleSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
+                    android:gravity="top"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/lobbyModeHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="5dp"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:text="MAPA"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="15sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:layout_marginBottom="7dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/mapPampa"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Pampa"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:padding="2dp"
+                            android:scaleType="centerCrop" />
+
+                        <ImageView
+                            android:id="@+id/mapGrecia"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Grecia"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:padding="2dp"
+                            android:scaleType="centerCrop" />
+
+                        <ImageView
+                            android:id="@+id/mapMedieval"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Medieval"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:padding="2dp"
+                            android:scaleType="centerCrop" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/mapDescription"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:gravity="center"
+                        android:lineSpacingExtra="1dp"
+                        android:text="Usa el perfil o la X de cada participante. Inicia con cinco o mas jugadores."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+
+                    <LinearLayout
+                        android:id="@+id/debugRoleSection"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="4dp"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:text="PRUEBA: ROL HUMANO"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="12sp" />
+
+                        <Button
+                            android:id="@+id/btnDebugRole"
+                            style="@style/BtnDark"
+                            android:layout_height="34dp"
+                            android:layout_marginBottom="0dp"
+                            android:background="@drawable/bg_btn_dark_ripple"
+                            android:text="ROL: AZAR"
+                            android:textSize="10sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="4dp"
+                        android:layout_marginBottom="5dp"
                         android:fontFamily="@font/grenze"
-                        android:gravity="center"
-                        android:text="PRUEBA: ROL HUMANO"
-                        android:textColor="@color/accent_gold"
-                        android:textSize="12sp" />
+                        android:letterSpacing="0.08"
+                        android:text="CONFIGURACION"
+                        android:textColor="@color/text_muted"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
 
                     <Button
-                        android:id="@+id/btnDebugRole"
+                        android:id="@+id/btnTimingOptions"
                         style="@style/BtnDark"
-                        android:layout_height="34dp"
-                        android:layout_marginBottom="0dp"
+                        android:layout_height="38dp"
+                        android:layout_marginBottom="6dp"
                         android:background="@drawable/bg_btn_dark_ripple"
-                        android:text="ROL: AZAR"
-                        android:textSize="10sp" />
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="TIEMPOS"
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <Button
+                        android:id="@+id/btnAdvancedOptions"
+                        style="@style/BtnDark"
+                        android:layout_height="38dp"
+                        android:layout_marginBottom="6dp"
+                        android:background="@drawable/bg_btn_dark_ripple"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="OPCIONES AVANZADAS"
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="9sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="2dp"
+                        android:layout_marginBottom="6dp"
+                        android:alpha="0.25"
+                        android:background="@color/text_secondary" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="5dp"
+                        android:fontFamily="@font/grenze"
+                        android:letterSpacing="0.08"
+                        android:text="JUGADORES"
+                        android:textColor="@color/text_muted"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="42dp"
+                        android:layout_marginBottom="6dp"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnAddPlayer"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="4dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_btn_dark_ripple"
+                            android:text="AGREGAR"
+                            android:textSize="12sp"
+                            app:autoSizeMaxTextSize="12sp"
+                            app:autoSizeMinTextSize="9sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <Button
+                            android:id="@+id/btnRemovePlayer"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="4dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_btn_dark_ripple"
+                            android:text="QUITAR"
+                            android:textSize="12sp"
+                            app:autoSizeMaxTextSize="12sp"
+                            app:autoSizeMinTextSize="9sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
                 </LinearLayout>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
-                    android:fontFamily="@font/grenze"
-                    android:letterSpacing="0.08"
-                    android:text="CONFIGURACION"
-                    android:textColor="@color/text_muted"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/btnTimingOptions"
-                    style="@style/BtnDark"
-                    android:layout_height="38dp"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_btn_dark_ripple"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:text="TIEMPOS"
-                    android:textSize="11sp"
-                    app:autoSizeMaxTextSize="11sp"
-                    app:autoSizeMinTextSize="8sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
-
-                <Button
-                    android:id="@+id/btnAdvancedOptions"
-                    style="@style/BtnDark"
-                    android:layout_height="38dp"
-                    android:layout_marginBottom="6dp"
-                    android:background="@drawable/bg_btn_dark_ripple"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:text="OPCIONES AVANZADAS"
-                    android:textSize="11sp"
-                    app:autoSizeMaxTextSize="11sp"
-                    app:autoSizeMinTextSize="9sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:layout_marginTop="2dp"
-                    android:layout_marginBottom="6dp"
-                    android:alpha="0.25"
-                    android:background="@color/text_secondary" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
-                    android:fontFamily="@font/grenze"
-                    android:letterSpacing="0.08"
-                    android:text="JUGADORES"
-                    android:textColor="@color/text_muted"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:layout_marginBottom="6dp"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/btnAddPlayer"
-                        style="@style/BtnDark"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="4dp"
-                        android:layout_marginBottom="0dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_btn_dark_ripple"
-                        android:text="AGREGAR"
-                        android:textSize="12sp" />
-
-                    <Button
-                        android:id="@+id/btnRemovePlayer"
-                        style="@style/BtnDark"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginBottom="0dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_btn_dark_ripple"
-                        android:text="QUITAR"
-                        android:textSize="12sp" />
-                </LinearLayout>
-            </LinearLayout>
-        </ScrollView>
+            </ScrollView>
+        </LinearLayout>
     </LinearLayout>
 </RelativeLayout>

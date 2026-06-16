@@ -26,7 +26,14 @@ class LobbyBrowserActivity : BaseActivity() {
         setContentView(R.layout.activity_lobby_browser)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        renderLobbyList()
+    }
+
+    private fun renderLobbyList() {
         val lobbyList: LinearLayout = findViewById(R.id.lobbyList)
+        val emptyState: TextView = findViewById(R.id.lobbyEmptyState)
+        lobbyList.removeAllViews()
+        emptyState.visibility = if (lobbies.isEmpty()) View.VISIBLE else View.GONE
         lobbies.forEach { lobby ->
             lobbyList.addView(createLobbyRow(lobby))
         }
@@ -39,28 +46,35 @@ class LobbyBrowserActivity : BaseActivity() {
         row.findViewById<TextView>(R.id.lobbyPlayers).text = "${lobby.players}/${lobby.limit}"
         row.findViewById<TextView>(R.id.lobbyStatus).apply {
             text = lobby.status
-            setTextColor(
-                Color.parseColor(
-                    when (lobby.status) {
-                        "Casi llena" -> "#D4A24E"
-                        "En partida" -> "#8F2633"
-                        else -> "#5A8A3C"
-                    }
-                )
-            )
+            setTextColor(Color.parseColor(lobbyStatusColor(lobby)))
         }
         row.findViewById<Button>(R.id.btnEnterLobby).apply {
-            val isFull = lobby.players >= lobby.limit
-            isEnabled = lobby.canJoin && !isFull
+            isEnabled = canJoinLobby(lobby)
             alpha = if (isEnabled) 1f else 0.42f
-            text = when {
-                isFull -> "LLENA"
-                isEnabled -> "ENTRAR"
-                else -> "NO DISPONIBLE"
-            }
+            text = lobbyActionLabel(lobby)
             setOnClickListener { enterLobby(lobby) }
         }
         return row
+    }
+
+    private fun canJoinLobby(lobby: MockOnlineLobby): Boolean {
+        return lobby.canJoin && lobby.players < lobby.limit
+    }
+
+    private fun lobbyActionLabel(lobby: MockOnlineLobby): String {
+        return when {
+            lobby.players >= lobby.limit -> "LLENA"
+            !lobby.canJoin -> "EN PARTIDA"
+            else -> "ENTRAR"
+        }
+    }
+
+    private fun lobbyStatusColor(lobby: MockOnlineLobby): String {
+        return when (lobby.status) {
+            "Casi llena" -> "#D4A24E"
+            "En partida" -> "#8F2633"
+            else -> "#5A8A3C"
+        }
     }
 
     private fun enterLobby(lobby: MockOnlineLobby) {
