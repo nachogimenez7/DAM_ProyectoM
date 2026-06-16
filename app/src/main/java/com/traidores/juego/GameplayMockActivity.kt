@@ -92,6 +92,7 @@ class GameplayMockActivity : BaseActivity() {
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
+    private var stagedBotBurstPhaseIndex = -1
     private val feedbackState = GameplayFeedbackState()
     private lateinit var session: GameSession
     private var unreadChatCount = 0
@@ -99,6 +100,7 @@ class GameplayMockActivity : BaseActivity() {
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
+    private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val enableInitialRoleReadyRunnable = Runnable {
         if (initialRoleReadingActive && ::btnContinueRolePreview.isInitialized) {
             btnContinueRolePreview.visibility = View.VISIBLE
@@ -322,7 +324,7 @@ class GameplayMockActivity : BaseActivity() {
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
         isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
-        isEventLogExpanded = savedInstanceState?.getBoolean(STATE_EVENT_LOG_EXPANDED) ?: true
+        isEventLogExpanded = false
         voteNoExpulsionPresented =
             savedInstanceState?.getBoolean(STATE_VOTE_NO_EXPULSION_PRESENTED) ?: false
         selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
@@ -689,6 +691,7 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
+        cancelPendingBotChat()
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
         } else {
@@ -717,6 +720,7 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
         super.onPause()
     }
@@ -748,6 +752,7 @@ class GameplayMockActivity : BaseActivity() {
             session.phase == GamePhase.RESULTADO &&
             session.dayEliminationTarget.isBlank()
         ) {
+            dismissActionFeedbackBannerNow()
             isVoteResultVisible = true
             voteResultAnimator.show(session)
             voteResultAnimator.showNoExpulsion()
@@ -891,6 +896,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun advanceCurrentPhase() {
+        cancelPendingBotChat()
         session = when (session.phase) {
             GamePhase.REPARTO -> GameEngine.startNight(session)
             GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(session, "")
@@ -907,12 +913,14 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.ALCALDE_DESEMPATE -> session
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
         }
+        stageBotBurstForCurrentPhase()
         clearSelection()
         renderGame()
     }
 
     private fun performTargetAction(targetName: String) {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        cancelPendingBotChat()
         if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
@@ -929,8 +937,10 @@ class GameplayMockActivity : BaseActivity() {
         val before = session
         selectedTarget = targetName
         val resolved = GameEngine.resolveHumanTargetAction(session, targetName)
+        playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
         session = resolved
+        stageBotBurstForCurrentPhase()
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
         blockingFeedbackPeriod = if (
@@ -1054,7 +1064,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderEventLog(publicMessage: String, phaseText: PhaseText) {
-        val allEvents = GameplayTableUi.historicalPublicEvents(
+        val allEvents = GameplayTableUi.publicEvents(
             session.publicHistory,
             publicMessage,
             phaseText.subtitle
@@ -1692,10 +1702,6 @@ class GameplayMockActivity : BaseActivity() {
             closeChatPanel()
             return
         }
-        if (isEventLogExpanded) {
-            isEventLogExpanded = false
-            renderEventLogPanel(animate = true)
-        }
         isChatOpen = true
         unreadChatCount = 0
         newChatMessagesWhileTyping = 0
@@ -1969,11 +1975,17 @@ class GameplayMockActivity : BaseActivity() {
             Toast.makeText(this, "El chat se habilita al comenzar la fase.", Toast.LENGTH_SHORT).show()
             return
         }
+        val rawMessage = chatInput.text.toString()
         val before = session.chatHistory.size
-        session = GameEngine.addHumanChatMessage(session, chatInput.text.toString())
+        session = GameEngine.addHumanChatMessage(
+            session,
+            rawMessage,
+            includeBotReactions = false
+        )
         if (session.chatHistory.size > before) {
             GameplayEffects.play(this, GameplayEffect.CHAT)
-            chatInput.text.clear()
+            scheduleBotChatReactions(rawMessage)
+            clearChatComposerAfterSend()
         } else if (!GameEngine.canHumanChat(session)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             val human = GameEngine.humanPlayer(session)
@@ -1989,6 +2001,117 @@ class GameplayMockActivity : BaseActivity() {
         updateUnreadChatCount()
         renderChatPanel()
         renderChatBadge()
+    }
+
+    private fun scheduleBotChatReactions(rawHumanMessage: String) {
+        cancelPendingBotChat()
+        val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
+        if (humanMessage.isBlank() || LocalBotAi.isDebugVoteCommand(session, humanMessage)) return
+        val phaseIndex = session.phaseIndex
+        val phase = session.phase
+        val reactions = try {
+            LocalBotAi.reactionsToHumanMessage(session, humanMessage)
+        } catch (_: RuntimeException) {
+            emptyList()
+        }
+        reactions.take(MAX_STAGGERED_BOT_REACTIONS).forEachIndexed { index, (speaker, message) ->
+            scheduleBotChatMessage(
+                speaker = speaker,
+                message = message,
+                phaseIndex = phaseIndex,
+                phase = phase,
+                delayMs = botReactionDelayMs(index, message)
+            )
+        }
+    }
+
+    private fun stageBotBurstForCurrentPhase() {
+        if (!::session.isInitialized || stagedBotBurstPhaseIndex == session.phaseIndex) return
+        if (
+            session.phase != GamePhase.DIA_DEBATE &&
+            session.phase != GamePhase.CONTRAPUNTO &&
+            session.phase != GamePhase.VOTACION &&
+            session.phase != GamePhase.DESEMPATE_VOTACION
+        ) {
+            return
+        }
+        val humanName = GameEngine.humanPlayer(session).name
+        val trailingBotMessages = session.chatHistory
+            .asReversed()
+            .takeWhile { !it.isGod && it.speaker != humanName }
+            .asReversed()
+        if (trailingBotMessages.size <= 1) return
+
+        val visibleNow = trailingBotMessages.first()
+        val staged = trailingBotMessages.drop(1)
+        session = session.copy(
+            chatHistory = session.chatHistory.dropLast(trailingBotMessages.size) + visibleNow
+        )
+        stagedBotBurstPhaseIndex = session.phaseIndex
+        staged.forEachIndexed { index, message ->
+            scheduleBotChatMessage(
+                speaker = message.speaker,
+                message = message.message,
+                phaseIndex = session.phaseIndex,
+                phase = session.phase,
+                delayMs = PHASE_BOT_BURST_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS
+            )
+        }
+    }
+
+    private fun scheduleBotChatMessage(
+        speaker: String,
+        message: String,
+        phaseIndex: Int,
+        phase: GamePhase,
+        delayMs: Long
+    ) {
+        val runnable = object : Runnable {
+            override fun run() {
+                pendingBotChatRunnables.remove(this)
+                if (
+                    !::session.isInitialized ||
+                    session.phaseIndex != phaseIndex ||
+                    session.phase != phase ||
+                    session.winner.isNotBlank()
+                ) {
+                    return
+                }
+                val beforeCount = session.chatHistory.size
+                session = GameEngine.addBotChatMessage(session, speaker, message)
+                if (session.chatHistory.size == beforeCount) return
+                GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.CHAT)
+                updateUnreadChatCount()
+                renderChatPanel()
+                renderChatBadge()
+            }
+        }
+        pendingBotChatRunnables += runnable
+        autoAdvanceHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun cancelPendingBotChat() {
+        pendingBotChatRunnables.forEach(autoAdvanceHandler::removeCallbacks)
+        pendingBotChatRunnables.clear()
+    }
+
+    private fun botReactionDelayMs(index: Int, message: String): Long {
+        val readingDelay = (message.length * 12L).coerceAtMost(420L)
+        return FIRST_BOT_REACTION_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS + readingDelay
+    }
+
+    private fun clearChatComposerAfterSend() {
+        chatInput.text.clear()
+        chatInput.setText("")
+        chatInput.setSelection(0)
+        chatInput.post {
+            if (::chatInput.isInitialized) {
+                chatInput.text.clear()
+                chatInput.setText("")
+                chatInput.setSelection(0)
+                renderChatCharacterCount(0)
+            }
+        }
     }
 
     private fun chatInputHint(canChat: Boolean): String {
@@ -2569,6 +2692,15 @@ class GameplayMockActivity : BaseActivity() {
             .start()
     }
 
+    private fun dismissActionFeedbackBannerNow() {
+        autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        if (!::actionFeedbackBanner.isInitialized) return
+        actionFeedbackBanner.animate().cancel()
+        actionFeedbackBanner.visibility = View.GONE
+        actionFeedbackBanner.alpha = 1f
+        actionFeedbackBanner.translationY = 0f
+    }
+
     private fun showPendingPrivateFeedback() {
         val spec = feedbackState.privateToPresent() ?: return
         pauseCountdown()
@@ -2701,6 +2833,7 @@ class GameplayMockActivity : BaseActivity() {
             session.phase == GamePhase.RESULTADO &&
             session.dayEliminationTarget.isBlank()
         ) {
+            dismissActionFeedbackBannerNow()
             isVoteResultVisible = true
             voteResultAnimator.show(session)
             voteResultAnimator.showNoExpulsion()
@@ -2765,6 +2898,7 @@ class GameplayMockActivity : BaseActivity() {
         if (session.phase != GamePhase.RECUENTO_VOTOS) return false
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         voteExpulsionComplete = false
         voteNoExpulsionPresented = false
@@ -2788,6 +2922,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun showTieVoteWindow() {
         if (session.phase != GamePhase.DESEMPATE_VOTACION) return
+        dismissActionFeedbackBannerNow()
         isTieVoteVisible = true
         tieVoteOverlay.visibility = View.VISIBLE
         tieVoteOverlay.alpha = 0f
@@ -2804,17 +2939,22 @@ class GameplayMockActivity : BaseActivity() {
             GameEngine.playerByName(session, candidate)
         }
         tieVoteCards.removeAllViews()
-        tieVoteCards.columnCount = if (candidates.size <= 2) candidates.size.coerceAtLeast(1) else 2
-        tieVoteCards.rowCount = if (candidates.size <= 2) 1 else 2
-        val cardWidth = if (candidates.size <= 2) 132 else 116
+        tieVoteCards.columnCount = candidates.size.coerceIn(1, 4)
+        tieVoteCards.rowCount = 1
+        val cardWidth = when {
+            candidates.size <= 2 -> 136
+            candidates.size == 3 -> 116
+            else -> 102
+        }
+        val cardHeight = if (candidates.size <= 2) 156 else 140
         candidates.forEach { player ->
             val card = createTieVoteCard(player)
             tieVoteCards.addView(
                 card,
                 GridLayout.LayoutParams().apply {
                     width = dp(cardWidth)
-                    height = dp(if (candidates.size <= 2) 150 else 124)
-                    setMargins(dp(6), dp(4), dp(6), dp(4))
+                    height = dp(cardHeight)
+                    setMargins(dp(7), dp(4), dp(7), dp(4))
                 }
             )
         }
@@ -2841,7 +2981,7 @@ class GameplayMockActivity : BaseActivity() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(7), dp(7), dp(7), dp(5))
+            setPadding(dp(8), dp(9), dp(8), dp(6))
             alpha = if (actionable) 1f else 0.5f
             background = tieVoteCardBackground(selected, actionable)
             isClickable = actionable
@@ -2867,7 +3007,7 @@ class GameplayMockActivity : BaseActivity() {
                 setImageResource(R.drawable.card_back_traidores)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             },
-            FrameLayout.LayoutParams(dp(54), dp(72), Gravity.CENTER)
+            FrameLayout.LayoutParams(dp(58), dp(78), Gravity.CENTER)
         )
         card.addView(
             TextView(this).apply {
@@ -2875,14 +3015,14 @@ class GameplayMockActivity : BaseActivity() {
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.bg_player_avatar)
                 setTextColor(getColor(R.color.bg_dark))
-                textSize = 15f
+                textSize = 17f
                 setTypeface(null, Typeface.BOLD)
             },
-            FrameLayout.LayoutParams(dp(30), dp(30), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(8)
+            FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(9)
             }
         )
-        container.addView(card, LinearLayout.LayoutParams(dp(62), dp(78)))
+        container.addView(card, LinearLayout.LayoutParams(dp(66), dp(82)))
         container.addView(
             TextView(this).apply {
                 text = player.name
@@ -2890,11 +3030,11 @@ class GameplayMockActivity : BaseActivity() {
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
-                textSize = 12f
+                textSize = 13f
                 typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
                 setTypeface(typeface, Typeface.BOLD)
             },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24))
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25))
         )
         container.addView(
             TextView(this).apply {
@@ -2908,7 +3048,7 @@ class GameplayMockActivity : BaseActivity() {
                 textSize = 8f
                 setTypeface(null, Typeface.BOLD)
             },
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(18))
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(19))
         )
         return container
     }
@@ -2916,9 +3056,9 @@ class GameplayMockActivity : BaseActivity() {
     private fun tieVoteCardBackground(selected: Boolean, enabled: Boolean): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor(if (selected) "#F03A2B1C" else "#E6241C14"))
+            setColor(Color.parseColor(if (selected) "#F03B2A18" else "#E51B150F"))
             setStroke(
-                dp(if (selected) 3 else 1),
+                dp(if (selected) 2 else 1),
                 getColor(
                     when {
                         selected -> R.color.accent_gold
@@ -2927,7 +3067,7 @@ class GameplayMockActivity : BaseActivity() {
                     }
                 )
             )
-            cornerRadius = dp(10).toFloat()
+            cornerRadius = dp(6).toFloat()
         }
     }
 
@@ -3010,6 +3150,7 @@ class GameplayMockActivity : BaseActivity() {
             advanced.dayEliminationTarget.isBlank()
         ) {
             session = advanced
+            dismissActionFeedbackBannerNow()
             voteNoExpulsionPresented = true
             voteResultAnimator.showNoExpulsion()
             return
@@ -3068,6 +3209,7 @@ class GameplayMockActivity : BaseActivity() {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         MusicManager.pauseForTransition()
+        GameplaySoundEffects.play(this, R.raw.oracle_ability)
         isOracleRevealVisible = true
         oracleRevealPlayer.text = session.oracleInvitedPlayer.uppercase()
         oracleRevealOverlay.visibility = View.VISIBLE
@@ -3144,7 +3286,20 @@ class GameplayMockActivity : BaseActivity() {
         val player = session.players.firstOrNull { it.name == victory.playerName }
         jesterVictoryImage.setImageResource(roleImageFor(player?.role))
         MusicManager.playVictoryMusic(this)
+        GameplaySoundEffects.play(this, R.raw.jester_victory)
         jesterVictoryAnimator.show(JESTER_VICTORY_DURATION_MS)
+    }
+
+    private fun playResolvedActionSound(before: GameSession, after: GameSession) {
+        when {
+            before.phase in setOf(GamePhase.VOTACION, GamePhase.DESEMPATE_VOTACION) &&
+                after.phase != before.phase -> {
+                GameplaySoundEffects.play(this, R.raw.vote_cast)
+            }
+            !before.payadorUsed && after.payadorUsed -> {
+                GameplaySoundEffects.play(this, R.raw.payador_ability)
+            }
+        }
     }
 
     private fun dismissJesterVictory() {
@@ -3490,6 +3645,10 @@ class GameplayMockActivity : BaseActivity() {
         private const val CHAT_PANEL_BOTTOM_MARGIN_DP = 96
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
+        private const val MAX_STAGGERED_BOT_REACTIONS = 2
+        private const val FIRST_BOT_REACTION_DELAY_MS = 950L
+        private const val NEXT_BOT_REACTION_DELAY_MS = 1_150L
+        private const val PHASE_BOT_BURST_DELAY_MS = 1_350L
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"

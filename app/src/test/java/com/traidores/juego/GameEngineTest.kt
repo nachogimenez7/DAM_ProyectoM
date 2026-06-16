@@ -1214,6 +1214,28 @@ class GameEngineTest {
     }
 
     @Test
+    fun humanChatCanDeferBotReactionsForStaggeredUi() {
+        val withHumanOnly = GameEngine.addHumanChatMessage(
+            baseSession().copy(phase = GamePhase.DIA_DEBATE),
+            "  Tengo una sospecha.  ",
+            includeBotReactions = false
+        )
+
+        assertEquals(1, withHumanOnly.chatHistory.size)
+        assertEquals("Humano", withHumanOnly.chatHistory.single().speaker)
+        assertEquals("Tengo una sospecha.", withHumanOnly.chatHistory.single().message)
+
+        val withBot = GameEngine.addBotChatMessage(
+            withHumanOnly,
+            "Asesino",
+            "eso suena medio raro"
+        )
+
+        assertEquals(2, withBot.chatHistory.size)
+        assertEquals("Asesino", withBot.chatHistory.last().speaker)
+    }
+
+    @Test
     fun jesterDebugVoteCommandIsSentWithoutGeneratingBotReactions() {
         val session = publicNameSession().copy(
             phase = GamePhase.DIA_DEBATE,

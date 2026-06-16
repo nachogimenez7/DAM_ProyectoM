@@ -314,13 +314,40 @@ object GameplayTableUi {
     fun publicEvents(history: List<String>, current: String, fallback: String): List<String> {
         val events = mutableListOf<String>()
         (history + current).forEach { message ->
-            val clean = message.trim()
-            if (clean.isNotBlank() && events.lastOrNull() != clean) {
-                events += clean
+            publicEventLines(message).forEach { clean ->
+                if (clean.isNotBlank() && events.lastOrNull() != clean) {
+                    events += clean
+                }
             }
         }
         if (events.isEmpty() && fallback.isNotBlank()) events += fallback.trim()
         return events
+    }
+
+    private fun publicEventLines(message: String): List<String> {
+        val clean = message.trim()
+        if (clean.isBlank()) return emptyList()
+
+        val sentenceLines = clean
+            .split(Regex("""(?<=\.)\s+"""))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        val important = sentenceLines.filter(::isImportantPublicEvent)
+        return important.ifEmpty { listOf(clean) }
+    }
+
+    private fun isImportantPublicEvent(message: String): Boolean {
+        return message.contains("murio", ignoreCase = true) ||
+            message.contains("no puede hablar ni votar", ignoreCase = true) ||
+            message.contains("muteados:", ignoreCase = true) ||
+            message.contains("oraculo", ignoreCase = true) ||
+            message.contains("regrese para discutir", ignoreCase = true) ||
+            message.contains("expuls", ignoreCase = true) ||
+            message.contains("empate", ignoreCase = true) ||
+            message.contains("alcalde", ignoreCase = true) ||
+            message.contains("contrapunto", ignoreCase = true) ||
+            message.contains("votacion", ignoreCase = true)
     }
 
     fun historicalPublicEvents(history: List<String>, current: String, fallback: String): List<String> {

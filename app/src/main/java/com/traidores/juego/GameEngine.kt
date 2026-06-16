@@ -946,11 +946,15 @@ object GameEngine {
         }
     }
 
-    fun addHumanChatMessage(session: GameSession, rawMessage: String): GameSession {
+    fun addHumanChatMessage(
+        session: GameSession,
+        rawMessage: String,
+        includeBotReactions: Boolean = true
+    ): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         if (message.isBlank() || !canHumanChat(session)) return session
         val withHumanMessage = session.withChatMessage(humanPlayer(session).name, message)
-        if (LocalBotAi.isDebugVoteCommand(withHumanMessage, message)) {
+        if (!includeBotReactions || LocalBotAi.isDebugVoteCommand(withHumanMessage, message)) {
             return withHumanMessage
         }
         return when (session.phase) {
@@ -965,6 +969,19 @@ object GameEngine {
             }
             else -> withHumanMessage
         }
+    }
+
+    fun addBotChatMessage(session: GameSession, speaker: String, rawMessage: String): GameSession {
+        val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
+        val bot = playerByName(session, speaker)
+        if (message.isBlank() || bot == null || bot.isHuman || !canSpeak(session, bot)) return session
+        if (
+            session.winner.isNotBlank() ||
+            session.phase !in botChatPhases
+        ) {
+            return session
+        }
+        return session.withChatMessage(bot.name, message)
     }
 
     fun requiresHumanInput(session: GameSession): Boolean {
@@ -1643,6 +1660,13 @@ object GameEngine {
         }
         return updated
     }
+
+    private val botChatPhases = setOf(
+        GamePhase.DIA_DEBATE,
+        GamePhase.CONTRAPUNTO,
+        GamePhase.VOTACION,
+        GamePhase.DESEMPATE_VOTACION
+    )
 
     private fun GameSession.withWinnerCheck(): GameSession {
         val prepared = autoResolveBotDesertorChoice(this)

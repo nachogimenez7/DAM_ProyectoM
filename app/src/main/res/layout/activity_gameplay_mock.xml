@@ -1471,23 +1471,23 @@
         android:id="@+id/tieVoteOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#E6000000"
+        android:background="#B8000000"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone">
 
         <LinearLayout
             android:id="@+id/tieVotePanel"
-            android:layout_width="match_parent"
+            android:layout_width="500dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginHorizontal="52dp"
-            android:background="@drawable/bg_dialog_game_panel"
+            android:layout_marginHorizontal="32dp"
+            android:background="@drawable/bg_tie_vote_panel"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="20dp"
+            android:paddingHorizontal="22dp"
             android:paddingTop="12dp"
-            android:paddingBottom="10dp">
+            android:paddingBottom="12dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -1504,19 +1504,23 @@
                     android:maxLines="1"
                     android:text="DESEMPATE"
                     android:textColor="@color/accent_gold"
-                    android:textSize="25sp"
-                    android:textStyle="bold" />
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="24sp"
+                    app:autoSizeMinTextSize="18sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
 
                 <TextView
                     android:id="@+id/tieVoteCountdown"
-                    android:layout_width="48dp"
-                    android:layout_height="32dp"
-                    android:background="@drawable/bg_btn_dark"
+                    android:layout_width="46dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_vote_countdown"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:text="10"
-                    android:textColor="@color/text_primary"
-                    android:textSize="15sp"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="16sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -1535,9 +1539,9 @@
 
             <GridLayout
                 android:id="@+id/tieVoteCards"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:alignmentMode="alignMargins"
                 android:columnCount="2"
                 android:gravity="center"
@@ -1549,19 +1553,23 @@
                 android:id="@+id/tieVoteNotice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:maxLines="2"
                 android:text="SI EL EMPATE SE REPITE, NADIE SERA EXPULSADO."
                 android:textColor="#F1D48B"
                 android:textSize="13sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_marginTop="7dp"
+                android:layout_height="42dp"
+                android:layout_marginTop="12dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
@@ -1570,7 +1578,12 @@
                     style="@style/BtnDark"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
+                    android:layout_marginBottom="0dp"
                     android:layout_weight="1"
+                    android:background="@drawable/bg_tie_vote_button"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:padding="0dp"
                     android:text="CHAT"
                     android:textSize="11sp" />
 
@@ -1580,7 +1593,12 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_marginStart="7dp"
+                    android:layout_marginBottom="0dp"
                     android:layout_weight="1"
+                    android:background="@drawable/bg_tie_vote_button"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:padding="0dp"
                     android:text="REVELARME"
                     android:textSize="10sp"
                     android:visibility="gone" />
@@ -1591,8 +1609,13 @@
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_marginStart="7dp"
+                    android:layout_marginBottom="0dp"
                     android:layout_weight="1.25"
+                    android:background="@drawable/bg_tie_vote_button"
                     android:enabled="false"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:padding="0dp"
                     android:text="ELEGIR CARTA"
                     android:textSize="10sp" />
             </LinearLayout>
@@ -1610,16 +1633,16 @@
 
         <LinearLayout
             android:id="@+id/voteResultPanel"
-            android:layout_width="match_parent"
+            android:layout_width="500dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginHorizontal="40dp"
-            android:background="@drawable/bg_dialog_game_panel"
+            android:layout_marginHorizontal="32dp"
+            android:background="@drawable/bg_tie_vote_panel"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="18dp"
+            android:paddingHorizontal="22dp"
             android:paddingTop="12dp"
-            android:paddingBottom="10dp">
+            android:paddingBottom="12dp">
 
             <TextView
                 android:id="@+id/voteResultTitle"
@@ -1630,9 +1653,9 @@
                 android:maxLines="1"
                 android:text="RECUENTO DE VOTOS"
                 android:textColor="@color/accent_gold"
-                android:textSize="25sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
-                app:autoSizeMaxTextSize="25sp"
+                app:autoSizeMaxTextSize="24sp"
                 app:autoSizeMinTextSize="18sp"
                 app:autoSizeStepGranularity="1sp"
                 app:autoSizeTextType="uniform" />
@@ -1647,16 +1670,16 @@
                 android:maxLines="2"
                 android:text="Los votos aparecen uno por uno."
                 android:textColor="@color/text_primary"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <HorizontalScrollView
                 android:id="@+id/voteResultScroll"
                 android:layout_width="match_parent"
-                android:layout_height="164dp"
-                android:layout_marginTop="7dp"
+                android:layout_height="170dp"
+                android:layout_marginTop="10dp"
                 android:fadeScrollbars="false"
-                android:fillViewport="false"
+                android:fillViewport="true"
                 android:overScrollMode="ifContentScrolls"
                 android:scrollbars="horizontal">
 
@@ -1666,28 +1689,37 @@
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:orientation="horizontal"
-                    android:paddingHorizontal="4dp" />
+                    android:paddingHorizontal="8dp" />
             </HorizontalScrollView>
 
             <TextView
                 android:id="@+id/voteResultNotice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="5dp"
+                android:layout_marginTop="8dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:maxLines="2"
-                android:minHeight="34dp"
+                android:minHeight="30dp"
                 android:textColor="#F1D48B"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:textSize="13sp"
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="13sp"
+                app:autoSizeMinTextSize="10sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
 
             <Button
                 android:id="@+id/btnContinueVoteResult"
                 style="@style/BtnDark"
-                android:layout_width="210dp"
+                android:layout_width="250dp"
                 android:layout_height="39dp"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="0dp"
+                android:background="@drawable/bg_tie_vote_button"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:padding="0dp"
                 android:alpha="0"
                 android:enabled="false"
                 android:text="CONTINUAR"
