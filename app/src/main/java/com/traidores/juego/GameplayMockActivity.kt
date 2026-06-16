@@ -2437,6 +2437,7 @@ class GameplayMockActivity : BaseActivity() {
         ) {
             return
         }
+        dismissActionFeedbackBannerNow()
         val role = GameEngine.humanPlayer(session).role ?: return
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
@@ -2863,6 +2864,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showDeathReveal(player: GamePlayer) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
         deathRevealAnimator.start(player, session.revealRolesOnDeath)
@@ -3175,6 +3177,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showSilenceReveal(player: GamePlayer) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         isSilenceRevealRunning = true
         silenceRevealAnimator.start(player)
@@ -3208,6 +3211,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showOracleReveal() {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         GameplaySoundEffects.play(this, R.raw.oracle_ability)
         isOracleRevealVisible = true
@@ -3277,6 +3281,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showJesterVictory(victory: GameSpecialVictory) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         eventLogHeightAnimator?.cancel()
         isJesterVictoryVisible = true
         presentedSpecialVictoryCount += 1
@@ -3324,6 +3329,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showWinnerReveal(animate: Boolean) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         eventLogHeightAnimator?.cancel()
 
         val presentation = GameplayTableUi.winnerPresentation(session)
@@ -3418,6 +3424,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun showTraitorReveal(teammates: List<GamePlayer>) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
         isTraitorRevealDismissing = false
         isTraitorRevealRunning = true
         traitorRevealCards.removeAllViews()

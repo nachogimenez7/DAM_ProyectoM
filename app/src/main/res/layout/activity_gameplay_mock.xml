@@ -312,7 +312,7 @@
             <LinearLayout
                 android:id="@+id/bottomPlayerPanel"
                 android:layout_width="match_parent"
-                android:layout_height="92dp"
+                android:layout_height="94dp"
                 android:layout_gravity="bottom"
                 android:background="@drawable/bg_hud_parchment"
                 android:gravity="center_vertical"
@@ -322,7 +322,7 @@
 
                 <LinearLayout
                     android:id="@+id/roleCard"
-                    android:layout_width="48dp"
+                    android:layout_width="46dp"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_role_card"
                     android:gravity="center"
@@ -361,10 +361,15 @@
                             android:layout_weight="1"
                             android:ellipsize="end"
                             android:fontFamily="@font/grenze"
+                            android:includeFontPadding="false"
                             android:maxLines="1"
                             android:text="Nacho"
                             android:textColor="@color/accent_gold"
-                            android:textSize="17sp" />
+                            android:textSize="17sp"
+                            app:autoSizeMaxTextSize="17sp"
+                            app:autoSizeMinTextSize="13sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
 
                         <TextView
                             android:id="@+id/currentPlayerStatus"
@@ -381,7 +386,11 @@
                             android:textColor="@color/accent_gold"
                             android:textSize="8sp"
                             android:textStyle="bold"
-                            android:visibility="gone" />
+                            android:visibility="gone"
+                            app:autoSizeMaxTextSize="8sp"
+                            app:autoSizeMinTextSize="6sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
                     </LinearLayout>
 
                     <TextView
@@ -395,23 +404,33 @@
                         android:text="CARTA OCULTA"
                         android:textColor="@color/text_secondary"
                         android:textSize="11sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
                     <TextView
                         android:id="@+id/currentPlayerHint"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
                         android:fontFamily="@font/cormorant_garamond"
                         android:includeFontPadding="false"
                         android:maxLines="2"
                         android:text="Tu carta esta oculta."
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/actionControls"
-                    android:layout_width="218dp"
+                    android:layout_width="206dp"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:orientation="horizontal">
@@ -419,7 +438,7 @@
                     <Button
                         android:id="@+id/btnRevealCard"
                         style="@style/BtnGold"
-                        android:layout_width="78dp"
+                        android:layout_width="72dp"
                         android:layout_height="30dp"
                         android:layout_marginEnd="6dp"
                         android:layout_marginBottom="0dp"
@@ -435,8 +454,8 @@
                     <Button
                         android:id="@+id/btnVote"
                         style="@style/BtnDark"
-                        android:layout_width="134dp"
-                        android:layout_height="38dp"
+                        android:layout_width="128dp"
+                        android:layout_height="36dp"
                         android:layout_marginBottom="0dp"
                         android:maxLines="1"
                         android:singleLine="true"
@@ -450,7 +469,7 @@
 
                 <LinearLayout
                     android:id="@+id/eliminatedStatePanel"
-                    android:layout_width="218dp"
+                    android:layout_width="206dp"
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:orientation="vertical"
