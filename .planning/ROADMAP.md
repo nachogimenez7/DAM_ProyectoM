@@ -27,8 +27,14 @@ Este roadmap estabiliza las cuatro superficies prioritarias sin agregar funcione
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Auditar estados y corregir la estructura visual principal del gameplay.
-- [ ] 01-02: Consolidar renderizado de capas y estados disponibles, bloqueados y completados.
+- [ ] 01-01: Auditar estados y corregir la estructura visual principal del gameplay. *(Wave 1)*
+- [ ] 01-02: Consolidar renderizado de capas y estados disponibles, bloqueados y completados. *(Wave 2; blocked on 01-01)*
+
+Cross-cutting constraints:
+- No agregar funciones nuevas ni roles durante esta fase.
+- Mantener la arquitectura Kotlin/XML actual.
+- Priorizar telefonos en paisaje compacto.
+- El usuario hara la validacion visual final en Android Studio.
 
 ### Phase 2: Chat and Keyboard Stability
 **Goal**: El jugador puede conversar sin perder de vista los mensajes ni desarmar el gameplay.
@@ -100,7 +106,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Gameplay Visual Stability | 0/2 | Not started | - |
+| 1. Gameplay Visual Stability | 0/2 | Planned | - |
 | 2. Chat and Keyboard Stability | 0/2 | Not started | - |
 | 3. Lobby Stability | 0/2 | Not started | - |
 | 4. Profile Stability | 0/2 | Not started | - |

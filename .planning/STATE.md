@@ -21,9 +21,9 @@ See: .planning/PROJECT.md (updated 2026-06-13)
 ## Current Position
 
 Phase: 1 of 5 (Gameplay Visual Stability)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-06-13 - Completed quick task 260613-r4s: ayudas de prueba del Bufon
+Plan: 2 of 2 in current phase
+Status: Ready to execute
+Last activity: 2026-06-16 - Planned Phase 1 gameplay visual stability
 
 Progress: [----------] 0%
 
@@ -57,7 +57,8 @@ Decisions are logged in PROJECT.md Key Decisions.
 
 ### Pending Todos
 
-None yet.
+- Execute Phase 1 plan 01-01: audit and fix main gameplay visual structure.
+- Execute Phase 1 plan 01-02: consolidate gameplay overlay and action states.
 
 ### Blockers/Concerns
 
@@ -83,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-06-13
-Stopped at: Roadmap created; Phase 1 is ready for detailed planning
+Stopped at: Phase 1 planned; ready for execution
 Resume file: None
