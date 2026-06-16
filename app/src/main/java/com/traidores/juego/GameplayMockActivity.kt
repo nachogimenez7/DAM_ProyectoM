@@ -53,6 +53,7 @@ class GameplayMockActivity : BaseActivity() {
     private var appliedGameplayTextScale = 1f
     private var isChatOpen = false
     private var isChatKeyboardCompact = false
+    private var chatKeyboardBottomInset = 0
     private var newChatMessagesWhileTyping = 0
     private var isEventLogExpanded = false
     private var lastRenderedAnnouncement = ""
@@ -625,7 +626,7 @@ class GameplayMockActivity : BaseActivity() {
         }
         chatInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                setChatKeyboardCompact(true)
+                setChatKeyboardState(true, chatKeyboardBottomInset)
             }
         }
         chatInput.doAfterTextChanged { text ->
@@ -1718,7 +1719,7 @@ class GameplayMockActivity : BaseActivity() {
         chatInput.clearFocus()
         WindowCompat.getInsetsController(window, gameplayRoot)
             .hide(WindowInsetsCompat.Type.ime())
-        setChatKeyboardCompact(false)
+        setChatKeyboardState(false, 0)
         renderChatPanelVisibility(animate = true)
         renderChatBadge()
         renderNewChatMessageNotice()
@@ -1790,15 +1791,24 @@ class GameplayMockActivity : BaseActivity() {
             applyChatPanelDimensions()
         }
         ViewCompat.setOnApplyWindowInsetsListener(gameplayRoot) { _, insets ->
-            setChatKeyboardCompact(insets.isVisible(WindowInsetsCompat.Type.ime()))
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val imeBottomInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            setChatKeyboardState(imeVisible, imeBottomInset)
             insets
         }
         ViewCompat.requestApplyInsets(gameplayRoot)
     }
 
-    private fun setChatKeyboardCompact(compact: Boolean) {
-        if (isChatKeyboardCompact == compact && chatPanel.isLaidOut) return
+    private fun setChatKeyboardState(compact: Boolean, bottomInset: Int) {
+        if (
+            isChatKeyboardCompact == compact &&
+            chatKeyboardBottomInset == bottomInset &&
+            chatPanel.isLaidOut
+        ) {
+            return
+        }
         isChatKeyboardCompact = compact
+        chatKeyboardBottomInset = bottomInset
         applyChatPanelDimensions()
         if (compact) {
             chatPanel.bringToFront()
@@ -1809,13 +1819,14 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun applyChatPanelDimensions() {
         if (!::chatPanel.isInitialized || gameplayRoot.width == 0) return
+        val containerWidth = centerColumn.width.takeIf { it > 0 } ?: gameplayRoot.width
         val params = chatPanel.layoutParams as FrameLayout.LayoutParams
         val widthRatio = if (isChatKeyboardCompact) {
             CHAT_PANEL_COMPACT_WIDTH_RATIO
         } else {
             CHAT_PANEL_WIDTH_RATIO
         }
-        params.width = (gameplayRoot.width * widthRatio)
+        params.width = (containerWidth * widthRatio)
             .toInt()
             .coerceIn(
                 dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_WIDTH_DP else CHAT_PANEL_MIN_WIDTH_DP),
@@ -1830,24 +1841,24 @@ class GameplayMockActivity : BaseActivity() {
         chatPanel.layoutParams = params
         chatPanel.setPadding(
             dp(if (isChatKeyboardCompact) 7 else 11),
-            dp(if (isChatKeyboardCompact) 5 else 11),
+            dp(if (isChatKeyboardCompact) 4 else 11),
             dp(if (isChatKeyboardCompact) 7 else 11),
-            dp(if (isChatKeyboardCompact) 6 else 11)
+            dp(if (isChatKeyboardCompact) 5 else 11)
         )
         chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 26 else 34)
+            height = dp(if (isChatKeyboardCompact) 24 else 34)
         }
         chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 36 else 42)
+            height = dp(if (isChatKeyboardCompact) 34 else 42)
         }
         chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 19 else 22)
+            height = dp(if (isChatKeyboardCompact) 18 else 22)
         }
         chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 36 else 42)
+            height = dp(if (isChatKeyboardCompact) 34 else 42)
         }
         btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 36 else 42)
+            height = dp(if (isChatKeyboardCompact) 34 else 42)
         }
     }
 
@@ -1865,6 +1876,8 @@ class GameplayMockActivity : BaseActivity() {
         }
 
         val humanName = GameEngine.humanPlayer(session).name
+        val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: dp(320)) - dp(56))
+            .coerceIn(dp(190), dp(300))
         messages.forEach { message ->
             val ownMessage = message.speaker == humanName
             val row = LinearLayout(this).apply {
@@ -1894,7 +1907,7 @@ class GameplayMockActivity : BaseActivity() {
             })
             bubble.addView(TextView(this).apply {
                 text = message.message
-                maxWidth = dp(250)
+                maxWidth = bubbleMaxWidth
                 setTextColor(
                     getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary)
                 )
@@ -1986,6 +1999,7 @@ class GameplayMockActivity : BaseActivity() {
             GameplayEffects.play(this, GameplayEffect.CHAT)
             scheduleBotChatReactions(rawMessage)
             clearChatComposerAfterSend()
+            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
         } else if (!GameEngine.canHumanChat(session)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             val human = GameEngine.humanPlayer(session)
@@ -3642,12 +3656,12 @@ class GameplayMockActivity : BaseActivity() {
 
     companion object {
         private const val CHAT_PANEL_WIDTH_RATIO = 0.46f
-        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.52f
+        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.72f
         private const val CHAT_PANEL_MIN_WIDTH_DP = 320
         private const val CHAT_PANEL_MAX_WIDTH_DP = 420
-        private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 340
-        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 440
-        private const val CHAT_PANEL_COMPACT_MARGIN_DP = 4
+        private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 300
+        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 520
+        private const val CHAT_PANEL_COMPACT_MARGIN_DP = 5
         private const val CHAT_PANEL_TOP_MARGIN_DP = 86
         private const val CHAT_PANEL_BOTTOM_MARGIN_DP = 96
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
