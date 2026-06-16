@@ -1,129 +1,85 @@
 # Architecture
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
-## Pattern Overview
+## Overall Shape
 
-**Overall:** Single-module Android application with Activity-driven navigation, XML views, in-memory game state, and extracted pure game/presentation helpers.
+- Native Android single-module app.
+- Package is mostly flat: `app/src/main/java/com/traidores/juego/`.
+- UI is Activity/XML driven, with helper classes for renderers, animators, catalogs, and local engine logic.
+- The app is not using MVVM, Navigation Component, Compose, dependency injection, coroutines, Room, Retrofit, or repositories.
 
-**Key Characteristics:**
-- One Android `:app` module and one package, `com.traidores.juego`.
-- Explicit `Intent` navigation between Activities rather than Navigation Component routes.
-- Portrait menu/reference flow and landscape game flow are separated by manifest orientation locks.
-- Local game simulation passes a serializable `GameSession` through Activity extras.
-- Business rules have meaningful test coverage; visual and navigation behavior does not.
+## Main Layers
 
-## Layers
+### UI Activities
 
-**Activity/UI Layer:**
-- Purpose: Inflate XML, bind views, handle clicks, show dialogs, and render state.
-- Contains: `MainActivity.kt`, `LobbyActivity.kt`, `GameplayMockActivity.kt`, `ProfileActivity.kt`, and other Activities.
-- Depends on: Android framework, resource files, game/presentation helpers.
-- Risk: `GameplayMockActivity.kt` and `LobbyActivity.kt` combine navigation, rendering, animation, timers, and state mutation.
+- `MainActivity.kt`: initial menu and audio quick controls.
+- `JugarActivity.kt`, `LocalModeActivity.kt`, `OnlineModeActivity.kt`: mode selection.
+- `LobbyBrowserActivity.kt`, `LobbyActivity.kt`: simulated lobby browsing and local lobby configuration.
+- `AssigningRolesActivity.kt`: role assignment/card-dealing transition.
+- `GameplayMockActivity.kt`: main local gameplay screen and orchestration.
+- `RolesActivity.kt`, `AyudaActivity.kt`, `OpcionesActivity.kt`: reference/help/options surfaces.
+- `ProfileActivity.kt`, `ProfileSelectionActivity.kt`: local profile and selectors.
 
-**Presentation Helper Layer:**
-- Purpose: Convert session state into UI-friendly data and isolate animations.
-- Contains: `GameplayTableUi.kt`, `GameTableLayout.kt`, `WinnerResultsRenderer.kt`, and the `*Animator.kt` classes.
-- Depends on: Models and some Android view APIs.
-- Used by: Gameplay and role/result presentation.
+### Game Domain
 
-**Domain Layer:**
-- Purpose: Model players, phases, actions, roles, and resolve game rules.
-- Contains: `GameModels.kt`, `GameEngine.kt`, `RoleCatalog.kt`, and `LocalBotAi.kt`.
-- Depends on: Kotlin/JVM and Android resource identifiers in the local factory/catalog.
-- Used by: Lobby, role assignment, gameplay, and tests.
+- `GameModels.kt`: `GameSession`, `GamePlayer`, roles, phases, map/theme data, timing, chat, and result fields.
+- `GameEngine.kt`: pure-ish local rules for night actions, debate, voting, tie voting, alcalde handling, role actions, results, timeouts, and win progression.
+- `LocalBotAi.kt`: local bot voting/chat heuristics and debug vote behavior.
+- `RoleCatalog.kt`, `ProfileRoleCatalog.kt`, `ProfileCustomizationCatalog.kt`: role/profile data catalogs.
 
-**Persistence/Platform Services:**
-- Purpose: Retain user options and coordinate audio/effects.
-- Contains: `MusicManager.kt`, `GameplayEffects.kt`, and direct `SharedPreferences` calls.
-- Depends on: Android context and packaged resources.
+### Presentation Helpers
 
-## Data Flow
+- `GameplayTableUi.kt`: phase text, public events, feedback, and gameplay-facing copy/state.
+- `GameTableLayout.kt`: table seat placement helpers.
+- `WinnerResultsRenderer.kt`: final result list/rendering.
+- `RoleDetailDialog.kt`, adapters, and item models for list/detail surfaces.
 
-**Menu to Gameplay:**
-1. `MainActivity.kt` opens `JugarActivity.kt`.
-2. The user selects local or simulated online mode.
-3. `LocalGameFactory` creates a `GameSession`.
-4. `LobbyActivity.kt` modifies players, map, and configuration.
-5. `AssigningRolesActivity.kt` displays role-reading state and starts gameplay.
-6. `GameplayMockActivity.kt` resolves phases through `GameEngine.kt`.
-7. The final overlay uses `GameplayTableUi.winnerPresentation()` and `WinnerResultsRenderer.kt`.
+### Animation And Audio
 
-**Profile Editing:**
-1. `ProfileActivity.kt` loads a saved profile from `SharedPreferences`.
-2. It maintains a mutable draft while editing.
-3. `ProfileSelectionActivity.kt` returns avatar/banner/role choices through Activity results.
-4. Save writes preferences; cancel restores the in-memory saved profile.
+- `VoteResultAnimator.kt`: vote recount, tie result, expulsion, no-expulsion presentation, boot animation.
+- `DayNightTransitionAnimator.kt`, `DeathRevealAnimator.kt`, `SilenceRevealAnimator.kt`, `WinnerRevealAnimator.kt`, `TraitorRevealAnimator.kt`, `RolePreviewAnimator.kt`, `JesterVictoryAnimator.kt`: blocking or transitional overlays.
+- `MusicManager.kt`, `GameplaySoundEffects.kt`, `GameplayEffects.kt`, `AudioPreferences.kt`: sound/music/vibration/preferences.
 
-**State Management:**
-- `GameSession` is immutable data copied after actions.
-- Activity-level flags track overlays, transitions, chat state, and animations.
-- Gameplay state is saved in `onSaveInstanceState`; lobby/profile state preservation is less complete.
-- User preferences are local and synchronous through `SharedPreferences`.
+## Gameplay Data Flow
 
-## Key Abstractions
+1. Lobby/options build a local `GameSession`.
+2. `AssigningRolesActivity` presents role assignment and opens `GameplayMockActivity`.
+3. `GameplayMockActivity` owns the current `GameSession` instance.
+4. Human actions call `GameEngine.resolveHumanTargetAction()` or phase-specific engine methods.
+5. Bot actions are resolved by `GameEngine` and `LocalBotAi`.
+6. UI state is rerendered from the updated session through `renderGame()` and specialized overlay methods.
+7. Blocking overlays pause countdown/music and call back into `resumeGameFlowAfterBlockingUi()`.
 
-**GameSession:**
-- Purpose: Complete local match state.
-- Location: `app/src/main/java/com/traidores/juego/GameModels.kt`.
-- Pattern: Serializable immutable data object passed through Intents and Bundles.
+## Navigation Pattern
 
-**GameEngine:**
-- Purpose: Authoritative local phase and action resolver.
-- Location: `app/src/main/java/com/traidores/juego/GameEngine.kt`.
-- Pattern: Stateless object with pure or copy-based transformations.
+- Navigation is manual through `Intent`.
+- Back behavior is Activity-specific and handled inside each screen.
+- Gameplay has many transient states: role preview, chat, event log, vote result, tie vote, reveals, winner/jester/oracle overlays, and day-night transitions.
+- There is no central route graph or navigation test harness.
 
-**RoleCatalog:**
-- Purpose: Central role names, teams, map availability, images, descriptions, and requirements.
-- Location: `app/src/main/java/com/traidores/juego/RoleCatalog.kt`.
+## Current Architectural Strengths
 
-**Presentation Coordinators:**
-- Purpose: Keep complex animation and result rendering outside the main Activity.
-- Examples: `DayNightTransitionAnimator.kt`, `DeathRevealAnimator.kt`, `WinnerRevealAnimator.kt`.
+- `GameEngine.kt` centralizes most local match rules instead of spreading rule decisions across XML/UI.
+- Tests exist for engine and table UI behavior.
+- Animations are increasingly extracted away from `GameplayMockActivity`.
+- Role/catalog data is separated from many Activity details.
+- Audio preferences have a dedicated helper.
 
-## Entry Points
+## Current Architectural Risks
 
-**Application Entry:**
-- Location: `app/src/main/java/com/traidores/juego/MainActivity.kt`.
-- Trigger: Launcher intent declared in `app/src/main/AndroidManifest.xml`.
-- Responsibilities: Main navigation, sound toggle, and profile entry.
+- `GameplayMockActivity.kt` is very large at about 3,479 lines and remains the highest-risk coordination point.
+- `activity_gameplay_mock.xml` is also very large at about 1,946 lines.
+- The package is flat, so ownership boundaries are implicit.
+- UI state and game state are often coordinated manually through booleans.
+- Programmatic lobby dialogs and fixed dimensions create visual fragility on compact landscape screens.
+- There is no instrumentation layer to verify Activity recreation, keyboard, and navigation behavior.
 
-**Game Entry:**
-- Location: `app/src/main/java/com/traidores/juego/LobbyActivity.kt`.
-- Trigger: Local or simulated online mode.
-- Responsibilities: Session configuration and transition to role assignment.
+## Recommended Boundary For Next Work
 
-**Gameplay Entry:**
-- Location: `app/src/main/java/com/traidores/juego/GameplayMockActivity.kt`.
-- Trigger: Assigned session from `AssigningRolesActivity.kt`.
-- Responsibilities: Full game table rendering and interaction lifecycle.
-
-## Error Handling
-
-**Strategy:** Guard invalid user actions and show a `Toast`; use fallback data/resource values when possible.
-
-**Patterns:**
-- Guard clauses prevent invalid targets or phases.
-- Dialogs confirm destructive profile/lobby actions.
-- Resource lookup uses `resources.getIdentifier()` with fallback placeholders.
-- There is no global exception handler, error screen, or structured diagnostic logging.
-
-## Cross-Cutting Concerns
-
-**Navigation:**
-- Direct Activity Intents and `finish()` calls.
-- Back behavior is implemented independently per Activity.
-- Gameplay intercepts back presses for overlays and expanded panels before allowing Activity exit.
-
-**Validation:**
-- Domain actions are validated in `GameEngine`.
-- Profile text is validated in `ProfileActivity`.
-- Layout fit and route continuity are not automatically validated.
-
-**Audio:**
-- `BaseActivity.kt` reports Activity lifecycle to `MusicManager.kt`.
-- Gameplay transition coordinators pause/resume phase music.
-
----
-*Architecture analysis: 2026-06-13*
-*Update when navigation or state ownership changes*
+- Keep bug fixes scoped to existing surfaces.
+- Do not introduce Firebase/online architecture during stabilization.
+- Prefer extracting small helpers only when they reduce risk in `GameplayMockActivity.kt` or `LobbyActivity.kt`.
+- Treat `GameEngine.kt` as the source of truth for local rules.
+- Treat `GameplayTableUi.kt` as the copy/state adapter for gameplay presentation.

@@ -1,124 +1,63 @@
-# Testing Patterns
+# Testing
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
-## Test Framework
+## Current Test Framework
 
-**Runner:**
-- JUnit 4.13.2 local JVM tests.
-- Android Gradle default unit-test task; no custom test configuration.
+- Local JVM tests use JUnit 4.13.2.
+- Tests live in `app/src/test/java/com/traidores/juego/`.
+- There are no Android instrumentation tests under `app/src/androidTest/`.
+- There is no screenshot, golden image, accessibility, UI Automator, Espresso, Robolectric, or Compose test setup.
 
-**Assertion Library:**
-- `org.junit.Assert` with `assertEquals`, `assertTrue`, `assertFalse`, and `assertNull`.
+## Existing Test Files
 
-**Run Commands:**
+- `GameEngineTest.kt`: broad local rule coverage for phases, roles, voting, ties, jester, oracle, mayor, desertor, chat/debug behavior, and win/result scenarios.
+- `GameplayTableUiTest.kt`: public events, role/phase text, gameplay copy, and presentation behavior.
+- `GameTableLayoutTest.kt`: seat/layout helper behavior.
+- `GameplayCountdownTest.kt`: countdown and transition lock behavior.
+- `GameplayFeedbackStateTest.kt`: feedback queue/private/banner state behavior.
+- `RoleCatalogTest.kt`: catalog/map-role consistency.
+
+## Useful Command
+
+On this Windows setup, the reliable unit-test command is:
+
 ```powershell
-.\gradlew.bat test
-.\gradlew.bat testDebugUnitTest
-.\gradlew.bat testDebugUnitTest --tests "com.traidores.juego.GameEngineTest"
+$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat :app:testDebugUnitTest
 ```
 
-## Test File Organization
+## Coverage Strengths
 
-**Location:**
-- All tests are under `app/src/test/java/com/traidores/juego/`.
-- Tests mirror the production package.
+- `GameEngine.kt` has meaningful local rule coverage.
+- Voting, tie, mayor, jester, oracle, payador, bot/debug behavior, and result progression are represented in unit tests.
+- Some presentation copy and event-log behavior is covered through pure helper tests.
+- Countdown and feedback state are tested outside the Activity.
 
-**Naming:**
-- `<Subject>Test.kt`.
-- Method names describe expected behavior in camelCase.
+## Coverage Gaps
 
-**Current Inventory:**
-- `GameEngineTest.kt` - 72 tests.
-- `GameplayTableUiTest.kt` - 24 tests.
-- `GameplayCountdownTest.kt` - 4 tests.
-- `GameplayFeedbackStateTest.kt` - 3 tests.
-- `RoleCatalogTest.kt` - 3 tests.
-- `GameTableLayoutTest.kt` - 2 tests.
+- No automated coverage for `Activity` lifecycle recreation.
+- No keyboard/IME tests for landscape chat.
+- No screenshot tests for compact landscape gameplay, lobby dialogs, profile, or vote overlays.
+- No navigation/back-stack smoke tests.
+- No resource-size or asset-loading regression checks.
+- No tests for actual `MediaPlayer` behavior or audio preference integration on device.
 
-## Test Structure
+## Manual Validation Needed
 
-**Suite Organization:**
-```kotlin
-class GameplayCountdownTest {
-    @Test
-    fun countdownPausesAndResumesWithoutLosingRemainingTime() {
-        val countdown = GameplayCountdown()
-        countdown.ensurePhase(3, 5_000L)
+- Compact landscape gameplay on at least one smaller phone.
+- Chat with real keyboard open, including receiving bot messages while typing.
+- Vote recount, tie vote, second tie, no-expulsion, expulsion boot animation, and final result windows.
+- Role preview timing and continue button.
+- Lobby timing/options dialogs on small screens.
+- Profile edit flow, selectors, banner/avatar changes, and Activity recreation if possible.
+- Audio mute/music/effects behavior from menu/options/gameplay.
 
-        val result = countdown.start(1_000L)
+## Recommended Next Test Work
 
-        assertEquals(GameplayCountdown.StartResult.STARTED, result)
-    }
-}
-```
-
-**Patterns:**
-- Direct arrange/act/assert flow without explicit section comments.
-- Test models are created inline or through helper functions at the bottom of a test class.
-- Tests favor pure domain/presentation logic and avoid Android framework dependencies.
-
-## Mocking
-
-**Framework:**
-- No mocking library.
-- No Robolectric.
-
-**Current Approach:**
-- Construct real `GameSession`, `GamePlayer`, and helper objects.
-- Keep production logic pure enough to execute on the JVM.
-
-## Fixtures and Factories
-
-**Test Data:**
-- Private factory helpers inside large test classes.
-- Inline roles and sessions for narrow cases.
-- No shared fixture directory.
-
-## Coverage
-
-**Requirements:**
-- No enforced line or branch coverage target.
-- No coverage report task is documented.
-- CI does not enforce test execution.
-
-**Strong Areas:**
-- Phase progression, voting, AFK handling, role behavior, winner presentation, countdown state, and pure table geometry.
-
-**Weak Areas:**
-- Activity navigation and back-stack behavior.
-- XML layout fit on small screens, tablets, and large font scales.
-- Keyboard/insets/chat interaction.
-- Dialog size and accessibility.
-- Profile edit cancellation across rotation/process recreation.
-- Music behavior across Activity transitions.
-
-## Test Types
-
-**Unit Tests:**
-- Present and substantial for domain logic.
-- Fast and Android-independent.
-
-**Integration Tests:**
-- No Activity-to-Activity navigation tests.
-- No tests that inflate layouts or assert view visibility/enabled state.
-
-**E2E/Visual Tests:**
-- None.
-- Existing root screenshots are manual artifacts, not automated baselines.
-
-## Recommended Stabilization Verification
-
-**First Additions:**
-- Instrumented smoke tests for every manifest Activity opening successfully.
-- Navigation tests for menu -> mode -> lobby -> role assignment -> gameplay and back behavior.
-- Layout checks at compact portrait, common portrait, compact landscape, and large font scale.
-- Screenshot/manual checklist for profile, lobby dialogs, gameplay overlays, keyboard-open chat, and winner screen.
-
-**Regression Rule:**
-- Every fixed navigation bug should get an Activity/instrumentation test where feasible.
-- Every fixed pure state bug should get a JVM test in the existing style.
-
----
-*Testing analysis: 2026-06-13*
-*Update after adding instrumentation or screenshot testing*
+- Keep adding local unit tests for rule changes in `GameEngine.kt`.
+- Extract Activity-independent layout/state decisions into testable helpers when fixing visual bugs.
+- Add a small manual QA matrix in `.planning` for APK validation.
+- Consider Robolectric or instrumentation only after the UI stabilizes enough to make those tests worth maintaining.

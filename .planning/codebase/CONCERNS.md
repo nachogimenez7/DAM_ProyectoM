@@ -1,150 +1,68 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
 ## Priority Summary
 
-1. Mobile layout resilience and font scaling.
-2. Back-stack and exit behavior through lobby/gameplay/profile.
-3. Empty, disabled, and loading-like states in simulated online/profile surfaces.
-4. Instrumented coverage for Activities, keyboard, dialogs, and orientation.
-5. Reduction of visual-state coupling in gameplay and lobby.
+1. `GameplayMockActivity.kt` and `activity_gameplay_mock.xml` are still the main fragility points.
+2. Visual behavior depends heavily on fixed landscape dimensions and manual overlay state.
+3. Chat/keyboard behavior requires real-device validation.
+4. Lobby/profile/navigation stability remain behind gameplay in the roadmap.
+5. Asset size and resource growth should be watched before APK sharing.
 
-## Tech Debt
+## High-Risk Files
 
-**Oversized gameplay Activity and layout:**
-- Issue: `GameplayMockActivity.kt` has about 2,730 lines and `activity_gameplay_mock.xml` about 1,504 lines with 99 fixed width/height values.
-- Impact: Small visual changes can affect overlays, keyboard behavior, transitions, chat, cards, and the bottom panel simultaneously.
-- Fix approach: Stabilize behavior first, then extract cohesive renderers/controllers and replace rigid dimensions with measured constraints.
+- `app/src/main/java/com/traidores/juego/GameplayMockActivity.kt`: about 3,479 lines; coordinates gameplay state, countdown, chat, event log, overlays, audio, voting, reveals, and navigation.
+- `app/src/main/res/layout/activity_gameplay_mock.xml`: about 1,946 lines; contains HUD, chat, event log, bottom panel, vote result, tie vote, role preview, jester/oracle/winner/reveal overlays.
+- `app/src/main/java/com/traidores/juego/GameEngine.kt`: about 1,561 lines; central local rules and timeout behavior.
+- `app/src/main/java/com/traidores/juego/LobbyActivity.kt`: about 810 lines; lobby configuration and programmatic dialogs.
+- `app/src/main/java/com/traidores/juego/LocalBotAi.kt`: about 647 lines; bot chat/vote behavior can affect perceived quality quickly.
+- `app/src/main/java/com/traidores/juego/ProfileActivity.kt`: about 482 lines; edit state and local persistence.
 
-**Lobby presentation constructed partly in Kotlin:**
-- Issue: `LobbyActivity.kt` builds timing and advanced-option dialogs programmatically.
-- Impact: Text wrapping, dialog width, touch targets, and styles are difficult to validate consistently across devices.
-- Fix approach: Move stable dialog structure to XML or shared builders after visual behavior is locked.
+## Visual/Layout Concerns
 
-**Hardcoded UI copy:**
-- Issue: At least 172 layout text/hint/content-description values are hardcoded; more strings exist in Activities.
-- Impact: Encoding inconsistencies, inaccessible labels, duplicated wording, and unreliable future localization.
-- Fix approach: Migrate strings screen-by-screen while correcting the affected UI, starting with navigation labels and accessibility descriptions.
+- Gameplay has improved recently, but still uses many fixed widths/heights.
+- Vote/tie/reveal overlays are visually richer but increase state coordination complexity.
+- Event log default collapsed/open behavior is product-sensitive and should be verified from a fresh match.
+- Bottom gameplay panel competes with role art, player name, role name, hints, status chips, and buttons.
+- Lobby/options dialogs may still need compact landscape validation.
+- Profile layout has many image/text/edit affordances and should be checked on short portrait devices.
 
-**Flat production package:**
-- Issue: Menu, profile, lobby, gameplay, domain, and renderer code all live in `com.traidores.juego`.
-- Impact: Ownership and safe modification boundaries are unclear.
-- Fix approach: Do not reorganize during bug fixing; document boundaries now and defer package moves until stabilization is complete.
+## State Coordination Concerns
 
-## Known and Likely Visual Bugs
+- Many overlay flags can interact: vote result, tie vote, chat, event log, death reveal, silence reveal, oracle reveal, jester victory, winner reveal, role preview, day/night transition.
+- `resumeGameFlowAfterBlockingUi()` is central and should be treated carefully.
+- Banner feedback such as vote confirmation must not leak into modal overlays.
+- Music pause/resume across blocking overlays is easy to regress.
+- Countdown transition locks must stay aligned with manually dismissed overlays.
 
-**Small-screen and large-font clipping:**
-- Evidence: Portrait menu/mode screens use centered non-scroll containers; gameplay has many fixed dimensions.
-- Files: `activity_main.xml`, `activity_local_mode.xml`, `activity_online_mode.xml`, `activity_gameplay_mock.xml`.
-- Trigger: Short displays, display zoom, or increased font scale.
-- Fix approach: Add scroll/responsive constraints, autosizing only where appropriate, and test at multiple configurations.
+## Navigation Concerns
 
-**Gameplay chat/insets fragility:**
-- Evidence: Chat dimensions are changed programmatically based on IME visibility while gameplay also uses `adjustResize`.
-- Files: `GameplayMockActivity.kt`, `activity_gameplay_mock.xml`, `AndroidManifest.xml`.
-- Trigger: Open keyboard in landscape, rotate/recreate, receive messages while typing, or use a split keyboard.
-- Fix approach: Treat chat+IME as one tested state machine and verify content remains visible above the keyboard.
+- Back behavior is not centrally specified.
+- Gameplay should close transient UI before leaving the match.
+- Profile selection Activities return results to profile editing and need consistent cancellation behavior.
+- Lobby and browser screens mix simulated online/local flows and can confuse route expectations.
 
-**Bottom gameplay information competes for vertical space:**
-- Evidence: The bottom panel contains role art, three text rows, and multiple actions with fixed heights.
-- Files: `activity_gameplay_mock.xml`.
-- Trigger: Long role hints or increased text scale.
-- Fix approach: Define minimum/maximum text behavior and reserve panel height using constraints rather than repeated fixed values.
+## Asset/Performance Concerns
 
-**Dialogs may overflow compact landscape:**
-- Evidence: Lobby dialogs receive fixed dp widths through `showLandscapeDialog()`.
-- Files: `LobbyActivity.kt`.
-- Trigger: Small landscape devices or large text.
-- Fix approach: Cap width against available window bounds and ensure dialog content scrolls independently from actions.
+- Several role/historical images are multi-megabyte PNGs in `drawable-nodpi`.
+- Raw music assets include several multi-megabyte MP3/MPEG files.
+- Repeated `MediaPlayer` creation for short effects is simple but should be watched if effects become frequent.
+- APK size may grow quickly as more generated banners/portraits/sounds are added.
+- There is no automated resource-size budget.
 
-## Navigation Risks
+## Testing Concerns
 
-**Gameplay back behavior is implicit and multi-step:**
-- Symptoms: Back first closes reveal/chat/event-log states; with the event log expanded by default, the first back may appear not to leave gameplay.
-- File: `GameplayMockActivity.kt`.
-- Risk: Users may interpret back as broken or accidentally leave the match after dismissing overlays.
-- Fix approach: Define explicit priority and add an exit confirmation for an active match without changing game features.
+- Local unit tests cover logic well, but not Android UI rendering.
+- No test guards for text clipping, keyboard layout, or overlay stacking.
+- No Activity recreation tests for profile draft or gameplay state.
+- No manual QA artifact is currently tracked for the final APK pass.
 
-**Route behavior is duplicated:**
-- Issue: Each Activity manually starts the next Activity and calls `finish()` independently.
-- Files: All `*Activity.kt` navigation handlers.
-- Impact: Back-stack regressions can be introduced without compiler or unit-test feedback.
-- Fix approach: Add route smoke tests before centralizing navigation decisions.
+## Recommended Stabilization Focus
 
-**Profile edit draft is not saved across recreation:**
-- Evidence: `ProfileActivity.kt` creates `draftProfile` in `onCreate` but has no `onSaveInstanceState`.
-- Trigger: Process recreation or configuration change while editing.
-- Impact: Unsaved edits and editing mode can reset unexpectedly.
-- Fix approach: Save draft/edit mode or intentionally lock orientation with a documented discard flow.
-
-## Empty and Disabled States
-
-**Lobby browser has no real empty state:**
-- Evidence: `LobbyBrowserActivity.kt` always renders a hardcoded list.
-- Risk: Future remote empty/error results have no designed container.
-- Current-scope fix: Add a reusable empty-state presentation without connecting a backend.
-
-**Online mode labels describe simulated behavior as real:**
-- Evidence: Simulated lobbies and local factories are used behind online actions.
-- Risk: Disabled/full/unavailable state semantics can become inconsistent.
-- Current-scope fix: Ensure buttons, status labels, and unreachable actions are visually and verbally coherent; do not add networking.
-
-**Profile statistics and achievements are placeholder-driven:**
-- Risk: Empty/locked/no-selection states may be visually ambiguous.
-- Files: `ProfileActivity.kt`, `activity_profile.xml`.
-- Current-scope fix: Define stable placeholder and no-data presentation only.
-
-## Accessibility and Usability
-
-**Touch targets:**
-- Several icon buttons use 44dp dimensions.
-- Recommendation: Move important navigation/actions toward 48dp minimum where layout permits.
-
-**Content descriptions:**
-- Many descriptions are hardcoded and decorative images use mixed conventions.
-- Recommendation: Audit interactive images/buttons; use `@null` only for genuinely decorative artwork.
-
-**Contrast and disabled states:**
-- Disabled controls often rely mainly on alpha.
-- Recommendation: Verify label contrast and add semantic disabled copy where state is not obvious.
-
-## Performance and Lifecycle
-
-**Dynamic view recreation:**
-- Gameplay rebuilds chat bubbles and player/card views during renders.
-- Risk: Extra allocations and animation churn on lower-end devices.
-- Improvement path: Measure before optimizing; reuse adapters/holders only after correctness.
-
-**Handlers and animations:**
-- Gameplay coordinates several `Handler` callbacks and animators.
-- Risk: Ordering bugs around pause/resume and overlay dismissal.
-- Mitigation: Existing cleanup is substantial, but Activity-level instrumentation is missing.
-
-**Large packaged artwork/audio:**
-- Risk: APK size and memory pressure, especially with full-resolution drawable images.
-- Improvement path: Audit resource dimensions and move non-density-scaled art deliberately; avoid visual quality regressions.
-
-## Test Coverage Gaps
-
-**No Android instrumentation tests:**
-- What's not tested: Activity startup, view binding, click routes, back stack, dialogs, keyboard, orientation, and process recreation.
-- Priority: Critical for the requested stabilization milestone.
-
-**No visual regression baseline:**
-- What's not tested: Clipping, overlap, typography, spacing, and empty states.
-- Priority: High.
-
-**No CI:**
-- What's not tested automatically on push: build health and unit regressions.
-- Priority: Medium during stabilization; a simple Gradle test workflow would reduce accidental breakage.
-
-## Scope Guard
-
-- Do not add new roles, Firebase, real online networking, account systems, purchases, or gallery uploads in this milestone.
-- Avoid broad architecture rewrites while correcting bugs.
-- Preserve the established medieval/gold visual identity while improving responsive behavior.
-
----
-*Concerns audit: 2026-06-13*
-*Update as stabilization issues are verified and resolved*
+- Continue with GSD Phase 1: Gameplay Visual Stability.
+- Audit only current behavior before adding roles/features.
+- Prefer visual bug fixes over new content.
+- Create a manual device checklist for APK sharing.
+- Defer online/Firebase and new-role expansion until the existing surfaces are stable.

@@ -1,107 +1,71 @@
-# Coding Conventions
+# Conventions
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
-## Naming Patterns
+## Kotlin Style
 
-**Files and Types:**
-- PascalCase for Kotlin classes, objects, enums, and data classes.
-- Activities end in `Activity`; adapters end in `Adapter`; animation coordinators end in `Animator`.
-- Resource names are lowercase snake_case.
-
-**Functions:**
-- camelCase for functions.
-- UI event orchestration commonly uses `show*`, `render*`, `update*`, `handle*`, `toggle*`, and `resolve*`.
-- Guard/query helpers commonly use `is*`, `can*`, `should*`, and `needs*`.
-
-**Variables:**
-- camelCase for fields and locals.
-- `lateinit var` is common for Activity-bound views.
-- Constants use `UPPER_SNAKE_CASE` in companion objects.
-
-## Code Style
-
-**Formatting:**
 - Kotlin official style is enabled in `gradle.properties`.
-- Four-space indentation and trailing commas in multiline Kotlin declarations are common.
-- XML attributes are generally one per line.
-- No standalone formatter or lint configuration beyond Android/Kotlin defaults is committed.
+- Code uses a pragmatic Android Activity style rather than strict layered architecture.
+- Immutable session updates are preferred in engine/model paths through `copy()`.
+- UI code commonly uses `findViewById`, direct listeners, and imperative rendering.
+- Many local helper methods are private inside large Activity classes.
 
-**Strings:**
-- Kotlin and XML contain many hardcoded Spanish strings.
-- `app/src/main/res/values/strings.xml` contains only a small subset of visible copy.
-- New correction work should avoid expanding hardcoded duplication and should move repeated/accessibility text to resources when touching a screen.
+## State Management
 
-## Import Organization
+- `GameSession` is the main state container for local match rules.
+- `GameplayMockActivity` stores UI/transient state with many booleans for overlays and flow locks.
+- Countdown state is delegated to `GameplayCountdown`.
+- Feedback queue/state is delegated to `GameplayFeedbackState`.
+- Profile and options state rely on `SharedPreferences`.
 
-**Order:**
-- Android framework imports first.
-- AndroidX imports next.
-- Kotlin/Java standard library imports last.
-- No path aliases or barrel modules exist.
+## Rendering Pattern
 
-## Error Handling
+- Activities initialize views in `onCreate`.
+- Main gameplay rerendering flows through `renderGame()` and specialized rendering methods.
+- Blocking overlays pause countdown/music and resume through callback methods.
+- Many UI strings are still hardcoded in Kotlin/XML instead of `strings.xml`.
+- Autosizing is used in some recently touched text/buttons, but not consistently across the app.
 
-**Patterns:**
-- Use early returns for invalid state or actions.
-- Use `Toast` for recoverable user feedback.
-- Use `AlertDialog` for confirmation and editable values.
-- Use safe fallbacks when an Intent extra or drawable resource is missing.
-- Avoid non-null assertions; production code primarily relies on guards and `lateinit`.
+## Game Rule Pattern
 
-**Navigation Errors:**
-- There is no central route abstraction or route validation.
-- Every Activity owns its own click and back behavior.
+- `GameEngine.kt` owns phase transitions, human target validation, timeout resolution, voting, tie rules, and winner progression.
+- `LocalBotAi.kt` owns bot chat/vote heuristics and debug/testing behavior.
+- UI should ask `GameEngine` for action legality instead of reimplementing rules.
+- Tests should be added or updated when changing `GameEngine.kt`, `GameplayTableUi.kt`, or role catalogs.
 
-## Logging
+## Resource Pattern
 
-**Framework:**
-- No application logging framework is used.
-- No consistent `Log.d/e` diagnostic strategy is present.
+- Historical/role/map images are resource-based and selected through catalogs or theme keys.
+- Large assets should use `drawable-nodpi` when density scaling would be undesirable.
+- Small UI shapes remain XML drawables.
+- One-off generated assets should be committed only when referenced by the app.
+- Temporary generation files should stay in `tmp/` and remain untracked.
 
-**Correction Guidance:**
-- Visual fixes should be verified through repeatable test cases or screenshots rather than temporary production logs.
+## Audio Pattern
 
-## Comments
+- Background music goes through `MusicManager`.
+- Short effects go through `GameplaySoundEffects` or animator-specific `MediaPlayer` handling.
+- Audio preference checks should respect `AudioPreferences`.
+- New effects should avoid duplicating preference logic in each caller.
 
-**Current Pattern:**
-- Comments are sparse and usually identify a UI section or explain a business exception.
-- Most domain behavior is expressed through named functions and tests.
+## Navigation Pattern
 
-**Guidance:**
-- Comment only non-obvious layout calculations, lifecycle workarounds, and state ordering.
-- Do not narrate basic view binding or assignments.
+- Navigation is manual with `Intent`.
+- Several Activities call `finish()` to keep the back stack shallow.
+- Gameplay back behavior must prioritize transient UI before leaving the match.
+- There is no centralized navigation contract yet.
 
-## Function Design
+## Documentation Pattern
 
-**Preferred Existing Pattern:**
-- Guard clauses followed by immutable `copy()` state updates.
-- Extract pure rules into `GameEngine`, `GameplayTableUi`, or geometry helpers.
-- Keep dynamic Android view construction in renderer/adapter classes when practical.
+- GSD planning lives in `.planning/`.
+- Product and stabilization scope are defined in `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md`.
+- Codebase maps should be refreshed after major gameplay/profile/lobby changes.
 
-**Current Deviations:**
-- `GameplayMockActivity.kt` and `LobbyActivity.kt` contain long methods and many responsibilities.
-- Programmatic dialog construction in `LobbyActivity.kt` makes visual consistency harder to review than XML-based components.
+## Editing Guidelines For This Repo
 
-## Module Design
-
-**Exports:**
-- Kotlin top-level package visibility is simple; most helpers are objects or classes.
-- `internal` is used for testable implementation details such as `GameplayFeedbackState`.
-
-**State:**
-- Prefer immutable model transformations for game state.
-- Activity UI flags are mutable and lifecycle-sensitive.
-- Any visual/navigation correction should preserve state ordering around animations and callbacks.
-
-## XML/UI Conventions
-
-- Shared primary/dark buttons use `BtnGold` and `BtnDark` from `themes.xml`.
-- The visual system uses dark brown panels, gold borders/accents, custom fonts, and map artwork.
-- Touch targets are commonly 44dp; new work should meet or exceed 48dp where layout permits.
-- Avoid adding fixed widths/heights to `activity_gameplay_mock.xml`; it already contains 99 fixed dimensions.
-- Use `ScrollView`/RecyclerView or responsive constraints for screens that can overflow with large fonts or small displays.
-
----
-*Convention analysis: 2026-06-13*
-*Update when linting, resources, or navigation standards are formalized*
+- Keep fixes local to gameplay/lobby/profile/chat unless a shared helper is clearly needed.
+- Avoid broad package reorganization during stabilization.
+- Prefer small XML/Kotlin corrections with manual visual validation.
+- Keep `tmp/` out of commits.
+- Use Android Studio/device screenshots as the source of truth for visual acceptance.

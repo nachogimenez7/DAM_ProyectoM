@@ -1,83 +1,66 @@
 # Technology Stack
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
 ## Languages
 
-**Primary:**
-- Kotlin 1.9.22 - Android Activities, game rules, presentation state, adapters, animation coordinators, and local persistence.
+- Kotlin is the primary implementation language for Activities, game state, local rules, render helpers, adapters, animation coordinators, audio helpers, and profile/lobby logic.
+- XML is used for Android layouts, drawables, menus, themes, fonts, and the manifest.
+- Groovy Gradle DSL is used in `build.gradle` and `app/build.gradle`.
 
-**Secondary:**
-- XML - Android layouts, themes, colors, drawables, and manifest declarations under `app/src/main/res/`.
-- Groovy Gradle DSL - Project and application build configuration in `build.gradle` and `app/build.gradle`.
+## Android Runtime
 
-## Runtime
+- Single Android app module: `:app`.
+- Namespace and application id: `com.traidores.juego`.
+- `minSdk 24`, `targetSdk 34`, `compileSdk 34`.
+- Java/Kotlin bytecode target: JVM 1.8.
+- App version: `0.1.0-alpha`.
+- Orientation is fixed per Activity in `app/src/main/AndroidManifest.xml`: portrait for menu/profile/help/options/reference screens, landscape for lobby, role assignment, and gameplay.
+- `GameplayMockActivity` uses `android:windowSoftInputMode="adjustResize"` to support the landscape chat keyboard flow.
 
-**Environment:**
-- Android runtime, minimum SDK 24 and target/compile SDK 34.
-- Java 8 bytecode target through `sourceCompatibility`, `targetCompatibility`, and `jvmTarget`.
-- Portrait orientation for menu/profile/reference screens; landscape orientation for lobby, role assignment, and gameplay in `app/src/main/AndroidManifest.xml`.
+## Frameworks And Dependencies
 
-**Package Manager:**
-- Gradle wrapper 8.5, configured in `gradle/wrapper/gradle-wrapper.properties`.
 - Android Gradle Plugin 8.1.4.
-- No dependency lockfile or version catalog.
+- Kotlin Android plugin 1.9.22.
+- AndroidX Core KTX 1.12.0.
+- AndroidX AppCompat 1.6.1.
+- Material Components 1.11.0.
+- ConstraintLayout 2.1.4.
+- RecyclerView 1.3.2.
+- CardView 1.0.0.
+- JUnit 4.13.2 for JVM unit tests.
 
-## Frameworks
+## Build And Tooling
 
-**Core:**
-- AndroidX AppCompat 1.6.1 - Activity and compatibility foundation.
-- AndroidX Core KTX 1.12.0 - Kotlin-friendly Android APIs.
-- Material Components 1.11.0 - Dialog and UI primitives.
-- ConstraintLayout 2.1.4 - Available for responsive layout work, although most current screens use `RelativeLayout` and nested `LinearLayout`.
-- RecyclerView 1.3.2 and CardView 1.0.0 - Role and profile selection lists.
+- Gradle wrapper scripts: `gradlew` and `gradlew.bat`.
+- Settings live in `settings.gradle`; project plugins in root `build.gradle`; app configuration in `app/build.gradle`.
+- The current Codex environment did not expose `node` in PATH, so GSD shim commands cannot be queried directly from this shell without adding Node.
+- Previous working Gradle command on Windows uses Android Studio JBR:
+  - `$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'`
+  - `.\gradlew.bat :app:testDebugUnitTest`
 
-**Testing:**
-- JUnit 4.13.2 - Local JVM tests in `app/src/test/java/com/traidores/juego/`.
-- No Android instrumentation, screenshot, accessibility, or end-to-end test framework is configured.
+## Assets
 
-**Build/Dev:**
-- Android Studio is the intended development environment.
-- Gradle wrapper scripts are `gradlew` and `gradlew.bat`.
-- Kotlin official style is enabled in `gradle.properties`.
+- Large visual assets live mostly in `app/src/main/res/drawable/` and `app/src/main/res/drawable-nodpi/`.
+- Role art exists per map family: base, gaucho, medieval, and Greek variants.
+- Recent profile/gameplay assets include historical portraits, profile banners, `card_back_traidores.webp`, `oracle_return_portal.webp`, `jester_horn_illustrated.webp`, and `ic_kicking_boot.png`.
+- Audio assets in `app/src/main/res/raw/` include phase music, victory music, card dealing, transition sounds, vote cast, death/silence reveals, oracle, payador, and jester victory effects.
 
-## Key Dependencies
+## Persistence
 
-**Critical:**
-- `androidx.appcompat:appcompat:1.6.1` - Base Activity implementation and dialogs.
-- `com.google.android.material:material:1.11.0` - Material-compatible controls.
-- `androidx.recyclerview:recyclerview:1.3.2` - Dynamic role/profile lists.
-- `androidx.constraintlayout:constraintlayout:2.1.4` - Responsive positioning option for future layout corrections.
-- `androidx.cardview:cardview:1.0.0` - Card presentation.
+- Local state is stored with `SharedPreferences`, mainly using the `TraidoresPrefs` namespace.
+- `AudioPreferences.kt` centralizes music/effects preferences and migration.
+- `ProfileActivity.kt`, `LobbyActivity.kt`, `LocalModeActivity.kt`, `OnlineModeActivity.kt`, and `GameplayMockActivity.kt` read/write preference state directly in several places.
 
-**Local Assets:**
-- Custom fonts in `app/src/main/res/font/`.
-- Large map, role, profile, and background images in `app/src/main/res/drawable/` and `drawable-nodpi/`.
-- Music and sound effects in `app/src/main/res/raw/`.
+## Testing Stack
 
-## Configuration
+- Tests are local JVM tests in `app/src/test/java/com/traidores/juego/`.
+- Current test files cover `GameEngine`, `GameplayTableUi`, `GameTableLayout`, `GameplayCountdown`, `GameplayFeedbackState`, and `RoleCatalog`.
+- No instrumentation, screenshot, accessibility, device-matrix, or UI-navigation test framework is configured.
 
-**Environment:**
-- No environment variables are required.
-- `local.properties` contains machine-specific Android SDK configuration and is gitignored.
-- User preferences and profile mock data use `SharedPreferences` under the `TraidoresPrefs` namespace.
+## Production Shape
 
-**Build:**
-- `settings.gradle` defines repositories and the single `:app` module.
-- `app/build.gradle` defines SDK levels, version `0.1.0-alpha`, dependencies, and release settings.
-- Release minification is disabled.
-
-## Platform Requirements
-
-**Development:**
-- Windows is the active development environment.
-- Android Studio/JDK and Android SDK 34 are required.
-- The project has no command-line Node.js dependency.
-
-**Production:**
-- Single Android APK application with application ID `com.traidores.juego`.
-- Current implementation is local/mock-first and does not require network access.
-
----
-*Stack analysis: 2026-06-13*
-*Update after major dependency or SDK changes*
+- The app is still local/mock-first.
+- Online screens exist, but Firebase/auth/network services are not implemented in the app module.
+- Real multiplayer, accounts, backend authority, and database persistence remain future work.

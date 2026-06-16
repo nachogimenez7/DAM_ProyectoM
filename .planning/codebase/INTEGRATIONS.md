@@ -1,91 +1,57 @@
-# External Integrations
+# Integrations
 
-**Analysis Date:** 2026-06-13
+**Analysis Date:** 2026-06-16
+**Mapped Commit:** e6a3bcd
 
-## APIs & External Services
+## External Services
 
-**Current State:**
-- No HTTP client, REST API, WebSocket, Firebase SDK, or external service client exists in `app/build.gradle`.
-- The apparent online flows in `OnlineModeActivity.kt`, `LobbyBrowserActivity.kt`, and `LobbyActivity.kt` are local simulations.
-- Mock lobbies are hardcoded in `app/src/main/java/com/traidores/juego/LobbyBrowserActivity.kt`.
+- No real network, Firebase, database, analytics, ads, push notifications, or auth provider is currently wired in the Android app.
+- `OnlineModeActivity.kt` and `LobbyBrowserActivity.kt` simulate online/lobby behavior locally.
+- Account/profile online design exists conceptually, but the app currently persists only local mock profile state.
 
-## Data Storage
+## Android Platform Integrations
 
-**Databases:**
-- None.
-- Game sessions live in memory as serializable `GameSession` objects from `app/src/main/java/com/traidores/juego/GameModels.kt`.
+- `AndroidManifest.xml` declares `android.permission.VIBRATE`.
+- `BaseActivity.kt` provides shared AppCompat setup and is inherited by app screens.
+- Navigation uses Android `Intent` and Activity transitions directly from each Activity.
+- Landscape gameplay uses `adjustResize` to respond to soft keyboard insets.
 
-**Local Preferences:**
-- Android `SharedPreferences` stores sound, language, player name, profile fields, display scale, and other options.
-- Main access points include `MainActivity.kt`, `OpcionesActivity.kt`, `ProfileActivity.kt`, `MusicManager.kt`, and `GameplayMockActivity.kt`.
-- There is no schema versioning or migration layer for preference keys.
+## Media And Audio
 
-**File Storage:**
-- No user file storage or gallery integration.
-- Avatars, banners, role images, and map artwork are packaged application resources.
+- `MusicManager.kt` owns background music and victory music through `MediaPlayer`.
+- `GameplaySoundEffects.kt` plays short one-shot gameplay effects through `MediaPlayer`.
+- Animation classes with sound include:
+  - `AssigningRolesActivity.kt` for card shuffle/deal sound.
+  - `DayNightTransitionAnimator.kt` for day/night transition sounds.
+  - `DeathRevealAnimator.kt` for death reveal.
+  - `SilenceRevealAnimator.kt` for silence reveal.
+  - `GameplayMockActivity.kt` for vote, oracle, payador, and jester cues.
+- Audio preferences are split between music and effects in `AudioPreferences.kt`.
 
-**Caching:**
-- None beyond in-memory Activity/session state and Android resource caching.
+## Local Storage
 
-## Authentication & Identity
+- `SharedPreferences` is used for:
+  - Audio settings.
+  - Local player/profile data.
+  - Lobby/gameplay option values.
+  - Initial role-reading delay and other gameplay preferences.
+- There is no Room, SQLite wrapper, file database, or remote persistence layer.
 
-**Current Implementation:**
-- Login and registration controls in `OpcionesActivity.kt` are simulated.
-- No credentials are sent or stored by a backend provider.
-- The current player identity is a locally stored display name.
+## Resource Integrations
 
-**Planned but Not Integrated:**
-- Firebase/Google account concepts are documented product direction, not runtime dependencies.
-- They must remain out of the current visual/navigation stabilization milestone.
+- Fonts in `app/src/main/res/font/`: `grenze.ttf`, `cormorant_garamond.ttf`, `metamorphous.ttf`, `rye.ttf`.
+- Map backgrounds and logs are resource-driven, selected by map/theme keys.
+- Role details and map-specific art are resolved through catalog classes rather than remote content.
 
-## Monitoring & Observability
+## Build/Repo Integrations
 
-**Error Tracking:**
-- No Crashlytics, Sentry, or equivalent integration.
+- Git remote is GitHub repository `nachogimenez7/DAM_ProyectoM`.
+- No CI workflow was observed in the repo snapshot.
+- No secrets or API keys are expected for local build/test.
 
-**Analytics:**
-- None.
+## Future Integration Boundaries
 
-**Logs:**
-- No structured logging layer.
-- User-visible failures are primarily communicated with `Toast` or dialog messages.
-
-## CI/CD & Deployment
-
-**Hosting:**
-- Not applicable; this is an Android APK.
-
-**CI Pipeline:**
-- No `.github/workflows/` pipeline is present.
-- Builds, tests, and manual device checks currently depend on local Android Studio execution.
-
-## Environment Configuration
-
-**Development:**
-- Android SDK location is machine-specific in gitignored `local.properties`.
-- No API keys or service secrets are required.
-- Mock online state requires no network connection.
-
-**Staging:**
-- No staging environment.
-
-**Production:**
-- No production backend or remote configuration.
-
-## Webhooks & Callbacks
-
-**Incoming:**
-- None.
-
-**Outgoing:**
-- None.
-
-## Stabilization Implications
-
-- Route and empty-state testing can be deterministic because current data is local.
-- Online labels must clearly remain coherent even though data is simulated.
-- No new service integration should be introduced while fixing visual and navigation bugs.
-
----
-*Integration audit: 2026-06-13*
-*Update when a real backend, authentication provider, or telemetry service is added*
+- Firebase/auth/backend authority should not be mixed into `GameEngine.kt` directly.
+- Online match authority should live behind a dedicated service/repository boundary when introduced.
+- Profile/account persistence should separate public profile data from private auth identity.
+- The current local engine can remain the rules reference, but online validation must be server-authoritative later.
