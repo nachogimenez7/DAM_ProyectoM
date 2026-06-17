@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputFilter
 import android.view.View
@@ -30,6 +31,14 @@ class ProfileActivity : BaseActivity() {
         var bannerKey: String,
         var favoriteRoleKey: String,
         var achievements: List<String>
+    )
+
+    private data class AchievementVisualStyle(
+        val backgroundHex: String,
+        val borderHex: String,
+        val textHex: String,
+        val titleHex: String,
+        val dateHex: String
     )
 
     private val preferences by lazy {
@@ -102,6 +111,13 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editAchievements).setOnClickListener {
             showAchievementsSelector()
         }
+        findViewById<View>(R.id.editAvatar).contentDescription = "Editar foto de perfil"
+        findViewById<View>(R.id.editBanner).contentDescription = "Editar banner del perfil"
+        findViewById<View>(R.id.editName).contentDescription = "Editar nombre visible"
+        findViewById<View>(R.id.editPublicId).contentDescription = "Editar ID publico"
+        findViewById<View>(R.id.editBio).contentDescription = "Editar frase del perfil"
+        findViewById<View>(R.id.editFavoriteRole).contentDescription = "Editar rol favorito"
+        findViewById<View>(R.id.editAchievements).contentDescription = "Editar logros destacados"
 
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
         profilePublicId.setOnClickListener { if (isEditing) showPublicIdEditor() }
@@ -154,7 +170,7 @@ class ProfileActivity : BaseActivity() {
             ?.filter { it.isNotBlank() }
             ?.take(MAX_FEATURED_ACHIEVEMENTS)
             .orEmpty()
-            .ifEmpty { ProfileCustomizationCatalog.achievements.map { it.name } }
+            .let(::validFeaturedAchievements)
 
         return ProfileDraft(
             name = preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
@@ -207,9 +223,24 @@ class ProfileActivity : BaseActivity() {
             val achievementName = draftProfile.achievements.getOrNull(index)
             val achievement = achievementName?.let(ProfileCustomizationCatalog::achievement)
             view.text = achievement?.shortName ?: achievementName.orEmpty()
-            view.tag = achievementName
-            view.contentDescription = achievementName?.let { "Ver logro $it" }
-            view.visibility = if (achievementName == null) View.INVISIBLE else View.VISIBLE
+            view.tag = achievement?.name
+            view.contentDescription = achievement?.let { "Ver logro ${it.name}" }
+            view.visibility = if (achievement == null) View.INVISIBLE else View.VISIBLE
+            view.isEnabled = achievement != null
+            view.isClickable = achievement != null
+            achievement?.let { applyAchievementBadgeStyle(view, it.rarity) }
+        }
+    }
+
+    private fun validFeaturedAchievements(names: List<String>): List<String> {
+        val unlocked = ProfileCustomizationCatalog.unlockedAchievements()
+        val validNames = unlocked.map { it.name }.toSet()
+        val selected = names
+            .filter { it in validNames }
+            .distinct()
+            .take(MAX_FEATURED_ACHIEVEMENTS)
+        return selected.ifEmpty {
+            unlocked.map { it.name }.take(MAX_FEATURED_ACHIEVEMENTS)
         }
     }
 
@@ -228,6 +259,11 @@ class ProfileActivity : BaseActivity() {
         isEditing = editing
         editIcons.forEach { it.visibility = if (editing) View.VISIBLE else View.GONE }
         editProfileButton.text = if (editing) "GUARDAR CAMBIOS" else "EDITAR PERFIL"
+        editProfileButton.contentDescription = if (editing) {
+            "Guardar cambios del perfil"
+        } else {
+            "Entrar al modo edicion del perfil"
+        }
         updateInteractiveContentDescriptions(favoriteRoleName.text.toString())
     }
 
@@ -271,6 +307,7 @@ class ProfileActivity : BaseActivity() {
                 draftProfile = savedProfile.copy(achievements = savedProfile.achievements.toList())
                 setEditing(false)
                 renderProfile()
+                finish()
             }
             .show()
     }
@@ -462,11 +499,11 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showAchievementsSelector() {
-        val achievements = ProfileCustomizationCatalog.achievements
+        val achievements = ProfileCustomizationCatalog.unlockedAchievements()
         val selected = achievements
             .map { it.name in draftProfile.achievements }
             .toBooleanArray()
-        val labels = achievements.map { it.name }.toTypedArray()
+        val labels = achievements.map { "${it.name} (${it.rarity.label})" }.toTypedArray()
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("Logros destacados")
@@ -499,14 +536,109 @@ class ProfileActivity : BaseActivity() {
 
     private fun showAchievementDetail(name: String) {
         val achievement = ProfileCustomizationCatalog.achievement(name) ?: return
-        AlertDialog.Builder(this)
-            .setTitle(achievement.name)
-            .setMessage(
-                "${achievement.description}\n\n" +
-                    "OBTENIDO EL ${achievement.obtainedDate}"
+        val content = layoutInflater.inflate(R.layout.dialog_achievement_detail, null)
+        val visualStyle = achievementVisualStyle(achievement.rarity)
+        content.findViewById<View>(R.id.achievementDetailPanel).background =
+            achievementDetailBackground(achievement.rarity)
+        content.findViewById<View>(R.id.achievementGlow).alpha =
+            if (achievement.rarity == AchievementRarity.GOLD) 1f else 0f
+        content.findViewById<TextView>(R.id.achievementDetailTitle).text = achievement.name
+        content.findViewById<TextView>(R.id.achievementDetailTitle)
+            .setTextColor(Color.parseColor(visualStyle.titleHex))
+        content.findViewById<TextView>(R.id.achievementDetailTitle).typeface =
+            if (achievement.rarity == AchievementRarity.GOLD) {
+                android.graphics.Typeface.SERIF
+            } else {
+                android.graphics.Typeface.DEFAULT_BOLD
+            }
+        content.findViewById<TextView>(R.id.achievementDetailDescription).text =
+            achievement.description
+        content.findViewById<TextView>(R.id.achievementDetailDescription)
+            .setTextColor(Color.parseColor(visualStyle.textHex))
+        content.findViewById<TextView>(R.id.achievementDetailDate).text =
+            "Obtenido el ${achievement.obtainedDate}"
+        content.findViewById<TextView>(R.id.achievementDetailDate)
+            .setTextColor(Color.parseColor(visualStyle.dateHex))
+        content.findViewById<View>(R.id.achievementMedalFrame).background =
+            achievementMedalFrameBackground(achievement.rarity)
+        content.findViewById<ImageView>(R.id.achievementMedal)
+            .setImageResource(achievement.rarity.medalRes)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
+            .create()
+
+        content.setOnClickListener { dialog.dismiss() }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                val maxWidth = (resources.displayMetrics.widthPixels - dp(24)).coerceAtLeast(dp(260))
+                setLayout(dp(420).coerceAtMost(maxWidth), LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun applyAchievementBadgeStyle(view: TextView, rarity: AchievementRarity) {
+        val visualStyle = achievementVisualStyle(rarity)
+        view.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(if (rarity == AchievementRarity.GOLD) 14 else 12).toFloat()
+            setColor(Color.parseColor(visualStyle.backgroundHex))
+            setStroke(dp(if (rarity == AchievementRarity.GOLD) 3 else 2), Color.parseColor(visualStyle.borderHex))
+        }
+        view.setTextColor(Color.parseColor(visualStyle.textHex))
+        view.typeface = if (rarity == AchievementRarity.GOLD) {
+            android.graphics.Typeface.SERIF
+        } else {
+            android.graphics.Typeface.DEFAULT_BOLD
+        }
+        view.setPadding(dp(8), dp(7), dp(8), dp(7))
+    }
+
+    private fun achievementDetailBackground(rarity: AchievementRarity): GradientDrawable {
+        val visualStyle = achievementVisualStyle(rarity)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(16).toFloat()
+            setColor(Color.parseColor(visualStyle.backgroundHex))
+            setStroke(dp(2), Color.parseColor(visualStyle.borderHex))
+        }
+    }
+
+    private fun achievementMedalFrameBackground(rarity: AchievementRarity): GradientDrawable {
+        val visualStyle = achievementVisualStyle(rarity)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.parseColor("#CC2A2318"))
+            setStroke(dp(2), Color.parseColor(visualStyle.borderHex))
+        }
+    }
+
+    private fun achievementVisualStyle(rarity: AchievementRarity): AchievementVisualStyle {
+        return when (rarity) {
+            AchievementRarity.BRONZE -> AchievementVisualStyle(
+                backgroundHex = "#E6332017",
+                borderHex = "#F0A35A",
+                textHex = "#FFE2BC",
+                titleHex = "#FFB56E",
+                dateHex = "#EBC49A"
             )
-            .setPositiveButton("CERRAR", null)
-            .show()
+            AchievementRarity.SILVER -> AchievementVisualStyle(
+                backgroundHex = "#E6202830",
+                borderHex = "#DCEAFF",
+                textHex = "#F4F8FF",
+                titleHex = "#E7F1FF",
+                dateHex = "#C8D4E2"
+            )
+            AchievementRarity.GOLD -> AchievementVisualStyle(
+                backgroundHex = "#F2140F05",
+                borderHex = "#FFF2A3",
+                textHex = "#FFF6CF",
+                titleHex = "#FFF7B2",
+                dateHex = "#FFE27A"
+            )
+        }
     }
 
     private fun publicIdCooldownDays(): Long {

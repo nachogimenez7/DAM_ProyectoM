@@ -14,6 +14,7 @@ object GameEngine {
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
             nightKillTarget = "",
+            assassinVotes = emptyMap(),
             protectedPlayer = "",
             nightSilenceTarget = "",
             investigatedPlayer = "",
@@ -31,48 +32,133 @@ object GameEngine {
     fun resolveAssassin(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
 
-        val assassin = activeKiller(session)
+        val killers = activeKillers(session)
+        if (killers.isEmpty()) {
+            return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
+        }
+
+        val humanKiller = killers.firstOrNull { it.isHuman }
+        if (
+            humanKiller != null &&
+            !isValidKillTarget(session, selectedTarget, humanKiller)
+        ) {
+            return session
+        }
+
+        val assassinVotes = killers.mapNotNull { killer ->
+            val target = if (killer.isHuman) {
+                selectedTarget
+            } else {
+                LocalBotAi.chooseAssassinTarget(session, killer)
+            }
+            if (isValidKillTarget(session, target, killer)) {
+                killer.name to target
+            } else {
+                null
+            }
+        }.toMap()
+
+        if (assassinVotes.isEmpty()) {
+            return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
+        }
+
+        val target = assassinVoteWinner(session, assassinVotes)
             ?: return advanceNight(
                 session,
                 nextPhaseAfterAssassin(session),
                 nightContinuesMessage(session)
             )
 
-        val target = if (assassin.isHuman) selectedTarget else LocalBotAi.chooseAssassinTarget(session, assassin)
-        if (!isValidKillTarget(session, target, assassin)) {
-            return if (assassin.isHuman) {
-                session
-            } else {
-                advanceNight(
-                    session,
-                    nextPhaseAfterAssassin(session),
-                    nightContinuesMessage(session)
-                )
-            }
-        }
-
-        val privateHint = if (assassin.isHuman) {
-            "Elegiste una victima. Dios no lo anunciara hasta el amanecer."
-        } else {
-            session.privateHint.ifBlank { privateRoleHint(session) }
-        }
-
         val updated = session.copy(
             nightKillTarget = target,
-            actionHistory = recordAction(session, GameActionType.KILL, assassin.name, target)
+            assassinVotes = assassinVotes,
+            actionHistory = recordAssassinVotes(session, assassinVotes)
         )
         return updated.transitionTo(
             nextPhaseAfterAssassin(updated),
             nightContinuesMessage(updated),
-            privateHint
+            assassinVotePrivateHint(updated, humanKiller != null)
         )
+    }
+
+    private fun activeKillers(session: GameSession): List<GamePlayer> {
+        val assassins = alivePlayers(session).filter { it.role?.key == "asesino" }
+        if (assassins.isNotEmpty()) return assassins
+        return alivePlayers(session).filter { it.role?.key == "espia" }
+    }
+
+    private fun assassinVoteWinner(session: GameSession, assassinVotes: Map<String, String>): String? {
+        val voteCounts = assassinVotes.values.groupingBy { it }.eachCount()
+        val highest = voteCounts.values.maxOrNull() ?: return null
+        return voteCounts
+            .filterValues { it == highest }
+            .keys
+            .sortedWith(
+                compareBy<String> { stableVoteNoise("${session.code}:${session.round}:$it") }
+                    .thenBy { it }
+            )
+            .firstOrNull()
+    }
+
+    private fun stableVoteNoise(seed: String): Int {
+        return seed.fold(0) { acc, char ->
+            ((acc * 31) + char.code) and 0x7fffffff
+        }
+    }
+
+    private fun assassinVotePrivateHint(session: GameSession, humanVoted: Boolean): String {
+        val human = humanPlayer(session)
+        if (human.role?.key !in GameRules.traitorRoleKeys) {
+            return privateRoleHint(session)
+        }
+        val voteSummary = session.assassinVotes.entries
+            .sortedBy { it.key }
+            .joinToString(", ") { "${it.key} voto a ${it.value}" }
+        val opening = if (humanVoted) {
+            "Tu voto fue registrado."
+        } else {
+            "Observaste la votacion asesina."
+        }
+        return "$opening $voteSummary. Victima elegida: ${session.nightKillTarget}."
+    }
+
+    private fun recordAssassinVotes(
+        session: GameSession,
+        assassinVotes: Map<String, String>
+    ): List<GameAction> {
+        return assassinVotes.entries
+            .sortedBy { it.key }
+            .fold(session.actionHistory) { history, vote ->
+                (
+                    history + GameAction(
+                        type = GameActionType.KILL,
+                        actor = vote.key,
+                        target = vote.value,
+                        round = session.round,
+                        phase = session.phase,
+                        publiclyKnown = false
+                    )
+                ).takeLast(MAX_ACTION_HISTORY)
+            }
     }
 
     fun resolveMercenary(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_MERCENARIO)) return session
 
         val mercenary = alivePlayers(session).firstOrNull { it.role?.key == "mercenario" }
-            ?: return advanceNight(session, GamePhase.NOCHE_POLICIA, nightContinuesMessage(session))
+            ?: return advanceNight(
+                session,
+                GamePhase.NOCHE_POLICIA,
+                nightContinuesMessage(session)
+            )
 
         val target = if (mercenary.isHuman) selectedTarget else LocalBotAi.chooseSilenceTarget(session, mercenary)
         if (!isValidSilenceTarget(session, target, mercenary)) {
@@ -1214,6 +1300,7 @@ object GameEngine {
             phase = GamePhase.NOCHE_ASESINO,
             round = prepared.round + 1,
             nightKillTarget = "",
+            assassinVotes = emptyMap(),
             protectedPlayer = "",
             nightSilenceTarget = "",
             investigatedPlayer = "",
@@ -1309,11 +1396,6 @@ object GameEngine {
         } else {
             GamePhase.AMANECER
         }
-    }
-
-    private fun activeKiller(session: GameSession): GamePlayer? {
-        return alivePlayers(session).firstOrNull { it.role?.key == "asesino" }
-            ?: alivePlayers(session).firstOrNull { it.role?.key == "espia" }
     }
 
     internal fun isValidKillTarget(

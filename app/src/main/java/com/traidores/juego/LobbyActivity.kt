@@ -201,12 +201,25 @@ class LobbyActivity : BaseActivity() {
             session.players.size >= LocalGameFactory.MIN_PLAYERS
         startButton.alpha = if (startButton.isEnabled) 1f else 0.55f
         startButton.text = if (isOnlineGuest()) "ESPERANDO AL ANFITRION" else "INICIAR PARTIDA"
+        startButton.contentDescription = when {
+            isOnlineGuest() -> "Esperando al anfitrion para iniciar la partida"
+            !startButton.isEnabled -> "Faltan jugadores para iniciar la partida"
+            else -> "Iniciar partida"
+        }
         mapName.text = session.mapName.uppercase()
         lobbyMapBackground.setImageResource(currentMap().imageRes)
         mapCards.forEachIndexed { index, imageView ->
             val selected = LocalGameFactory.maps[index].key == session.mapKey
             imageView.alpha = if (selected) 1f else 0.55f
             imageView.setBackgroundResource(if (selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
+            val map = LocalGameFactory.maps[index]
+            imageView.contentDescription = if (selected) {
+                "${map.name}, mapa seleccionado"
+            } else if (isOnlineGuest()) {
+                "${map.name}, solo el anfitrion puede cambiar el mapa"
+            } else {
+                "Elegir ${map.name}"
+            }
         }
         playersContainer.removeAllViews()
         renderDebugRole()
@@ -220,9 +233,16 @@ class LobbyActivity : BaseActivity() {
             row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
                 showPlayerProfile(index, player)
             }
+            row.findViewById<ImageButton>(R.id.btnPlayerProfile).contentDescription =
+                "Ver perfil de ${player.name}"
             row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
                 isEnabled = index != 0 && !isOnlineGuest()
                 alpha = if (isEnabled) 1f else 0.28f
+                contentDescription = when {
+                    index == 0 -> "El anfitrion no se puede expulsar"
+                    isOnlineGuest() -> "Solo el anfitrion puede expulsar participantes"
+                    else -> "Expulsar a ${player.name}"
+                }
                 setOnClickListener { confirmPlayerRemoval(index, player) }
             }
             playersContainer.addView(row)
@@ -242,7 +262,14 @@ class LobbyActivity : BaseActivity() {
                     ).show()
                     return@setOnClickListener
                 }
-                session = LocalGameFactory.selectMap(session, map.key)
+                session = LocalGameFactory.selectMap(session, map.key).let {
+                    it.copy(
+                        roleComposition = LocalGameFactory.defaultRoleComposition(
+                            it.players.size,
+                            it.mapKey
+                        )
+                    )
+                }
                 renderLobby()
             }
         }
@@ -581,44 +608,207 @@ class LobbyActivity : BaseActivity() {
             })
         }
         content.addView(TextView(this).apply {
-            text = "COMPOSICION ACTUAL - EDICION PROXIMAMENTE"
+            text = "COMPOSICION DE ROLES"
             gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.text_muted))
-            textSize = 11f
+            setTextColor(getColor(R.color.accent_gold))
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, 0, 0, dp(6))
         })
+        content.addView(TextView(this).apply {
+            text = "Los aldeanos rellenan los espacios libres. Los roles bloqueados no pertenecen al mapa actual o requieren mas jugadores."
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(6))
+        })
 
+        val roleKeys = LocalGameFactory.visibleRoleCompositionKeys()
+        val draftCounts = linkedMapOf<String, Int>().apply {
+            val normalized = LocalGameFactory.normalizedRoleComposition(session)
+            roleKeys.forEach { key ->
+                put(key, normalized.counts[key] ?: 0)
+            }
+        }
+        val countViews = linkedMapOf<String, TextView>()
+        val minusRoleButtons = linkedMapOf<String, Button>()
+        val plusRoleButtons = linkedMapOf<String, Button>()
+        val compositionPresetButtons = linkedMapOf<RoleCompositionPreset, Button>()
+        var selectedCompositionPreset: RoleCompositionPreset? =
+            if (session.roleComposition.customized) null else RoleCompositionPreset.RECOMMENDED
+        val compositionPresetDescription = TextView(this).apply {
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(6))
+            maxLines = 2
+        }
+        fun minRoleCount(key: String): Int {
+            return when (key) {
+                RoleCatalog.POLICIA, RoleCatalog.MEDICO, RoleCatalog.ASESINO -> 1
+                else -> 0
+            }
+        }
+        fun nonVillagerTotal(): Int {
+            return draftCounts
+                .filterKeys { it != RoleCatalog.ALDEANO }
+                .values
+                .sum()
+        }
+        fun refreshRoleComposition() {
+            val playerTotal = session.players.size
+            val villagers = (playerTotal - nonVillagerTotal()).coerceAtLeast(0)
+            draftCounts[RoleCatalog.ALDEANO] = villagers
+            roleKeys.forEach { key ->
+                val value = draftCounts[key] ?: 0
+                countViews[key]?.text = value.toString()
+                val max = LocalGameFactory.maxCountForRole(key, playerTotal, session.mapKey)
+                val canDecrease = key != RoleCatalog.ALDEANO && value > minRoleCount(key)
+                val canIncrease = key != RoleCatalog.ALDEANO &&
+                    value < max &&
+                    villagers > 0
+                updateRoleStepButton(minusRoleButtons[key], canDecrease)
+                updateRoleStepButton(plusRoleButtons[key], canIncrease)
+            }
+            compositionPresetButtons.forEach { (preset, button) ->
+                val selected = preset == selectedCompositionPreset
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+                button.alpha = if (selected) 1f else 0.82f
+            }
+            compositionPresetDescription.text = selectedCompositionPreset?.description
+                ?: "Personalizado: ajustaste la cantidad exacta de roles manualmente."
+        }
+        fun applyCompositionPreset(preset: RoleCompositionPreset) {
+            val presetComposition = LocalGameFactory.roleCompositionPreset(
+                session.players.size,
+                session.mapKey,
+                preset
+            )
+            roleKeys.forEach { key ->
+                draftCounts[key] = presetComposition.counts[key] ?: 0
+            }
+            selectedCompositionPreset = preset
+            refreshRoleComposition()
+        }
+        val compositionPresetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        RoleCompositionPreset.entries.forEachIndexed { index, preset ->
+            val button = compactDialogButton(preset.label).apply {
+                textSize = 11f
+                isAllCaps = false
+                setOnClickListener { applyCompositionPreset(preset) }
+            }
+            compositionPresetButtons[preset] = button
+            compositionPresetRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(36), 1f).apply {
+                    if (index > 0) marginStart = dp(6)
+                }
+            )
+        }
+        content.addView(
+            compositionPresetRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(4)
+            }
+        )
+        content.addView(compositionPresetDescription)
         val scroll = ScrollView(this)
         val roles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-        advancedRoleCatalog().forEach { entry ->
+        roleKeys.forEach { key ->
+            val minimum = LocalGameFactory.minimumPlayersForRole(key)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(2), 0, dp(2))
             }
-            row.addView(TextView(this).apply {
-                text = entry.label
-                setTextColor(getColor(R.color.text_primary))
+            val locked = LocalGameFactory.maxCountForRole(
+                key,
+                session.players.size,
+                session.mapKey
+            ) == 0
+            row.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(this@LobbyActivity).apply {
+                    text = roleLabel(key)
+                    setTextColor(
+                        if (locked) {
+                            getColor(R.color.text_muted)
+                        } else {
+                            roleCompositionColor(key)
+                        }
+                    )
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    maxLines = 1
+                })
+                addView(TextView(this@LobbyActivity).apply {
+                    text = roleMeta(key, minimum)
+                    setTextColor(getColor(if (locked) R.color.text_muted else R.color.text_secondary))
+                    textSize = 9f
+                    maxLines = 1
+                })
+            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            val minus = compactDialogButton("-").apply {
                 textSize = 13f
-            }, LinearLayout.LayoutParams(0, dp(34), 1f))
-            row.addView(TextView(this).apply {
-                text = entry.count.toString()
+                setOnClickListener {
+                    val current = draftCounts[key] ?: 0
+                    if (current > minRoleCount(key)) {
+                        draftCounts[key] = current - 1
+                        selectedCompositionPreset = null
+                        refreshRoleComposition()
+                    }
+                }
+            }
+            minusRoleButtons[key] = minus
+            row.addView(minus, LinearLayout.LayoutParams(dp(34), dp(34)))
+            val countView = TextView(this).apply {
+                text = "0"
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.bg_btn_dark)
                 setTextColor(getColor(R.color.accent_gold))
                 textSize = 14f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-            }, LinearLayout.LayoutParams(dp(54), dp(32)))
+            }
+            countViews[key] = countView
+            row.addView(countView, LinearLayout.LayoutParams(dp(46), dp(34)).apply {
+                marginStart = dp(5)
+                marginEnd = dp(5)
+            })
+            val plus = compactDialogButton("+").apply {
+                textSize = 13f
+                setOnClickListener {
+                    val current = draftCounts[key] ?: 0
+                    val max = LocalGameFactory.maxCountForRole(key, session.players.size, session.mapKey)
+                    if (current < max && (draftCounts[RoleCatalog.ALDEANO] ?: 0) > 0) {
+                        draftCounts[key] = current + 1
+                        selectedCompositionPreset = null
+                        refreshRoleComposition()
+                    }
+                }
+            }
+            plusRoleButtons[key] = plus
+            row.addView(plus, LinearLayout.LayoutParams(dp(34), dp(34)))
             roles.addView(row)
         }
+        refreshRoleComposition()
         scroll.addView(roles)
         content.addView(
             scroll,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(142)
+                dp(210)
             )
         )
 
@@ -633,7 +823,14 @@ class LobbyActivity : BaseActivity() {
                 preferences.edit()
                     .putInt(PREF_ROLE_READING_SECONDS, roleReadingSeconds)
                     .apply()
+                val roleComposition = RoleCompositionConfig(
+                    counts = draftCounts.toMap(),
+                    customized = selectedCompositionPreset != RoleCompositionPreset.RECOMMENDED
+                )
                 session = session.copy(
+                    roleComposition = LocalGameFactory.normalizedRoleComposition(
+                        session.copy(roleComposition = roleComposition)
+                    ),
                     revealRolesOnDeath = revealRolesOnDeath,
                     showIndividualVotes = showIndividualVotes,
                     debugBotsObeyVoteCommands = debugBotsObeyVoteCommands,
@@ -641,29 +838,56 @@ class LobbyActivity : BaseActivity() {
                 )
             }
             .create()
-        showLandscapeDialog(dialog, widthDp = 500)
+        showLandscapeDialog(dialog, widthDp = 640)
     }
 
-    private fun advancedRoleCatalog(): List<RoleCountPreview> {
-        val count = session.players.size
-        val entries = mutableListOf(
-            RoleCountPreview("ALDEANO", 0),
-            RoleCountPreview(if (session.mapKey == "pampa") "COMISARIO" else "DETECTIVE", 1),
-            RoleCountPreview("MEDICO", 1),
-            RoleCountPreview("ASESINO", 1),
-            RoleCountPreview("MERCENARIO", if (count >= 7) 1 else 0),
-            RoleCountPreview("ALCALDE", if (count >= 8) 1 else 0),
-            RoleCountPreview("DESERTOR", if (count >= 9) 1 else 0),
-            RoleCountPreview("ESPIA", if (count >= 10) 1 else 0)
-        )
-        when (session.mapKey) {
-            "pampa" -> entries += RoleCountPreview("PAYADOR", if (count >= 8) 1 else 0)
-            "grecia" -> entries += RoleCountPreview("ORACULO", if (count >= 8) 1 else 0)
-            "medieval" -> entries += RoleCountPreview("BUFON", if (count >= 8) 1 else 0)
+    private fun roleLabel(roleKey: String): String {
+        return when (roleKey) {
+            RoleCatalog.ALDEANO -> "ALDEANO"
+            RoleCatalog.POLICIA -> if (session.mapKey == "pampa") "COMISARIO" else "DETECTIVE"
+            RoleCatalog.MEDICO -> "MEDICO"
+            RoleCatalog.ASESINO -> "ASESINO"
+            RoleCatalog.MERCENARIO -> "MERCENARIO"
+            RoleCatalog.ALCALDE -> "ALCALDE"
+            RoleCatalog.DESERTOR -> "DESERTOR"
+            RoleCatalog.ESPIA -> "ESPIA"
+            RoleCatalog.PAYADOR -> "PAYADOR"
+            RoleCatalog.ORACULO -> "ORACULO"
+            RoleCatalog.BUFON -> "BUFON"
+            else -> roleKey.uppercase()
         }
-        val specialRoles = entries.drop(1).sumOf { it.count }
-        entries[0] = entries[0].copy(count = (count - specialRoles).coerceAtLeast(0))
-        return entries
+    }
+
+    private fun roleMeta(roleKey: String, minimumPlayers: Int): String {
+        val availability = when (roleKey) {
+            RoleCatalog.PAYADOR -> "Mapa Pampa"
+            RoleCatalog.ORACULO -> "Mapa Grecia"
+            RoleCatalog.BUFON -> "Mapa Medieval"
+            RoleCatalog.ASESINO, RoleCatalog.MERCENARIO, RoleCatalog.ESPIA -> "Traidor"
+            RoleCatalog.DESERTOR -> "Neutral"
+            else -> "Pueblo"
+        }
+        return "$availability · $minimumPlayers+ jugadores"
+    }
+
+    private fun roleCompositionColor(roleKey: String): Int {
+        return when (roleKey) {
+            RoleCatalog.ASESINO,
+            RoleCatalog.MERCENARIO,
+            RoleCatalog.ESPIA -> getColor(R.color.accent_red)
+            RoleCatalog.DESERTOR,
+            RoleCatalog.BUFON -> getColor(R.color.accent_purple)
+            RoleCatalog.PAYADOR,
+            RoleCatalog.ORACULO -> getColor(R.color.accent_blue)
+            else -> getColor(R.color.text_primary)
+        }
+    }
+
+    private fun updateRoleStepButton(button: Button?, enabled: Boolean) {
+        button ?: return
+        button.isEnabled = enabled
+        button.alpha = if (enabled) 1f else 0.35f
+        button.setTextColor(getColor(if (enabled) R.color.text_primary else R.color.text_muted))
     }
 
     private fun dialogColumn(): LinearLayout {
@@ -822,8 +1046,6 @@ class LobbyActivity : BaseActivity() {
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 6
     }
-
-    private data class RoleCountPreview(val label: String, val count: Int)
 
     private enum class TimingField(
         val label: String,

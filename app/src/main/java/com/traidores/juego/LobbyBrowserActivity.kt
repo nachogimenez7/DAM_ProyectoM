@@ -52,6 +52,11 @@ class LobbyBrowserActivity : BaseActivity() {
             isEnabled = canJoinLobby(lobby)
             alpha = if (isEnabled) 1f else 0.42f
             text = lobbyActionLabel(lobby)
+            contentDescription = when {
+                lobby.players >= lobby.limit -> "Sala ${lobby.name} llena"
+                !lobby.canJoin -> "Sala ${lobby.name} en partida"
+                else -> "Entrar a la sala ${lobby.name}"
+            }
             setOnClickListener { enterLobby(lobby) }
         }
         return row

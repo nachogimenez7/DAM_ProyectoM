@@ -161,7 +161,6 @@ object MusicManager {
     private fun trackForSession(session: GameSession): Int {
         return when {
             session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
-            isDecisiveDebate(session) -> R.raw.decisive_debate_music
             isNightPhase(session.phase) -> R.raw.night_phase_music
             else -> dayTrackForMap(session.mapKey)
         }
@@ -181,20 +180,6 @@ object MusicManager {
             phase == GamePhase.NOCHE_POLICIA ||
             phase == GamePhase.NOCHE_MEDICO ||
             phase == GamePhase.NOCHE_ORACULO
-    }
-
-    private fun isDecisiveDebate(session: GameSession): Boolean {
-        val isDebatePhase = session.phase == GamePhase.DIA_DEBATE ||
-            session.phase == GamePhase.VOTACION ||
-            session.phase == GamePhase.RECUENTO_VOTOS ||
-            session.phase == GamePhase.DESEMPATE_VOTACION ||
-            session.phase == GamePhase.RESULTADO
-        if (!isDebatePhase) return false
-
-        val alivePlayers = session.players.filter { it.alive }
-        val traitors = alivePlayers.count { GameRules.isTraitorRole(it.role) }
-        val town = alivePlayers.size - traitors
-        return alivePlayers.size <= 4 && traitors > 0 && town > 0
     }
 
     private fun switchTrack(context: Context, trackRes: Int) {

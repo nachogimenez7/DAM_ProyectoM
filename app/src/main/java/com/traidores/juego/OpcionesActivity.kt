@@ -3,6 +3,7 @@ package com.traidores.juego
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.widget.AdapterView
@@ -16,6 +17,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.SwitchCompat
+import com.google.firebase.firestore.FirebaseFirestore
 
 class OpcionesActivity : BaseActivity() {
 
@@ -45,6 +47,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var spinnerLanguage: Spinner
     private lateinit var optionsScroll: ScrollView
     private lateinit var accountCard: LinearLayout
+    private lateinit var btnFirebaseSmokeTest: Button
     private lateinit var btnResetOptions: Button
 
     private var currentLanguage = LANGUAGE_SPANISH
@@ -90,6 +93,7 @@ class OpcionesActivity : BaseActivity() {
         spinnerLanguage = findViewById(R.id.spinnerLanguage)
         optionsScroll = findViewById(R.id.optionsScroll)
         accountCard = findViewById(R.id.accountCard)
+        btnFirebaseSmokeTest = findViewById(R.id.btnFirebaseSmokeTest)
         btnResetOptions = findViewById(R.id.btnResetOptions)
     }
 
@@ -160,7 +164,32 @@ class OpcionesActivity : BaseActivity() {
 
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
+        btnFirebaseSmokeTest.setOnClickListener { writeFirestoreSmokeTest() }
         btnResetOptions.setOnClickListener { resetOptions() }
+    }
+
+    private fun writeFirestoreSmokeTest() {
+        btnFirebaseSmokeTest.isEnabled = false
+        val datos = hashMapOf(
+            "nombre" to "Nacho",
+            "mensaje" to "Hola Firebase",
+            "fecha" to System.currentTimeMillis()
+        )
+
+        FirebaseFirestore.getInstance()
+            .collection(FIRESTORE_TEST_COLLECTION)
+            .document(FIRESTORE_TEST_DOCUMENT)
+            .set(datos)
+            .addOnSuccessListener {
+                btnFirebaseSmokeTest.isEnabled = true
+                Log.i(FIRESTORE_SMOKE_TAG, "Documento escrito en pruebas/conexion_inicial")
+                Toast.makeText(this, "Firestore OK: prueba escrita", Toast.LENGTH_LONG).show()
+            }
+            .addOnFailureListener { error ->
+                btnFirebaseSmokeTest.isEnabled = true
+                Log.e(FIRESTORE_SMOKE_TAG, "Error escribiendo prueba de Firestore", error)
+                Toast.makeText(this, "Firestore error: ${error.message}", Toast.LENGTH_LONG).show()
+            }
     }
 
     private fun loadPreferences() {
@@ -271,6 +300,7 @@ class OpcionesActivity : BaseActivity() {
             accountStatus.text = "ONLINE ACCOUNT - COMING SOON"
             accountDescription.text =
                 "When online play is implemented, you will log in here to keep statistics, achievements and customization."
+            btnFirebaseSmokeTest.text = "TEST FIREBASE"
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
@@ -290,6 +320,7 @@ class OpcionesActivity : BaseActivity() {
             accountStatus.text = "CUENTA ONLINE - PROXIMAMENTE"
             accountDescription.text =
                 "Cuando se implemente el online, desde aqui podras iniciar sesion y conservar estadisticas, logros y personalizacion."
+            btnFirebaseSmokeTest.text = "PROBAR FIREBASE"
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
         updateVolumeLabels()
@@ -377,6 +408,9 @@ class OpcionesActivity : BaseActivity() {
 
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
+        private const val FIRESTORE_SMOKE_TAG = "FirestoreSmoke"
+        private const val FIRESTORE_TEST_COLLECTION = "pruebas"
+        private const val FIRESTORE_TEST_DOCUMENT = "conexion_inicial"
         private const val PREF_MUSIC_VOLUME = "music_volume"
         private const val PREF_VOICE_VOLUME = "voice_volume"
         private const val PREF_VIBRATION_ON = "vibration_on"

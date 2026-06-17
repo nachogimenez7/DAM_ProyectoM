@@ -9,6 +9,7 @@ data class GameSession(
     val players: List<GamePlayer>,
     val timingConfig: GameTimingConfig = GameTimingConfig(),
     val roleRevealConfig: RoleRevealConfig = RoleRevealConfig(),
+    val roleComposition: RoleCompositionConfig = RoleCompositionConfig(),
     val revealRolesOnDeath: Boolean = false,
     val showIndividualVotes: Boolean = true,
     val debugBotsObeyVoteCommands: Boolean = false,
@@ -16,6 +17,7 @@ data class GameSession(
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",
+    val assassinVotes: Map<String, String> = emptyMap(),
     val protectedPlayer: String = "",
     val nightSilenceTarget: String = "",
     val investigatedPlayer: String = "",
@@ -47,6 +49,29 @@ data class GameSession(
     val winner: String = "",
     val phaseIndex: Int = 0
 ) : Serializable
+
+data class RoleCompositionConfig(
+    val counts: Map<String, Int> = emptyMap(),
+    val customized: Boolean = false
+) : Serializable
+
+enum class RoleCompositionPreset(
+    val label: String,
+    val description: String
+) {
+    RECOMMENDED(
+        "RECOMENDADO",
+        "Equilibrado para la cantidad de jugadores y el mapa elegido."
+    ),
+    CLASSIC(
+        "CLASICO",
+        "Partida simple: Asesino, Detective, Medico y Aldeanos."
+    ),
+    CHAOTIC(
+        "CAOTICO",
+        "Mas presion y roles especiales disponibles para una partida menos predecible."
+    )
+}
 
 data class GamePlayer(
     val name: String,
@@ -429,7 +454,13 @@ object LocalGameFactory {
         val effectiveForcedRole = forcedHumanRoleKey.takeIf {
             it.isBlank() || RoleCatalog.isAvailableOnMap(it, roleMap)
         }.orEmpty()
-        val roles = roleDeckFor(session.players.size, suffix, effectiveForcedRole)
+        val normalizedComposition = normalizedRoleComposition(session)
+        val roles = roleDeckFor(
+            session.players.size,
+            suffix,
+            effectiveForcedRole,
+            normalizedComposition
+        )
 
         val shuffledRoles = roles.shuffled()
         val randomlyAssignedPlayers = session.players.mapIndexed { index, player ->
@@ -480,44 +511,176 @@ object LocalGameFactory {
             startedAtEpochMs = System.currentTimeMillis(),
             specialVictories = emptyList(),
             winner = "",
+            roleComposition = normalizedComposition,
             phaseIndex = 0
         )
+    }
+
+    fun defaultRoleComposition(playerCount: Int, mapKey: String): RoleCompositionConfig {
+        return roleCompositionPreset(
+            playerCount,
+            mapKey,
+            RoleCompositionPreset.RECOMMENDED
+        )
+    }
+
+    fun roleCompositionPreset(
+        playerCount: Int,
+        mapKey: String,
+        preset: RoleCompositionPreset
+    ): RoleCompositionConfig {
+        val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+        val map = RoleMap.fromSessionKey(mapKey)
+        val counts = linkedMapOf(
+            RoleCatalog.POLICIA to 1,
+            RoleCatalog.MEDICO to 1,
+            RoleCatalog.ASESINO to 1
+        )
+        when (preset) {
+            RoleCompositionPreset.RECOMMENDED -> {
+                if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
+                if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
+                if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
+                if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
+                if (count >= 10) counts[RoleCatalog.ESPIA] = 1
+            }
+            RoleCompositionPreset.CLASSIC -> Unit
+            RoleCompositionPreset.CHAOTIC -> {
+                counts[RoleCatalog.ASESINO] = maxAssassinsFor(count)
+                if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
+                if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
+                if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
+                if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
+                if (count >= 10) counts[RoleCatalog.ESPIA] = 1
+            }
+        }
+        val specialCount = counts.values.sum()
+        counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
+        return RoleCompositionConfig(
+            counts = counts,
+            customized = preset != RoleCompositionPreset.RECOMMENDED
+        )
+    }
+
+    fun editableRoleKeys(): List<String> {
+        return listOf(
+            RoleCatalog.ALDEANO,
+            RoleCatalog.POLICIA,
+            RoleCatalog.MEDICO,
+            RoleCatalog.ASESINO,
+            RoleCatalog.MERCENARIO,
+            RoleCatalog.ALCALDE,
+            RoleCatalog.DESERTOR,
+            RoleCatalog.ESPIA,
+            RoleCatalog.PAYADOR,
+            RoleCatalog.ORACULO,
+            RoleCatalog.BUFON
+        )
+    }
+
+    fun visibleRoleCompositionKeys(): List<String> {
+        return editableRoleKeys().filterNot { it == RoleCatalog.MERCENARIO }
+    }
+
+    fun normalizedRoleComposition(session: GameSession): RoleCompositionConfig {
+        val playerCount = session.players.size.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+        val map = RoleMap.fromSessionKey(session.mapKey)
+        val source = if (session.roleComposition.customized) {
+            session.roleComposition
+        } else {
+            defaultRoleComposition(playerCount, session.mapKey)
+        }
+        val normalized = linkedMapOf<String, Int>()
+        editableRoleKeys().forEach { key ->
+            if (RoleCatalog.isAvailableOnMap(key, map) && playerCount >= RoleCatalog.minimumPlayers(key)) {
+                normalized[key] = source.counts[key]?.coerceAtLeast(0) ?: 0
+            } else {
+                normalized[key] = 0
+            }
+        }
+        normalized[RoleCatalog.POLICIA] = normalized.getValue(RoleCatalog.POLICIA).coerceAtLeast(1)
+        normalized[RoleCatalog.MEDICO] = normalized.getValue(RoleCatalog.MEDICO).coerceAtLeast(1)
+        normalized[RoleCatalog.ASESINO] = normalized.getValue(RoleCatalog.ASESINO)
+            .coerceIn(1, maxAssassinsFor(playerCount))
+
+        val nonVillagers = normalized
+            .filterKeys { it != RoleCatalog.ALDEANO }
+            .values
+            .sum()
+        if (nonVillagers > playerCount) {
+            val orderedOptional = listOf(
+                RoleCatalog.ESPIA,
+                RoleCatalog.DESERTOR,
+                exclusiveRoleForMap(map),
+                RoleCatalog.ALCALDE,
+                RoleCatalog.MERCENARIO,
+                RoleCatalog.MEDICO,
+                RoleCatalog.POLICIA
+            )
+            var overflow = nonVillagers - playerCount
+            orderedOptional.forEach { key ->
+                if (overflow <= 0) return@forEach
+                val minimum = if (key == RoleCatalog.POLICIA || key == RoleCatalog.MEDICO) 1 else 0
+                val removable = (normalized.getValue(key) - minimum).coerceAtLeast(0)
+                val removed = removable.coerceAtMost(overflow)
+                normalized[key] = normalized.getValue(key) - removed
+                overflow -= removed
+            }
+        }
+
+        val finalNonVillagers = normalized
+            .filterKeys { it != RoleCatalog.ALDEANO }
+            .values
+            .sum()
+        normalized[RoleCatalog.ALDEANO] = (playerCount - finalNonVillagers).coerceAtLeast(0)
+        return RoleCompositionConfig(counts = normalized, customized = source.customized)
+    }
+
+    fun maxCountForRole(roleKey: String, playerCount: Int, mapKey: String = ""): Int {
+        val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+        if (mapKey.isNotBlank() && !RoleCatalog.isAvailableOnMap(roleKey, RoleMap.fromSessionKey(mapKey))) {
+            return 0
+        }
+        return when (roleKey) {
+            RoleCatalog.ALDEANO -> count
+            RoleCatalog.ASESINO -> maxAssassinsFor(count)
+            RoleCatalog.POLICIA, RoleCatalog.MEDICO -> 1
+            RoleCatalog.MERCENARIO -> if (count >= 7) 1 else 0
+            RoleCatalog.ALCALDE -> if (count >= 8) 1 else 0
+            RoleCatalog.DESERTOR -> if (count >= 9) 1 else 0
+            RoleCatalog.ESPIA -> if (count >= 10) 1 else 0
+            RoleCatalog.PAYADOR, RoleCatalog.BUFON, RoleCatalog.ORACULO -> if (count >= 8) 1 else 0
+            else -> 0
+        }
+    }
+
+    private fun maxAssassinsFor(playerCount: Int): Int {
+        return when {
+            playerCount >= 13 -> 3
+            playerCount >= 9 -> 2
+            else -> 1
+        }
+    }
+
+    private fun exclusiveRoleForMap(map: RoleMap): String {
+        return when (map) {
+            RoleMap.PAMPA -> RoleCatalog.PAYADOR
+            RoleMap.GREECE -> RoleCatalog.ORACULO
+            RoleMap.MEDIEVAL -> RoleCatalog.BUFON
+        }
     }
 
     private fun roleDeckFor(
         playerCount: Int,
         suffix: String,
-        forcedHumanRoleKey: String
+        forcedHumanRoleKey: String,
+        composition: RoleCompositionConfig
     ): List<GameRole> {
-        val roles = mutableListOf(
-            roleForKey("policia", suffix),
-            roleForKey("asesino", suffix),
-            roleForKey("medico", suffix)
-        )
-        if (playerCount >= 7) {
-            roles += roleForKey("mercenario", suffix)
-        }
-        if (playerCount >= 8) {
-            roles += roleForKey("alcalde", suffix)
-        }
-        if (playerCount >= 8 && suffix == "gaucho") {
-            // El Payador es exclusivo del mapa gaucho.
-            roles += roleForKey("payador", suffix)
-        }
-        if (playerCount >= 8 && suffix == "medieval") {
-            roles += roleForKey("bufon", suffix)
-        }
-        if (playerCount >= 8 && suffix == "griego") {
-            roles += roleForKey("oraculo", suffix)
-        }
-        if (playerCount >= 9) {
-            roles += roleForKey("desertor", suffix)
-        }
-        if (playerCount >= 10) {
-            roles += roleForKey("espia", suffix)
-        }
-        roles += List((playerCount - roles.size).coerceAtLeast(0)) {
-            roleForKey("aldeano", suffix)
+        val roles = mutableListOf<GameRole>()
+        composition.counts.forEach { (key, count) ->
+            repeat(count.coerceAtLeast(0)) {
+                roles += roleForKey(key, suffix)
+            }
         }
 
         if (forcedHumanRoleKey.isNotBlank() && roles.none { it.key == forcedHumanRoleKey }) {

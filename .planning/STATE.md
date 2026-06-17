@@ -1,12 +1,12 @@
----
+﻿---
 gsd_state_version: '1.0'
 status: executing
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -15,22 +15,22 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-06-13)
 
-**Core value:** El jugador puede utilizar las pantallas principales sin contenido cortado, controles confusos, rutas rotas ni pérdida inesperada de estado.
-**Current focus:** Phase 4 - Profile Stability
+**Core value:** El jugador puede utilizar las pantallas principales sin contenido cortado, controles confusos, rutas rotas ni pÃ©rdida inesperada de estado.
+**Current focus:** Phase 5 - Navigation and Usability Guard (pending visual validation)
 
 ## Current Position
 
-Phase: 4 of 5 (Profile Stability)
+Phase: 5 of 5 (Navigation and Usability Guard)
 Plan: 2 of 2 in current phase
-Status: Executed; pending user visual validation
-Last activity: 2026-06-16 - Executed Phase 4 profile stability
+Status: Executed; pending visual validation
+Last activity: 2026-06-16 - Executed Phase 5 navigation and usability guard
 
-Progress: [########--] 80%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 10
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -41,7 +41,7 @@ Progress: [########--] 80%
 | - | - | - | - |
 
 **Recent Trend:**
-- Last 5 plans: 03-01, 03-02, 04-01, 04-02
+- Last 5 plans: 03-02, 04-01, 04-02, 05-01, 05-02
 - Trend: Started
 
 ## Accumulated Context
@@ -61,7 +61,7 @@ Decisions are logged in PROJECT.md Key Decisions.
 - Visually validate Phase 2 chat and keyboard behavior on Android Studio/device.
 - Visually validate Phase 3 lobby dialogs and room browser on Android Studio/device.
 - Visually validate Phase 4 profile layout, selectors, and draft persistence on Android Studio/device.
-- Continue to Phase 5: Navigation and Usability Guard after validation.
+- Visually validate Phase 5 navigation order, control labels, and accessibility states on Android Studio/device.
 
 ### Blockers/Concerns
 
@@ -69,6 +69,7 @@ Decisions are logged in PROJECT.md Key Decisions.
 - Keyboard behavior must be checked with the user's real IME.
 - Compact lobby and browser layouts still require screenshot-based visual confirmation.
 - Profile draft restoration and selector readability still require device validation.
+- The final navigation matrix depends on user-side device validation to close remaining route and touch-target doubts.
 - Do not compile or execute the app automatically.
 
 ### Quick Tasks Completed
@@ -89,5 +90,5 @@ Decisions are logged in PROJECT.md Key Decisions.
 ## Session Continuity
 
 Last session: 2026-06-16
-Stopped at: Phase 4 executed; pending visual validation
+Stopped at: Phase 5 executed; pending visual validation
 Resume file: None

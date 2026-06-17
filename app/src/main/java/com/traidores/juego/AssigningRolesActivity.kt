@@ -16,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 
 class AssigningRolesActivity : BaseActivity() {
 
@@ -32,14 +33,13 @@ class AssigningRolesActivity : BaseActivity() {
         val session = readSession() ?: LocalGameFactory.createSession()
         MusicManager.playGameIntro(this, session)
 
-        findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
-            leavingScreen = true
-            handler.removeCallbacks(openGameRunnable)
-            dealingAnimator?.removeAllListeners()
-            dealingAnimator?.cancel()
-            releaseDealingSound()
-            finish()
-        }
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                leaveAssigningScreen()
+            }
+        })
+
+        findViewById<ImageButton>(R.id.btnBack).setOnClickListener { leaveAssigningScreen() }
 
         findViewById<FrameLayout>(R.id.assigningRoot).post {
             startDealingAnimation()
@@ -293,6 +293,16 @@ class AssigningRolesActivity : BaseActivity() {
                 .putExtra(GameplayMockActivity.EXTRA_TEMA, GameplayTableUi.themeForMapKey(session.mapKey))
                 .putExtra(GameplayMockActivity.EXTRA_ES_NOCHE, false)
         )
+        finish()
+    }
+
+    private fun leaveAssigningScreen() {
+        if (leavingScreen) return
+        leavingScreen = true
+        handler.removeCallbacks(openGameRunnable)
+        dealingAnimator?.removeAllListeners()
+        dealingAnimator?.cancel()
+        releaseDealingSound()
         finish()
     }
 

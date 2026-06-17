@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "99323018581",
+    "project_id": "traidores",
+    "storage_bucket": "traidores.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99323018581:android:ac1a870f97f3b2e68083dc",
+        "android_client_info": {
+          "package_name": "com.traidores.juego"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEJtj3U2WU6kBGuM4_Fyfs_4CU7NSJTWc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

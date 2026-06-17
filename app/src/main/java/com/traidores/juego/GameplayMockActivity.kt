@@ -34,6 +34,7 @@ import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
@@ -93,6 +94,7 @@ class GameplayMockActivity : BaseActivity() {
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
+    private var lastPresentedAssassinVoteLogKey: String? = null
     private var stagedBotBurstPhaseIndex = -1
     private val feedbackState = GameplayFeedbackState()
     private lateinit var session: GameSession
@@ -652,6 +654,11 @@ class GameplayMockActivity : BaseActivity() {
         jesterVictoryOverlay.setOnClickListener { }
         btnContinueJesterVictory.setOnClickListener { dismissJesterVictory() }
         findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                handleGameplayBack()
+            }
+        })
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
         configureChatPanelLayout()
@@ -803,34 +810,28 @@ class GameplayMockActivity : BaseActivity() {
         super.onSaveInstanceState(outState)
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
+    private fun handleGameplayBack() {
         if (
+            isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
+            isJesterVictoryVisible ||
+            isTraitorRevealRunning ||
             feedbackState.privateVisible
-        ) return
-        if (isJesterVictoryVisible) return
-        if (isWinnerRevealVisible) {
-            returnToLobby()
+        ) {
             return
         }
-        if (isRolePreviewOpen) {
-            closeRolePreview()
-            return
+        when {
+            isWinnerRevealVisible -> returnToLobby()
+            isRolePreviewOpen -> closeRolePreview()
+            isChatOpen -> closeChatPanel()
+            actionFeedbackBanner.visibility == View.VISIBLE -> hideActionFeedbackBanner()
+            isEventLogExpanded -> toggleEventLog()
+            else -> finish()
         }
-        if (isChatOpen) {
-            closeChatPanel()
-            return
-        }
-        if (isEventLogExpanded) {
-            toggleEventLog()
-            return
-        }
-        super.onBackPressed()
     }
 
     private fun handleCurrentPhase() {
@@ -1014,6 +1015,7 @@ class GameplayMockActivity : BaseActivity() {
         }
         renderThemedBackground(visiblePeriod)
         renderNarrator(phaseText, activePhaseAdvice ?: narratorMessage, eventChanged)
+        maybeExpandPrivateAssassinVoteLog()
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
         currentPlayerName.text = GameEngine.humanPlayer(session).name
@@ -1069,7 +1071,7 @@ class GameplayMockActivity : BaseActivity() {
             session.publicHistory,
             publicMessage,
             phaseText.subtitle
-        )
+        ) + privateAssassinVoteEvents()
         val latestEvent = allEvents.last()
         eventLogSummary.text = latestEvent
         (eventLogSummary.parent as? HorizontalScrollView)?.scrollTo(0, 0)
@@ -1109,6 +1111,43 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun maybeExpandPrivateAssassinVoteLog() {
+        val key = privateAssassinVoteLogKey() ?: return
+        if (key == lastPresentedAssassinVoteLogKey) return
+
+        lastPresentedAssassinVoteLogKey = key
+        if (!isEventLogExpanded) {
+            isEventLogExpanded = true
+            if (isChatOpen) {
+                closeChatPanel()
+            }
+            lastRenderedEventExpanded = null
+        }
+    }
+
+    private fun privateAssassinVoteEvents(): List<String> {
+        if (privateAssassinVoteLogKey() == null) return emptyList()
+
+        val voteLines = session.assassinVotes.entries
+            .sortedBy { it.key }
+            .map { "${it.key} voto a ${it.value}." }
+        val targetLine = session.nightKillTarget
+            .takeIf { it.isNotBlank() }
+            ?.let { "Victima elegida por los asesinos: $it." }
+        return voteLines + listOfNotNull(targetLine)
+    }
+
+    private fun privateAssassinVoteLogKey(): String? {
+        if (session.assassinVotes.isEmpty()) return null
+        val humanRoleKey = GameEngine.humanPlayer(session).role?.key
+        if (humanRoleKey !in GameRules.traitorRoleKeys) return null
+
+        val votesKey = session.assassinVotes.entries
+            .sortedBy { it.key }
+            .joinToString("|") { "${it.key}>${it.value}" }
+        return "${session.round}:${session.phaseIndex}:${session.nightKillTarget}:$votesKey"
+    }
+
     private fun toggleEventLog() {
         GameplayEffects.play(this, GameplayEffect.PANEL)
         isEventLogExpanded = !isEventLogExpanded
@@ -1127,6 +1166,13 @@ class GameplayMockActivity : BaseActivity() {
         val targetHeight = dp(if (isEventLogExpanded) 136 else 32)
         val params = eventLogPanel.layoutParams as FrameLayout.LayoutParams
         btnToggleEventLog.text = if (isEventLogExpanded) "\u25B2" else "\u25BC"
+        val eventLogActionLabel = if (isEventLogExpanded) {
+            "Ocultar eventos"
+        } else {
+            "Expandir eventos"
+        }
+        btnToggleEventLog.contentDescription = eventLogActionLabel
+        eventLogHeader.contentDescription = eventLogActionLabel
         eventLogPanel.elevation = dp(if (isEventLogExpanded) 8 else 4).toFloat()
         eventLogContent.visibility = if (isEventLogExpanded) View.VISIBLE else View.GONE
         if (!animate || eventLogPanel.height <= 0 || eventLogPanel.height == targetHeight) {
@@ -1765,6 +1811,7 @@ class GameplayMockActivity : BaseActivity() {
             chatPanel.alpha = 1f
         }
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
+        updateChatToggleContentDescription()
     }
 
     private fun renderChatPanel() {
@@ -1970,6 +2017,11 @@ class GameplayMockActivity : BaseActivity() {
             val label = if (newChatMessagesWhileTyping == 1) "MENSAJE NUEVO" else "MENSAJES NUEVOS"
             chatNewMessages.text = "$newChatMessagesWhileTyping $label - VER"
         }
+        chatNewMessages.contentDescription = if (newChatMessagesWhileTyping > 0) {
+            "Ver $newChatMessagesWhileTyping mensajes nuevos"
+        } else {
+            "Sin mensajes nuevos"
+        }
     }
 
     private fun acknowledgeNewChatMessages() {
@@ -1981,6 +2033,18 @@ class GameplayMockActivity : BaseActivity() {
     private fun renderChatBadge() {
         chatUnreadBadge.visibility = if (unreadChatCount > 0) View.VISIBLE else View.GONE
         chatUnreadBadge.text = unreadChatCount.coerceAtMost(99).toString()
+        updateChatToggleContentDescription()
+    }
+
+    private fun updateChatToggleContentDescription() {
+        btnToggleChat.contentDescription = when {
+            isChatOpen -> "Cerrar chat"
+            unreadChatCount > 0 -> {
+                val suffix = if (unreadChatCount == 1) "mensaje nuevo" else "mensajes nuevos"
+                "Abrir chat, $unreadChatCount $suffix"
+            }
+            else -> "Abrir chat"
+        }
     }
 
     private fun sendHumanChatMessage() {
@@ -2673,6 +2737,14 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun showActionFeedbackBanner(spec: GameplayFeedbackSpec) {
+        if (
+            isVoteResultVisible ||
+            isTieVoteVisible ||
+            session.phase == GamePhase.RECUENTO_VOTOS ||
+            session.phase == GamePhase.DESEMPATE_VOTACION
+        ) {
+            return
+        }
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         actionFeedbackBanner.animate().cancel()
         actionFeedbackBannerTitle.text = spec.title
@@ -2915,7 +2987,7 @@ class GameplayMockActivity : BaseActivity() {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
-        MusicManager.pauseForTransition()
+        MusicManager.playGamePhase(this, session)
         voteExpulsionComplete = false
         voteNoExpulsionPresented = false
         isVoteResultVisible = true
@@ -3311,10 +3383,6 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun playResolvedActionSound(before: GameSession, after: GameSession) {
         when {
-            before.phase in setOf(GamePhase.VOTACION, GamePhase.DESEMPATE_VOTACION) &&
-                after.phase != before.phase -> {
-                GameplaySoundEffects.play(this, R.raw.vote_cast)
-            }
             !before.payadorUsed && after.payadorUsed -> {
                 GameplaySoundEffects.play(this, R.raw.payador_ability)
             }

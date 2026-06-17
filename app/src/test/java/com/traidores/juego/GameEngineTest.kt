@@ -361,6 +361,126 @@ class GameEngineTest {
     }
 
     @Test
+    fun customRoleCompositionAssignsRequestedCounts() {
+        var setup = LocalGameFactory.createSession()
+        repeat(5) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        setup = setup.copy(
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ASESINO to 2,
+                    RoleCatalog.POLICIA to 1,
+                    RoleCatalog.MEDICO to 1,
+                    RoleCatalog.MERCENARIO to 1,
+                    RoleCatalog.ALDEANO to 5
+                ),
+                customized = true
+            )
+        )
+
+        val session = LocalGameFactory.assignRoles(setup)
+        val roleCounts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+
+        assertEquals(2, roleCounts[RoleCatalog.ASESINO])
+        assertEquals(1, roleCounts[RoleCatalog.POLICIA])
+        assertEquals(1, roleCounts[RoleCatalog.MEDICO])
+        assertEquals(1, roleCounts[RoleCatalog.MERCENARIO])
+        assertEquals(5, roleCounts[RoleCatalog.ALDEANO])
+        assertEquals(session.players.size, roleCounts.values.sum())
+    }
+
+    @Test
+    fun customRoleCompositionCapsTooManyAssassins() {
+        var setup = LocalGameFactory.createSession()
+        repeat(5) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        setup = setup.copy(
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ASESINO to 6,
+                    RoleCatalog.POLICIA to 1,
+                    RoleCatalog.MEDICO to 1
+                ),
+                customized = true
+            )
+        )
+
+        val session = LocalGameFactory.assignRoles(setup)
+        val roleCounts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+
+        assertEquals(2, roleCounts[RoleCatalog.ASESINO])
+        assertEquals(1, roleCounts[RoleCatalog.POLICIA])
+        assertEquals(1, roleCounts[RoleCatalog.MEDICO])
+        assertEquals(6, roleCounts[RoleCatalog.ALDEANO])
+        assertEquals(session.players.size, roleCounts.values.sum())
+    }
+
+    @Test
+    fun customRoleCompositionDropsRolesFromOtherMaps() {
+        var setup = LocalGameFactory.selectMap(LocalGameFactory.createSession(), "grecia")
+        repeat(5) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        setup = setup.copy(
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ASESINO to 1,
+                    RoleCatalog.POLICIA to 1,
+                    RoleCatalog.MEDICO to 1,
+                    RoleCatalog.PAYADOR to 1,
+                    RoleCatalog.ORACULO to 1
+                ),
+                customized = true
+            )
+        )
+
+        val session = LocalGameFactory.assignRoles(setup)
+        val roleCounts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+
+        assertEquals(0, roleCounts[RoleCatalog.PAYADOR] ?: 0)
+        assertEquals(1, roleCounts[RoleCatalog.ORACULO])
+        assertEquals(session.players.size, roleCounts.values.sum())
+    }
+
+    @Test
+    fun roleCompositionPresetsCreateDifferentDecks() {
+        val recommended = LocalGameFactory.roleCompositionPreset(
+            10,
+            "pampa",
+            RoleCompositionPreset.RECOMMENDED
+        )
+        val classic = LocalGameFactory.roleCompositionPreset(
+            10,
+            "pampa",
+            RoleCompositionPreset.CLASSIC
+        )
+        val chaotic = LocalGameFactory.roleCompositionPreset(
+            10,
+            "pampa",
+            RoleCompositionPreset.CHAOTIC
+        )
+
+        assertEquals(1, recommended.counts[RoleCatalog.ASESINO])
+        assertEquals(1, recommended.counts[RoleCatalog.PAYADOR])
+        assertEquals(0, classic.counts[RoleCatalog.PAYADOR] ?: 0)
+        assertEquals(7, classic.counts[RoleCatalog.ALDEANO])
+        assertEquals(2, chaotic.counts[RoleCatalog.ASESINO])
+        assertEquals(1, chaotic.counts[RoleCatalog.ESPIA])
+        assertEquals(10, chaotic.counts.values.sum())
+    }
+
+    @Test
     fun debugRoleSelectionForcesHumanRoleWithoutDuplicatingIt() {
         var setup = LocalGameFactory.createSession()
         repeat(2) {
@@ -645,6 +765,62 @@ class GameEngineTest {
 
         assertNotNull(target)
         assertFalse(target!!.role?.key in GameRules.traitorRoleKeys)
+    }
+
+    @Test
+    fun multipleAssassinsVoteForOneNightVictim() {
+        val session = GameSession(
+            code = "MULTI-KILL",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            phase = GamePhase.NOCHE_ASESINO,
+            players = listOf(
+                GamePlayer("Asesino1", "A", role = role("asesino", "Asesino", "Traidores"), isHuman = true),
+                GamePlayer("Asesino2", "B", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Asesino3", "C", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Espia", "E", role = role("espia", "Espia", "Traidores")),
+                GamePlayer("Mercenario", "R", role = role("mercenario", "Mercenario", "Traidores")),
+                GamePlayer("Pueblo1", "1", role = role("aldeano", "Aldeano", "Pueblo")),
+                GamePlayer("Pueblo2", "2", role = role("policia", "Comisario", "Pueblo")),
+                GamePlayer("Pueblo3", "3", role = role("medico", "Medico", "Pueblo"))
+            )
+        )
+
+        val resolved = GameEngine.resolveAssassin(session, "Pueblo1")
+
+        assertEquals(GamePhase.NOCHE_MERCENARIO, resolved.phase)
+        assertEquals(3, resolved.assassinVotes.size)
+        assertEquals("Pueblo1", resolved.assassinVotes["Asesino1"])
+        assertTrue(resolved.nightKillTarget in resolved.assassinVotes.values)
+        assertEquals(
+            3,
+            resolved.actionHistory.count { it.type == GameActionType.KILL && it.round == 1 }
+        )
+    }
+
+    @Test
+    fun spyObservesAssassinVoteWhenAssassinsAreAlive() {
+        val session = GameSession(
+            code = "SPY-WATCH",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            phase = GamePhase.NOCHE_ASESINO,
+            players = listOf(
+                GamePlayer("Espia", "E", role = role("espia", "Espia", "Traidores"), isHuman = true),
+                GamePlayer("Asesino1", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Asesino2", "B", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Pueblo1", "1", role = role("aldeano", "Aldeano", "Pueblo")),
+                GamePlayer("Pueblo2", "2", role = role("policia", "Comisario", "Pueblo")),
+                GamePlayer("Pueblo3", "3", role = role("medico", "Medico", "Pueblo"))
+            )
+        )
+
+        val resolved = GameEngine.resolveAssassin(session, "")
+
+        assertEquals(2, resolved.assassinVotes.size)
+        assertTrue(resolved.privateHint.contains("Observaste la votacion asesina."))
+        assertTrue(resolved.privateHint.contains("Victima elegida:"))
+        assertFalse(GameEngine.requiresHumanInput(session))
     }
 
     @Test

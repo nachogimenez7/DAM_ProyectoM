@@ -18,6 +18,8 @@ class JugarActivity : BaseActivity() {
 
         val cardLocal: LinearLayout = findViewById(R.id.cardLocal)
         val cardOnline: LinearLayout = findViewById(R.id.cardOnline)
+        cardLocal.contentDescription = "Jugar una partida local"
+        cardOnline.contentDescription = "Jugar una partida en linea"
 
         cardLocal.setOnClickListener {
             startActivity(Intent(this, LocalModeActivity::class.java))
