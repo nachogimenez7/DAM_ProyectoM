@@ -1089,7 +1089,8 @@ object GameEngine {
     }
 
     fun shouldAutoAdvance(session: GameSession): Boolean {
-        return session.winner.isBlank() &&
+        return session.quickTestMode &&
+            session.winner.isBlank() &&
             session.phase != GamePhase.RECUENTO_VOTOS &&
             !requiresHumanInput(session) &&
             !canDesertorReconsider(session)

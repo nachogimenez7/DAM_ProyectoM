@@ -348,6 +348,17 @@
                     android:textColor="@color/text_primary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/firebaseSmokeStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:text="Escribe y verifica pruebas/conexion_inicial en Firestore."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+
             </LinearLayout>
 
             <Button

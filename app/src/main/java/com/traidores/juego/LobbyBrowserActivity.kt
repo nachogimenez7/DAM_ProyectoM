@@ -10,28 +10,87 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 
 class LobbyBrowserActivity : BaseActivity() {
 
-    private val lobbies = listOf(
-        MockOnlineLobby("Peruvians", 8, 9, "Mapa pampeano", "Casi llena", "pampa"),
-        MockOnlineLobby("Cayetanos", 10, 15, "Mapa griego", "Esperando", "grecia"),
-        MockOnlineLobby("Los Cojenunca", 5, 5, "Mapa medieval", "En partida", "medieval", false),
-        MockOnlineLobby("San Miguel 2020", 4, 6, "Mapa pampeano", "Esperando", "pampa"),
-        MockOnlineLobby("Hombres Diviertiendose", 1, 7, "Mapa griego", "Esperando", "grecia")
-    )
+    private val firestore = FirebaseFirestore.getInstance()
+    private var lobbyListener: ListenerRegistration? = null
+    private var lobbies = emptyList<OnlineLobby>()
+
+    private lateinit var lobbyList: LinearLayout
+    private lateinit var emptyState: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_lobby_browser)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        lobbyList = findViewById(R.id.lobbyList)
+        emptyState = findViewById(R.id.lobbyEmptyState)
+        showBrowserMessage("Buscando partidas online...")
         renderLobbyList()
     }
 
+    override fun onStart() {
+        super.onStart()
+        listenForOnlineRooms()
+    }
+
+    override fun onStop() {
+        lobbyListener?.remove()
+        lobbyListener = null
+        super.onStop()
+    }
+
+    private fun listenForOnlineRooms() {
+        lobbyListener?.remove()
+        lobbyListener = firestore.collection(ONLINE_ROOMS_COLLECTION)
+            .whereEqualTo(FIELD_STATE, ONLINE_ROOM_STATE_WAITING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    lobbies = emptyList()
+                    showBrowserMessage("No se pudieron cargar las salas: ${error.message}")
+                    renderLobbyList()
+                    Toast.makeText(this, "Error cargando salas online.", Toast.LENGTH_LONG).show()
+                    return@addSnapshotListener
+                }
+
+                lobbies = snapshot?.documents
+                    ?.mapNotNull(::parseLobby)
+                    ?.sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
+                    .orEmpty()
+                showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
+                renderLobbyList()
+            }
+    }
+
+    private fun parseLobby(document: DocumentSnapshot): OnlineLobby? {
+        val status = document.getString(FIELD_STATE) ?: return null
+        if (status != ONLINE_ROOM_STATE_WAITING) return null
+        val mapKey = document.getString(FIELD_MAP_KEY) ?: DEFAULT_MAP_KEY
+        val mapName = document.getString(FIELD_MAP_NAME)
+            ?: LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name
+            ?: "Pampa"
+        val players = document.getLong(FIELD_CURRENT_PLAYERS)?.toInt() ?: 0
+        val limit = document.getLong(FIELD_MAX_PLAYERS)?.toInt() ?: DEFAULT_MAX_PLAYERS
+        return OnlineLobby(
+            id = document.id,
+            code = document.getString(FIELD_ROOM_CODE).orEmpty(),
+            name = document.getString(FIELD_NAME)?.takeIf { it.isNotBlank() } ?: "Sala online",
+            players = players.coerceAtLeast(0),
+            limit = limit.coerceAtLeast(1),
+            mapName = "Mapa $mapName",
+            status = if (players >= limit) "Llena" else "Esperando",
+            mapKey = mapKey,
+            canJoin = players < limit
+        )
+    }
+
     private fun renderLobbyList() {
-        val lobbyList: LinearLayout = findViewById(R.id.lobbyList)
-        val emptyState: TextView = findViewById(R.id.lobbyEmptyState)
         lobbyList.removeAllViews()
         emptyState.visibility = if (lobbies.isEmpty()) View.VISIBLE else View.GONE
         lobbies.forEach { lobby ->
@@ -39,7 +98,7 @@ class LobbyBrowserActivity : BaseActivity() {
         }
     }
 
-    private fun createLobbyRow(lobby: MockOnlineLobby): View {
+    private fun createLobbyRow(lobby: OnlineLobby): View {
         val row = layoutInflater.inflate(R.layout.item_online_lobby, null, false)
         row.findViewById<TextView>(R.id.lobbyName).text = lobby.name
         row.findViewById<TextView>(R.id.lobbyMap).text = "${lobby.mapName} - Argentina"
@@ -62,11 +121,15 @@ class LobbyBrowserActivity : BaseActivity() {
         return row
     }
 
-    private fun canJoinLobby(lobby: MockOnlineLobby): Boolean {
+    private fun showBrowserMessage(message: String) {
+        emptyState.text = message
+    }
+
+    private fun canJoinLobby(lobby: OnlineLobby): Boolean {
         return lobby.canJoin && lobby.players < lobby.limit
     }
 
-    private fun lobbyActionLabel(lobby: MockOnlineLobby): String {
+    private fun lobbyActionLabel(lobby: OnlineLobby): String {
         return when {
             lobby.players >= lobby.limit -> "LLENA"
             !lobby.canJoin -> "EN PARTIDA"
@@ -74,33 +137,91 @@ class LobbyBrowserActivity : BaseActivity() {
         }
     }
 
-    private fun lobbyStatusColor(lobby: MockOnlineLobby): String {
+    private fun lobbyStatusColor(lobby: OnlineLobby): String {
         return when (lobby.status) {
             "Casi llena" -> "#D4A24E"
-            "En partida" -> "#8F2633"
+            "En partida", "Llena" -> "#8F2633"
             else -> "#5A8A3C"
         }
     }
 
-    private fun enterLobby(lobby: MockOnlineLobby) {
-        val playerName = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
-        val session = LocalGameFactory.createOnlineLobby(
-            humanName = playerName,
-            playerCount = (lobby.players + 1).coerceAtMost(lobby.limit),
-            humanIsHost = false
-        ).let { LocalGameFactory.selectMap(it, lobby.mapKey) }
-        Toast.makeText(this, "Entrando a ${lobby.name}.", Toast.LENGTH_SHORT).show()
-        startActivity(
-            Intent(this, LobbyActivity::class.java)
-                .putExtra(LobbyActivity.EXTRA_SESSION, session)
-                .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, LobbyActivity.MODE_ONLINE_SEARCH)
-                .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, lobby.name)
+    private fun enterLobby(lobby: OnlineLobby) {
+        val playerName = OnlineRoomFirestore.normalizedPlayerName(
+            getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+                .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
+                .orEmpty()
         )
+        val uidTemporal = OnlineTempIdentity.getOrCreate(this)
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(lobby.id)
+        val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION)
+            .document(uidTemporal)
+
+        Toast.makeText(this, "Sala ${lobby.id}. Uniendote a ${lobby.name}.", Toast.LENGTH_SHORT).show()
+        firestore.runTransaction { transaction ->
+            val roomSnapshot = transaction.get(roomReference)
+            if (!roomSnapshot.exists()) {
+                throw IllegalStateException("La sala ya no existe.")
+            }
+            val playerSnapshot = transaction.get(playerReference)
+            val alreadyJoined = playerSnapshot.exists()
+            val currentPlayers = roomSnapshot.getLong(FIELD_CURRENT_PLAYERS) ?: lobby.players.toLong()
+            val limit = roomSnapshot.getLong(FIELD_MAX_PLAYERS) ?: lobby.limit.toLong()
+            if (!alreadyJoined && currentPlayers >= limit) {
+                throw IllegalStateException("La sala esta llena.")
+            }
+
+            val connectedData = mapOf(
+                OnlineRoomFirestore.FIELD_NAME to playerName,
+                OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
+                "uidTemporal" to uidTemporal,
+                OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+            )
+            if (alreadyJoined) {
+                transaction.update(playerReference, connectedData)
+            } else {
+                transaction.set(
+                    playerReference,
+                    connectedData + mapOf(
+                        OnlineRoomFirestore.FIELD_IS_HOST to false,
+                        OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
+                    )
+                )
+                transaction.update(
+                    roomReference,
+                    mapOf(
+                        FIELD_CURRENT_PLAYERS to FieldValue.increment(1),
+                        "actualizadaEn" to FieldValue.serverTimestamp()
+                    )
+                )
+            }
+            !alreadyJoined
+        }.addOnSuccessListener {
+            val session = LocalGameFactory.createOnlineLobby(
+                humanName = playerName,
+                playerCount = 1,
+                humanIsHost = false
+            ).let { LocalGameFactory.selectMap(it, lobby.mapKey) }
+            Toast.makeText(this, "Entrando a ${lobby.name}.", Toast.LENGTH_SHORT).show()
+            startActivity(
+                Intent(this, LobbyActivity::class.java)
+                    .putExtra(LobbyActivity.EXTRA_SESSION, session)
+                    .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, LobbyActivity.MODE_ONLINE_SEARCH)
+                    .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, lobby.name)
+                    .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, lobby.id)
+                    .putExtra(LobbyActivity.EXTRA_ROOM_CODE, lobby.code)
+            )
+        }.addOnFailureListener { error ->
+            Toast.makeText(
+                this,
+                "No se pudo entrar a la sala: ${error.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
-    private data class MockOnlineLobby(
+    private data class OnlineLobby(
+        val id: String,
+        val code: String,
         val name: String,
         val players: Int,
         val limit: Int,
@@ -109,4 +230,19 @@ class LobbyBrowserActivity : BaseActivity() {
         val mapKey: String,
         val canJoin: Boolean = true
     )
+
+    companion object {
+        private const val ONLINE_ROOMS_COLLECTION = "partidas"
+        private const val ONLINE_PLAYERS_COLLECTION = "jugadores"
+        private const val ONLINE_ROOM_STATE_WAITING = "esperando"
+        private const val FIELD_NAME = "nombre"
+        private const val FIELD_STATE = "estado"
+        private const val FIELD_ROOM_CODE = "codigoSala"
+        private const val FIELD_MAP_KEY = "mapa"
+        private const val FIELD_MAP_NAME = "mapaNombre"
+        private const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
+        private const val FIELD_MAX_PLAYERS = "maxJugadores"
+        private const val DEFAULT_MAP_KEY = "pampa"
+        private const val DEFAULT_MAX_PLAYERS = 10
+    }
 }

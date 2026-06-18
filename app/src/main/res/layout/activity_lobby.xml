@@ -165,6 +165,87 @@
                         android:textSize="15sp" />
 
                     <LinearLayout
+                        android:id="@+id/onlineCodePanel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="7dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:letterSpacing="0.08"
+                            android:text="CODIGO DE SALA"
+                            android:textColor="@color/text_muted"
+                            android:textSize="10sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/onlineRoomCodeText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:letterSpacing="0.16"
+                            android:maxLines="1"
+                            android:text="A7K2Q"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="23sp"
+                            android:textStyle="bold" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="34dp"
+                            android:layout_marginTop="5dp"
+                            android:gravity="center"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btnCopyRoomCode"
+                                style="@style/BtnDark"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_marginEnd="4dp"
+                                android:layout_marginBottom="0dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/bg_btn_dark_ripple"
+                                android:maxLines="1"
+                                android:singleLine="true"
+                                android:text="COPIAR"
+                                android:textSize="10sp"
+                                app:autoSizeMaxTextSize="10sp"
+                                app:autoSizeMinTextSize="8sp"
+                                app:autoSizeStepGranularity="1sp"
+                                app:autoSizeTextType="uniform" />
+
+                            <Button
+                                android:id="@+id/btnShareRoomCode"
+                                style="@style/BtnGold"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_marginStart="4dp"
+                                android:layout_marginBottom="0dp"
+                                android:layout_weight="1"
+                                android:background="@drawable/bg_btn_gold_ripple"
+                                android:maxLines="1"
+                                android:singleLine="true"
+                                android:text="COMPARTIR"
+                                android:textSize="10sp"
+                                app:autoSizeMaxTextSize="10sp"
+                                app:autoSizeMinTextSize="7sp"
+                                app:autoSizeStepGranularity="1sp"
+                                app:autoSizeTextType="uniform" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="46dp"
                         android:layout_marginBottom="7dp"

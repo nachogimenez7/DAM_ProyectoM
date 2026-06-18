@@ -10,6 +10,29 @@ import org.junit.Test
 class GameEngineTest {
 
     @Test
+    fun gameRoleNamesMatchEachMapPresentation() {
+        assertEquals("Aldeana", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.MEDIEVAL).name)
+        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.MEDIEVAL).name)
+        assertEquals("Desertora", RoleCatalog.gameRole(RoleCatalog.DESERTOR, RoleMap.MEDIEVAL).name)
+        assertEquals("Medico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.MEDIEVAL).name)
+
+        assertEquals("Aldeano", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.PAMPA).name)
+        assertEquals("Medica", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.PAMPA).name)
+        assertEquals("Alcaldesa", RoleCatalog.gameRole(RoleCatalog.ALCALDE, RoleMap.PAMPA).name)
+        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.PAMPA).name)
+        assertEquals("Comisario", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.PAMPA).name)
+
+        assertEquals("Aldeano", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.GREECE).name)
+        assertEquals("Asesina", RoleCatalog.gameRole(RoleCatalog.ASESINO, RoleMap.GREECE).name)
+        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.GREECE).name)
+        assertEquals("Oraculo", RoleCatalog.gameRole(RoleCatalog.ORACULO, RoleMap.GREECE).name)
+        assertEquals("Medico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.GREECE).name)
+
+        assertEquals("Detective", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.GREECE).name)
+        assertEquals("Detective", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.MEDIEVAL).name)
+    }
+
+    @Test
     fun roleRevealGateProtectsMinimumReadingTimeEvenWhenEveryoneIsReady() {
         val players = setOf("a", "b", "c")
 
@@ -1317,17 +1340,20 @@ class GameEngineTest {
     }
 
     @Test
-    fun botOnlyPhasesCanAutoAdvanceButHumanDecisionsStop() {
+    fun quickTestModeAutoAdvancesBotOnlyPhasesButHumanDecisionsStop() {
         val botPhase = baseSession().copy(phase = GamePhase.NOCHE_ASESINO)
-        val humanPolicePhase = sessionWithHumanRole("policia").copy(phase = GamePhase.NOCHE_POLICIA)
+        val quickBotPhase = botPhase.copy(quickTestMode = true)
+        val humanPolicePhase = sessionWithHumanRole("policia")
+            .copy(phase = GamePhase.NOCHE_POLICIA, quickTestMode = true)
 
-        assertTrue(GameEngine.shouldAutoAdvance(botPhase))
+        assertFalse(GameEngine.shouldAutoAdvance(botPhase))
+        assertTrue(GameEngine.shouldAutoAdvance(quickBotPhase))
         assertFalse(GameEngine.shouldAutoAdvance(humanPolicePhase))
     }
 
     @Test
     fun revealPhaseCanAutoAdvanceToFirstNight() {
-        val session = baseSession().copy(phase = GamePhase.REPARTO)
+        val session = baseSession().copy(phase = GamePhase.REPARTO, quickTestMode = true)
 
         assertTrue(GameEngine.shouldAutoAdvance(session))
         assertEquals(GamePhase.NOCHE_ASESINO, GameEngine.startNight(session).phase)
@@ -1863,6 +1889,7 @@ class GameEngineTest {
     fun deadHumanDoesNotBlockBotVotingOrAutoAdvance() {
         val session = baseSession().copy(
             phase = GamePhase.VOTACION,
+            quickTestMode = true,
             players = basePlayers().map {
                 if (it.isHuman) it.copy(alive = false, muted = false) else it
             }

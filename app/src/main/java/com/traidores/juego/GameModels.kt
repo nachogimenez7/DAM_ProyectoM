@@ -12,6 +12,7 @@ data class GameSession(
     val roleComposition: RoleCompositionConfig = RoleCompositionConfig(),
     val revealRolesOnDeath: Boolean = false,
     val showIndividualVotes: Boolean = true,
+    val quickTestMode: Boolean = false,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,

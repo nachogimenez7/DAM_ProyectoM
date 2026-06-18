@@ -1,18 +1,37 @@
-# Testeo Traidores - Proyecto Android Studio
+# App Traidores
 
-Este es un menú interactivo y sistema de navegación con la temática del juego **Traidores**, desarrollado en Kotlin para ser testeado en **Android Studio**.
+Proyecto Android/Kotlin del juego **Traidores**, una simulacion mobile de partida social con lobby, asignacion de roles, fases de noche/dia, votacion, expulsion y resultados.
 
-## Cómo probar el proyecto
+## Como abrir el proyecto
 
-1. Abrí **Android Studio**.
-2. Seleccioná **Open** (o *Import Project*).
-3. Buscá y selecciona la carpeta `testeo TRAIDORES` que está en tu Escritorio.
-4. Esperá a que Gradle sincronice el proyecto y descargue las dependencias necesarias.
-5. Ejecutá la aplicación en un Emulador o en un dispositivo Android físico.
+1. Abrir **Android Studio**.
+2. Seleccionar **Open**.
+3. Elegir esta carpeta del proyecto: `App Traidores`.
+4. Esperar la sincronizacion de Gradle.
+5. Ejecutar la app en un emulador o dispositivo Android.
 
-## Contenido del Menú
+## Pantallas principales
 
-- **Jugar:** Pantalla para elegir entre Juego Local y Juego en Línea (con toasts demostrativos).
-- **Roles:** Lista interactiva que carga las ilustraciones originales y descripciones de los roles del juego.
-- **Ayuda:** Consejos detallados, reglas básicas del juego y explicación de las fases de Día y Noche.
-- **Opciones:** Configuración de sonido (on/off), selección de idioma (Español/Inglés) y un módulo simulado de inicio de sesión y registro de cuenta.
+- **Menu principal:** acceso a jugar, roles, ayuda, opciones y perfil.
+- **Lobby:** configuracion de jugadores, mapa, tiempos, roles y opciones avanzadas.
+- **Asignacion de roles:** muestra la carta del jugador antes de iniciar la partida.
+- **Gameplay:** fases de noche, amanecer, debate, votacion, expulsion y resultado.
+- **Roles y ayuda:** material de consulta para explicar reglas y personajes.
+- **Opciones/perfil:** configuracion de sonido, nombre y datos del jugador.
+
+## Modo presentacion y test rapido
+
+El gameplay usa por defecto un ritmo de presentacion: respeta los tiempos configurados en el lobby y no permite saltear fases temporizadas.
+
+En **Lobby > Opciones avanzadas** existe `MODO TEST RAPIDO`. Al activarlo, la partida recupera el comportamiento rapido para probar flujos: fases sin accion humana avanzan velozmente y la votacion/expulsion se acelera.
+
+## Estructura rapida
+
+- `app/src/main/java/com/traidores/juego/`: codigo principal de la app.
+- `app/src/main/res/`: layouts, drawables, fuentes, sonidos y recursos Android.
+- `app/src/test/`: tests unitarios de reglas y motor.
+- `docs/`: notas tecnicas y documentacion del proyecto.
+- `roles_gauchos/`, `roles_griegos/`, `roles_medievales/`: recursos visuales de roles por mapa/tematica.
+- `tmp/`: archivos temporales o previews locales, no necesarios para compilar.
+
+Mas detalle en `docs/project-structure.md`.

@@ -49,6 +49,11 @@
             android:text="BUSCAR PARTIDA" />
 
         <Button
+            android:id="@+id/btnJoinCode"
+            style="@style/BtnDark"
+            android:text="UNIRSE POR CODIGO" />
+
+        <Button
             android:id="@+id/btnCreate"
             style="@style/BtnDark"
             android:text="CREAR PARTIDA" />

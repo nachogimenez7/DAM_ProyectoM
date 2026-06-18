@@ -30,7 +30,8 @@ class VoteResultAnimator(
     private val continueButton: Button,
     private val boot: ImageView,
     private val roleImageFor: (GameRole?) -> Int,
-    private val dp: (Int) -> Int
+    private val dp: (Int) -> Int,
+    private val onContinueReady: (() -> Unit)? = null
 ) {
     private companion object {
         const val REVEALED_CARD_READ_MS = 2_000L
@@ -228,6 +229,7 @@ class VoteResultAnimator(
         applyPanelMode(expulsion = false)
         overlay.visibility = View.GONE
         overlay.alpha = 1f
+        continueButton.isEnabled = false
     }
 
     fun cancelAnimations() {
@@ -414,6 +416,7 @@ class VoteResultAnimator(
             .alpha(1f)
             .setDuration(180L)
             .start()
+        onContinueReady?.invoke()
     }
 
     private fun voteTokens(session: GameSession): List<VoteToken> {

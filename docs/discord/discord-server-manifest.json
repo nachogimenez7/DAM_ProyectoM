@@ -1,0 +1,214 @@
+{
+  "serverName": "Traidores | Oficial",
+  "description": "Servidor oficial de Traidores para encontrar partidas, seguir novedades y construir comunidad.",
+  "colors": {
+    "dark": "#1a1510",
+    "gold": "#d4a24e",
+    "red": "#8F2633",
+    "blue": "#4a7fb5",
+    "green": "#5a8a3c",
+    "purple": "#8a5fbf",
+    "textSecondary": "#c4b69c",
+    "brightGold": "#e8b84b"
+  },
+  "roles": [
+    {
+      "name": "Fundador",
+      "color": "#d4a24e",
+      "hoist": true,
+      "mentionable": false,
+      "permissions": ["Administrator"]
+    },
+    {
+      "name": "Administrador",
+      "color": "#8F2633",
+      "hoist": true,
+      "mentionable": false,
+      "permissions": ["Administrator"]
+    },
+    {
+      "name": "Moderador",
+      "color": "#4a7fb5",
+      "hoist": true,
+      "mentionable": false,
+      "permissions": [
+        "ViewChannel",
+        "SendMessages",
+        "ManageMessages",
+        "KickMembers",
+        "BanMembers",
+        "ModerateMembers",
+        "ReadMessageHistory",
+        "AddReactions",
+        "Connect",
+        "Speak"
+      ]
+    },
+    {
+      "name": "Equipo de desarrollo",
+      "color": "#8a5fbf",
+      "hoist": true,
+      "mentionable": false,
+      "permissions": ["ViewChannel", "SendMessages", "ReadMessageHistory", "AddReactions", "Connect", "Speak"]
+    },
+    {
+      "name": "Miembro",
+      "color": "#c4b69c",
+      "hoist": false,
+      "mentionable": false,
+      "permissions": ["ViewChannel", "SendMessages", "ReadMessageHistory", "AddReactions", "AttachFiles", "Connect", "Speak"]
+    },
+    {
+      "name": "Espanol",
+      "color": "#c4b69c",
+      "hoist": false,
+      "mentionable": false,
+      "permissions": []
+    },
+    {
+      "name": "English",
+      "color": "#5a8a3c",
+      "hoist": false,
+      "mentionable": false,
+      "permissions": []
+    },
+    {
+      "name": "Android",
+      "color": "#5a8a3c",
+      "hoist": false,
+      "mentionable": false,
+      "permissions": []
+    },
+    {
+      "name": "iOS",
+      "color": "#4a7fb5",
+      "hoist": false,
+      "mentionable": false,
+      "permissions": []
+    },
+    {
+      "name": "Busco partida",
+      "color": "#e8b84b",
+      "hoist": false,
+      "mentionable": true,
+      "permissions": []
+    },
+    {
+      "name": "Looking for game",
+      "color": "#e8b84b",
+      "hoist": false,
+      "mentionable": true,
+      "permissions": []
+    }
+  ],
+  "categories": [
+    {
+      "name": "EMPEZA AQUI",
+      "access": "public-read",
+      "channels": [
+        { "name": "bienvenida", "type": "text", "locked": true, "topic": "Inicio del servidor oficial de Traidores." },
+        { "name": "reglas", "type": "text", "locked": true, "topic": "Reglas obligatorias de la comunidad." },
+        { "name": "seguridad", "type": "text", "locked": true, "topic": "Recomendaciones de seguridad y privacidad." },
+        { "name": "elige-tus-roles", "type": "text", "locked": true, "topic": "Roles de idioma, plataforma y notificaciones." },
+        { "name": "como-jugar", "type": "text", "locked": true, "topic": "Resumen de modos y objetivo de Traidores." },
+        { "name": "sitio-oficial", "type": "text", "locked": true, "topic": "Sitio oficial: https://traidores.me" }
+      ]
+    },
+    {
+      "name": "INFORMACION OFICIAL",
+      "access": "members",
+      "channels": [
+        { "name": "anuncios", "type": "text", "locked": true, "topic": "Anuncios oficiales de Traidores." },
+        { "name": "actualizaciones", "type": "text", "locked": true, "topic": "Cambios y versiones del juego." },
+        { "name": "hoja-de-ruta", "type": "text", "locked": true, "topic": "Planes publicos de desarrollo." },
+        { "name": "estado-del-juego", "type": "text", "locked": true, "topic": "Estado del juego, servicios y pruebas." },
+        { "name": "encuestas", "type": "text", "locked": true, "topic": "Encuestas publicadas por el equipo." }
+      ]
+    },
+    {
+      "name": "BUSCAR PARTIDA",
+      "access": "members",
+      "channels": [
+        { "name": "buscar-partida", "type": "forum", "topic": "Crea una publicacion para buscar jugadores. Se archiva en 24 horas.", "autoArchiveDuration": 1440 },
+        { "name": "como-buscar-partida", "type": "text", "locked": true, "topic": "Formato y reglas para buscar partida." },
+        { "name": "Sala 1", "type": "voice" },
+        { "name": "Sala 2", "type": "voice" },
+        { "name": "Sala 3", "type": "voice" },
+        { "name": "Sala 4", "type": "voice" },
+        { "name": "Sala 5", "type": "voice" }
+      ]
+    },
+    {
+      "name": "COMUNIDAD",
+      "access": "members",
+      "channels": [
+        { "name": "chat-general", "type": "text", "topic": "Charla general de la comunidad." },
+        { "name": "presentaciones", "type": "text", "topic": "Presentate ante la comunidad." },
+        { "name": "jugadas-y-anecdotas", "type": "text", "topic": "Momentos, partidas y sospechas memorables." },
+        { "name": "memes", "type": "text", "topic": "Memes de Traidores y party games." },
+        { "name": "sugerencias", "type": "text", "topic": "Ideas para mejorar Traidores." },
+        { "name": "off-topic", "type": "text", "topic": "Conversaciones fuera del juego sin politica ni religion." },
+        { "name": "humor-sin-filtro", "type": "text", "topic": "Humor relajado con reglas: sin acoso, porno, gore, doxxing, politica ni discriminacion." }
+      ]
+    },
+    {
+      "name": "DESARROLLO Y SOPORTE",
+      "access": "members",
+      "channels": [
+        { "name": "avances-del-desarrollo", "type": "text", "locked": true, "topic": "Avances publicos del desarrollo de Traidores." },
+        { "name": "reportar-un-error", "type": "text", "topic": "Reportes de errores hasta activar tickets completos." },
+        { "name": "preguntas-y-ayuda", "type": "text", "topic": "Ayuda general de la comunidad y el equipo." }
+      ]
+    },
+    {
+      "name": "ENGLISH",
+      "access": "english",
+      "channels": [
+        { "name": "english-welcome", "type": "text", "locked": true, "topic": "English introduction to Traidores." },
+        { "name": "english-rules", "type": "text", "locked": true, "topic": "English rules summary." },
+        { "name": "english-chat", "type": "text", "topic": "English community chat." },
+        { "name": "find-a-game", "type": "forum", "topic": "Find players in English. Threads archive after 24 hours.", "autoArchiveDuration": 1440 },
+        { "name": "English Lobby 1", "type": "voice" },
+        { "name": "English Lobby 2", "type": "voice" }
+      ]
+    }
+  ],
+  "messageSources": [
+    {
+      "channel": "bienvenida",
+      "heading": "## `#bienvenida`"
+    },
+    {
+      "channel": "reglas",
+      "heading": "## `#reglas`"
+    },
+    {
+      "channel": "seguridad",
+      "heading": "## `#seguridad`"
+    },
+    {
+      "channel": "elige-tus-roles",
+      "heading": "## `#elige-tus-roles`"
+    },
+    {
+      "channel": "como-jugar",
+      "heading": "## `#como-jugar`"
+    },
+    {
+      "channel": "como-buscar-partida",
+      "heading": "## `#como-buscar-partida`"
+    },
+    {
+      "channel": "humor-sin-filtro",
+      "heading": "## `#humor-sin-filtro`"
+    },
+    {
+      "channel": "english-welcome",
+      "heading": "## English welcome"
+    },
+    {
+      "channel": "english-rules",
+      "heading": "## English rules"
+    }
+  ]
+}

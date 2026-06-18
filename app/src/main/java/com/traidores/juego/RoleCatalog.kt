@@ -271,27 +271,49 @@ object RoleCatalog {
     }
 
     private fun displayName(key: String, map: RoleMap): String {
-        return when (key) {
-            ALDEANO -> "Aldeana"
-            POLICIA -> "Detective"
-            MEDICO -> if (map == RoleMap.MEDIEVAL) "Medico" else "Medica"
-            ALCALDE -> "Alcalde"
-            ASESINO -> if (map == RoleMap.GREECE) "Asesina" else "Asesino"
-            ESPIA -> "Espia"
-            MERCENARIO -> "Mercenario"
-            DESERTOR -> if (map == RoleMap.PAMPA) "Desertora" else "Desertor"
-            PAYADOR -> "Payador"
-            BUFON -> "Bufon"
-            ORACULO -> "Oraculo"
-            else -> "Aldeana"
+        return when (map) {
+            RoleMap.MEDIEVAL -> when (key) {
+                ALDEANO -> "Aldeana"
+                POLICIA -> "Detective"
+                MEDICO -> "Medico"
+                ALCALDE -> "Alcalde"
+                ASESINO -> "Asesino"
+                ESPIA -> "Espia"
+                MERCENARIO -> "Mercenario"
+                DESERTOR -> "Desertora"
+                BUFON -> "Bufon"
+                else -> "Aldeana"
+            }
+            RoleMap.GREECE -> when (key) {
+                ALDEANO -> "Aldeano"
+                POLICIA -> "Detective"
+                MEDICO -> "Medico"
+                ALCALDE -> "Alcalde"
+                ASESINO -> "Asesina"
+                ESPIA -> "Espia"
+                MERCENARIO -> "Mercenario"
+                DESERTOR -> "Desertor"
+                ORACULO -> "Oraculo"
+                else -> "Aldeano"
+            }
+            RoleMap.PAMPA -> when (key) {
+                ALDEANO -> "Aldeano"
+                POLICIA -> "Comisario"
+                MEDICO -> "Medica"
+                ALCALDE -> "Alcaldesa"
+                ASESINO -> "Asesino"
+                ESPIA -> "Espia"
+                MERCENARIO -> "Mercenario"
+                DESERTOR -> "Desertor"
+                PAYADOR -> "Payador"
+                else -> "Aldeano"
+            }
         }
     }
 
     private fun gameName(key: String, map: RoleMap): String {
         return when {
             key == POLICIA && map == RoleMap.PAMPA -> "Comisario"
-            key == MEDICO -> "Medico"
-            key == ASESINO -> "Asesino"
             else -> displayName(key, map)
         }
     }

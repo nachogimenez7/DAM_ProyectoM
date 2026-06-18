@@ -17,6 +17,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.widget.SwitchCompat
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 
 class OpcionesActivity : BaseActivity() {
@@ -48,6 +49,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var optionsScroll: ScrollView
     private lateinit var accountCard: LinearLayout
     private lateinit var btnFirebaseSmokeTest: Button
+    private lateinit var firebaseSmokeStatus: TextView
     private lateinit var btnResetOptions: Button
 
     private var currentLanguage = LANGUAGE_SPANISH
@@ -94,6 +96,7 @@ class OpcionesActivity : BaseActivity() {
         optionsScroll = findViewById(R.id.optionsScroll)
         accountCard = findViewById(R.id.accountCard)
         btnFirebaseSmokeTest = findViewById(R.id.btnFirebaseSmokeTest)
+        firebaseSmokeStatus = findViewById(R.id.firebaseSmokeStatus)
         btnResetOptions = findViewById(R.id.btnResetOptions)
     }
 
@@ -170,26 +173,57 @@ class OpcionesActivity : BaseActivity() {
 
     private fun writeFirestoreSmokeTest() {
         btnFirebaseSmokeTest.isEnabled = false
+        btnFirebaseSmokeTest.text = firebaseTestingText()
+        firebaseSmokeStatus.text = firebaseTestingStatus()
+        firebaseSmokeStatus.setTextColor(getColor(R.color.text_secondary))
         val datos = hashMapOf(
             "nombre" to "Nacho",
             "mensaje" to "Hola Firebase",
-            "fecha" to System.currentTimeMillis()
+            "fechaLocal" to System.currentTimeMillis(),
+            "fechaServidor" to FieldValue.serverTimestamp(),
+            "origen" to "android-opciones"
         )
 
-        FirebaseFirestore.getInstance()
+        val documentReference = FirebaseFirestore.getInstance()
             .collection(FIRESTORE_TEST_COLLECTION)
             .document(FIRESTORE_TEST_DOCUMENT)
+
+        documentReference
             .set(datos)
             .addOnSuccessListener {
-                btnFirebaseSmokeTest.isEnabled = true
-                Log.i(FIRESTORE_SMOKE_TAG, "Documento escrito en pruebas/conexion_inicial")
-                Toast.makeText(this, "Firestore OK: prueba escrita", Toast.LENGTH_LONG).show()
+                documentReference.get()
+                    .addOnSuccessListener { snapshot ->
+                        btnFirebaseSmokeTest.isEnabled = true
+                        updateOptionTexts()
+                        val readablePath = "$FIRESTORE_TEST_COLLECTION/$FIRESTORE_TEST_DOCUMENT"
+                        if (snapshot.exists()) {
+                            firebaseSmokeStatus.text = firebaseSuccessStatus(readablePath)
+                            firebaseSmokeStatus.setTextColor(getColor(R.color.accent_gold))
+                            Log.i(FIRESTORE_SMOKE_TAG, "Documento verificado en $readablePath")
+                            Toast.makeText(this, "Firebase OK: $readablePath", Toast.LENGTH_LONG).show()
+                        } else {
+                            firebaseSmokeStatus.text = firebaseMissingStatus(readablePath)
+                            firebaseSmokeStatus.setTextColor(getColor(R.color.accent_red))
+                            Log.w(FIRESTORE_SMOKE_TAG, "La escritura termino, pero no se pudo leer $readablePath")
+                            Toast.makeText(this, "Firebase escribio, pero no pudo verificar.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .addOnFailureListener { error ->
+                        showFirestoreSmokeError(error)
+                    }
             }
             .addOnFailureListener { error ->
-                btnFirebaseSmokeTest.isEnabled = true
-                Log.e(FIRESTORE_SMOKE_TAG, "Error escribiendo prueba de Firestore", error)
-                Toast.makeText(this, "Firestore error: ${error.message}", Toast.LENGTH_LONG).show()
+                showFirestoreSmokeError(error)
             }
+    }
+
+    private fun showFirestoreSmokeError(error: Exception) {
+        btnFirebaseSmokeTest.isEnabled = true
+        updateOptionTexts()
+        firebaseSmokeStatus.text = firebaseErrorStatus(error)
+        firebaseSmokeStatus.setTextColor(getColor(R.color.accent_red))
+        Log.e(FIRESTORE_SMOKE_TAG, "Error en prueba de Firestore", error)
+        Toast.makeText(this, "Firebase error: ${error.message}", Toast.LENGTH_LONG).show()
     }
 
     private fun loadPreferences() {
@@ -301,6 +335,9 @@ class OpcionesActivity : BaseActivity() {
             accountDescription.text =
                 "When online play is implemented, you will log in here to keep statistics, achievements and customization."
             btnFirebaseSmokeTest.text = "TEST FIREBASE"
+            if (firebaseSmokeStatus.text.isNullOrBlank()) {
+                firebaseSmokeStatus.text = "Writes and verifies pruebas/conexion_inicial in Firestore."
+            }
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
@@ -321,6 +358,9 @@ class OpcionesActivity : BaseActivity() {
             accountDescription.text =
                 "Cuando se implemente el online, desde aqui podras iniciar sesion y conservar estadisticas, logros y personalizacion."
             btnFirebaseSmokeTest.text = "PROBAR FIREBASE"
+            if (firebaseSmokeStatus.text.isNullOrBlank()) {
+                firebaseSmokeStatus.text = "Escribe y verifica pruebas/conexion_inicial en Firestore."
+            }
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
         updateVolumeLabels()
@@ -406,6 +446,37 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
+    private fun firebaseTestingText(): String =
+        if (currentLanguage == LANGUAGE_ENGLISH) "TESTING..." else "PROBANDO..."
+
+    private fun firebaseTestingStatus(): String =
+        if (currentLanguage == LANGUAGE_ENGLISH) {
+            "Writing test document to Firestore..."
+        } else {
+            "Escribiendo documento de prueba en Firestore..."
+        }
+
+    private fun firebaseSuccessStatus(path: String): String =
+        if (currentLanguage == LANGUAGE_ENGLISH) {
+            "Firebase OK. Check Cloud Firestore > Data > $path."
+        } else {
+            "Firebase OK. Mira Cloud Firestore > Datos > $path."
+        }
+
+    private fun firebaseMissingStatus(path: String): String =
+        if (currentLanguage == LANGUAGE_ENGLISH) {
+            "Written, but the app could not read $path back."
+        } else {
+            "Se escribio, pero la app no pudo volver a leer $path."
+        }
+
+    private fun firebaseErrorStatus(error: Exception): String =
+        if (currentLanguage == LANGUAGE_ENGLISH) {
+            "Firebase failed: ${error.message ?: error.javaClass.simpleName}"
+        } else {
+            "Firebase fallo: ${error.message ?: error.javaClass.simpleName}"
+        }
+
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val FIRESTORE_SMOKE_TAG = "FirestoreSmoke"
@@ -422,5 +493,6 @@ class OpcionesActivity : BaseActivity() {
         private const val LANGUAGE_ENGLISH = "English (EN)"
 
         const val PREF_PLAYER_NAME = "player_name"
+        const val PREF_LAST_SELECTED_MAP = "last_selected_map"
     }
 }

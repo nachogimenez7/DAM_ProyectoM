@@ -11,7 +11,10 @@ app/build/
 *.apk
 *.ap_
 *.dex
+.env
+.env.*
 .idea/
 traidores-*.png
 window.xml
 lobby.xml
+tmp/

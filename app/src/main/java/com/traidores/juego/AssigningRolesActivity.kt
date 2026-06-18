@@ -292,6 +292,18 @@ class AssigningRolesActivity : BaseActivity() {
                 .putExtra(LobbyActivity.EXTRA_SESSION, session)
                 .putExtra(GameplayMockActivity.EXTRA_TEMA, GameplayTableUi.themeForMapKey(session.mapKey))
                 .putExtra(GameplayMockActivity.EXTRA_ES_NOCHE, false)
+                .putExtra(
+                    GameplayMockActivity.EXTRA_ONLINE_PARTIDA_ID,
+                    intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
+                )
+                .putExtra(
+                    GameplayMockActivity.EXTRA_ONLINE_PLAYER_ID,
+                    intent.getStringExtra(EXTRA_ONLINE_PLAYER_ID).orEmpty()
+                )
+                .putExtra(
+                    GameplayMockActivity.EXTRA_ONLINE_IS_HOST,
+                    intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
+                )
         )
         finish()
     }
@@ -327,5 +339,8 @@ class AssigningRolesActivity : BaseActivity() {
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val ANIMATION_FALLBACK_MS = 4800L
+        const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
+        const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"
+        const val EXTRA_ONLINE_IS_HOST = "extra_online_is_host"
     }
 }
