@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
@@ -44,6 +45,7 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.TextViewCompat
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -56,6 +58,7 @@ class GameplayMockActivity : BaseActivity() {
     private var appliedGameplayTextScale = 1f
     private var isChatOpen = false
     private var isChatKeyboardCompact = false
+    private var isBottomPlayerPanelCompact = false
     private var chatKeyboardBottomInset = 0
     private var newChatMessagesWhileTyping = 0
     private var isEventLogExpanded = false
@@ -106,12 +109,21 @@ class GameplayMockActivity : BaseActivity() {
     private var onlineIsHost = false
     private var lastPublishedOnlineStateKey = ""
     private var lastPublishedAuthoritativeOnlineStateKey = ""
+    private var lastAppliedAuthoritativeOnlineStateKey = ""
+    private var onlineAwaitingHostAdvance = false
+    private var onlineNightResolutionInProgress = false
+    private var onlineStateListener: ListenerRegistration? = null
+    private var onlineChatListener: ListenerRegistration? = null
+    private var lastOnlineChatSentAtMs = 0L
+    private var lastOnlineChatMessage = ""
+    private val submittedOnlineNightActions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val voteResultAutoContinueRunnable = Runnable { handleVoteResultAutoContinue() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
+    private val typingBotSpeakers = linkedSetOf<String>()
     private val enableInitialRoleReadyRunnable = Runnable {
         if (initialRoleReadingActive && ::btnContinueRolePreview.isInitialized) {
             btnContinueRolePreview.visibility = View.VISIBLE
@@ -159,6 +171,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var chatMessagesScroll: ScrollView
     private lateinit var chatNewMessages: TextView
     private lateinit var chatPanel: LinearLayout
+    private lateinit var chatRoleChip: TextView
     private lateinit var chatStatusRow: LinearLayout
     private lateinit var chatUnreadBadge: TextView
     private lateinit var currentPlayerHint: TextView
@@ -201,6 +214,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var rightPlayersContainer: LinearLayout
     private lateinit var rightPlayersScroll: ScrollView
     private lateinit var rightColumn: LinearLayout
+    private lateinit var bottomPlayerPanel: LinearLayout
     private lateinit var roleCard: LinearLayout
     private lateinit var roleImage: ImageView
     private lateinit var roleName: TextView
@@ -297,6 +311,19 @@ class GameplayMockActivity : BaseActivity() {
         var selected: Boolean = false
     )
 
+    private data class OnlineRecordedAction(
+        val action: String,
+        val actorName: String,
+        val targetName: String
+    )
+
+    private data class OnlineChatEntry(
+        val id: String,
+        val speaker: String,
+        val message: String,
+        val isGod: Boolean
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gameplay_mock)
@@ -383,8 +410,10 @@ class GameplayMockActivity : BaseActivity() {
         chatMessagesScroll = findViewById(R.id.chatMessagesScroll)
         chatNewMessages = findViewById(R.id.chatNewMessages)
         chatPanel = findViewById(R.id.chatPanel)
+        chatRoleChip = findViewById(R.id.chatRoleChip)
         chatStatusRow = findViewById(R.id.chatStatusRow)
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
+        chatUnreadBadge.bringToFront()
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
         currentPlayerStatus = findViewById(R.id.currentPlayerStatus)
@@ -427,6 +456,7 @@ class GameplayMockActivity : BaseActivity() {
         rightPlayersContainer = findViewById(R.id.rightPlayersContainer)
         rightPlayersScroll = findViewById(R.id.rightPlayersScroll)
         rightColumn = findViewById(R.id.rightColumn)
+        bottomPlayerPanel = findViewById(R.id.bottomPlayerPanel)
         roleCard = findViewById(R.id.roleCard)
         roleImage = findViewById(R.id.roleImage)
         roleName = findViewById(R.id.roleName)
@@ -644,6 +674,8 @@ class GameplayMockActivity : BaseActivity() {
         chatInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
                 setChatKeyboardState(true, chatKeyboardBottomInset)
+            } else {
+                applyKeyboardAwarePlayerPanel()
             }
         }
         chatInput.doAfterTextChanged { text ->
@@ -683,6 +715,8 @@ class GameplayMockActivity : BaseActivity() {
             rolePreviewAnimator.reserveVisible()
         }
         renderGame()
+        startAuthoritativeOnlineStateListener()
+        startOnlineChatListener()
         gameplayRoot.post {
             renderPlayerColumns()
             if (shouldPresentRolePreview) {
@@ -690,6 +724,8 @@ class GameplayMockActivity : BaseActivity() {
                 showRolePreview(
                     initialReveal = shouldShowInitialRoleReveal || shouldRestoreInitialRoleReading
                 )
+            } else {
+                resumeGameFlowAfterBlockingUi()
             }
         }
     }
@@ -714,6 +750,10 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
+        onlineStateListener?.remove()
+        onlineStateListener = null
+        onlineChatListener?.remove()
+        onlineChatListener = null
         cancelPendingBotChat()
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
@@ -865,13 +905,13 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
 
-        val selectedAction = GameplayTableUi.confirmedTargetActionLabel(session, selectedTarget)
+        val selectedAction = confirmedTargetActionLabel()
         if (selectedAction != null) {
             performTargetAction(selectedTarget)
             return
         }
 
-        if (selectedTarget.isBlank() && GameplayTableUi.canHumanMedicSelfProtect(session)) {
+        if (selectedTarget.isBlank() && canHumanMedicSelfProtect()) {
             performTargetAction(GameEngine.humanPlayer(session).name)
             return
         }
@@ -882,11 +922,18 @@ class GameplayMockActivity : BaseActivity() {
         }
 
         val human = GameEngine.humanPlayer(session)
+        val currentActionSession = actionSession()
         if (
-            session.phase == GamePhase.NOCHE_ORACULO &&
+            currentActionSession.phase == GamePhase.NOCHE_ORACULO &&
             human.role?.key == RoleCatalog.ORACULO
         ) {
-            session = GameEngine.skipOraclePower(session)
+            val resolved = GameEngine.skipOraclePower(currentActionSession)
+            session = if (isOnlineNightActionWindow()) {
+                submittedOnlineNightActions.add(onlineDeferredActionKey())
+                mergeOnlineNightActionResult(session, resolved)
+            } else {
+                resolved
+            }
             renderGame()
             return
         }
@@ -905,7 +952,7 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
 
-        if (GameEngine.requiresHumanInput(session)) {
+        if (requiresHumanInput()) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, targetActionMessage(), Toast.LENGTH_SHORT).show()
             renderGame()
@@ -956,20 +1003,33 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
         pauseCountdown()
-        if (!GameEngine.canActOnTarget(session, targetName)) {
+        val actionSession = actionSession()
+        if (!canActOnTarget(targetName)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "No podes actuar sobre ese jugador.", Toast.LENGTH_SHORT).show()
             renderGame()
             return
         }
 
-        val before = session
+        val before = actionSession
         selectedTarget = targetName
-        val resolved = GameEngine.resolveHumanTargetAction(session, targetName)
+        val resolved = GameEngine.resolveHumanTargetAction(actionSession, targetName)
         recordOnlinePlayerAction(before, resolved, targetName)
         playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
-        session = resolved
+        session = if (isOnlineDeferredActionWindow()) {
+            submittedOnlineNightActions.add(onlineDeferredActionKey())
+            if (isOnlineNightActionWindow()) {
+                mergeOnlineNightActionResult(session, resolved)
+            } else {
+                session.copy(
+                    privateHint = "Accion registrada. Espera a que termine el tiempo.",
+                    actionHistory = resolved.actionHistory
+                )
+            }
+        } else {
+            resolved
+        }
         stageBotBurstForCurrentPhase()
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
@@ -996,7 +1056,7 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         if (
             selectedTarget.isNotBlank() &&
-            !GameEngine.canActOnTarget(session, selectedTarget)
+            !canActOnTarget(selectedTarget)
         ) {
             clearSelection()
         }
@@ -1053,6 +1113,7 @@ class GameplayMockActivity : BaseActivity() {
         renderHumanCardIfVisible()
         renderPlayerColumns(newlyDeadPlayers.map { it.name }.toSet())
         renderChatPanel()
+        applyKeyboardAwarePlayerPanel()
         renderChatBadge()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
@@ -1107,35 +1168,183 @@ class GameplayMockActivity : BaseActivity() {
             session.round,
             session.phaseIndex,
             session.publicAnnouncement,
+            session.publicHistory.joinToString("#"),
             session.privateHint,
             session.winner,
             session.nightKillTarget,
             session.nightSilenceTarget,
-            session.dayEliminationTarget
+            session.dayEliminationTarget,
+            session.votes.entries.sortedBy { it.key }.joinToString("#") { "${it.key}:${it.value}" },
+            session.voteRound,
+            session.tieVoteCandidates.joinToString("#"),
+            session.alcaldeTieCandidates.joinToString("#"),
+            session.players.joinToString("#") { "${it.name}:${it.alive}:${it.muted}" }
         ).joinToString("|")
         if (stateKey == lastPublishedAuthoritativeOnlineStateKey) return
         lastPublishedAuthoritativeOnlineStateKey = stateKey
 
+        val roomUpdate = mutableMapOf<String, Any>(
+            "estadoPartida" to mapOf(
+                "fase" to session.phase.name,
+                "ronda" to session.round,
+                "phaseIndex" to session.phaseIndex,
+                "anuncioPublico" to session.publicAnnouncement,
+                "ganador" to session.winner,
+                "victimaNoche" to session.nightKillTarget,
+                "silenciado" to session.nightSilenceTarget,
+                "expulsadoDia" to session.dayEliminationTarget,
+                "votos" to session.votes,
+                "rondaVoto" to session.voteRound,
+                "candidatosDesempate" to session.tieVoteCandidates,
+                "candidatosAlcalde" to session.alcaldeTieCandidates,
+                "alcaldeRevelado" to session.alcaldeRevealed,
+                "corrupcionAlcalde" to session.alcaldeCorruption,
+                "historialPublico" to session.publicHistory,
+                "jugadores" to session.players.mapIndexed { index, player ->
+                    mapOf(
+                        "orden" to index,
+                        "nombre" to player.name,
+                        "vivo" to player.alive,
+                        "muteado" to player.muted,
+                        "ultimaRondaSilenciado" to player.lastSilencedRound
+                    )
+                },
+                "actualizadaEnLocal" to System.currentTimeMillis(),
+                "actualizadaPor" to onlinePlayerId
+            ),
+            "ultimaActividadOnline" to FieldValue.serverTimestamp()
+        )
+        if (session.winner.isNotBlank()) {
+            roomUpdate["estado"] = OnlineRoomFirestore.STATE_FINISHED
+            roomUpdate["actualizadaEn"] = FieldValue.serverTimestamp()
+        }
+
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
-            .update(
-                mapOf(
-                    "estadoPartida" to mapOf(
-                        "fase" to session.phase.name,
-                        "ronda" to session.round,
-                        "phaseIndex" to session.phaseIndex,
-                        "anuncioPublico" to session.publicAnnouncement,
-                        "ganador" to session.winner,
-                        "victimaNoche" to session.nightKillTarget,
-                        "silenciado" to session.nightSilenceTarget,
-                        "expulsadoDia" to session.dayEliminationTarget,
-                        "actualizadaEnLocal" to System.currentTimeMillis(),
-                        "actualizadaPor" to onlinePlayerId
-                    ),
-                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
-                )
+            .update(roomUpdate)
+    }
+
+    private fun startAuthoritativeOnlineStateListener() {
+        if (!isOnlineGameplay() || onlineIsHost || onlineStateListener != null) return
+        onlineStateListener = FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                val state = snapshot.get("estadoPartida").asStringAnyMap() ?: return@addSnapshotListener
+                applyAuthoritativeOnlineState(state)
+            }
+    }
+
+    private fun applyAuthoritativeOnlineState(state: Map<String, Any?>) {
+        if (onlineIsHost || !::session.isInitialized) return
+        val phaseName = state["fase"] as? String ?: return
+        val phase = runCatching { GamePhase.valueOf(phaseName) }.getOrNull() ?: return
+        val phaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: return
+        if (phaseIndex < session.phaseIndex) return
+
+        val stateKey = listOf(
+            phase.name,
+            (state["ronda"] as? Number)?.toInt() ?: session.round,
+            phaseIndex,
+            (state["anuncioPublico"] as? String).orEmpty(),
+            (state["ganador"] as? String).orEmpty(),
+            (state["victimaNoche"] as? String).orEmpty(),
+            (state["silenciado"] as? String).orEmpty(),
+            (state["expulsadoDia"] as? String).orEmpty(),
+            (state["rondaVoto"] as? Number)?.toInt() ?: session.voteRound,
+            votesFromAuthoritativeState(state).entries.sortedBy { it.key }.joinToString("#") { "${it.key}:${it.value}" },
+            stringListFromAuthoritativeState(state, "candidatosDesempate").joinToString("#"),
+            stringListFromAuthoritativeState(state, "candidatosAlcalde").joinToString("#"),
+            publicPlayerStateKey(state)
+        ).joinToString("|")
+        if (stateKey == lastAppliedAuthoritativeOnlineStateKey) return
+        lastAppliedAuthoritativeOnlineStateKey = stateKey
+
+        val previousPhaseIndex = session.phaseIndex
+        val previousPrivateHint = session.privateHint
+        val updatedPlayers = playersFromAuthoritativeState(state) ?: session.players
+        session = session.copy(
+            phase = phase,
+            round = (state["ronda"] as? Number)?.toInt() ?: session.round,
+            phaseIndex = phaseIndex,
+            players = updatedPlayers,
+            publicAnnouncement = (state["anuncioPublico"] as? String).orEmpty(),
+            publicHistory = publicHistoryFromAuthoritativeState(state),
+            godHistory = publicHistoryFromAuthoritativeState(state),
+            winner = (state["ganador"] as? String).orEmpty(),
+            nightKillTarget = (state["victimaNoche"] as? String).orEmpty(),
+            nightSilenceTarget = (state["silenciado"] as? String).orEmpty(),
+            dayEliminationTarget = (state["expulsadoDia"] as? String).orEmpty(),
+            votes = votesFromAuthoritativeState(state),
+            voteRound = (state["rondaVoto"] as? Number)?.toInt() ?: session.voteRound,
+            tieVoteCandidates = stringListFromAuthoritativeState(state, "candidatosDesempate"),
+            alcaldeTieCandidates = stringListFromAuthoritativeState(state, "candidatosAlcalde"),
+            alcaldeRevealed = (state["alcaldeRevelado"] as? Boolean) ?: session.alcaldeRevealed,
+            alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: session.alcaldeCorruption,
+            privateHint = previousPrivateHint
+        )
+        if (phaseIndex != previousPhaseIndex) {
+            onlineAwaitingHostAdvance = false
+            clearSelection()
+            clearCountdown()
+            submittedOnlineNightActions.removeAll { it.startsWith("$onlinePartidaId:$onlinePlayerId:${session.round - 1}:") }
+        }
+        renderGame()
+    }
+
+    private fun publicPlayerStateKey(state: Map<String, Any?>): String {
+        return (state["jugadores"] as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.joinToString("#") {
+                "${it["nombre"]}:${it["vivo"]}:${it["muteado"]}:${it["ultimaRondaSilenciado"]}"
+            }
+            .orEmpty()
+    }
+
+    private fun playersFromAuthoritativeState(state: Map<String, Any?>): List<GamePlayer>? {
+        val playerStates = (state["jugadores"] as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.associateBy { (it["nombre"] as? String).orEmpty() }
+            ?: return null
+        return session.players.map { player ->
+            val playerState = playerStates[player.name] ?: return@map player
+            player.copy(
+                alive = (playerState["vivo"] as? Boolean) ?: player.alive,
+                muted = (playerState["muteado"] as? Boolean) ?: player.muted,
+                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt()
             )
+        }
+    }
+
+    private fun publicHistoryFromAuthoritativeState(state: Map<String, Any?>): List<String> {
+        return (state["historialPublico"] as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?.takeIf { it.isNotEmpty() }
+            ?: session.publicHistory
+    }
+
+    private fun votesFromAuthoritativeState(state: Map<String, Any?>): Map<String, String> {
+        return state["votos"].asStringAnyMap()
+            ?.mapValues { (_, value) -> value as? String ?: "" }
+            ?.filterValues { it.isNotBlank() }
+            ?: emptyMap()
+    }
+
+    private fun stringListFromAuthoritativeState(state: Map<String, Any?>, key: String): List<String> {
+        return (state[key] as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?: emptyList()
+    }
+
+    private fun Any?.asStringAnyMap(): Map<String, Any?>? {
+        return (this as? Map<*, *>)?.entries
+            ?.mapNotNull { entry ->
+                val key = entry.key as? String ?: return@mapNotNull null
+                key to entry.value
+            }
+            ?.toMap()
     }
 
     private fun recordOnlinePhaseAdvance(before: GameSession, after: GameSession) {
@@ -1212,6 +1421,100 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun isOnlineGameplay(): Boolean {
         return onlinePartidaId.isNotBlank() && onlinePlayerId.isNotBlank()
+    }
+
+    private fun actionSession(): GameSession {
+        if (!isOnlineGameplay() || !isNightPhase(session.phase)) return session
+        val human = GameEngine.humanPlayer(session)
+        if (!GameEngine.isAlive(human)) return session
+        val actionPhase = when (human.role?.key) {
+            "asesino" -> GamePhase.NOCHE_ASESINO
+            "mercenario" -> GamePhase.NOCHE_MERCENARIO
+            "policia" -> GamePhase.NOCHE_POLICIA
+            "medico" -> GamePhase.NOCHE_MEDICO
+            RoleCatalog.ORACULO -> GamePhase.NOCHE_ORACULO
+            else -> null
+        } ?: return session
+        return session.copy(phase = actionPhase)
+    }
+
+    private fun isOnlineNightActionWindow(): Boolean {
+        return isOnlineGameplay() && isNightPhase(session.phase)
+    }
+
+    private fun isOnlineVotingActionWindow(): Boolean {
+        return isOnlineGameplay() &&
+            (session.phase == GamePhase.VOTACION || session.phase == GamePhase.DESEMPATE_VOTACION)
+    }
+
+    private fun isOnlineDeferredActionWindow(): Boolean {
+        return isOnlineNightActionWindow() || isOnlineVotingActionWindow()
+    }
+
+    private fun onlineDeferredActionKey(): String {
+        val human = GameEngine.humanPlayer(session)
+        val roleKey = human.role?.key.orEmpty()
+        return "${onlinePartidaId}:${onlinePlayerId}:${session.round}:${session.phase.name}:$roleKey"
+    }
+
+    private fun onlineDeferredActionSubmitted(): Boolean {
+        return isOnlineDeferredActionWindow() &&
+            onlineDeferredActionKey() in submittedOnlineNightActions
+    }
+
+    private fun canActOnTarget(targetName: String): Boolean {
+        if (onlineDeferredActionSubmitted()) return false
+        return GameEngine.canActOnTarget(actionSession(), targetName)
+    }
+
+    private fun targetActionLabel(targetName: String): String {
+        if (!canActOnTarget(targetName)) return ""
+        return GameEngine.targetActionLabel(actionSession(), targetName)
+    }
+
+    private fun validHumanTargets(): List<GamePlayer> {
+        return session.players.filter { canActOnTarget(it.name) }
+    }
+
+    private fun confirmedTargetActionLabel(): String? {
+        if (selectedTarget.isBlank() || !canActOnTarget(selectedTarget)) return null
+        return targetActionLabel(selectedTarget)
+            .takeIf { it.isNotBlank() }
+            ?.let { if (it == "CONTRAPUNTO") "SENALAR" else it }
+    }
+
+    private fun canHumanMedicSelfProtect(): Boolean {
+        val current = actionSession()
+        if (current.phase != GamePhase.NOCHE_MEDICO || onlineDeferredActionSubmitted()) return false
+        val human = GameEngine.humanPlayer(current)
+        return GameEngine.isHumanRoleTurn(current, "medico") &&
+            GameEngine.canActOnTarget(current, human.name)
+    }
+
+    private fun requiresHumanInput(): Boolean {
+        if (onlineDeferredActionSubmitted()) return false
+        return GameEngine.requiresHumanInput(actionSession())
+    }
+
+    private fun isHumanRoleTurn(roleKey: String): Boolean {
+        if (onlineDeferredActionSubmitted()) return false
+        return GameEngine.isHumanRoleTurn(actionSession(), roleKey)
+    }
+
+    private fun mergeOnlineNightActionResult(current: GameSession, resolved: GameSession): GameSession {
+        return current.copy(
+            nightKillTarget = resolved.nightKillTarget,
+            assassinVotes = resolved.assassinVotes,
+            protectedPlayer = resolved.protectedPlayer,
+            nightSilenceTarget = resolved.nightSilenceTarget,
+            investigatedPlayer = resolved.investigatedPlayer,
+            investigatedResult = resolved.investigatedResult,
+            privateHint = resolved.privateHint,
+            actionHistory = resolved.actionHistory,
+            oracleUsed = resolved.oracleUsed,
+            oracleInvitedPlayer = resolved.oracleInvitedPlayer,
+            oracleRevealPending = resolved.oracleRevealPending
+        )
     }
 
     private fun collectNewlyDeadPlayers(): List<GamePlayer> {
@@ -1420,16 +1723,16 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderAdvanceButton() {
-        val selectedAction = GameplayTableUi.confirmedTargetActionLabel(session, selectedTarget)
-        val validTargets = GameplayTableUi.validHumanTargets(session)
-        val mandatoryTargetSelection = GameEngine.requiresHumanInput(session) && validTargets.isNotEmpty()
+        val selectedAction = confirmedTargetActionLabel()
+        val validTargets = validHumanTargets()
+        val mandatoryTargetSelection = requiresHumanInput() && validTargets.isNotEmpty()
         val canSelfProtect = selectedTarget.isBlank() &&
-            GameplayTableUi.canHumanMedicSelfProtect(session)
+            canHumanMedicSelfProtect()
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
-            (session.phase == GamePhase.NOCHE_ORACULO &&
-                GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) ||
+            (actionSession().phase == GamePhase.NOCHE_ORACULO &&
+                isHumanRoleTurn(RoleCatalog.ORACULO)) ||
             ((session.phase == GamePhase.DIA_DEBATE ||
                 session.phase == GamePhase.VOTACION ||
                 session.phase == GamePhase.ALCALDE_DESEMPATE) &&
@@ -1441,8 +1744,8 @@ class GameplayMockActivity : BaseActivity() {
             canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
-            session.phase == GamePhase.NOCHE_ORACULO &&
-                GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO) -> "GUARDAR PODER"
+            actionSession().phase == GamePhase.NOCHE_ORACULO &&
+                isHumanRoleTurn(RoleCatalog.ORACULO) -> "GUARDAR PODER"
             (session.phase == GamePhase.DIA_DEBATE ||
                 session.phase == GamePhase.VOTACION ||
                 session.phase == GamePhase.ALCALDE_DESEMPATE) &&
@@ -1542,7 +1845,11 @@ class GameplayMockActivity : BaseActivity() {
             .minOrNull()
         val availableHeightDp = measuredHeightPx?.let(::pxToDp)
             ?: (resources.configuration.screenHeightDp - 16).coerceAtLeast(240)
-        val metrics = GameplayTableUi.companionCardMetrics(totalPlayers, availableHeightDp)
+        val metrics = GameplayTableUi.companionCardMetrics(
+            totalPlayers,
+            availableHeightDp,
+            availableWidthDp = if (isPortrait()) availableSideColumnWidthDp() else null
+        )
         applyAdaptiveGameplayLayout(metrics)
 
         val desiredNames = (leftPlayers + rightPlayers).map { it.name }.toSet()
@@ -1583,6 +1890,19 @@ class GameplayMockActivity : BaseActivity() {
         rightPlayersContainer.gravity = containerGravity
 
         gameplayBody.requestLayout()
+    }
+
+    private fun availableSideColumnWidthDp(): Int {
+        val totalWidthDp = resources.configuration.screenWidthDp
+        val gameplayBodyHorizontalMarginsDp = 16
+        val centerColumnMinWidthDp = 160
+        val combinedSideWidth = (totalWidthDp - gameplayBodyHorizontalMarginsDp - centerColumnMinWidthDp)
+            .coerceAtLeast(96)
+        return combinedSideWidth / 2
+    }
+
+    private fun isPortrait(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     }
 
     private fun syncPlayerContainer(
@@ -1748,7 +2068,7 @@ class GameplayMockActivity : BaseActivity() {
         val isOracleGuest =
             session.phase == GamePhase.DIA_DEBATE &&
                 session.oracleInvitedPlayer == player.name
-        val actionLabel = GameEngine.targetActionLabel(session, player.name)
+        val actionLabel = targetActionLabel(player.name)
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val isActionable = actionLabel.isNotBlank() && !transitionLocked
         val isSelected = player.name == selectedTarget
@@ -1851,6 +2171,33 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun nightSubtitle(): String {
+        if (!isOnlineGameplay()) {
+            return when (actionSession().phase) {
+                GamePhase.NOCHE_ASESINO -> "Los Traidores se mueven en silencio."
+                GamePhase.NOCHE_MERCENARIO -> "Alguien intenta callar una voz para el dia."
+                GamePhase.NOCHE_POLICIA -> "Alguien busca una pista en secreto."
+                GamePhase.NOCHE_MEDICO -> "Alguien intenta proteger a un jugador."
+                GamePhase.NOCHE_ORACULO -> "El Oraculo puede llamar a una voz que abandono el mundo de los vivos."
+                else -> "El pueblo duerme."
+            }
+        }
+        return if (requiresHumanInput()) {
+            when (actionSession().phase) {
+                GamePhase.NOCHE_ASESINO -> "Elegi junto a los Traidores a quien atacar esta noche."
+                GamePhase.NOCHE_MERCENARIO -> "Elegi a quien silenciar mientras el pueblo duerme."
+                GamePhase.NOCHE_POLICIA -> "Elegi a quien investigar durante esta noche."
+                GamePhase.NOCHE_MEDICO -> "Elegi a quien proteger antes del amanecer."
+                GamePhase.NOCHE_ORACULO -> "Elegi si una voz eliminada vuelve a discutir manana."
+                else -> "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
+            }
+        } else if (onlineDeferredActionSubmitted()) {
+            "Accion registrada. Espera a que termine la noche."
+        } else {
+            "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
+        }
+    }
+
     private fun phaseText(phase: GamePhase): PhaseText {
         return when (phase) {
             GamePhase.REPARTO -> PhaseText(
@@ -1860,31 +2207,31 @@ class GameplayMockActivity : BaseActivity() {
             )
             GamePhase.NOCHE_ASESINO -> PhaseText(
                 "NOCHE ${session.round}",
-                "Los Traidores se mueven en silencio.",
-                if (GameEngine.isHumanRoleTurn(session, "asesino")) "MATAR" else "ACELERAR"
+                nightSubtitle(),
+                if (isHumanRoleTurn("asesino")) "MATAR" else "ESPERAR"
             )
             GamePhase.NOCHE_MERCENARIO -> PhaseText(
                 "NOCHE ${session.round}",
-                "Alguien intenta callar una voz para el dia.",
-                if (GameEngine.isHumanRoleTurn(session, "mercenario")) "SILENCIAR" else "ACELERAR"
+                nightSubtitle(),
+                if (isHumanRoleTurn("mercenario")) "SILENCIAR" else "ESPERAR"
             )
             GamePhase.NOCHE_POLICIA -> PhaseText(
                 "NOCHE ${session.round}",
-                "Alguien busca una pista en secreto.",
-                if (GameEngine.isHumanRoleTurn(session, "policia")) "INVESTIGAR" else "ACELERAR"
+                nightSubtitle(),
+                if (isHumanRoleTurn("policia")) "INVESTIGAR" else "ESPERAR"
             )
             GamePhase.NOCHE_MEDICO -> PhaseText(
                 "NOCHE ${session.round}",
-                "Alguien intenta proteger a un jugador.",
-                if (GameEngine.isHumanRoleTurn(session, "medico")) "SALVAR" else "ACELERAR"
+                nightSubtitle(),
+                if (isHumanRoleTurn("medico")) "SALVAR" else "ESPERAR"
             )
             GamePhase.NOCHE_ORACULO -> PhaseText(
                 "NOCHE ${session.round}",
-                "El Oraculo puede llamar a una voz que abandono el mundo de los vivos.",
-                if (GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) {
+                nightSubtitle(),
+                if (isHumanRoleTurn(RoleCatalog.ORACULO)) {
                     "GUARDAR PODER"
                 } else {
-                    "ACELERAR"
+                    "ESPERAR"
                 }
             )
             GamePhase.AMANECER -> PhaseText("AMANECER", "El pueblo despierta y escucha lo ocurrido.", "AMANECER")
@@ -1962,31 +2309,57 @@ class GameplayMockActivity : BaseActivity() {
         if (isChatOpen) {
             chatPanel.visibility = View.VISIBLE
             if (animate) {
-                chatPanel.translationX = dp(36).toFloat()
-                chatPanel.alpha = 0f
-                chatPanel.animate()
-                    .translationX(0f)
-                    .alpha(1f)
-                    .setDuration(210L)
-                    .start()
+                if (isPortrait()) {
+                    chatPanel.translationY = (chatPanel.height.takeIf { it > 0 } ?: dp(420)).toFloat()
+                    chatPanel.translationX = 0f
+                    chatPanel.alpha = 1f
+                    chatPanel.animate()
+                        .translationY(0f)
+                        .setDuration(220L)
+                        .start()
+                } else {
+                    chatPanel.translationX = dp(36).toFloat()
+                    chatPanel.translationY = 0f
+                    chatPanel.alpha = 0f
+                    chatPanel.animate()
+                        .translationX(0f)
+                        .alpha(1f)
+                        .setDuration(210L)
+                        .start()
+                }
             } else {
                 chatPanel.translationX = 0f
+                chatPanel.translationY = 0f
                 chatPanel.alpha = 1f
             }
         } else if (animate && chatPanel.visibility == View.VISIBLE) {
-            chatPanel.animate()
-                .translationX(dp(36).toFloat())
-                .alpha(0f)
-                .setDuration(190L)
-                .withEndAction {
-                    chatPanel.visibility = View.GONE
-                    chatPanel.translationX = 0f
-                    chatPanel.alpha = 1f
-                }
-                .start()
+            if (isPortrait()) {
+                val endOffset = (chatPanel.height.takeIf { it > 0 } ?: dp(420)).toFloat()
+                chatPanel.animate()
+                    .translationY(endOffset)
+                    .setDuration(190L)
+                    .withEndAction {
+                        chatPanel.visibility = View.GONE
+                        chatPanel.translationY = 0f
+                        chatPanel.alpha = 1f
+                    }
+                    .start()
+            } else {
+                chatPanel.animate()
+                    .translationX(dp(36).toFloat())
+                    .alpha(0f)
+                    .setDuration(190L)
+                    .withEndAction {
+                        chatPanel.visibility = View.GONE
+                        chatPanel.translationX = 0f
+                        chatPanel.alpha = 1f
+                    }
+                    .start()
+            }
         } else {
             chatPanel.visibility = View.GONE
             chatPanel.translationX = 0f
+            chatPanel.translationY = 0f
             chatPanel.alpha = 1f
         }
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
@@ -2031,11 +2404,13 @@ class GameplayMockActivity : BaseActivity() {
             chatKeyboardBottomInset == bottomInset &&
             chatPanel.isLaidOut
         ) {
+            applyKeyboardAwarePlayerPanel()
             return
         }
         isChatKeyboardCompact = compact
         chatKeyboardBottomInset = bottomInset
         applyChatPanelDimensions()
+        applyKeyboardAwarePlayerPanel()
         if (compact) {
             chatPanel.bringToFront()
             chatPanel.visibility = View.VISIBLE
@@ -2043,8 +2418,84 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun shouldCompactBottomPlayerPanel(): Boolean {
+        return isPortrait() && isChatOpen && isChatKeyboardCompact && chatInput.hasFocus()
+    }
+
+    private fun applyKeyboardAwarePlayerPanel() {
+        if (!::bottomPlayerPanel.isInitialized) return
+        val compact = shouldCompactBottomPlayerPanel()
+        if (compact) {
+            isBottomPlayerPanelCompact = true
+            compactBottomPlayerPanelForKeyboard()
+        } else if (isBottomPlayerPanelCompact || !bottomPlayerPanel.isLaidOut) {
+            isBottomPlayerPanelCompact = false
+            restoreBottomPlayerPanelFromKeyboard()
+        } else {
+            isBottomPlayerPanelCompact = false
+        }
+    }
+
+    private fun compactBottomPlayerPanelForKeyboard() {
+        bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
+            height = dp(BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP)
+        }
+        bottomPlayerPanel.gravity = Gravity.CENTER
+        bottomPlayerPanel.setPadding(dp(8), dp(4), dp(8), dp(4))
+        roleCard.visibility = View.GONE
+        currentPlayerName.visibility = View.GONE
+        currentPlayerStatus.visibility = View.GONE
+        currentPlayerHint.visibility = View.GONE
+        actionControls.visibility = View.GONE
+        eliminatedStatePanel.visibility = View.GONE
+        chatRoleChip.text = compactRoleChipText()
+        chatRoleChip.visibility = View.VISIBLE
+        roleName.visibility = View.VISIBLE
+        roleName.text = compactRoleChipText()
+        roleName.gravity = Gravity.CENTER
+        roleName.maxLines = 1
+        roleName.setPadding(dp(10), 0, dp(10), 0)
+        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        roleName.background = compactRoleChipBackground()
+    }
+
+    private fun restoreBottomPlayerPanelFromKeyboard() {
+        bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
+            height = dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)
+        }
+        bottomPlayerPanel.gravity = Gravity.CENTER_VERTICAL
+        bottomPlayerPanel.setPadding(dp(7), dp(4), dp(7), dp(4))
+        roleCard.visibility = View.VISIBLE
+        currentPlayerName.visibility = View.VISIBLE
+        currentPlayerHint.visibility = View.VISIBLE
+        roleName.gravity = Gravity.NO_GRAVITY
+        roleName.setPadding(0, 0, 0, 0)
+        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        roleName.background = null
+        chatRoleChip.visibility = View.GONE
+        renderHumanCardIfVisible()
+        renderPersonalStatus()
+    }
+
+    private fun compactRoleChipText(): String {
+        return GameEngine.humanPlayer(session).role?.name?.uppercase() ?: "SIN ROL"
+    }
+
+    private fun compactRoleChipBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#E6231810"))
+            setStroke(dp(1), getColor(R.color.accent_gold))
+            cornerRadius = dp(8).toFloat()
+        }
+    }
+
     private fun applyChatPanelDimensions() {
         if (!::chatPanel.isInitialized || gameplayRoot.width == 0) return
+        if (isPortrait()) {
+            applyChatSheetDimensionsPortrait()
+            return
+        }
         val containerWidth = centerColumn.width.takeIf { it > 0 } ?: gameplayRoot.width
         val params = chatPanel.layoutParams as FrameLayout.LayoutParams
         val widthRatio = if (isChatKeyboardCompact) {
@@ -2088,9 +2539,48 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun applyChatSheetDimensionsPortrait() {
+        val params = chatPanel.layoutParams as ViewGroup.MarginLayoutParams
+        val heightRatio = if (isChatKeyboardCompact) {
+            CHAT_SHEET_COMPACT_HEIGHT_RATIO
+        } else {
+            CHAT_SHEET_HEIGHT_RATIO
+        }
+        params.width = ViewGroup.LayoutParams.MATCH_PARENT
+        params.height = dp((resources.configuration.screenHeightDp * heightRatio).toInt())
+            .coerceIn(dp(CHAT_SHEET_MIN_HEIGHT_DP), dp(CHAT_SHEET_MAX_HEIGHT_DP))
+        params.marginStart = dp(CHAT_SHEET_SIDE_MARGIN_DP)
+        params.marginEnd = dp(CHAT_SHEET_SIDE_MARGIN_DP)
+        params.topMargin = 0
+        params.bottomMargin = dp(
+            when {
+                shouldCompactBottomPlayerPanel() -> CHAT_SHEET_KEYBOARD_BOTTOM_MARGIN_DP
+                isChatKeyboardCompact -> 4
+                else -> 10
+            }
+        )
+        chatPanel.layoutParams = params
+        chatPanel.setPadding(dp(12), dp(11), dp(12), dp(11))
+        chatHeader.layoutParams = chatHeader.layoutParams.apply {
+            height = dp(36)
+        }
+        chatComposer.layoutParams = chatComposer.layoutParams.apply {
+            height = dp(44)
+        }
+        chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
+            height = dp(22)
+        }
+        chatInput.layoutParams = chatInput.layoutParams.apply {
+            height = dp(44)
+        }
+        btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
+            height = dp(44)
+        }
+    }
+
     private fun renderChatMessages(messages: List<GameChatMessage>) {
         chatMessagesContainer.removeAllViews()
-        if (messages.isEmpty()) {
+        if (messages.isEmpty() && typingBotSpeakers.isEmpty()) {
             chatMessagesContainer.addView(TextView(this).apply {
                 text = "Todavia no hay mensajes."
                 gravity = Gravity.CENTER
@@ -2106,56 +2596,79 @@ class GameplayMockActivity : BaseActivity() {
             .coerceIn(dp(190), dp(300))
         messages.forEach { message ->
             val ownMessage = message.speaker == humanName
-            val row = LinearLayout(this).apply {
-                gravity = if (ownMessage) Gravity.END else Gravity.START
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(3), 0, dp(3))
-            }
-            val bubble = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), dp(7), dp(10), dp(8))
-                setBackgroundResource(
-                    if (ownMessage) {
-                        R.drawable.bg_chat_bubble_own
-                    } else {
-                        R.drawable.bg_chat_bubble_other
-                    }
-                )
-            }
-            bubble.addView(TextView(this).apply {
-                text = if (ownMessage) "VOS" else message.speaker.uppercase()
-                maxLines = 1
-                setTextColor(
-                    getColor(if (ownMessage) R.color.bg_dark else R.color.accent_gold)
-                )
-                textSize = 9f * appliedGameplayTextScale
-                typeface = Typeface.DEFAULT_BOLD
-            })
-            bubble.addView(TextView(this).apply {
-                text = message.message
-                maxWidth = bubbleMaxWidth
-                setTextColor(
-                    getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary)
-                )
-                textSize = 12f * appliedGameplayTextScale
-            })
-            row.addView(
-                bubble,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    if (ownMessage) marginStart = dp(30) else marginEnd = dp(30)
-                }
-            )
-            chatMessagesContainer.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+            addChatBubble(
+                speaker = if (ownMessage) "VOS" else message.speaker.uppercase(),
+                body = message.message,
+                ownMessage = ownMessage,
+                bubbleMaxWidth = bubbleMaxWidth,
+                muted = false
             )
         }
+        typingBotSpeakers.forEach { speaker ->
+            addChatBubble(
+                speaker = speaker.uppercase(),
+                body = "esta escribiendo...",
+                ownMessage = false,
+                bubbleMaxWidth = bubbleMaxWidth,
+                muted = true
+            )
+        }
+    }
+
+    private fun addChatBubble(
+        speaker: String,
+        body: String,
+        ownMessage: Boolean,
+        bubbleMaxWidth: Int,
+        muted: Boolean
+    ) {
+        val row = LinearLayout(this).apply {
+            gravity = if (ownMessage) Gravity.END else Gravity.START
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(3), 0, dp(3))
+        }
+        val bubble = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(7), dp(10), dp(8))
+            setBackgroundResource(
+                if (ownMessage) {
+                    R.drawable.bg_chat_bubble_own
+                } else {
+                    R.drawable.bg_chat_bubble_other
+                }
+            )
+            alpha = if (muted) 0.78f else 1f
+        }
+        bubble.addView(TextView(this).apply {
+            text = speaker
+            maxLines = 1
+            setTextColor(getColor(if (ownMessage) R.color.bg_dark else R.color.accent_gold))
+            textSize = 9f * appliedGameplayTextScale
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        bubble.addView(TextView(this).apply {
+            text = body
+            maxWidth = bubbleMaxWidth
+            setTextColor(getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary))
+            textSize = 12f * appliedGameplayTextScale
+            if (muted) typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+        })
+        row.addView(
+            bubble,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                if (ownMessage) marginStart = dp(30) else marginEnd = dp(30)
+            }
+        )
+        chatMessagesContainer.addView(
+            row,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
     }
 
     private fun updateUnreadChatCount() {
@@ -2212,6 +2725,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun renderChatBadge() {
         chatUnreadBadge.visibility = if (unreadChatCount > 0) View.VISIBLE else View.GONE
         chatUnreadBadge.text = unreadChatCount.coerceAtMost(99).toString()
+        chatUnreadBadge.bringToFront()
         updateChatToggleContentDescription()
     }
 
@@ -2232,6 +2746,10 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
         val rawMessage = chatInput.text.toString()
+        if (isOnlineGameplay()) {
+            sendOnlineHumanChatMessage(rawMessage)
+            return
+        }
         val before = session.chatHistory.size
         session = GameEngine.addHumanChatMessage(
             session,
@@ -2256,6 +2774,96 @@ class GameplayMockActivity : BaseActivity() {
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
         updateUnreadChatCount()
+        renderChatPanel()
+        renderChatBadge()
+    }
+
+    private fun sendOnlineHumanChatMessage(rawMessage: String) {
+        val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
+        if (message.isBlank()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastOnlineChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, "Espera un momento antes de enviar otro mensaje.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (message.equals(lastOnlineChatMessage, ignoreCase = true)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, "Ese mensaje ya fue enviado.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!GameEngine.canHumanChat(session)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            val human = GameEngine.humanPlayer(session)
+            val text = when {
+                !human.alive -> "Estas eliminado. Podes mirar el chat, no escribir."
+                human.muted -> "Estas muteado. Podes mirar el chat, no escribir."
+                GameplayTableUi.isNightPhase(session.phase) ->
+                    "El pueblo duerme. Las voces deben esperar al amanecer."
+                else -> "No podes escribir durante esta fase."
+            }
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val human = GameEngine.humanPlayer(session)
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .collection("chat")
+            .add(
+                mapOf(
+                    "actorId" to onlinePlayerId,
+                    "speaker" to human.name,
+                    "mensaje" to message,
+                    "fase" to session.phase.name,
+                    "ronda" to session.round,
+                    "isGod" to false,
+                    "creadaEn" to FieldValue.serverTimestamp(),
+                    "creadaEnLocal" to System.currentTimeMillis()
+                )
+            )
+            .addOnSuccessListener {
+                lastOnlineChatSentAtMs = SystemClock.elapsedRealtime()
+                lastOnlineChatMessage = message
+                GameplayEffects.play(this, GameplayEffect.CHAT)
+                clearChatComposerAfterSend()
+            }
+            .addOnFailureListener {
+                GameplayEffects.play(this, GameplayEffect.ERROR)
+                Toast.makeText(this, "No se pudo enviar el mensaje.", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun startOnlineChatListener() {
+        if (!isOnlineGameplay() || onlineChatListener != null) return
+        onlineChatListener = FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .collection("chat")
+            .orderBy("creadaEnLocal")
+            .limit(40)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                val entries = snapshot.documents.map { document ->
+                    OnlineChatEntry(
+                        id = document.id,
+                        speaker = document.getString("speaker").orEmpty(),
+                        message = document.getString("mensaje").orEmpty(),
+                        isGod = document.getBoolean("isGod") ?: false
+                    )
+                }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                applyOnlineChatEntries(entries)
+            }
+    }
+
+    private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
+        val previousCount = session.chatHistory.size
+        val godMessages = session.chatHistory.filter { it.isGod }
+        val onlineMessages = entries.map { GameChatMessage(it.speaker, it.message, it.isGod) }
+        session = session.copy(chatHistory = (godMessages + onlineMessages).takeLast(40))
+        if (session.chatHistory.size > previousCount) {
+            updateUnreadChatCount()
+        }
         renderChatPanel()
         renderChatBadge()
     }
@@ -2323,9 +2931,26 @@ class GameplayMockActivity : BaseActivity() {
         phase: GamePhase,
         delayMs: Long
     ) {
+        val typingRunnable = object : Runnable {
+            override fun run() {
+                pendingBotChatRunnables.remove(this)
+                if (
+                    !::session.isInitialized ||
+                    session.phaseIndex != phaseIndex ||
+                    session.phase != phase ||
+                    session.winner.isNotBlank()
+                ) {
+                    return
+                }
+                typingBotSpeakers += speaker
+                renderChatPanel()
+                chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+            }
+        }
         val runnable = object : Runnable {
             override fun run() {
                 pendingBotChatRunnables.remove(this)
+                typingBotSpeakers -= speaker
                 if (
                     !::session.isInitialized ||
                     session.phaseIndex != phaseIndex ||
@@ -2343,17 +2968,23 @@ class GameplayMockActivity : BaseActivity() {
                 renderChatBadge()
             }
         }
+        pendingBotChatRunnables += typingRunnable
         pendingBotChatRunnables += runnable
+        autoAdvanceHandler.postDelayed(
+            typingRunnable,
+            (delayMs - BOT_TYPING_LEAD_DELAY_MS).coerceAtLeast(250L)
+        )
         autoAdvanceHandler.postDelayed(runnable, delayMs)
     }
 
     private fun cancelPendingBotChat() {
         pendingBotChatRunnables.forEach(autoAdvanceHandler::removeCallbacks)
         pendingBotChatRunnables.clear()
+        typingBotSpeakers.clear()
     }
 
     private fun botReactionDelayMs(index: Int, message: String): Long {
-        val readingDelay = (message.length * 12L).coerceAtMost(420L)
+        val readingDelay = (message.length * 22L).coerceAtMost(900L)
         return FIRST_BOT_REACTION_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS + readingDelay
     }
 
@@ -2515,13 +3146,34 @@ class GameplayMockActivity : BaseActivity() {
 
         val expiredPhase = session.phase
         clearCountdown()
+        if (isOnlineGameplay()) {
+            if (!onlineIsHost) {
+                onlineAwaitingHostAdvance = true
+                renderGame()
+                return
+            }
+            if (isNightPhase(expiredPhase)) {
+                resolveOnlineNightWindowFromFirestore()
+                return
+            }
+            if (expiredPhase == GamePhase.VOTACION) {
+                resolveOnlineVotingFromFirestore(tieVote = false)
+                return
+            }
+            if (expiredPhase == GamePhase.DESEMPATE_VOTACION) {
+                resolveOnlineVotingFromFirestore(tieVote = true)
+                return
+            }
+        }
         session = when (session.phase) {
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO,
             GamePhase.NOCHE_ORACULO -> {
-                if (GameEngine.requiresHumanInput(session)) {
+                if (isOnlineGameplay()) {
+                    resolveOnlineNightWindow()
+                } else if (GameEngine.requiresHumanInput(session)) {
                     GameEngine.resolveHumanTimeout(session)
                 } else {
                     advanceSessionWithoutRendering()
@@ -2573,7 +3225,177 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    private fun resolveOnlineNightWindow(): GameSession {
+        var resolved = session
+        while (isNightPhase(resolved.phase)) {
+            resolved = when (resolved.phase) {
+                GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(resolved, "")
+                GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(resolved, "")
+                GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(resolved, "")
+                GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(resolved, "")
+                GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(resolved, "")
+                else -> resolved
+            }
+        }
+        return resolved
+    }
+
+    private fun resolveOnlineNightWindowFromFirestore() {
+        if (onlineNightResolutionInProgress) return
+        onlineNightResolutionInProgress = true
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .collection("acciones")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val actions = snapshot.documents.mapNotNull { document ->
+                    val type = document.getString("tipo").orEmpty()
+                    val round = document.getLong("ronda")?.toInt()
+                    if (type != "accion_jugador" || round != session.round) return@mapNotNull null
+                    val details = document.get("detalles").asStringAnyMap()
+                    val action = details?.get("accion") as? String ?: return@mapNotNull null
+                    OnlineRecordedAction(
+                        action = action,
+                        actorName = document.getString("actorNombre").orEmpty(),
+                        targetName = document.getString("objetivoNombre").orEmpty()
+                    )
+                }
+                val before = session
+                session = resolveOnlineNightWindow(actions)
+                onlineNightResolutionInProgress = false
+                recordOnlinePhaseAdvance(before, session)
+                stageBotBurstForCurrentPhase()
+                clearSelection()
+                renderGame()
+            }
+            .addOnFailureListener {
+                val before = session
+                session = resolveOnlineNightWindow()
+                onlineNightResolutionInProgress = false
+                recordOnlinePhaseAdvance(before, session)
+                stageBotBurstForCurrentPhase()
+                clearSelection()
+                renderGame()
+            }
+    }
+
+    private fun resolveOnlineNightWindow(actions: List<OnlineRecordedAction>): GameSession {
+        var resolved = session
+        val assassinVotes = actions
+            .filter { it.action == "matar" && it.actorName.isNotBlank() && it.targetName.isNotBlank() }
+            .associate { it.actorName to it.targetName }
+        resolved = GameEngine.resolveAssassinWithRecordedVotes(
+            resolved.copy(phase = GamePhase.NOCHE_ASESINO),
+            assassinVotes
+        )
+        resolved = resolveOnlineNightPhaseAction(
+            current = resolved,
+            phase = GamePhase.NOCHE_MERCENARIO,
+            action = actions.lastOrNull { it.action == "silenciar" },
+            fallback = { GameEngine.resolveMercenary(it, "") },
+            resolver = { current, target -> GameEngine.resolveMercenary(current, target) }
+        )
+        resolved = resolveOnlineNightPhaseAction(
+            current = resolved,
+            phase = GamePhase.NOCHE_POLICIA,
+            action = actions.lastOrNull { it.action == "investigar" },
+            fallback = { GameEngine.resolvePolice(it, "") },
+            resolver = { current, target -> GameEngine.resolvePolice(current, target) }
+        )
+        resolved = resolveOnlineNightPhaseAction(
+            current = resolved,
+            phase = GamePhase.NOCHE_MEDICO,
+            action = actions.lastOrNull { it.action == "salvar" },
+            fallback = { GameEngine.resolveMedic(it, "") },
+            resolver = { current, target -> GameEngine.resolveMedic(current, target) }
+        )
+        resolved = resolveOnlineNightPhaseAction(
+            current = resolved,
+            phase = GamePhase.NOCHE_ORACULO,
+            action = actions.lastOrNull { it.action == "invitar_muerto" },
+            fallback = { GameEngine.resolveOracle(it, "") },
+            resolver = { current, target -> GameEngine.resolveOracle(current, target) }
+        )
+        return resolved
+    }
+
+    private fun resolveOnlineNightPhaseAction(
+        current: GameSession,
+        phase: GamePhase,
+        action: OnlineRecordedAction?,
+        fallback: (GameSession) -> GameSession,
+        resolver: (GameSession, String) -> GameSession
+    ): GameSession {
+        val phased = current.copy(phase = phase)
+        if (action == null || action.targetName.isBlank()) {
+            return fallback(phased)
+        }
+        val actorName = action.actorName
+        val actionSession = phased.copy(
+            players = phased.players.map { player ->
+                player.copy(isHuman = player.name == actorName)
+            }
+        )
+        val resolved = resolver(actionSession, action.targetName)
+        return resolved.copy(
+            players = resolved.players.map { resolvedPlayer ->
+                val original = current.players.firstOrNull { it.name == resolvedPlayer.name }
+                resolvedPlayer.copy(isHuman = original?.isHuman == true)
+            }
+        )
+    }
+
+    private fun resolveOnlineVotingFromFirestore(tieVote: Boolean) {
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .collection("acciones")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val expectedPhase = if (tieVote) {
+                    GamePhase.DESEMPATE_VOTACION.name
+                } else {
+                    GamePhase.VOTACION.name
+                }
+                val votes = snapshot.documents.mapNotNull { document ->
+                    if (document.getString("tipo").orEmpty() != "accion_jugador") return@mapNotNull null
+                    if (document.getLong("ronda")?.toInt() != session.round) return@mapNotNull null
+                    if (document.getString("fase").orEmpty() != expectedPhase) return@mapNotNull null
+                    val details = document.get("detalles").asStringAnyMap()
+                    if ((details?.get("accion") as? String) != "votar") return@mapNotNull null
+                    val voter = document.getString("actorNombre").orEmpty()
+                    val target = document.getString("objetivoNombre").orEmpty()
+                    if (voter.isBlank() || target.isBlank()) return@mapNotNull null
+                    voter to target
+                }.toMap()
+                val before = session
+                session = if (tieVote) {
+                    GameEngine.resolveTieVotingWithRecordedVotes(session, votes)
+                } else {
+                    GameEngine.resolveVotingWithRecordedVotes(session, votes)
+                }
+                recordOnlinePhaseAdvance(before, session)
+                if (tieVote) hideTieVoteWindow(clearSelection = true)
+                clearSelection()
+                renderGame()
+            }
+            .addOnFailureListener {
+                val before = session
+                session = if (tieVote) {
+                    GameEngine.resolveTieVoting(session, "")
+                } else {
+                    GameEngine.resolveVoting(session, "")
+                }
+                recordOnlinePhaseAdvance(before, session)
+                if (tieVote) hideTieVoteWindow(clearSelection = true)
+                clearSelection()
+                renderGame()
+            }
+    }
+
     private fun activePhaseSeconds(): Int? {
+        if (onlineAwaitingHostAdvance) return null
         val timing = session.timingConfig.normalized()
         return when (session.phase) {
             GamePhase.NOCHE_ASESINO,
@@ -2581,7 +3403,9 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO,
             GamePhase.NOCHE_ORACULO -> {
-                val skipBotOnlyNight = session.quickTestMode && !GameEngine.requiresHumanInput(session)
+                val skipBotOnlyNight = session.quickTestMode &&
+                    !isOnlineGameplay() &&
+                    !GameEngine.requiresHumanInput(session)
                 timing.nightSeconds.takeUnless { skipBotOnlyNight }
             }
             GamePhase.DIA_DEBATE,
@@ -2883,7 +3707,12 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun passiveNightMessage(): String? {
-        if (session.quickTestMode || !isNightPhase(session.phase) || GameEngine.requiresHumanInput(session)) {
+        if (
+            session.quickTestMode ||
+            isOnlineGameplay() ||
+            !isNightPhase(session.phase) ||
+            GameEngine.requiresHumanInput(session)
+        ) {
             return null
         }
         val messages = listOf(
@@ -2902,8 +3731,8 @@ class GameplayMockActivity : BaseActivity() {
         val human = GameEngine.humanPlayer(session)
         val hasSpecialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
-            (session.phase == GamePhase.NOCHE_ORACULO &&
-                GameEngine.isHumanRoleTurn(session, RoleCatalog.ORACULO)) ||
+            (actionSession().phase == GamePhase.NOCHE_ORACULO &&
+                isHumanRoleTurn(RoleCatalog.ORACULO)) ||
             ((session.phase == GamePhase.DIA_DEBATE ||
                 session.phase == GamePhase.VOTACION ||
                 session.phase == GamePhase.ALCALDE_DESEMPATE) &&
@@ -2912,7 +3741,7 @@ class GameplayMockActivity : BaseActivity() {
         return !session.quickTestMode &&
             session.winner.isBlank() &&
             session.phase != GamePhase.REPARTO &&
-            !GameEngine.requiresHumanInput(session) &&
+            !requiresHumanInput() &&
             !hasSpecialDecision &&
             activePhaseSeconds() != null
     }
@@ -3104,7 +3933,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun targetActionMessage(): String {
-        return when (session.phase) {
+        return when (actionSession().phase) {
             GamePhase.NOCHE_ASESINO -> "Selecciona una victima y confirma MATAR."
             GamePhase.NOCHE_MERCENARIO -> "Selecciona un jugador y confirma SILENCIAR."
             GamePhase.NOCHE_POLICIA -> "Selecciona un jugador y confirma INVESTIGAR."
@@ -3288,7 +4117,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun createTieVoteCard(player: GamePlayer): View {
-        val actionable = GameEngine.canActOnTarget(session, player.name)
+        val actionable = canActOnTarget(player.name)
         val selected = selectedTarget == player.name
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -3385,7 +4214,7 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun renderTieVoteSelection() {
         val validSelection = selectedTarget.isNotBlank() &&
-            GameEngine.canActOnTarget(session, selectedTarget)
+            canActOnTarget(selectedTarget)
         btnConfirmTieVote.isEnabled = validSelection
         btnConfirmTieVote.alpha = if (validSelection) 1f else 0.55f
         btnConfirmTieVote.text = if (validSelection) {
@@ -3396,7 +4225,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun confirmTieVoteSelection() {
-        if (!GameEngine.canActOnTarget(session, selectedTarget)) {
+        if (!canActOnTarget(selectedTarget)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             return
         }
@@ -3433,6 +4262,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun handleVoteResultContinue() {
         if (!isVoteResultVisible || !btnContinueVoteResult.isEnabled) return
+        if (isOnlineGameplay() && !onlineIsHost) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, "Esperando al anfitrion de la sala.", Toast.LENGTH_SHORT).show()
+            return
+        }
         autoAdvanceHandler.removeCallbacks(voteResultAutoContinueRunnable)
         GameplayEffects.play(this, GameplayEffect.PANEL)
 
@@ -3936,6 +4770,7 @@ class GameplayMockActivity : BaseActivity() {
                         changedTeam
                     )
                 )
+                resumeGameFlowAfterBlockingUi()
             }
             .setNegativeButton("TRAIDORES") { _, _ ->
                 desertorDialogOpen = false
@@ -3949,6 +4784,7 @@ class GameplayMockActivity : BaseActivity() {
                         changedTeam
                     )
                 )
+                resumeGameFlowAfterBlockingUi()
             }
             .setCancelable(false)
             .show()
@@ -3970,12 +4806,22 @@ class GameplayMockActivity : BaseActivity() {
         private const val CHAT_PANEL_COMPACT_MARGIN_DP = 5
         private const val CHAT_PANEL_TOP_MARGIN_DP = 86
         private const val CHAT_PANEL_BOTTOM_MARGIN_DP = 96
+        private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
+        private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f
+        private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
+        private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
+        private const val CHAT_SHEET_SIDE_MARGIN_DP = 6
+        private const val CHAT_SHEET_KEYBOARD_BOTTOM_MARGIN_DP = 0
+        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 94
+        private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
-        private const val MAX_STAGGERED_BOT_REACTIONS = 2
-        private const val FIRST_BOT_REACTION_DELAY_MS = 950L
-        private const val NEXT_BOT_REACTION_DELAY_MS = 1_150L
+        private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
+        private const val MAX_STAGGERED_BOT_REACTIONS = 3
+        private const val FIRST_BOT_REACTION_DELAY_MS = 2_100L
+        private const val NEXT_BOT_REACTION_DELAY_MS = 1_850L
         private const val PHASE_BOT_BURST_DELAY_MS = 1_350L
+        private const val BOT_TYPING_LEAD_DELAY_MS = 1_050L
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"

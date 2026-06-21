@@ -169,6 +169,19 @@
                     android:textSize="17sp"
                     app:thumbTint="@color/accent_gold"
                     app:trackTint="@color/divider" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchBotSpicyLanguage"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center_vertical"
+                    android:text="Lenguaje picante de bots"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    app:thumbTint="@color/accent_gold"
+                    app:trackTint="@color/divider" />
             </LinearLayout>
 
             <TextView
@@ -239,6 +252,29 @@
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:textStyle="italic" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchGameplayVerticalDev"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="14dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center_vertical"
+                    android:text="Gameplay vertical (en desarrollo)"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    app:thumbTint="@color/accent_gold"
+                    app:trackTint="@color/divider" />
+
+                <TextView
+                    android:id="@+id/descGameplayVerticalDev"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:text="Se aplica al volver a entrar al lobby, reparto y gameplay."
+                    android:textColor="@color/text_muted"
+                    android:textSize="14sp" />
 
             </LinearLayout>
 

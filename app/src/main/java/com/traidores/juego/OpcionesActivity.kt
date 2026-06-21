@@ -33,6 +33,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var labelTextSize: TextView
     private lateinit var descTextSize: TextView
     private lateinit var textSizePreview: TextView
+    private lateinit var descGameplayVerticalDev: TextView
     private lateinit var titleLanguage: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var descLanguage: TextView
@@ -42,6 +43,8 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var switchMusic: SwitchCompat
     private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
+    private lateinit var switchBotSpicyLanguage: SwitchCompat
+    private lateinit var switchGameplayVerticalDev: SwitchCompat
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
@@ -80,6 +83,7 @@ class OpcionesActivity : BaseActivity() {
         labelTextSize = findViewById(R.id.labelTextSize)
         descTextSize = findViewById(R.id.descTextSize)
         textSizePreview = findViewById(R.id.textSizePreview)
+        descGameplayVerticalDev = findViewById(R.id.descGameplayVerticalDev)
         titleLanguage = findViewById(R.id.titleLanguage)
         labelLanguage = findViewById(R.id.labelLanguage)
         descLanguage = findViewById(R.id.descLanguage)
@@ -89,6 +93,8 @@ class OpcionesActivity : BaseActivity() {
         switchMusic = findViewById(R.id.switchMusic)
         switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
+        switchBotSpicyLanguage = findViewById(R.id.switchBotSpicyLanguage)
+        switchGameplayVerticalDev = findViewById(R.id.switchGameplayVerticalDev)
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
@@ -165,6 +171,19 @@ class OpcionesActivity : BaseActivity() {
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
 
+        switchBotSpicyLanguage.setOnCheckedChangeListener { _, enabled ->
+            if (updatingControls) return@setOnCheckedChangeListener
+            preferences.edit().putBoolean(PREF_BOT_SPICY_LANGUAGE, enabled).apply()
+            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        }
+
+        switchGameplayVerticalDev.setOnCheckedChangeListener { _, enabled ->
+            if (updatingControls) return@setOnCheckedChangeListener
+            preferences.edit().putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, enabled).apply()
+            GameplayEffects.play(this, GameplayEffect.CONFIRM)
+            Toast.makeText(this, gameplayVerticalChangedMessage(), Toast.LENGTH_SHORT).show()
+        }
+
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
         btnFirebaseSmokeTest.setOnClickListener { writeFirestoreSmokeTest() }
@@ -236,6 +255,9 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = AudioPreferences.isMusicEnabled(preferences)
         switchEffects.isChecked = AudioPreferences.areEffectsEnabled(preferences)
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
+        switchBotSpicyLanguage.isChecked = preferences.getBoolean(PREF_BOT_SPICY_LANGUAGE, true)
+        switchGameplayVerticalDev.isChecked =
+            preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, false)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
@@ -324,9 +346,13 @@ class OpcionesActivity : BaseActivity() {
             switchEffects.text = "Sound effects"
             descSound.text = "Control music and game effects independently."
             switchVibration.text = "Vibration on interaction"
+            switchBotSpicyLanguage.text = "Spicy bot language"
             titleTextSize.text = "READABILITY AND ACCESSIBILITY"
             labelTextSize.text = "Text size"
             descTextSize.text = "Applied to messages, buttons and information during gameplay."
+            switchGameplayVerticalDev.text = "Vertical gameplay (in development)"
+            descGameplayVerticalDev.text =
+                "Applies the next time you enter the lobby, role deal and gameplay."
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
@@ -347,9 +373,13 @@ class OpcionesActivity : BaseActivity() {
             switchEffects.text = "Efectos de sonido"
             descSound.text = "Controla por separado la musica y los efectos del juego."
             switchVibration.text = "Vibracion al interactuar"
+            switchBotSpicyLanguage.text = "Lenguaje picante de bots"
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
             labelTextSize.text = "Tamano del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
+            switchGameplayVerticalDev.text = "Gameplay vertical (en desarrollo)"
+            descGameplayVerticalDev.text =
+                "Se aplica al volver a entrar al lobby, reparto y gameplay."
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traduccion completa sigue en desarrollo."
@@ -374,6 +404,8 @@ class OpcionesActivity : BaseActivity() {
             .putInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
+            .putBoolean(PREF_BOT_SPICY_LANGUAGE, true)
+            .putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, false)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
             .apply()
@@ -385,6 +417,8 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = true
         switchEffects.isChecked = true
         switchVibration.isChecked = false
+        switchBotSpicyLanguage.isChecked = true
+        switchGameplayVerticalDev.isChecked = false
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
         updatingControls = false
@@ -446,6 +480,14 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
+    private fun gameplayVerticalChangedMessage(): String {
+        return if (currentLanguage == LANGUAGE_ENGLISH) {
+            "The gameplay orientation will apply when you enter the match flow again."
+        } else {
+            "La orientacion del gameplay se aplicara al volver a entrar al flujo de partida."
+        }
+    }
+
     private fun firebaseTestingText(): String =
         if (currentLanguage == LANGUAGE_ENGLISH) "TESTING..." else "PROBANDO..."
 
@@ -487,6 +529,7 @@ class OpcionesActivity : BaseActivity() {
         private const val PREF_VIBRATION_ON = "vibration_on"
         private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
         private const val PREF_LANGUAGE = "language"
+        const val PREF_BOT_SPICY_LANGUAGE = "bot_spicy_language"
         private const val DEFAULT_VOLUME = 80
         private const val DEFAULT_TEXT_SIZE = 1
         private const val LANGUAGE_SPANISH = "Espanol (ES)"

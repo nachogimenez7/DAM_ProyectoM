@@ -73,6 +73,11 @@ class GameplayTableUiTest {
         val eightTall = GameplayTableUi.companionCardMetrics(8, availableHeightDp = 420)
         val twelveLow = GameplayTableUi.companionCardMetrics(12, availableHeightDp = 360)
         val fifteen = GameplayTableUi.companionCardMetrics(15, availableHeightDp = 360)
+        val eightNarrow = GameplayTableUi.companionCardMetrics(
+            8,
+            availableHeightDp = 376,
+            availableWidthDp = 54
+        )
 
         assertEquals(112, five.columnWidthDp)
         assertEquals(54, five.cardWidthDp)
@@ -88,6 +93,9 @@ class GameplayTableUiTest {
         assertEquals(eight, eightTall)
         assertEquals(36, eightTall.cardWidthDp)
         assertEquals(58, eightTall.cardHeightDp)
+        assertTrue(eightNarrow.columnWidthDp <= 54)
+        assertTrue(eightNarrow.cardWidthDp < eight.cardWidthDp)
+        assertEquals(eight.scrollEnabled, eightNarrow.scrollEnabled)
 
         assertEquals(78, twelveLow.columnWidthDp)
         assertFalse(twelveLow.scrollEnabled)

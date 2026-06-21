@@ -34,7 +34,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="10dp"
             android:fontFamily="@font/grenze"
-            android:text="JUEGO LOCAL"
+            android:text="JUGAR VS LA IA"
             android:textColor="@color/accent_gold"
             android:textSize="24sp" />
 
@@ -47,19 +47,19 @@
             android:gravity="center"
             android:lineSpacingExtra="3dp"
             android:padding="16dp"
-            android:text="Crea una sala para tus amigos o ingresa con el codigo de un anfitrion."
+            android:text="Elegi una dificultad. Despues vas al lobby para ajustar mapa, tiempos y cantidad de jugadores."
             android:textColor="@color/text_secondary"
             android:textSize="16sp" />
 
         <Button
-            android:id="@+id/btnCreateLocal"
+            android:id="@+id/btnNormalAi"
             style="@style/BtnGold"
-            android:text="CREAR SALA LOCAL" />
+            android:text="NORMAL" />
 
         <Button
-            android:id="@+id/btnJoinCode"
+            android:id="@+id/btnHardAi"
             style="@style/BtnDark"
-            android:text="INGRESAR CODIGO" />
+            android:text="DIFICIL" />
     </LinearLayout>
 </RelativeLayout>
 

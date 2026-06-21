@@ -256,14 +256,17 @@ class LobbyActivity : BaseActivity() {
                 ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
                 ?: "LOBBY ONLINE - SALA ENCONTRADA"
             MODE_ONLINE_QUICK -> "LOBBY ONLINE - PARTIDA RAPIDA"
-            else -> "LOBBY LOCAL"
+            else -> "JUGAR VS IA"
         }
         lobbyModeHint.text = when (lobbyMode) {
             MODE_ONLINE_CREATE, MODE_ONLINE_SEARCH -> onlineLobbyHint()
             MODE_ONLINE_QUICK ->
                 "Partida completa. Comenzara cuando el anfitrion confirme."
-            else ->
-                "Elegi mapa, tiempos y participantes antes de iniciar."
+            else -> if (session.botDifficulty == BotDifficulty.HARD) {
+                "Modo dificil: la IA traidora coordina mejor sus votos."
+            } else {
+                "Modo normal: elegi mapa, tiempos y participantes antes de iniciar."
+            }
         }
         renderOnlineCodePanel()
         mapDescription.text = mapDescriptionFor(session.mapKey)

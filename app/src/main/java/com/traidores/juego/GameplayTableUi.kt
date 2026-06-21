@@ -574,7 +574,8 @@ object GameplayTableUi {
 
     fun companionCardMetrics(
         totalPlayers: Int,
-        availableHeightDp: Int = 376
+        availableHeightDp: Int = 376,
+        availableWidthDp: Int? = null
     ): CompanionCardMetrics {
         val playersPerSide = ((totalPlayers.coerceAtLeast(2) - 1) + 1) / 2
         val scrollEnabled = totalPlayers >= 13
@@ -640,24 +641,52 @@ object GameplayTableUi {
                 scrollEnabled = scrollEnabled
             )
         }
-        if (scrollEnabled || availableHeightDp <= 0) return base
+        var fitted = base
 
-        val usableHeight = (availableHeightDp - base.itemGapDp * (playersPerSide - 1))
-            .coerceAtLeast(playersPerSide)
-        val fittedItemHeight = minOf(base.itemHeightDp, usableHeight / playersPerSide)
-        if (fittedItemHeight >= base.itemHeightDp) return base
+        if (!scrollEnabled && availableHeightDp > 0) {
+            val usableHeight = (availableHeightDp - base.itemGapDp * (playersPerSide - 1))
+                .coerceAtLeast(playersPerSide)
+            val fittedItemHeight = minOf(base.itemHeightDp, usableHeight / playersPerSide)
+            if (fittedItemHeight < base.itemHeightDp) {
+                val fixedContentHeight = base.nameHeightDp
+                val fittedCardHeight = (fittedItemHeight - fixedContentHeight).coerceAtLeast(24)
+                val fittedCardWidth = (
+                    base.cardWidthDp.toFloat() * fittedCardHeight / base.cardHeightDp
+                    ).toInt().coerceAtLeast(22)
+                fitted = base.copy(
+                    itemHeightDp = fittedItemHeight,
+                    avatarSizeDp = minOf(
+                        base.avatarSizeDp,
+                        (fittedCardWidth * 0.42f).toInt().coerceAtLeast(12)
+                    ),
+                    cardWidthDp = fittedCardWidth,
+                    cardHeightDp = fittedCardHeight,
+                    nameTextSp = minOf(
+                        base.nameTextSp,
+                        if (fittedItemHeight < 70) 6.5f else base.nameTextSp
+                    )
+                )
+            }
+        }
 
-        val fixedContentHeight = base.nameHeightDp
-        val fittedCardHeight = (fittedItemHeight - fixedContentHeight).coerceAtLeast(24)
-        val fittedCardWidth = (
-            base.cardWidthDp.toFloat() * fittedCardHeight / base.cardHeightDp
-            ).toInt().coerceAtLeast(22)
-        return base.copy(
-            itemHeightDp = fittedItemHeight,
-            avatarSizeDp = minOf(base.avatarSizeDp, (fittedCardWidth * 0.42f).toInt().coerceAtLeast(12)),
-            cardWidthDp = fittedCardWidth,
-            cardHeightDp = fittedCardHeight,
-            nameTextSp = minOf(base.nameTextSp, if (fittedItemHeight < 70) 6.5f else base.nameTextSp)
+        if (availableWidthDp != null && availableWidthDp > 0 && availableWidthDp < fitted.columnWidthDp) {
+            val widthScale = availableWidthDp.toFloat() / fitted.columnWidthDp
+            fitted = fitted.scaledBy(widthScale)
+        }
+
+        return fitted
+    }
+
+    private fun CompanionCardMetrics.scaledBy(scale: Float): CompanionCardMetrics {
+        val safeScale = scale.coerceIn(0.45f, 1f)
+        return copy(
+            columnWidthDp = (columnWidthDp * safeScale).toInt().coerceAtLeast(48),
+            minCardWidthDp = (minCardWidthDp * safeScale).toInt().coerceAtLeast(40),
+            itemHeightDp = (itemHeightDp * safeScale).toInt().coerceAtLeast(40),
+            avatarSizeDp = (avatarSizeDp * safeScale).toInt().coerceAtLeast(12),
+            cardWidthDp = (cardWidthDp * safeScale).toInt().coerceAtLeast(20),
+            cardHeightDp = (cardHeightDp * safeScale).toInt().coerceAtLeast(32),
+            nameTextSp = (nameTextSp * safeScale).coerceAtLeast(6.5f)
         )
     }
 

@@ -13,6 +13,8 @@ data class GameSession(
     val revealRolesOnDeath: Boolean = false,
     val showIndividualVotes: Boolean = true,
     val quickTestMode: Boolean = false,
+    val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
+    val botSpicyLanguage: Boolean = true,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
@@ -31,6 +33,7 @@ data class GameSession(
     val privateHint: String = "",
     val publicHistory: List<String> = emptyList(),
     val chatHistory: List<GameChatMessage> = emptyList(),
+    val claimLedger: Map<String, List<ClaimRecord>> = emptyMap(),
     val godHistory: List<String> = emptyList(),
     val actionHistory: List<GameAction> = emptyList(),
     val payadorUsed: Boolean = false,
@@ -49,6 +52,28 @@ data class GameSession(
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0
+) : Serializable
+
+enum class BotDifficulty : Serializable {
+    NORMAL,
+    HARD
+}
+
+enum class StatementType : Serializable {
+    PROTECTED,
+    INVESTIGATED,
+    REFUSED_ROLE,
+    TRUST,
+    ACCUSE,
+    VOTE
+}
+
+data class ClaimRecord(
+    val round: Int,
+    val phase: GamePhase,
+    val roleKey: String? = null,
+    val statementType: StatementType? = null,
+    val target: String? = null
 ) : Serializable
 
 data class RoleCompositionConfig(
@@ -358,20 +383,20 @@ object LocalGameFactory {
     )
 
     private val defaultBots = listOf(
-        "Nanuela",
-        "Kamila",
-        "Calbo",
-        "Carim",
-        "Walter",
-        "Safia",
-        "Emmanuele",
-        "Faustinho",
-        "JuanNieves",
-        "Bartolome",
-        "Teresa",
-        "CasaMas",
-        "Lusiano",
-        "Juako"
+        "Thiago",
+        "Mora",
+        "Lautaro",
+        "Valen",
+        "Rami",
+        "Juli",
+        "Santi",
+        "Mili",
+        "Toto",
+        "Agus",
+        "Bruno",
+        "Lola",
+        "Fede",
+        "Cata"
     )
 
     fun createSession(
@@ -495,6 +520,7 @@ object LocalGameFactory {
             privateHint = privateStart,
             publicHistory = listOf(publicStart),
             chatHistory = emptyList(),
+            claimLedger = emptyMap(),
             godHistory = listOf(publicStart),
             actionHistory = emptyList(),
             payadorUsed = false,

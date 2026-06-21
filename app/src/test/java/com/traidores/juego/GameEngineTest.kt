@@ -679,7 +679,7 @@ class GameEngineTest {
 
         assertFalse(GameEngine.playerByName(resolved, "Bufon")!!.alive)
         assertEquals("", resolved.winner)
-        assertEquals(GamePhase.NOCHE_ASESINO, resolved.phase)
+        assertEquals(GamePhase.AMANECER, resolved.phase)
         assertEquals(2, resolved.round)
         assertEquals("bufon_expulsado", resolved.specialVictories.single().key)
         assertTrue(resolved.publicHistory.any { it.contains("era el Bufon") })
@@ -1170,7 +1170,7 @@ class GameEngineTest {
         assertTrue(dawn.publicAnnouncement.contains("Policia no puede hablar ni votar hoy."))
         assertFalse(GameEngine.playerByName(nextRound, "Policia")!!.muted)
         assertEquals(1, GameEngine.playerByName(nextRound, "Policia")!!.lastSilencedRound)
-        assertEquals(GamePhase.NOCHE_ASESINO, nextRound.phase)
+        assertEquals(GamePhase.NOCHE_MERCENARIO, nextRound.phase)
     }
 
     @Test
@@ -1356,7 +1356,18 @@ class GameEngineTest {
         val session = baseSession().copy(phase = GamePhase.REPARTO, quickTestMode = true)
 
         assertTrue(GameEngine.shouldAutoAdvance(session))
-        assertEquals(GamePhase.NOCHE_ASESINO, GameEngine.startNight(session).phase)
+        assertEquals(GamePhase.AMANECER, GameEngine.startNight(session).phase)
+    }
+
+    @Test
+    fun unifiedNightSkipsBotOnlyRolePhasesUntilHumanAction() {
+        val session = sessionWithHumanRole("medico").copy(phase = GamePhase.REPARTO)
+
+        val night = GameEngine.startNight(session)
+
+        assertEquals(GamePhase.NOCHE_MEDICO, night.phase)
+        assertTrue(night.nightKillTarget.isNotBlank())
+        assertTrue(GameEngine.requiresHumanInput(night))
     }
 
     @Test
@@ -1497,6 +1508,149 @@ class GameEngineTest {
     }
 
     @Test
+    fun botCanChallengeHumanRoleClaimWithOwnPublicClaim() {
+        val session = publicNameSession().copy(phase = GamePhase.DIA_DEBATE)
+
+        val resolved = GameEngine.addHumanChatMessage(session, "soy medico")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { "${it.speaker}: ${it.message}" }
+
+        assertTrue("Respuestas: $botText", botText.contains("Ciro:"))
+        assertTrue("Respuestas: $botText", botText.contains("yo soy medico"))
+        assertTrue("Respuestas: $botText", botText.contains("doble claim"))
+    }
+
+    @Test
+    fun botAsksForDetailsBeforeTurningRoleClaimIntoSuspicion() {
+        val session = publicNameSession().copy(phase = GamePhase.DIA_DEBATE)
+
+        val resolved = GameEngine.addHumanChatMessage(session, "soy detective")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { it.message }
+
+        assertTrue("Respuestas: $botText", botText.contains("a quien investigaste"))
+        assertFalse("Respuestas: $botText", botText.contains("esta re raro"))
+    }
+
+    @Test
+    fun botVotesUsePublicDoubleClaimAsSuspicion() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "soy medico"),
+                GameChatMessage("Ciro", "para, yo soy medico. si decis lo mismo conta a quien cuidaste"),
+                GameChatMessage("Dina", "doble claim entonces, uno esta vendiendo humo")
+            )
+        )
+        val ciro = GameEngine.playerByName(session, "Ciro")!!
+
+        assertEquals("Humano", LocalBotAi.chooseVoteTarget(session, ciro))
+    }
+
+    @Test
+    fun botReactsToHumanActionDetailsWithoutImmediateAccusation() {
+        val session = publicNameSession().copy(phase = GamePhase.DIA_DEBATE)
+
+        val resolved = GameEngine.addHumanChatMessage(session, "protegi a Dina")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { it.message }
+
+        assertTrue("Respuestas: $botText", botText.contains("queda anotado") || botText.contains("confirma"))
+        assertFalse("Respuestas: $botText", botText.contains("esta re raro"))
+    }
+
+    @Test
+    fun botPressesHumanWhenRoleIsRefused() {
+        val session = publicNameSession().copy(phase = GamePhase.DIA_DEBATE)
+
+        val resolved = GameEngine.addHumanChatMessage(session, "no digo mi rol")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { it.message }
+
+        assertTrue("Respuestas: $botText", botText.contains("aporta algo") || botText.contains("te miran raro"))
+    }
+
+    @Test
+    fun botVotesFollowExplicitHumanAccusationAsPublicSignal() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "Dina miente"),
+                GameChatMessage("Beto", "puede ser, pero deci que viste de Dina")
+            )
+        )
+        val beto = GameEngine.playerByName(session, "Beto")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, beto))
+    }
+
+    @Test
+    fun botsAnswerEachOtherInsteadOfOnlyReactingToHuman() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "dina cambio de tema y me parece raro")
+            )
+        )
+
+        val messages = LocalBotAi.openingDebateMessages(session, limit = 5)
+            .joinToString(" ") { "${it.first}: ${it.second}" }
+
+        assertTrue("Mensajes: $messages", messages.contains("beto", ignoreCase = true))
+        assertTrue("Mensajes: $messages", messages.contains("dina", ignoreCase = true))
+    }
+
+    @Test
+    fun botVotingIntentReferencesItsOwnEarlierPressure() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "dina pq cambiaste de tema?"),
+                GameChatMessage("Humano", "yo tambien miro a Dina")
+            )
+        )
+
+        val betoMessage = LocalBotAi.votingIntentMessages(session, limit = 5)
+            .firstOrNull { it.first == "Beto" }
+            ?.second
+            .orEmpty()
+
+        assertTrue(
+            "Mensaje Beto: $betoMessage",
+            betoMessage.contains("le pregunte") ||
+                betoMessage.contains("vengo marcando") ||
+                betoMessage.contains("no respondio") ||
+                betoMessage.contains("esquivo") ||
+                betoMessage.contains("preguntas colgadas") ||
+                betoMessage.contains("tenia q contestar")
+        )
+    }
+
+    @Test
+    fun botCanAdmitDoubtAfterPushingWrongExpulsion() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            publicHistory = listOf("El pueblo expulso a Ema."),
+            chatHistory = listOf(
+                GameChatMessage("Beto", "para mi Ema esta re rara")
+            )
+        )
+
+        val messages = LocalBotAi.openingDebateMessages(session, limit = 5)
+            .joinToString(" ") { it.second }
+
+        assertTrue(
+            "Mensajes: $messages",
+            messages.contains("me pude haber equivocado") ||
+                messages.contains("le erre")
+        )
+    }
+
+    @Test
     fun botConversationUsesLooseArgentineStyle() {
         val session = publicNameSession().copy(
             phase = GamePhase.DIA_DEBATE,
@@ -1557,9 +1711,25 @@ class GameEngineTest {
         assertTrue(replies.isNotBlank())
         assertTrue(
             "Respuestas: $replies",
-            listOf("dale", "para", "jaja", "amigo", "no inventes", "decime", "q hice", "posta", "nose", "mmm")
+            listOf("dale", "para", "jaja", "amigo", "no inventes", "decime", "q hice", "q decis", "posta", "nose", "mmm")
                 .any { replies.contains(it) }
         )
+    }
+
+    @Test
+    fun botRepliesPauseAfterSeveralBotMessagesInARow() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "dina me hace ruido"),
+                GameChatMessage("Ciro", "si, q explique algo"),
+                GameChatMessage("Ema", "yo tambien la miro")
+            )
+        )
+
+        val replies = LocalBotAi.reactionsToHumanMessage(session, "dina no me cierra")
+
+        assertTrue("Respuestas: $replies", replies.isEmpty())
     }
 
     @Test
@@ -1595,20 +1765,20 @@ class GameEngineTest {
         assertTrue(session.players.first().isHuman)
         assertEquals(
             listOf(
-                "Nanuela",
-                "Kamila",
-                "Calbo",
-                "Carim",
-                "Walter",
-                "Safia",
-                "Emmanuele",
-                "Faustinho",
-                "JuanNieves",
-                "Bartolome",
-                "Teresa",
-                "CasaMas",
-                "Lusiano",
-                "Juako"
+                "Thiago",
+                "Mora",
+                "Lautaro",
+                "Valen",
+                "Rami",
+                "Juli",
+                "Santi",
+                "Mili",
+                "Toto",
+                "Agus",
+                "Bruno",
+                "Lola",
+                "Fede",
+                "Cata"
             ),
             session.players.drop(1).map { it.name }
         )
@@ -1858,11 +2028,11 @@ class GameEngineTest {
         )
 
         assertEquals(2, roundTwo.round)
-        assertEquals(GamePhase.NOCHE_ASESINO, roundTwo.phase)
+        assertEquals(GamePhase.AMANECER, roundTwo.phase)
         assertEquals("", roundTwo.winner)
         assertEquals("", secondDawn.winner)
         assertEquals(3, roundThree.round)
-        assertEquals(GamePhase.NOCHE_ASESINO, roundThree.phase)
+        assertEquals(GamePhase.AMANECER, roundThree.phase)
         assertEquals("", roundThree.winner)
     }
 

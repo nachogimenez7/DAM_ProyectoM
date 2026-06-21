@@ -1,0 +1,680 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+<LinearLayout
+        android:id="@+id/gameplayBody"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_alignParentBottom="true"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:baselineAligned="false"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal">
+
+        <ScrollView
+            android:id="@+id/leftPlayersScroll"
+            android:layout_width="76dp"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:overScrollMode="ifContentScrolls"
+            android:scrollbarStyle="outsideOverlay">
+
+            <LinearLayout
+                android:id="@+id/leftPlayersContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:gravity="center|center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="0dp"
+                android:paddingBottom="0dp" />
+        </ScrollView>
+
+        <FrameLayout
+            android:id="@+id/centerColumn"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="8dp"
+            android:layout_weight="1"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <LinearLayout
+                android:id="@+id/topStatus"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_gravity="top"
+                android:background="@drawable/bg_translucent_game_panel"
+                android:elevation="7dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="6dp">
+
+                    <TextView
+                        android:id="@+id/phaseTitle"
+                        android:layout_width="96dp"
+                        android:layout_height="match_parent"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center_vertical"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="REPARTO"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="17sp"
+                        app:autoSizeMinTextSize="11sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <TextView
+                        android:id="@+id/phaseSubtitle"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:gravity="center_vertical"
+                        android:includeFontPadding="false"
+                        android:maxLines="2"
+                        android:paddingEnd="6dp"
+                        android:text="Mira tu rol. La noche empieza enseguida."
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/phaseCountdown"
+                        android:layout_width="42dp"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="4dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:padding="0dp"
+                        android:text="20"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="invisible"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <FrameLayout
+                        android:id="@+id/chatButtonFrame"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginStart="7dp"
+                        android:clipChildren="false"
+                        android:clipToPadding="false">
+
+                        <ImageButton
+                            android:id="@+id/btnToggleChat"
+                            android:layout_width="34dp"
+                            android:layout_height="34dp"
+                            android:layout_gravity="center"
+                            android:background="@drawable/bg_chat_fab"
+                            android:contentDescription="Abrir chat"
+                            android:elevation="3dp"
+                            android:padding="7dp"
+                            android:src="@drawable/ic_chat_speaking"
+                            app:tint="@color/bg_dark" />
+
+                        <TextView
+                            android:id="@+id/chatUnreadBadge"
+                            android:layout_width="15dp"
+                            android:layout_height="15dp"
+                            android:layout_gravity="top|end"
+                            android:layout_marginTop="-1dp"
+                            android:layout_marginEnd="-1dp"
+                            android:background="@drawable/bg_chat_badge"
+                            android:elevation="8dp"
+                            android:gravity="center"
+                            android:maxLines="1"
+                            android:text="1"
+                            android:textColor="@android:color/white"
+                            android:textSize="7sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </FrameLayout>
+
+                    <ImageButton
+                        android:id="@+id/btnSettings"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="5dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:contentDescription="Opciones"
+                        android:padding="7dp"
+                        android:src="@drawable/ic_settings_gear"
+                        app:tint="@color/text_secondary" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:id="@+id/phaseProgressTrack"
+                    android:layout_width="match_parent"
+                    android:layout_height="4dp"
+                    android:background="@color/divider">
+
+                    <View
+                        android:id="@+id/phaseProgressFill"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@color/accent_gold" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/eventLogPanel"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:layout_gravity="top"
+                android:layout_marginTop="64dp"
+                android:background="@drawable/bg_translucent_game_panel"
+                android:elevation="6dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/eventLogHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingEnd="5dp">
+
+                    <View
+                        android:id="@+id/eventLogColorBar"
+                        android:layout_width="4dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/accent_green" />
+
+                    <TextView
+                        android:id="@+id/eventLogTitle"
+                        android:layout_width="68dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="7dp"
+                        android:fontFamily="@font/grenze"
+                        android:maxLines="1"
+                        android:text="EVENTOS"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="12sp"
+                        app:autoSizeMinTextSize="9sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <HorizontalScrollView
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="3dp"
+                        android:layout_weight="1"
+                        android:fillViewport="true"
+                        android:overScrollMode="ifContentScrolls"
+                        android:requiresFadingEdge="horizontal"
+                        android:scrollbars="horizontal">
+
+                        <TextView
+                            android:id="@+id/eventLogSummary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="match_parent"
+                            android:fontFamily="@font/cormorant_garamond"
+                            android:gravity="center_vertical"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingEnd="8dp"
+                            android:singleLine="true"
+                            android:text="La partida esta por comenzar."
+                            android:textColor="@color/text_primary"
+                            android:textSize="11sp"
+                            android:textStyle="bold" />
+                    </HorizontalScrollView>
+
+                    <Button
+                        android:id="@+id/btnToggleEventLog"
+                        style="@style/BtnDark"
+                        android:layout_width="26dp"
+                        android:layout_height="24dp"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:padding="0dp"
+                        android:text="&#9660;"
+                        android:textSize="9sp" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:id="@+id/eventLogContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/eventLogBackground"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@null"
+                        android:scaleType="fitXY"
+                        android:src="@drawable/log_gaucho" />
+
+                    <ScrollView
+                        android:id="@+id/eventLogScroll"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:fillViewport="false"
+                        android:overScrollMode="ifContentScrolls"
+                        android:scrollbarStyle="outsideOverlay">
+
+                        <LinearLayout
+                            android:id="@+id/eventLogContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="4dp" />
+                    </ScrollView>
+                </FrameLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/bottomPlayerPanel"
+                android:layout_width="match_parent"
+                android:layout_height="94dp"
+                android:layout_gravity="bottom"
+                android:background="@drawable/bg_hud_parchment"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="7dp"
+                android:paddingVertical="4dp">
+
+                <LinearLayout
+                    android:id="@+id/roleCard"
+                    android:layout_width="46dp"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_role_card"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="3dp">
+
+                    <ImageView
+                        android:id="@+id/roleImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:adjustViewBounds="true"
+                        android:background="@android:color/transparent"
+                        android:contentDescription="Carta de rol"
+                        android:scaleType="fitCenter" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="9dp"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/currentPlayerName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/grenze"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:text="Nacho"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="17sp"
+                            app:autoSizeMaxTextSize="17sp"
+                            app:autoSizeMinTextSize="13sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <TextView
+                            android:id="@+id/currentPlayerStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="16dp"
+                            android:layout_marginStart="5dp"
+                            android:background="@drawable/bg_player_chip"
+                            android:fontFamily="@font/grenze"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingHorizontal="6dp"
+                            android:text="SILENCIADO"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="8sp"
+                            android:textStyle="bold"
+                            android:visibility="gone"
+                            app:autoSizeMaxTextSize="8sp"
+                            app:autoSizeMinTextSize="6sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/roleName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/grenze"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="CARTA OCULTA"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <TextView
+                        android:id="@+id/currentPlayerHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:includeFontPadding="false"
+                        android:maxLines="2"
+                        android:text="Tu carta esta oculta."
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/actionControls"
+                    android:layout_width="206dp"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnRevealCard"
+                        style="@style/BtnGold"
+                        android:layout_width="72dp"
+                        android:layout_height="30dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_marginBottom="0dp"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="REVELAR"
+                        android:textSize="10sp"
+                        app:autoSizeMaxTextSize="10sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+
+                    <Button
+                        android:id="@+id/btnVote"
+                        style="@style/BtnDark"
+                        android:layout_width="128dp"
+                        android:layout_height="36dp"
+                        android:layout_marginBottom="0dp"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="ELEGIR OBJETIVO"
+                        android:textSize="11sp"
+                        app:autoSizeMaxTextSize="11sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/eliminatedStatePanel"
+                    android:layout_width="206dp"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="8dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:text="ESTAS ELIMINADO"
+                        android:textColor="@color/accent_red"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="@font/cormorant_garamond"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="2"
+                        android:text="Podes abrir el chat para seguir observando la partida."
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/chatPanel"
+                android:layout_width="336dp"
+                android:layout_height="match_parent"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="86dp"
+                android:layout_marginBottom="84dp"
+                android:background="@drawable/bg_chat_panel"
+                android:elevation="10dp"
+                android:orientation="vertical"
+                android:padding="11dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/chatHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center_vertical"
+                        android:text="CHAT DEL PUEBLO"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/chatRoleChip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_player_chip"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center"
+                        android:maxWidth="92dp"
+                        android:maxLines="1"
+                        android:paddingHorizontal="8dp"
+                        android:text="ALDEANO"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <ImageButton
+                        android:id="@+id/btnCloseChat"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:contentDescription="Cerrar chat"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_close"
+                        app:tint="@color/text_primary" />
+                </LinearLayout>
+
+                <ScrollView
+                    android:id="@+id/chatMessagesScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_weight="1"
+                    android:fillViewport="true"
+                    android:overScrollMode="ifContentScrolls">
+
+                    <LinearLayout
+                        android:id="@+id/chatMessagesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingVertical="3dp" />
+                </ScrollView>
+
+                <LinearLayout
+                    android:id="@+id/chatStatusRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="20dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/chatNewMessages"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center_vertical"
+                        android:text="1 MENSAJE NUEVO - VER"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:visibility="invisible" />
+
+                    <TextView
+                        android:id="@+id/chatCharacterCount"
+                        android:layout_width="52dp"
+                        android:layout_height="match_parent"
+                        android:fontFamily="@font/grenze"
+                        android:gravity="center_vertical|end"
+                        android:text="0/140"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/chatComposer"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/chatInput"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_chat_input"
+                        android:hint="Escribir..."
+                        android:imeOptions="actionSend|flagNoExtractUi"
+                        android:inputType="textCapSentences"
+                        android:maxLength="140"
+                        android:maxLines="1"
+                        android:paddingHorizontal="12dp"
+                        android:singleLine="true"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_muted"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnSendChat"
+                        style="@style/BtnGold"
+                        android:layout_width="74dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="5dp"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:padding="0dp"
+                        android:text="ENVIAR"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/rightColumn"
+            android:layout_width="76dp"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ScrollView
+                android:id="@+id/rightPlayersScroll"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:fillViewport="true"
+                android:overScrollMode="ifContentScrolls"
+                android:scrollbarStyle="outsideOverlay">
+
+                <LinearLayout
+                    android:id="@+id/rightPlayersContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:gravity="center|center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingTop="0dp"
+                    android:paddingBottom="0dp" />
+            </ScrollView>
+        </LinearLayout>
+    </LinearLayout>
+
+</merge>
+

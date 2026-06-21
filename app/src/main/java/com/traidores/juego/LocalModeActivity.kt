@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
-import android.widget.Toast
 
 class LocalModeActivity : BaseActivity() {
 
@@ -14,35 +13,13 @@ class LocalModeActivity : BaseActivity() {
         setContentView(R.layout.activity_local_mode)
 
         val btnBack: ImageButton = findViewById(R.id.btnBack)
-        val btnCreateLocal: Button = findViewById(R.id.btnCreateLocal)
-        val btnJoinCode: Button = findViewById(R.id.btnJoinCode)
+        val btnNormalAi: Button = findViewById(R.id.btnNormalAi)
+        val btnHardAi: Button = findViewById(R.id.btnHardAi)
 
         btnBack.setOnClickListener { finish() }
 
-        btnCreateLocal.setOnClickListener {
-            Toast.makeText(this, "Sala local creada.", Toast.LENGTH_SHORT).show()
-            startActivity(
-                Intent(this, LobbyActivity::class.java)
-                    .putExtra(
-                        LobbyActivity.EXTRA_SESSION,
-                        LocalGameFactory.createSession(humanName = savedPlayerName())
-                    )
-            )
-        }
-
-        btnJoinCode.setOnClickListener {
-            Toast.makeText(this, "Codigo mock aceptado.", Toast.LENGTH_SHORT).show()
-            startActivity(
-                Intent(this, LobbyActivity::class.java)
-                    .putExtra(
-                        LobbyActivity.EXTRA_SESSION,
-                        LocalGameFactory.createSession(
-                            joinedByCode = true,
-                            humanName = savedPlayerName()
-                        )
-                    )
-            )
-        }
+        btnNormalAi.setOnClickListener { startVsAi(BotDifficulty.NORMAL) }
+        btnHardAi.setOnClickListener { startVsAi(BotDifficulty.HARD) }
     }
 
     override fun onResume() {
@@ -54,5 +31,23 @@ class LocalModeActivity : BaseActivity() {
         return getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
             .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
             .orEmpty()
+    }
+
+    private fun startVsAi(difficulty: BotDifficulty) {
+        val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+        startActivity(
+            Intent(this, LobbyActivity::class.java)
+                .putExtra(
+                    LobbyActivity.EXTRA_SESSION,
+                    LocalGameFactory.createSession(humanName = savedPlayerName())
+                        .copy(
+                            botDifficulty = difficulty,
+                            botSpicyLanguage = preferences.getBoolean(
+                                OpcionesActivity.PREF_BOT_SPICY_LANGUAGE,
+                                true
+                            )
+                        )
+                )
+        )
     }
 }

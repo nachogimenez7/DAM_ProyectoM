@@ -9,7 +9,8 @@ object GameEngine {
 
         val prepared = clearTemporaryMutes(session)
         val message = nightStartMessage(prepared)
-        return prepared.copy(
+        return enterUnifiedNight(
+            prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
@@ -26,7 +27,8 @@ object GameEngine {
             alcaldeCorruption = false,
             alcaldeTieCandidates = emptyList(),
             phaseIndex = prepared.phaseIndex + 1
-        ).withPublicHistory(message)
+            ).withPublicHistory(message)
+        )
     }
 
     fun resolveAssassin(session: GameSession, selectedTarget: String): GameSession {
@@ -86,6 +88,57 @@ object GameEngine {
             nextPhaseAfterAssassin(updated),
             nightContinuesMessage(updated),
             assassinVotePrivateHint(updated, humanKiller != null)
+        )
+    }
+
+    fun resolveAssassinWithRecordedVotes(
+        session: GameSession,
+        recordedVotes: Map<String, String>
+    ): GameSession {
+        if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
+
+        val killers = activeKillers(session)
+        if (killers.isEmpty()) {
+            return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
+        }
+
+        val assassinVotes = killers.mapNotNull { killer ->
+            val target = recordedVotes[killer.name].orEmpty()
+            if (isValidKillTarget(session, target, killer)) {
+                killer.name to target
+            } else {
+                null
+            }
+        }.toMap()
+
+        if (assassinVotes.isEmpty()) {
+            return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
+        }
+
+        val target = assassinVoteWinner(session, assassinVotes)
+            ?: return advanceNight(
+                session,
+                nextPhaseAfterAssassin(session),
+                nightContinuesMessage(session)
+            )
+
+        val updated = session.copy(
+            nightKillTarget = target,
+            assassinVotes = assassinVotes,
+            actionHistory = recordAssassinVotes(session, assassinVotes)
+        )
+        return updated.transitionTo(
+            nextPhaseAfterAssassin(updated),
+            nightContinuesMessage(updated),
+            assassinVotePrivateHint(updated, humanVoted = false)
         )
     }
 
@@ -501,6 +554,78 @@ object GameEngine {
 
     fun resolveTieVoting(session: GameSession, selectedTarget: String): GameSession {
         return resolveTieVotingInternal(session, selectedTarget, allowHumanAbstention = false)
+    }
+
+    fun resolveVotingWithRecordedVotes(session: GameSession, recordedVotes: Map<String, String>): GameSession {
+        if (!canResolve(session, GamePhase.VOTACION)) return session
+        val votingSession = autoRevealBotAlcalde(session)
+        val votes = votingSession.players
+            .filter { canVote(it) }
+            .mapNotNull { voter ->
+                val target = recordedVotes[voter.name].orEmpty()
+                if (isValidVoteTarget(votingSession, target, voter)) {
+                    voter.name to target
+                } else {
+                    null
+                }
+            }
+            .toMap()
+
+        val leaders = weightedVoteLeaders(votingSession, votes)
+        val eliminated = leaders.singleOrNull().orEmpty()
+        val message = "La votacion termino. Comienza el recuento."
+        return votingSession.copy(
+            votes = votes,
+            voteRound = 1,
+            tieVoteCandidates = if (leaders.size > 1) leaders else emptyList(),
+            dayEliminationTarget = eliminated,
+            alcaldeTieCandidates = emptyList(),
+            actionHistory = recordVotes(session, votes)
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(votingSession))
+            .withPublicHistory(message)
+    }
+
+    fun resolveTieVotingWithRecordedVotes(session: GameSession, recordedVotes: Map<String, String>): GameSession {
+        if (!canResolve(session, GamePhase.DESEMPATE_VOTACION)) return session
+        val candidates = session.tieVoteCandidates.filter { candidate ->
+            playerByName(session, candidate)?.alive == true
+        }
+        if (candidates.size < 2) {
+            return session.copy(
+                dayEliminationTarget = candidates.singleOrNull().orEmpty(),
+                votes = emptyMap(),
+                voteRound = 2
+            ).transitionTo(
+                GamePhase.RECUENTO_VOTOS,
+                "El desempate termino. Comienza el recuento final.",
+                privateRoleHint(session)
+            )
+        }
+
+        val votes = session.players
+            .filter { canVote(it) }
+            .mapNotNull { voter ->
+                val target = recordedVotes[voter.name].orEmpty()
+                if (isValidTieVoteTarget(session, target, voter)) {
+                    voter.name to target
+                } else {
+                    null
+                }
+            }
+            .toMap()
+
+        val leaders = weightedVoteLeaders(session, votes)
+        val eliminated = leaders.singleOrNull().orEmpty()
+        val message = "El desempate termino. Comienza el recuento final."
+        return session.copy(
+            votes = votes,
+            voteRound = 2,
+            tieVoteCandidates = if (leaders.size > 1) leaders else emptyList(),
+            dayEliminationTarget = eliminated,
+            alcaldeTieCandidates = emptyList(),
+            actionHistory = recordVotes(session, votes)
+        ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(session))
+            .withPublicHistory(message)
     }
 
     private fun resolveVotingInternal(
@@ -943,7 +1068,7 @@ object GameEngine {
             GamePhase.DESEMPATE_VOTACION -> resetHumanAfkStreak(session, night = false)
             else -> session
         }
-        return when (prepared.phase) {
+        val resolved = when (prepared.phase) {
             GamePhase.NOCHE_ASESINO -> resolveAssassin(prepared, targetName)
             GamePhase.NOCHE_MERCENARIO -> resolveMercenary(prepared, targetName)
             GamePhase.NOCHE_POLICIA -> resolvePolice(prepared, targetName)
@@ -956,6 +1081,7 @@ object GameEngine {
             GamePhase.DESEMPATE_VOTACION -> resolveTieVoting(prepared, targetName)
             else -> session
         }
+        return if (isNightActionPhase(prepared.phase)) enterUnifiedNight(resolved) else resolved
     }
 
     fun resolveHumanTimeout(session: GameSession): GameSession {
@@ -1039,7 +1165,10 @@ object GameEngine {
     ): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         if (message.isBlank() || !canHumanChat(session)) return session
-        val withHumanMessage = session.withChatMessage(humanPlayer(session).name, message)
+        val humanName = humanPlayer(session).name
+        val withHumanMessage = session
+            .withChatMessage(humanName, message)
+            .withRecordedClaim(humanName, message)
         if (!includeBotReactions || LocalBotAi.isDebugVoteCommand(withHumanMessage, message)) {
             return withHumanMessage
         }
@@ -1067,7 +1196,9 @@ object GameEngine {
         ) {
             return session
         }
-        return session.withChatMessage(bot.name, message)
+        return session
+            .withChatMessage(bot.name, message)
+            .withRecordedClaim(bot.name, message)
     }
 
     fun requiresHumanInput(session: GameSession): Boolean {
@@ -1297,7 +1428,8 @@ object GameEngine {
         val prepared = clearTemporaryMutes(session)
         val message = "$previousMessage ${nextNightMessage(prepared)}"
         // payadorUsed no se reinicia: el Contrapunto se usa una sola vez por partida.
-        return prepared.copy(
+        return enterUnifiedNight(
+            prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
             round = prepared.round + 1,
             nightKillTarget = "",
@@ -1319,7 +1451,40 @@ object GameEngine {
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
             phaseIndex = prepared.phaseIndex + 1
-        ).withPublicHistory(message)
+            ).withPublicHistory(message)
+        )
+    }
+
+    private fun enterUnifiedNight(session: GameSession): GameSession {
+        var current = session
+        repeat(8) {
+            if (
+                current.winner.isNotBlank() ||
+                !isNightActionPhase(current.phase) ||
+                requiresHumanInput(current)
+            ) {
+                return current
+            }
+            val next = when (current.phase) {
+                GamePhase.NOCHE_ASESINO -> resolveAssassin(current, "")
+                GamePhase.NOCHE_MERCENARIO -> resolveMercenary(current, "")
+                GamePhase.NOCHE_POLICIA -> resolvePolice(current, "")
+                GamePhase.NOCHE_MEDICO -> resolveMedic(current, "")
+                GamePhase.NOCHE_ORACULO -> resolveOracle(current, "")
+                else -> current
+            }
+            if (next == current) return current
+            current = next
+        }
+        return current
+    }
+
+    private fun isNightActionPhase(phase: GamePhase): Boolean {
+        return phase == GamePhase.NOCHE_ASESINO ||
+            phase == GamePhase.NOCHE_MERCENARIO ||
+            phase == GamePhase.NOCHE_POLICIA ||
+            phase == GamePhase.NOCHE_MEDICO ||
+            phase == GamePhase.NOCHE_ORACULO
     }
 
     private fun advanceNight(session: GameSession, nextPhase: GamePhase, publicMessage: String): GameSession {
@@ -1716,6 +1881,22 @@ object GameEngine {
         return copy(chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod)).takeLast(40))
     }
 
+    private fun GameSession.withRecordedClaim(speaker: String, message: String): GameSession {
+        val roleClaim = LocalBotAi.roleClaimFrom(message)
+        val statement = LocalBotAi.publicStatementFrom(this, message)
+        if (roleClaim == null && statement == null) return this
+        val record = ClaimRecord(
+            round = round,
+            phase = phase,
+            roleKey = roleClaim?.roleKey,
+            statementType = statement?.type,
+            target = statement?.target
+        )
+        return copy(
+            claimLedger = claimLedger + (speaker to (claimLedger[speaker].orEmpty() + record).takeLast(12))
+        )
+    }
+
     private data class AfkMissResult(
         val session: GameSession,
         val expelled: Boolean,
@@ -1739,7 +1920,9 @@ object GameEngine {
     private fun GameSession.withBotMessages(messages: List<Pair<String, String>>): GameSession {
         var updated = this
         messages.forEach { (speaker, message) ->
-            updated = updated.withChatMessage(speaker, message)
+            updated = updated
+                .withChatMessage(speaker, message)
+                .withRecordedClaim(speaker, message)
         }
         return updated
     }

@@ -21,6 +21,7 @@ object OnlineRoomFirestore {
     const val STATE_WAITING = "esperando"
     const val STATE_IN_GAME = "en_juego"
     const val STATE_ABANDONED = "abandonada"
+    const val STATE_FINISHED = "finalizada"
 
     const val FIELD_NAME = "nombre"
     const val FIELD_STATE = "estado"
@@ -40,6 +41,7 @@ object OnlineRoomFirestore {
     const val FIELD_LAST_SEEN_AT = "ultimaConexion"
 
     const val DEFAULT_MAX_PLAYERS = 10
+    const val ROOM_CODE_LENGTH = 6
     private const val DEFAULT_PLAYER_NAME = "Nacho"
 
     fun normalizedPlayerName(rawName: String): String {
@@ -108,7 +110,7 @@ object OnlineRoomFirestore {
     private fun generateRoomCode(): String {
         val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         return buildString {
-            repeat(5) {
+            repeat(ROOM_CODE_LENGTH) {
                 append(alphabet[Random.nextInt(alphabet.length)])
             }
         }

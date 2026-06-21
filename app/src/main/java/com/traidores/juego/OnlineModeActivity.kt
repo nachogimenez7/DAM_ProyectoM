@@ -131,7 +131,7 @@ class OnlineModeActivity : BaseActivity() {
         )
 
         val subtitle = TextView(this).apply {
-            text = "Ingresa el codigo de 5 caracteres de la sala."
+            text = "Ingresa el codigo de ${OnlineRoomFirestore.ROOM_CODE_LENGTH} caracteres de la sala."
             setTextColor(resources.getColor(R.color.text_secondary, theme))
             textSize = 17f
             gravity = Gravity.CENTER
@@ -149,8 +149,11 @@ class OnlineModeActivity : BaseActivity() {
             setSingleLine(true)
             gravity = Gravity.CENTER
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-            filters = arrayOf(InputFilter.AllCaps(), InputFilter.LengthFilter(5))
-            hint = "ABCDE"
+            filters = arrayOf(
+                InputFilter.AllCaps(),
+                InputFilter.LengthFilter(OnlineRoomFirestore.ROOM_CODE_LENGTH)
+            )
+            hint = "ABC123"
             setTextColor(resources.getColor(R.color.text_primary, theme))
             setHintTextColor(resources.getColor(R.color.text_muted, theme))
             textSize = 24f
@@ -196,8 +199,12 @@ class OnlineModeActivity : BaseActivity() {
         cancelButton.setOnClickListener { dialog.dismiss() }
         joinButton.setOnClickListener {
             val code = codeInput.text.toString().trim().uppercase()
-            if (code.length != 5) {
-                Toast.makeText(this, "El codigo debe tener 5 caracteres.", Toast.LENGTH_SHORT).show()
+            if (code.length != OnlineRoomFirestore.ROOM_CODE_LENGTH) {
+                Toast.makeText(
+                    this,
+                    "El codigo debe tener ${OnlineRoomFirestore.ROOM_CODE_LENGTH} caracteres.",
+                    Toast.LENGTH_SHORT
+                ).show()
                 return@setOnClickListener
             }
             joinRoomByCode(code, dialog, joinButton)

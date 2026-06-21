@@ -1,0 +1,217 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function hasOnly(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function hasAll(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function isString(value, min, max) {
+      return value is string && value.size() >= min && value.size() <= max;
+    }
+
+    function isOptionalString(data, field, max) {
+      return !(field in data) || (data[field] is string && data[field].size() <= max);
+    }
+
+    function validRoomCode(code) {
+      return code is string && code.matches('^[A-HJ-NP-Z2-9]{6}$');
+    }
+
+    function validRoomState(state) {
+      return state in ['esperando', 'en_juego', 'abandonada', 'finalizada'];
+    }
+
+    function validPlayerState(state) {
+      return state in ['conectado', 'desconectado', 'listo'];
+    }
+
+    function validRoomBase(data) {
+      return isString(data.nombre, 1, 60)
+        && validRoomCode(data.codigoSala)
+        && validRoomState(data.estado)
+        && isString(data.mapa, 1, 30)
+        && isString(data.mapaNombre, 1, 40)
+        && isString(data.hostId, 1, 80)
+        && isString(data.hostNombre, 1, 18)
+        && data.maxJugadores is int
+        && data.maxJugadores >= 1
+        && data.maxJugadores <= 15
+        && data.jugadoresActuales is int
+        && data.jugadoresActuales >= 0
+        && data.jugadoresActuales <= data.maxJugadores
+        && data.modoPrueba is bool
+        && isString(data.origen, 1, 40);
+    }
+
+    function validRoomPostUpdate(data) {
+      return hasOnly(data, [
+          'nombre',
+          'codigoSala',
+          'estado',
+          'mapa',
+          'mapaNombre',
+          'hostId',
+          'hostNombre',
+          'maxJugadores',
+          'jugadoresActuales',
+          'modoPrueba',
+          'origen',
+          'creadaEn',
+          'actualizadaEn',
+          'ultimaActividadOnline',
+          'partidaInicial',
+          'estadoPartida',
+          'estadoClientes'
+        ])
+        && isString(data.nombre, 1, 60)
+        && validRoomCode(data.codigoSala)
+        && validRoomState(data.estado)
+        && isString(data.mapa, 1, 30)
+        && isString(data.mapaNombre, 1, 40)
+        && isString(data.hostId, 1, 80)
+        && isString(data.hostNombre, 1, 18)
+        && data.maxJugadores is int
+        && data.maxJugadores >= 1
+        && data.maxJugadores <= 15
+        && data.jugadoresActuales is int
+        && data.jugadoresActuales >= 0
+        && data.jugadoresActuales <= data.maxJugadores
+        && data.modoPrueba is bool
+        && isString(data.origen, 1, 40);
+    }
+
+    match /pruebas/{docId} {
+      allow read, write: if true;
+    }
+
+    match /partidas/{partidaId} {
+      allow read: if true;
+
+      allow create: if hasOnly(request.resource.data, [
+          'nombre',
+          'codigoSala',
+          'estado',
+          'mapa',
+          'mapaNombre',
+          'hostId',
+          'hostNombre',
+          'maxJugadores',
+          'jugadoresActuales',
+          'modoPrueba',
+          'origen',
+          'creadaEn',
+          'actualizadaEn'
+        ])
+        && hasAll(request.resource.data, [
+          'nombre',
+          'codigoSala',
+          'estado',
+          'mapa',
+          'mapaNombre',
+          'hostId',
+          'hostNombre',
+          'maxJugadores',
+          'jugadoresActuales',
+          'modoPrueba',
+          'origen'
+        ])
+        && validRoomBase(request.resource.data);
+
+      allow update: if validRoomPostUpdate(request.resource.data);
+      allow delete: if false;
+
+      match /jugadores/{uidTemporal} {
+        allow read: if true;
+
+        allow create, update: if hasOnly(request.resource.data, [
+            'nombre',
+            'esHost',
+            'estado',
+            'uidTemporal',
+            'unidoEn',
+            'ultimaConexion',
+            'listo'
+          ])
+          && hasAll(request.resource.data, ['nombre', 'estado', 'uidTemporal'])
+          && isString(request.resource.data.nombre, 1, 18)
+          && request.resource.data.uidTemporal == uidTemporal
+          && validPlayerState(request.resource.data.estado)
+          && (!('esHost' in request.resource.data) || request.resource.data.esHost is bool)
+          && (!('listo' in request.resource.data) || request.resource.data.listo is bool);
+
+        allow delete: if false;
+      }
+
+      match /acciones/{accionId} {
+        allow read: if true;
+
+        allow create: if hasOnly(request.resource.data, [
+            'tipo',
+            'actorId',
+            'actorNombre',
+            'actorEsHost',
+            'objetivoNombre',
+            'fase',
+            'ronda',
+            'phaseIndex',
+            'modoCliente',
+            'detalles',
+            'creadaEn',
+            'creadaEnLocal'
+          ])
+          && request.resource.data.tipo in ['accion_jugador', 'fase_avanzada']
+          && isString(request.resource.data.actorId, 1, 80)
+          && isString(request.resource.data.actorNombre, 1, 18)
+          && request.resource.data.actorEsHost is bool
+          && isOptionalString(request.resource.data, 'objetivoNombre', 18)
+          && isString(request.resource.data.fase, 1, 40)
+          && request.resource.data.ronda is int
+          && request.resource.data.ronda >= 0
+          && request.resource.data.ronda <= 30
+          && request.resource.data.phaseIndex is int
+          && request.resource.data.phaseIndex >= 0
+          && request.resource.data.phaseIndex <= 500
+          && isString(request.resource.data.modoCliente, 1, 30)
+          && request.resource.data.detalles is map
+          && request.resource.data.creadaEnLocal is int;
+
+        allow update, delete: if false;
+      }
+
+      match /chat/{mensajeId} {
+        allow read: if true;
+
+        allow create: if hasOnly(request.resource.data, [
+            'actorId',
+            'speaker',
+            'mensaje',
+            'fase',
+            'ronda',
+            'isGod',
+            'creadaEn',
+            'creadaEnLocal'
+          ])
+          && isString(request.resource.data.actorId, 1, 80)
+          && isString(request.resource.data.speaker, 1, 18)
+          && isString(request.resource.data.mensaje, 1, 140)
+          && isString(request.resource.data.fase, 1, 40)
+          && request.resource.data.ronda is int
+          && request.resource.data.ronda >= 0
+          && request.resource.data.ronda <= 30
+          && request.resource.data.isGod is bool
+          && request.resource.data.creadaEnLocal is int;
+
+        allow update, delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
