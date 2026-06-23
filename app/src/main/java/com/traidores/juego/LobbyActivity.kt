@@ -319,15 +319,22 @@ class LobbyActivity : BaseActivity() {
 
     private fun listenToOnlineRoom() {
         roomListener?.remove()
+        OnlineDebugLog.i("lobby_room_listen_start roomId=$onlinePartidaId uid=$onlineTempUid")
         roomListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Toast.makeText(this, "Error cargando sala online: ${error.message}", Toast.LENGTH_LONG).show()
+                    OnlineDebugLog.e("lobby_room_listen_failure roomId=$onlinePartidaId", error)
+                    Toast.makeText(
+                        this,
+                        OnlineErrorMessages.forAction("Error cargando sala online", error),
+                        Toast.LENGTH_LONG
+                    ).show()
                     return@addSnapshotListener
                 }
                 if (snapshot == null || !snapshot.exists()) {
+                    OnlineDebugLog.w("lobby_room_missing roomId=$onlinePartidaId")
                     handleDeletedOnlineRoom()
                     return@addSnapshotListener
                 }
@@ -337,6 +344,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun markOnlinePresence(state: String) {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        OnlineDebugLog.i("presence_update roomId=$onlinePartidaId uid=$onlineTempUid state=$state")
         val firestore = FirebaseFirestore.getInstance()
         val playerData = hashMapOf<String, Any>(
             FIELD_NAME to onlinePlayerName,
@@ -350,6 +358,9 @@ class LobbyActivity : BaseActivity() {
             .collection(ONLINE_PLAYERS_COLLECTION)
             .document(onlineTempUid)
             .set(playerData, SetOptions.merge())
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("presence_update_failure roomId=$onlinePartidaId uid=$onlineTempUid state=$state", error)
+            }
 
         if (
             state == PLAYER_STATE_DISCONNECTED &&
@@ -366,6 +377,12 @@ class LobbyActivity : BaseActivity() {
                     ),
                     SetOptions.merge()
                 )
+                .addOnSuccessListener {
+                    OnlineDebugLog.i("room_marked_abandoned roomId=$onlinePartidaId hostId=$onlineTempUid")
+                }
+                .addOnFailureListener { error ->
+                    OnlineDebugLog.e("room_mark_abandoned_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
+                }
         }
     }
 
@@ -429,13 +446,19 @@ class LobbyActivity : BaseActivity() {
 
     private fun listenToOnlinePlayers() {
         playersListener?.remove()
+        OnlineDebugLog.i("lobby_players_listen_start roomId=$onlinePartidaId")
         playersListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
             .collection(ONLINE_PLAYERS_COLLECTION)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Toast.makeText(this, "Error cargando jugadores: ${error.message}", Toast.LENGTH_LONG).show()
+                    OnlineDebugLog.e("lobby_players_listen_failure roomId=$onlinePartidaId", error)
+                    Toast.makeText(
+                        this,
+                        OnlineErrorMessages.forAction("Error cargando jugadores", error),
+                        Toast.LENGTH_LONG
+                    ).show()
                     return@addSnapshotListener
                 }
                 onlinePlayers = snapshot?.documents
@@ -445,6 +468,9 @@ class LobbyActivity : BaseActivity() {
                             .thenBy { it.name.lowercase() }
                     )
                     .orEmpty()
+                OnlineDebugLog.i(
+                    "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} connected=${onlinePlayers.count { it.status == PLAYER_STATE_CONNECTED }}"
+                )
                 session = session.copy(
                     players = onlinePlayers.map { player ->
                         GamePlayer(
@@ -471,6 +497,9 @@ class LobbyActivity : BaseActivity() {
         onlineHostId = snapshot.getString(FIELD_HOST_ID).orEmpty()
         onlineRoomCode = snapshot.getString(FIELD_ROOM_CODE).orEmpty()
         onlineInitialMatch = snapshot.get(FIELD_INITIAL_MATCH).asStringAnyMap()
+        OnlineDebugLog.i(
+            "lobby_room_snapshot roomId=$onlinePartidaId state=$onlineRoomState players=${onlinePlayers.size}/$onlineRoomMaxPlayers host=$onlineHostId code=$onlineRoomCode"
+        )
 
         val requestedMapKey = snapshot.getString(FIELD_MAP_KEY).orEmpty()
         val selectedMap = LocalGameFactory.maps.firstOrNull { it.key == requestedMapKey }
@@ -586,6 +615,7 @@ class LobbyActivity : BaseActivity() {
     private fun toggleCurrentOnlineReady() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
         val nextReady = !(currentOnlinePlayer()?.ready == true)
+        OnlineDebugLog.i("ready_update_requested roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
         FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -601,8 +631,16 @@ class LobbyActivity : BaseActivity() {
                 ),
                 SetOptions.merge()
             )
+            .addOnSuccessListener {
+                OnlineDebugLog.i("ready_update_success roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
+            }
             .addOnFailureListener { error ->
-                Toast.makeText(this, "No se pudo actualizar listo: ${error.message}", Toast.LENGTH_LONG).show()
+                OnlineDebugLog.e("ready_update_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo actualizar listo", error),
+                    Toast.LENGTH_LONG
+                ).show()
             }
     }
 
@@ -624,6 +662,9 @@ class LobbyActivity : BaseActivity() {
         startButton.text = "INICIANDO..."
         val initialSession = buildOnlineBaseSession()
         val assignedSession = LocalGameFactory.assignRoles(initialSession)
+        OnlineDebugLog.i(
+            "online_start_requested roomId=$onlinePartidaId hostId=$onlineTempUid players=${assignedSession.players.size} roles=${onlineRoleSummary(assignedSession)}"
+        )
         val initialMatch = initialMatchPayload(assignedSession)
         val matchState = matchStatePayload(assignedSession)
         FirebaseFirestore.getInstance()
@@ -638,10 +679,18 @@ class LobbyActivity : BaseActivity() {
                 ),
                 SetOptions.merge()
             )
+            .addOnSuccessListener {
+                OnlineDebugLog.i("online_start_success roomId=$onlinePartidaId hostId=$onlineTempUid")
+            }
             .addOnFailureListener { error ->
+                OnlineDebugLog.e("online_start_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
                 startButton.isEnabled = true
                 renderStartButtonState()
-                Toast.makeText(this, "No se pudo iniciar online: ${error.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo iniciar online", error),
+                    Toast.LENGTH_LONG
+                ).show()
             }
     }
 
@@ -657,6 +706,9 @@ class LobbyActivity : BaseActivity() {
             return
         }
         enteringOnlineMatch = true
+        OnlineDebugLog.i(
+            "online_match_enter roomId=$onlinePartidaId uid=$onlineTempUid isHost=${currentUserIsOnlineHost()} players=${sharedSession.players.size}"
+        )
         Toast.makeText(this, "Partida online iniciada.", Toast.LENGTH_LONG).show()
         startActivity(
             Intent(this, AssigningRolesActivity::class.java)
@@ -698,10 +750,30 @@ class LobbyActivity : BaseActivity() {
             players = baseSession.players,
             revealRolesOnDeath = session.revealRolesOnDeath,
             showIndividualVotes = session.showIndividualVotes,
-            roleComposition = LocalGameFactory.normalizedRoleComposition(
-                session.copy(players = baseSession.players, mapKey = map.key, mapName = map.name)
-            )
+            roleComposition = safeOnlineRoleComposition(baseSession.players.size)
         )
+    }
+
+    private fun safeOnlineRoleComposition(playerCount: Int): RoleCompositionConfig {
+        val count = playerCount.coerceIn(LocalGameFactory.MIN_PLAYERS, LocalGameFactory.MAX_PLAYERS)
+        val counts = linkedMapOf(
+            RoleCatalog.POLICIA to 1,
+            RoleCatalog.MEDICO to 1,
+            RoleCatalog.ASESINO to 1,
+            RoleCatalog.ALCALDE to if (count >= 8) 1 else 0
+        )
+        val specialCount = counts.values.sum()
+        counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
+        return RoleCompositionConfig(counts = counts, customized = true)
+    }
+
+    private fun onlineRoleSummary(session: GameSession): String {
+        return session.players
+            .groupingBy { it.role?.key.orEmpty().ifBlank { "sin_rol" } }
+            .eachCount()
+            .toSortedMap()
+            .entries
+            .joinToString(",") { "${it.key}:${it.value}" }
     }
 
     private fun initialMatchPayload(assignedSession: GameSession): Map<String, Any?> {

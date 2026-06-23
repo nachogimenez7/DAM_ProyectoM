@@ -79,6 +79,8 @@ data class GameplayFeedbackSpec(
 object GameplayTableUi {
 
     const val SIDE_COLUMN_WIDTH_DP = 78
+    private const val MAX_COMPANION_ITEM_HEIGHT_DP = 132
+    private const val MAX_COMPANION_CARD_GROWTH_SCALE = 1.9f
 
     fun playerInitial(player: GamePlayer): String {
         val initial = player.initial.trim().firstOrNull { it.isLetter() }
@@ -100,9 +102,19 @@ object GameplayTableUi {
             traitorTeammatesForReveal(session).isNotEmpty()
     }
 
-    fun splitCompanions(players: List<GamePlayer>): Pair<List<GamePlayer>, List<GamePlayer>> {
-        val companions = players.filterNot { it.isHuman }
-        val leftCount = companions.size / 2
+    fun splitCompanions(
+        players: List<GamePlayer>,
+        includeEliminated: Boolean = true,
+        putOddExtraOnLeft: Boolean = false
+    ): Pair<List<GamePlayer>, List<GamePlayer>> {
+        val companions = players
+            .filterNot { it.isHuman }
+            .filter { includeEliminated || it.alive }
+        val leftCount = if (putOddExtraOnLeft) {
+            (companions.size + 1) / 2
+        } else {
+            companions.size / 2
+        }
         return companions.take(leftCount) to companions.drop(leftCount)
     }
 
@@ -643,11 +655,23 @@ object GameplayTableUi {
         }
         var fitted = base
 
-        if (!scrollEnabled && availableHeightDp > 0) {
+        if (availableHeightDp > 0) {
             val usableHeight = (availableHeightDp - base.itemGapDp * (playersPerSide - 1))
                 .coerceAtLeast(playersPerSide)
-            val fittedItemHeight = minOf(base.itemHeightDp, usableHeight / playersPerSide)
-            if (fittedItemHeight < base.itemHeightDp) {
+            val idealItemHeight = usableHeight / playersPerSide
+            if (idealItemHeight > base.itemHeightDp && availableWidthDp != null) {
+                val grownItemHeight = idealItemHeight.coerceAtMost(MAX_COMPANION_ITEM_HEIGHT_DP)
+                val fixedContentHeight = base.nameHeightDp
+                val grownCardHeight = (grownItemHeight - fixedContentHeight)
+                    .coerceAtLeast(base.cardHeightDp)
+                val growthScale = grownCardHeight.toFloat() / base.cardHeightDp
+                fitted = fitted.scaledBy(
+                    scale = growthScale,
+                    overrideItemHeightDp = grownItemHeight,
+                    allowGrow = true
+                )
+            } else if (idealItemHeight < base.itemHeightDp && !scrollEnabled) {
+                val fittedItemHeight = idealItemHeight
                 val fixedContentHeight = base.nameHeightDp
                 val fittedCardHeight = (fittedItemHeight - fixedContentHeight).coerceAtLeast(24)
                 val fittedCardWidth = (
@@ -670,24 +694,68 @@ object GameplayTableUi {
         }
 
         if (availableWidthDp != null && availableWidthDp > 0 && availableWidthDp < fitted.columnWidthDp) {
-            val widthScale = availableWidthDp.toFloat() / fitted.columnWidthDp
-            fitted = fitted.scaledBy(widthScale)
+            fitted = fitted.fitToAvailableWidth(availableWidthDp)
+        }
+
+        if (availableWidthDp != null && availableHeightDp > 0 && !scrollEnabled && playersPerSide <= 3) {
+            fitted = fitted.withPortraitSpacing(playersPerSide, availableHeightDp)
         }
 
         return fitted
     }
 
-    private fun CompanionCardMetrics.scaledBy(scale: Float): CompanionCardMetrics {
-        val safeScale = scale.coerceIn(0.45f, 1f)
+    private fun CompanionCardMetrics.scaledBy(
+        scale: Float,
+        overrideItemHeightDp: Int? = null,
+        allowGrow: Boolean = false
+    ): CompanionCardMetrics {
+        val safeScale = if (allowGrow) {
+            scale.coerceIn(1f, MAX_COMPANION_CARD_GROWTH_SCALE)
+        } else {
+            scale.coerceIn(0.35f, 1f)
+        }
         return copy(
             columnWidthDp = (columnWidthDp * safeScale).toInt().coerceAtLeast(48),
             minCardWidthDp = (minCardWidthDp * safeScale).toInt().coerceAtLeast(40),
-            itemHeightDp = (itemHeightDp * safeScale).toInt().coerceAtLeast(40),
+            itemHeightDp = overrideItemHeightDp
+                ?: (itemHeightDp * safeScale).toInt().coerceAtLeast(40),
             avatarSizeDp = (avatarSizeDp * safeScale).toInt().coerceAtLeast(12),
             cardWidthDp = (cardWidthDp * safeScale).toInt().coerceAtLeast(20),
             cardHeightDp = (cardHeightDp * safeScale).toInt().coerceAtLeast(32),
-            nameTextSp = (nameTextSp * safeScale).coerceAtLeast(6.5f)
+            nameTextSp = (nameTextSp * safeScale).coerceIn(6.5f, 15f)
         )
+    }
+
+    private fun CompanionCardMetrics.fitToAvailableWidth(availableWidthDp: Int): CompanionCardMetrics {
+        val targetColumnWidth = availableWidthDp.coerceAtLeast(48)
+        val maxCardWidth = (targetColumnWidth - 8).coerceAtLeast(20)
+        val fittedCardWidth = cardWidthDp.coerceAtMost(maxCardWidth)
+        val cardScale = fittedCardWidth.toFloat() / cardWidthDp.coerceAtLeast(1)
+        return copy(
+            columnWidthDp = targetColumnWidth,
+            minCardWidthDp = targetColumnWidth,
+            cardWidthDp = fittedCardWidth,
+            cardHeightDp = (cardHeightDp * cardScale).toInt().coerceAtLeast(32),
+            avatarSizeDp = minOf(
+                avatarSizeDp,
+                (fittedCardWidth * 0.52f).toInt().coerceAtLeast(12)
+            ),
+            nameTextSp = (nameTextSp * cardScale).coerceIn(6.5f, nameTextSp)
+        )
+    }
+
+    private fun CompanionCardMetrics.withPortraitSpacing(
+        playersPerSide: Int,
+        availableHeightDp: Int
+    ): CompanionCardMetrics {
+        if (playersPerSide <= 1) return this
+        val freeHeight = availableHeightDp - itemHeightDp * playersPerSide
+        if (freeHeight <= itemGapDp) return this
+        val targetGap = when (playersPerSide) {
+            2 -> (freeHeight * 0.08f).toInt().coerceIn(itemGapDp, 28)
+            else -> (freeHeight * 0.05f).toInt().coerceIn(itemGapDp, 16)
+        }
+        return copy(itemGapDp = targetGap)
     }
 
     fun eventTypeFor(message: String, phase: GamePhase): PublicEventType {

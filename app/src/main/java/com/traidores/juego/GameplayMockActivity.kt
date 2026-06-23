@@ -271,11 +271,14 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var winnerRevealScroll: ScrollView
     private lateinit var winnerRevealShine: View
     private lateinit var winnerRevealTitle: TextView
+    private lateinit var winnerSummaryPanel: LinearLayout
+    private lateinit var winnerSummaryStatsRow: LinearLayout
     private lateinit var winnerSummaryDuration: TextView
     private lateinit var winnerSummaryHighlight: TextView
     private lateinit var winnerSummaryPlayers: TextView
     private lateinit var winnerSummaryRounds: TextView
     private lateinit var winnerSummaryTimeline: TextView
+    private lateinit var btnWinnerReturnLobby: Button
     private lateinit var voteResultOverlay: FrameLayout
     private lateinit var voteResultPanel: LinearLayout
     private lateinit var voteResultCards: LinearLayout
@@ -307,6 +310,7 @@ class GameplayMockActivity : BaseActivity() {
         val cardBack: ImageView,
         val avatar: TextView,
         val mutedBadge: TextView,
+        val actionBadge: TextView,
         val name: TextView,
         var selected: Boolean = false
     )
@@ -337,6 +341,11 @@ class GameplayMockActivity : BaseActivity() {
             ?: intent.getStringExtra(EXTRA_ONLINE_PLAYER_ID).orEmpty()
         onlineIsHost = savedInstanceState?.getBoolean(STATE_ONLINE_IS_HOST)
             ?: intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
+        if (onlinePartidaId.isNotBlank() || onlinePlayerId.isNotBlank()) {
+            OnlineDebugLog.i(
+                "gameplay_enter roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost restored=${savedInstanceState != null}"
+            )
+        }
         presentedSpecialVictoryCount = savedInstanceState
             ?.getInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT)
             ?.coerceAtMost(session.specialVictories.size)
@@ -622,11 +631,14 @@ class GameplayMockActivity : BaseActivity() {
         winnerRevealScroll = findViewById(R.id.winnerRevealScroll)
         winnerRevealShine = findViewById(R.id.winnerRevealShine)
         winnerRevealTitle = findViewById(R.id.winnerRevealTitle)
+        winnerSummaryPanel = findViewById(R.id.winnerSummaryPanel)
+        winnerSummaryStatsRow = findViewById(R.id.winnerSummaryStatsRow)
         winnerSummaryDuration = findViewById(R.id.winnerSummaryDuration)
         winnerSummaryHighlight = findViewById(R.id.winnerSummaryHighlight)
         winnerSummaryPlayers = findViewById(R.id.winnerSummaryPlayers)
         winnerSummaryRounds = findViewById(R.id.winnerSummaryRounds)
         winnerSummaryTimeline = findViewById(R.id.winnerSummaryTimeline)
+        btnWinnerReturnLobby = findViewById(R.id.btnWinnerReturnLobby)
         winnerRevealAnimator = WinnerRevealAnimator(
             overlay = winnerRevealOverlay,
             panel = winnerRevealPanel,
@@ -700,7 +712,7 @@ class GameplayMockActivity : BaseActivity() {
         traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
         jesterVictoryOverlay.setOnClickListener { }
         btnContinueJesterVictory.setOnClickListener { dismissJesterVictory() }
-        findViewById<Button>(R.id.btnWinnerReturnLobby).setOnClickListener { returnToLobby() }
+        btnWinnerReturnLobby.setOnClickListener { returnToLobby() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 handleGameplayBack()
@@ -1141,6 +1153,9 @@ class GameplayMockActivity : BaseActivity() {
         lastPublishedOnlineStateKey = stateKey
 
         val human = GameEngine.humanPlayer(session)
+        OnlineDebugLog.i(
+            "client_state_publish_requested roomId=$onlinePartidaId uid=$onlinePlayerId player=${human.name} phase=${session.phase.name} round=${session.round}"
+        )
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -1159,6 +1174,12 @@ class GameplayMockActivity : BaseActivity() {
                     "ultimaActividadOnline" to FieldValue.serverTimestamp()
                 )
             )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "client_state_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round}",
+                    error
+                )
+            }
     }
 
     private fun publishAuthoritativeOnlineState() {
@@ -1223,15 +1244,34 @@ class GameplayMockActivity : BaseActivity() {
             .collection("partidas")
             .document(onlinePartidaId)
             .update(roomUpdate)
+            .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "authoritative_state_publish roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "authoritative_state_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round}",
+                    error
+                )
+            }
     }
 
     private fun startAuthoritativeOnlineStateListener() {
         if (!isOnlineGameplay() || onlineIsHost || onlineStateListener != null) return
+        OnlineDebugLog.i("authoritative_listener_start roomId=$onlinePartidaId uid=$onlinePlayerId")
         onlineStateListener = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
             .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                if (error != null) {
+                    OnlineDebugLog.e("authoritative_listener_failure roomId=$onlinePartidaId uid=$onlinePlayerId", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null || !snapshot.exists()) {
+                    OnlineDebugLog.w("authoritative_listener_missing roomId=$onlinePartidaId uid=$onlinePlayerId")
+                    return@addSnapshotListener
+                }
                 val state = snapshot.get("estadoPartida").asStringAnyMap() ?: return@addSnapshotListener
                 applyAuthoritativeOnlineState(state)
             }
@@ -1265,6 +1305,9 @@ class GameplayMockActivity : BaseActivity() {
         val previousPhaseIndex = session.phaseIndex
         val previousPrivateHint = session.privateHint
         val updatedPlayers = playersFromAuthoritativeState(state) ?: session.players
+        OnlineDebugLog.i(
+            "authoritative_state_apply roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} round=${(state["ronda"] as? Number)?.toInt() ?: session.round} phaseIndex=$phaseIndex"
+        )
         session = session.copy(
             phase = phase,
             round = (state["ronda"] as? Number)?.toInt() ?: session.round,
@@ -1397,6 +1440,9 @@ class GameplayMockActivity : BaseActivity() {
     ) {
         if (!isOnlineGameplay()) return
         val human = GameEngine.humanPlayer(session)
+        OnlineDebugLog.i(
+            "action_record_requested roomId=$onlinePartidaId uid=$onlinePlayerId type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round} host=$onlineIsHost"
+        )
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -1417,6 +1463,23 @@ class GameplayMockActivity : BaseActivity() {
                     "creadaEnLocal" to System.currentTimeMillis()
                 )
             )
+            .addOnSuccessListener { reference ->
+                OnlineDebugLog.i(
+                    "action_record_success roomId=$onlinePartidaId actionId=${reference.id} type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round}"
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "action_record_failure roomId=$onlinePartidaId uid=$onlinePlayerId type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round}",
+                    error
+                )
+                GameplayEffects.play(this, GameplayEffect.ERROR)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo registrar la accion online", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private fun isOnlineGameplay(): Boolean {
@@ -1643,8 +1706,11 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderEventLogPanel(animate: Boolean = false) {
-        val targetHeight = dp(if (isEventLogExpanded) 136 else 32)
+        val targetHeight = dp(if (isEventLogExpanded) eventLogExpandedHeightDp() else eventLogCollapsedHeightDp())
         val params = eventLogPanel.layoutParams as FrameLayout.LayoutParams
+        eventLogHeader.layoutParams = (eventLogHeader.layoutParams as LinearLayout.LayoutParams).apply {
+            height = dp(eventLogCollapsedHeightDp())
+        }
         btnToggleEventLog.text = if (isEventLogExpanded) "\u25B2" else "\u25BC"
         val eventLogActionLabel = if (isEventLogExpanded) {
             "Ocultar eventos"
@@ -1692,26 +1758,37 @@ class GameplayMockActivity : BaseActivity() {
         val text = TextView(this)
         text.text = message
         text.setTextColor(getColor(R.color.text_primary))
-        text.textSize = if (isEventLogExpanded) 10f else 9f
-        text.maxLines = 1
-        text.setSingleLine(true)
+        text.textSize = when {
+            isEventLogExpanded && isPortrait() -> 11.5f
+            isEventLogExpanded -> 10f
+            else -> 9f
+        }
+        text.maxLines = if (isEventLogExpanded && isPortrait()) 3 else 1
+        text.setSingleLine(!isEventLogExpanded || !isPortrait())
         text.setPadding(dp(9), 0, 0, 0)
-        val scroller = HorizontalScrollView(this).apply {
-            isFillViewport = true
-            isHorizontalFadingEdgeEnabled = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(
+        if (isEventLogExpanded && isPortrait()) {
+            row.addView(
                 text,
-                FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+        } else {
+            val scroller = HorizontalScrollView(this).apply {
+                isFillViewport = true
+                isHorizontalFadingEdgeEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                addView(
+                    text,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    )
                 )
+            }
+            row.addView(
+                scroller,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             )
         }
-        row.addView(
-            scroller,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        )
 
         val params = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1838,8 +1915,18 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun renderPlayerColumns(newlyDeadPlayers: Set<String> = emptySet()) {
-        val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(session.players)
-        val totalPlayers = session.players.size.coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
+        val portrait = isPortrait()
+        val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(
+            session.players,
+            includeEliminated = !portrait,
+            putOddExtraOnLeft = portrait
+        )
+        val displayedPlayers = if (portrait) {
+            leftPlayers.size + rightPlayers.size + 1
+        } else {
+            session.players.size
+        }
+        val totalPlayers = displayedPlayers.coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
         val measuredHeightPx = listOf(leftPlayersScroll.height, rightPlayersScroll.height)
             .filter { it > 0 }
             .minOrNull()
@@ -1881,24 +1968,98 @@ class GameplayMockActivity : BaseActivity() {
             View.OVER_SCROLL_NEVER
         }
         rightPlayersScroll.overScrollMode = leftPlayersScroll.overScrollMode
-        val containerGravity = if (metrics.scrollEnabled) {
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        val verticalGravity = if (metrics.scrollEnabled) {
+            Gravity.TOP
         } else {
-            Gravity.CENTER
+            Gravity.CENTER_VERTICAL
         }
-        leftPlayersContainer.gravity = containerGravity
-        rightPlayersContainer.gravity = containerGravity
+        if (isPortrait()) {
+            leftPlayersContainer.gravity = verticalGravity or Gravity.START
+            rightPlayersContainer.gravity = verticalGravity or Gravity.END
+            leftPlayersContainer.setPadding(dp(2), 0, 0, 0)
+            rightPlayersContainer.setPadding(0, 0, dp(2), 0)
+            val bottomScrollInset = if (metrics.scrollEnabled) BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12 else 0
+            leftPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
+            rightPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
+            bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
+                width = dp((resources.configuration.screenWidthDp - 24).coerceIn(244, 372))
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            }
+        } else {
+            val containerGravity = verticalGravity or Gravity.CENTER_HORIZONTAL
+            leftPlayersContainer.gravity = containerGravity
+            rightPlayersContainer.gravity = containerGravity
+            leftPlayersContainer.setPadding(0, 0, 0, 0)
+            rightPlayersContainer.setPadding(0, 0, 0, 0)
+            leftPlayersScroll.setPadding(0, 0, 0, 0)
+            rightPlayersScroll.setPadding(0, 0, 0, 0)
+            bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
+                width = FrameLayout.LayoutParams.MATCH_PARENT
+                gravity = Gravity.BOTTOM
+            }
+        }
+        applyAdaptiveVerticalHudSizing()
 
         gameplayBody.requestLayout()
     }
 
+    private fun applyAdaptiveVerticalHudSizing() {
+        if (!isPortrait()) return
+        val playerCount = session.players.size
+        val roomy = playerCount <= 8
+        val relaxed = playerCount <= 10
+        val topHeightDp = when {
+            roomy -> 90
+            relaxed -> 82
+            else -> 76
+        }
+        val headerHeightDp = if (roomy) 44 else 38
+        val subtitleHeightDp = topHeightDp - headerHeightDp - 4
+        topStatus.layoutParams = (topStatus.layoutParams as FrameLayout.LayoutParams).apply {
+            height = dp(topHeightDp)
+        }
+        (topStatus.getChildAt(0).layoutParams as LinearLayout.LayoutParams).height = dp(headerHeightDp)
+        phaseSubtitle.layoutParams = (phaseSubtitle.layoutParams as LinearLayout.LayoutParams).apply {
+            height = dp(subtitleHeightDp)
+        }
+        phaseTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (roomy) 18f else 16f)
+        phaseSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (roomy) 11.5f else 10.5f)
+        eventLogPanel.layoutParams = (eventLogPanel.layoutParams as FrameLayout.LayoutParams).apply {
+            topMargin = dp(topHeightDp + 4)
+        }
+        eventLogHeader.layoutParams = (eventLogHeader.layoutParams as LinearLayout.LayoutParams).apply {
+            height = dp(eventLogCollapsedHeightDp())
+        }
+    }
+
+    private fun eventLogCollapsedHeightDp(): Int {
+        return if (isPortrait() && ::session.isInitialized && session.players.size <= 8) 40 else 32
+    }
+
+    private fun eventLogExpandedHeightDp(): Int {
+        return if (!isPortrait() || !::session.isInitialized) {
+            136
+        } else {
+            when {
+                session.players.size <= 8 -> 196
+                session.players.size <= 12 -> 166
+                else -> 142
+            }
+        }
+    }
+
     private fun availableSideColumnWidthDp(): Int {
         val totalWidthDp = resources.configuration.screenWidthDp
-        val gameplayBodyHorizontalMarginsDp = 16
-        val centerColumnMinWidthDp = 160
-        val combinedSideWidth = (totalWidthDp - gameplayBodyHorizontalMarginsDp - centerColumnMinWidthDp)
-            .coerceAtLeast(96)
-        return combinedSideWidth / 2
+        val gameplayBodyHorizontalMarginsDp = 8
+        val centerColumnHorizontalMarginsDp = 8
+        val centerColumnPreferredWidthDp = 220
+        val combinedSideWidth = (
+            totalWidthDp -
+                gameplayBodyHorizontalMarginsDp -
+                centerColumnHorizontalMarginsDp -
+                centerColumnPreferredWidthDp
+            ).coerceAtLeast(108)
+        return (combinedSideWidth / 2).coerceIn(54, 78)
     }
 
     private fun isPortrait(): Boolean {
@@ -1939,6 +2100,15 @@ class GameplayMockActivity : BaseActivity() {
             } else if (container.indexOfChild(holder.root) != index) {
                 container.removeView(holder.root)
                 container.addView(holder.root, index.coerceAtMost(container.childCount))
+            }
+            holder.root.gravity = if (isPortrait()) {
+                Gravity.CENTER_VERTICAL or if (container === rightPlayersContainer) {
+                    Gravity.END
+                } else {
+                    Gravity.START
+                }
+            } else {
+                Gravity.CENTER
             }
             bindSidePlayerCard(holder, player, metrics)
             if (player.name in newlyDeadPlayers) {
@@ -2034,6 +2204,25 @@ class GameplayMockActivity : BaseActivity() {
             )
         )
 
+        val actionBadge = TextView(this)
+        actionBadge.gravity = Gravity.CENTER
+        actionBadge.includeFontPadding = false
+        actionBadge.maxLines = 1
+        actionBadge.ellipsize = TextUtils.TruncateAt.END
+        actionBadge.setTypeface(null, Typeface.BOLD)
+        actionBadge.setPadding(dp(4), dp(1), dp(4), dp(1))
+        actionBadge.visibility = View.GONE
+        cardFace.addView(
+            actionBadge,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                dp(13),
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                bottomMargin = dp(2)
+            }
+        )
+
         val cardParams = LinearLayout.LayoutParams(
             dp(metrics.cardWidthDp),
             dp(metrics.cardHeightDp)
@@ -2056,7 +2245,7 @@ class GameplayMockActivity : BaseActivity() {
             )
         )
 
-        return SidePlayerCardHolder(item, cardFace, cardBack, avatar, mutedBadge, name)
+        return SidePlayerCardHolder(item, cardFace, cardBack, avatar, mutedBadge, actionBadge, name)
     }
 
     private fun bindSidePlayerCard(
@@ -2098,6 +2287,26 @@ class GameplayMockActivity : BaseActivity() {
         holder.avatar.textSize =
             if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
         holder.mutedBadge.visibility = if (isAlive && player.muted) View.VISIBLE else View.GONE
+        holder.actionBadge.layoutParams = (holder.actionBadge.layoutParams as FrameLayout.LayoutParams).apply {
+            height = dp((metrics.nameHeightDp - 2).coerceIn(12, 16))
+            bottomMargin = dp(2)
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        }
+        holder.actionBadge.maxWidth = dp((metrics.minCardWidthDp - 6).coerceAtLeast(44))
+        holder.actionBadge.textSize = (metrics.nameTextSp - 1f).coerceIn(5.5f, 8.5f)
+        holder.actionBadge.visibility = if (isActionable) View.VISIBLE else View.GONE
+        if (isActionable) {
+            val tone = GameplayTableUi.actionToneFor(actionLabel)
+            holder.actionBadge.text = actionLabel
+            holder.actionBadge.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(3).toFloat()
+                setColor(Color.parseColor(tone.colorHex))
+            }
+            holder.actionBadge.setTextColor(
+                getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
+            )
+        }
 
         holder.name.layoutParams = (holder.name.layoutParams as LinearLayout.LayoutParams).apply {
             height = dp(metrics.nameHeightDp)
@@ -2463,8 +2672,8 @@ class GameplayMockActivity : BaseActivity() {
         bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
             height = dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)
         }
-        bottomPlayerPanel.gravity = Gravity.CENTER_VERTICAL
-        bottomPlayerPanel.setPadding(dp(7), dp(4), dp(7), dp(4))
+        bottomPlayerPanel.gravity = Gravity.CENTER
+        bottomPlayerPanel.setPadding(dp(8), dp(6), dp(8), dp(6))
         roleCard.visibility = View.VISIBLE
         currentPlayerName.visibility = View.VISIBLE
         currentPlayerHint.visibility = View.VISIBLE
@@ -2823,19 +3032,31 @@ class GameplayMockActivity : BaseActivity() {
                 )
             )
             .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "chat_send_success roomId=$onlinePartidaId uid=$onlinePlayerId speaker=${human.name} phase=${session.phase.name}"
+                )
                 lastOnlineChatSentAtMs = SystemClock.elapsedRealtime()
                 lastOnlineChatMessage = message
                 GameplayEffects.play(this, GameplayEffect.CHAT)
                 clearChatComposerAfterSend()
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "chat_send_failure roomId=$onlinePartidaId uid=$onlinePlayerId speaker=${human.name} phase=${session.phase.name}",
+                    error
+                )
                 GameplayEffects.play(this, GameplayEffect.ERROR)
-                Toast.makeText(this, "No se pudo enviar el mensaje.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo enviar el mensaje", error),
+                    Toast.LENGTH_LONG
+                ).show()
             }
     }
 
     private fun startOnlineChatListener() {
         if (!isOnlineGameplay() || onlineChatListener != null) return
+        OnlineDebugLog.i("chat_listener_start roomId=$onlinePartidaId uid=$onlinePlayerId")
         onlineChatListener = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -2843,7 +3064,11 @@ class GameplayMockActivity : BaseActivity() {
             .orderBy("creadaEnLocal")
             .limit(40)
             .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
+                if (error != null) {
+                    OnlineDebugLog.e("chat_listener_failure roomId=$onlinePartidaId uid=$onlinePlayerId", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
                 val entries = snapshot.documents.map { document ->
                     OnlineChatEntry(
                         id = document.id,
@@ -2852,6 +3077,7 @@ class GameplayMockActivity : BaseActivity() {
                         isGod = document.getBoolean("isGod") ?: false
                     )
                 }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                OnlineDebugLog.i("chat_snapshot roomId=$onlinePartidaId uid=$onlinePlayerId messages=${entries.size}")
                 applyOnlineChatEntries(entries)
             }
     }
@@ -3243,6 +3469,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun resolveOnlineNightWindowFromFirestore() {
         if (onlineNightResolutionInProgress) return
         onlineNightResolutionInProgress = true
+        OnlineDebugLog.i("night_resolve_requested roomId=$onlinePartidaId host=$onlineIsHost round=${session.round}")
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -3262,6 +3489,9 @@ class GameplayMockActivity : BaseActivity() {
                     )
                 }
                 val before = session
+                OnlineDebugLog.i(
+                    "night_resolve_actions_loaded roomId=$onlinePartidaId round=${session.round} actions=${actions.size}"
+                )
                 session = resolveOnlineNightWindow(actions)
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
@@ -3269,7 +3499,13 @@ class GameplayMockActivity : BaseActivity() {
                 clearSelection()
                 renderGame()
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("night_resolve_actions_failure roomId=$onlinePartidaId round=${session.round}", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudieron leer acciones de noche", error),
+                    Toast.LENGTH_LONG
+                ).show()
                 val before = session
                 session = resolveOnlineNightWindow()
                 onlineNightResolutionInProgress = false
@@ -3347,6 +3583,9 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun resolveOnlineVotingFromFirestore(tieVote: Boolean) {
+        OnlineDebugLog.i(
+            "vote_resolve_requested roomId=$onlinePartidaId host=$onlineIsHost round=${session.round} tie=$tieVote phase=${session.phase.name}"
+        )
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -3370,6 +3609,9 @@ class GameplayMockActivity : BaseActivity() {
                     voter to target
                 }.toMap()
                 val before = session
+                OnlineDebugLog.i(
+                    "vote_resolve_votes_loaded roomId=$onlinePartidaId round=${session.round} tie=$tieVote votes=${votes.size}"
+                )
                 session = if (tieVote) {
                     GameEngine.resolveTieVotingWithRecordedVotes(session, votes)
                 } else {
@@ -3380,7 +3622,16 @@ class GameplayMockActivity : BaseActivity() {
                 clearSelection()
                 renderGame()
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "vote_resolve_failure roomId=$onlinePartidaId round=${session.round} tie=$tieVote phase=${session.phase.name}",
+                    error
+                )
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudieron leer votos online", error),
+                    Toast.LENGTH_LONG
+                ).show()
                 val before = session
                 session = if (tieVote) {
                     GameEngine.resolveTieVoting(session, "")
@@ -4487,15 +4738,20 @@ class GameplayMockActivity : BaseActivity() {
         eventLogHeightAnimator?.cancel()
 
         val presentation = GameplayTableUi.winnerPresentation(session)
-        winnerRevealTitle.text = when (session.winner) {
+        val winnerTitle = when (session.winner) {
             GameRules.TOWN_WINNER -> "EL PUEBLO HA GANADO"
             GameRules.TRAITOR_WINNER -> "LOS TRAIDORES HAN GANADO"
             else -> "${session.winner.uppercase()} HA GANADO"
         }
-        winnerRevealPersonalResult.text = if (presentation.humanWon) "VICTORIA" else "DERROTA"
-        winnerRevealPersonalResult.setTextColor(
-            Color.parseColor(if (presentation.humanWon) "#765019" else "#7C2F2A")
-        )
+        val personalResult = if (presentation.humanWon) "VICTORIA" else "DERROTA"
+        if (isPortrait()) {
+            winnerRevealTitle.text = personalResult
+            winnerRevealPersonalResult.text = winnerTitle
+        } else {
+            winnerRevealTitle.text = winnerTitle
+            winnerRevealPersonalResult.text = personalResult
+        }
+        applyWinnerRevealLayout()
         winnerRevealBackground.setImageResource(logDrawableFor(themeKey))
         val cardViews = winnerResultsRenderer.render(
             players = presentation.winningPlayers,
@@ -4515,6 +4771,86 @@ class GameplayMockActivity : BaseActivity() {
 
         MusicManager.playVictoryMusic(this)
         winnerRevealAnimator.show(cardViews, animate = true) {}
+    }
+
+    private fun applyWinnerRevealLayout() {
+        val portrait = isPortrait()
+        winnerRevealPanel.layoutParams = (winnerRevealPanel.layoutParams as FrameLayout.LayoutParams).apply {
+            width = FrameLayout.LayoutParams.MATCH_PARENT
+            height = FrameLayout.LayoutParams.MATCH_PARENT
+            if (portrait) {
+                setMargins(dp(14), dp(16), dp(14), dp(16))
+            } else {
+                setMargins(dp(36), dp(6), dp(36), dp(6))
+            }
+            gravity = Gravity.CENTER
+        }
+        winnerRevealPanel.setBackgroundResource(
+            if (portrait) R.drawable.bg_winner_premium_panel else 0
+        )
+        winnerRevealBackground.alpha = if (portrait) 0f else 1f
+        winnerRevealTitle.setBackgroundResource(
+            if (portrait) R.drawable.bg_winner_premium_header else R.drawable.bg_winner_title_badge
+        )
+        winnerRevealTitle.setTextColor(
+            Color.parseColor(if (portrait) "#F4C45F" else "#3A2413")
+        )
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            winnerRevealTitle,
+            if (portrait) 26 else 18,
+            if (portrait) 34 else 27,
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
+        winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 34f else 27f)
+        winnerRevealPersonalResult.setBackgroundResource(
+            if (portrait) android.R.color.transparent else R.drawable.bg_winner_title_badge
+        )
+        winnerRevealPersonalResult.setTextColor(
+            Color.parseColor(
+                when {
+                    portrait -> "#FFF0C7"
+                    winnerRevealPersonalResult.text == "VICTORIA" -> "#765019"
+                    else -> "#7C2F2A"
+                }
+            )
+        )
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            winnerRevealPersonalResult,
+            if (portrait) 12 else 18,
+            if (portrait) 17 else 26,
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
+        winnerRevealPersonalResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 14.5f else 26f)
+        winnerSummaryPanel.setBackgroundResource(
+            if (portrait) R.drawable.bg_winner_premium_summary else 0
+        )
+        winnerSummaryStatsRow.layoutParams = winnerSummaryStatsRow.layoutParams.apply {
+            height = dp(if (portrait) 52 else 32)
+        }
+        listOf(winnerSummaryRounds, winnerSummaryDuration, winnerSummaryPlayers).forEach { stat ->
+            stat.setBackgroundResource(if (portrait) R.drawable.bg_winner_stat_chip else 0)
+            stat.setTextColor(Color.parseColor(if (portrait) "#FFF0C7" else "#3A2413"))
+            stat.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 13.5f)
+            stat.maxLines = if (portrait) 2 else 1
+            stat.setSingleLine(!portrait)
+        }
+        winnerSummaryHighlight.setTextColor(Color.parseColor(if (portrait) "#E9D19A" else "#3A2413"))
+        winnerSummaryHighlight.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13.5f else 13f)
+        winnerSummaryTimeline.setTextColor(Color.parseColor(if (portrait) "#CDBD91" else "#4F321A"))
+        winnerSummaryTimeline.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 12.5f else 12.5f)
+        btnWinnerReturnLobby.setBackgroundResource(
+            if (portrait) R.drawable.bg_winner_premium_button else R.drawable.bg_btn_dark
+        )
+        btnWinnerReturnLobby.setTextColor(Color.parseColor(if (portrait) "#211407" else "#F0E6D2"))
+        btnWinnerReturnLobby.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 12f)
+        btnWinnerReturnLobby.layoutParams = (btnWinnerReturnLobby.layoutParams as LinearLayout.LayoutParams).apply {
+            width = dp(if (portrait) 208 else 190)
+            height = dp(if (portrait) 46 else 36)
+            topMargin = dp(if (portrait) 12 else 10)
+            bottomMargin = dp(if (portrait) 8 else 10)
+        }
     }
 
     private fun applyGameplayTextScale() {
@@ -4705,11 +5041,35 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun backgroundDrawableFor(theme: String, isNight: Boolean): Int {
+        if (usesVerticalGameplayBackgrounds()) {
+            return when (theme) {
+                "medieval" -> if (isNight) {
+                    R.drawable.mapa_medieval_vertical_noche
+                } else {
+                    R.drawable.mapa_medieval_vertical_dia
+                }
+                "griego" -> if (isNight) {
+                    R.drawable.mapa_grecia_vertical_noche
+                } else {
+                    R.drawable.mapa_grecia_vertical_dia
+                }
+                else -> if (isNight) {
+                    R.drawable.mapa_pampa_vertical_noche
+                } else {
+                    R.drawable.mapa_pampa_vertical_dia
+                }
+            }
+        }
         return when (theme) {
             "medieval" -> if (isNight) R.drawable.fondo_medieval_noche else R.drawable.fondo_medieval_dia
             "griego" -> if (isNight) R.drawable.fondo_griego_noche else R.drawable.fondo_griego_dia
             else -> if (isNight) R.drawable.fondo_gaucho_noche else R.drawable.fondo_gaucho_dia
         }
+    }
+
+    private fun usesVerticalGameplayBackgrounds(): Boolean {
+        return getSharedPreferences(AudioPreferences.PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
     }
 
     private fun logDrawableFor(theme: String): Int {
@@ -4812,7 +5172,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
         private const val CHAT_SHEET_SIDE_MARGIN_DP = 6
         private const val CHAT_SHEET_KEYBOARD_BOTTOM_MARGIN_DP = 0
-        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 94
+        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120

@@ -260,7 +260,7 @@
                     android:layout_marginTop="14dp"
                     android:fontFamily="@font/cormorant_garamond"
                     android:gravity="center_vertical"
-                    android:text="Gameplay vertical (en desarrollo)"
+                    android:text="Modo vertical de gameplay"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     app:thumbTint="@color/accent_gold"
@@ -272,7 +272,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Se aplica al volver a entrar al lobby, reparto y gameplay."
+                    android:text="Activado por defecto. Desactivalo para jugar en horizontal."
                     android:textColor="@color/text_muted"
                     android:textSize="14sp" />
 
@@ -358,7 +358,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:fontFamily="@font/grenze"
-                    android:text="CUENTA ONLINE - PROXIMAMENTE"
+                    android:text="ONLINE EXPERIMENTAL"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:textStyle="bold" />
@@ -369,7 +369,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Cuando se implemente el online, desde aqui podras iniciar sesion y conservar estadisticas, logros y personalizacion."
+                    android:text="Firebase activo para pruebas. Publica las reglas, usa codigo de sala y revisa Logcat con TraidoresOnline. Las cuentas y estadisticas siguen pendientes."
                     android:textColor="@color/text_secondary"
                     android:textSize="15sp" />
 
@@ -391,7 +391,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:fontFamily="@font/cormorant_garamond"
-                    android:text="Escribe y verifica pruebas/conexion_inicial en Firestore."
+                    android:text="Comprueba pruebas/conexion_inicial. Para salas usa Jugar > Online."
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
 

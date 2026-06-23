@@ -7,7 +7,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_alignParentBottom="true"
-        android:layout_marginHorizontal="8dp"
+        android:layout_marginHorizontal="4dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"
         android:baselineAligned="false"
@@ -17,7 +17,7 @@
 
         <ScrollView
             android:id="@+id/leftPlayersScroll"
-            android:layout_width="56dp"
+            android:layout_width="62dp"
             android:layout_height="match_parent"
             android:clipChildren="false"
             android:clipToPadding="false"
@@ -49,7 +49,7 @@
             <LinearLayout
                 android:id="@+id/topStatus"
                 android:layout_width="match_parent"
-                android:layout_height="60dp"
+                android:layout_height="76dp"
                 android:layout_gravity="top"
                 android:background="@drawable/bg_translucent_game_panel"
                 android:elevation="7dp"
@@ -57,49 +57,34 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="56dp"
+                    android:layout_height="38dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="6dp">
+                    android:paddingStart="8dp"
+                    android:paddingEnd="5dp">
 
                     <TextView
                         android:id="@+id/phaseTitle"
-                        android:layout_width="96dp"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:fontFamily="@font/grenze"
                         android:gravity="center_vertical"
                         android:includeFontPadding="false"
                         android:maxLines="1"
                         android:text="REPARTO"
                         android:textColor="@color/accent_gold"
-                        android:textSize="17sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
-                        app:autoSizeMaxTextSize="17sp"
+                        app:autoSizeMaxTextSize="16sp"
                         app:autoSizeMinTextSize="11sp"
                         app:autoSizeStepGranularity="1sp"
                         app:autoSizeTextType="uniform" />
 
                     <TextView
-                        android:id="@+id/phaseSubtitle"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="4dp"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/cormorant_garamond"
-                        android:gravity="center_vertical"
-                        android:includeFontPadding="false"
-                        android:maxLines="2"
-                        android:paddingEnd="6dp"
-                        android:text="Mira tu rol. La noche empieza enseguida."
-                        android:textColor="@color/text_primary"
-                        android:textSize="11sp"
-                        android:textStyle="bold" />
-
-                    <TextView
                         android:id="@+id/phaseCountdown"
-                        android:layout_width="42dp"
-                        android:layout_height="32dp"
+                        android:layout_width="38dp"
+                        android:layout_height="28dp"
                         android:layout_marginStart="4dp"
                         android:background="@drawable/bg_btn_dark"
                         android:fontFamily="@font/grenze"
@@ -121,21 +106,21 @@
 
                     <FrameLayout
                         android:id="@+id/chatButtonFrame"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="7dp"
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="5dp"
                         android:clipChildren="false"
                         android:clipToPadding="false">
 
                         <ImageButton
                             android:id="@+id/btnToggleChat"
-                            android:layout_width="34dp"
-                            android:layout_height="34dp"
+                            android:layout_width="30dp"
+                            android:layout_height="30dp"
                             android:layout_gravity="center"
                             android:background="@drawable/bg_chat_fab"
                             android:contentDescription="Abrir chat"
                             android:elevation="3dp"
-                            android:padding="7dp"
+                            android:padding="6dp"
                             android:src="@drawable/ic_chat_speaking"
                             app:tint="@color/bg_dark" />
 
@@ -159,15 +144,30 @@
 
                     <ImageButton
                         android:id="@+id/btnSettings"
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
-                        android:layout_marginStart="5dp"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:layout_marginStart="4dp"
                         android:background="@drawable/bg_btn_dark"
                         android:contentDescription="Opciones"
                         android:padding="7dp"
                         android:src="@drawable/ic_settings_gear"
                         app:tint="@color/text_secondary" />
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/phaseSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:fontFamily="@font/cormorant_garamond"
+                    android:gravity="center_vertical"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="Mira tu rol. La noche empieza enseguida."
+                    android:textColor="@color/text_primary"
+                    android:textSize="10.5sp"
+                    android:textStyle="bold" />
 
                 <FrameLayout
                     android:id="@+id/phaseProgressTrack"
@@ -188,7 +188,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="32dp"
                 android:layout_gravity="top"
-                android:layout_marginTop="64dp"
+                android:layout_marginTop="80dp"
                 android:background="@drawable/bg_translucent_game_panel"
                 android:elevation="6dp"
                 android:orientation="vertical">
@@ -302,17 +302,24 @@
             <LinearLayout
                 android:id="@+id/bottomPlayerPanel"
                 android:layout_width="match_parent"
-                android:layout_height="94dp"
+                android:layout_height="118dp"
                 android:layout_gravity="bottom"
                 android:background="@drawable/bg_hud_parchment"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="7dp"
-                android:paddingVertical="4dp">
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
                 <LinearLayout
                     android:id="@+id/roleCard"
-                    android:layout_width="46dp"
+                    android:layout_width="48dp"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_role_card"
                     android:gravity="center"
@@ -332,8 +339,7 @@
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
-                    android:layout_marginStart="9dp"
-                    android:layout_marginEnd="6dp"
+                    android:layout_marginStart="10dp"
                     android:layout_weight="1"
                     android:gravity="center_vertical"
                     android:orientation="vertical">
@@ -411,27 +417,31 @@
                         android:maxLines="2"
                         android:text="Tu carta esta oculta."
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp"
-                        app:autoSizeMaxTextSize="11sp"
-                        app:autoSizeMinTextSize="8sp"
+                        android:textSize="12.5sp"
+                        app:autoSizeMaxTextSize="12.5sp"
+                        app:autoSizeMinTextSize="9sp"
                         app:autoSizeStepGranularity="1sp"
                         app:autoSizeTextType="uniform" />
+                </LinearLayout>
                 </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/actionControls"
-                    android:layout_width="206dp"
-                    android:layout_height="match_parent"
+                    android:layout_width="match_parent"
+                    android:layout_height="36dp"
+                    android:layout_marginTop="5dp"
                     android:gravity="center"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:weightSum="5">
 
                     <Button
                         android:id="@+id/btnRevealCard"
                         style="@style/BtnGold"
-                        android:layout_width="72dp"
+                        android:layout_width="0dp"
                         android:layout_height="30dp"
-                        android:layout_marginEnd="6dp"
+                        android:layout_marginEnd="4dp"
                         android:layout_marginBottom="0dp"
+                        android:layout_weight="2"
                         android:maxLines="1"
                         android:singleLine="true"
                         android:text="REVELAR"
@@ -444,9 +454,10 @@
                     <Button
                         android:id="@+id/btnVote"
                         style="@style/BtnDark"
-                        android:layout_width="128dp"
-                        android:layout_height="36dp"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
                         android:layout_marginBottom="0dp"
+                        android:layout_weight="3"
                         android:maxLines="1"
                         android:singleLine="true"
                         android:text="ELEGIR OBJETIVO"
@@ -459,8 +470,9 @@
 
                 <LinearLayout
                     android:id="@+id/eliminatedStatePanel"
-                    android:layout_width="206dp"
-                    android:layout_height="match_parent"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="5dp"
                     android:gravity="center"
                     android:orientation="vertical"
                     android:paddingHorizontal="8dp"
@@ -497,7 +509,7 @@
 
         <LinearLayout
             android:id="@+id/rightColumn"
-            android:layout_width="56dp"
+            android:layout_width="62dp"
             android:layout_height="match_parent"
             android:clipChildren="false"
             android:clipToPadding="false"

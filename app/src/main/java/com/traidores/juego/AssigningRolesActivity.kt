@@ -5,10 +5,12 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -26,6 +28,24 @@ class AssigningRolesActivity : BaseActivity() {
     private var leavingScreen = false
 
     private val openGameRunnable = Runnable { openGame() }
+
+    private data class DealAnimationMetrics(
+        val cardWidthDp: Int,
+        val cardHeightDp: Int,
+        val deckOffsetRatio: Float,
+        val shuffleWideDp: Int,
+        val shuffleNarrowDp: Int,
+        val dealDistanceRatio: Float,
+        val minDealDistanceDp: Int,
+        val dealYRatio: Float,
+        val finalScale: Float,
+        val finalLiftDp: Int,
+        val handsStartYDp: Int,
+        val dealingHandsStartYDp: Int,
+        val statusBottomMarginDp: Int,
+        val statusTextSp: Float,
+        val holdFinalMs: Long
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,12 +77,25 @@ class AssigningRolesActivity : BaseActivity() {
         val finalCard = findViewById<ImageView>(R.id.finalRoleCard)
         val status = findViewById<TextView>(R.id.assigningStatus)
 
+        val metrics = dealAnimationMetrics()
         val cardViews = listOf(leftCard, rightCard, finalCard)
-        val deckOffset = root.width * 0.07f
-        openHands.translationY = dp(34).toFloat()
+        cardViews.forEach { card ->
+            card.layoutParams = (card.layoutParams as FrameLayout.LayoutParams).apply {
+                width = dp(metrics.cardWidthDp)
+                height = dp(metrics.cardHeightDp)
+                gravity = android.view.Gravity.CENTER
+            }
+        }
+        status.layoutParams = (status.layoutParams as FrameLayout.LayoutParams).apply {
+            bottomMargin = dp(metrics.statusBottomMarginDp)
+        }
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.statusTextSp)
+
+        val deckOffset = root.width * metrics.deckOffsetRatio
+        openHands.translationY = dp(metrics.handsStartYDp).toFloat()
         openHands.scaleX = 0.98f
         openHands.scaleY = 0.98f
-        dealingHands.translationY = dp(12).toFloat()
+        dealingHands.translationY = dp(metrics.dealingHandsStartYDp).toFloat()
         dealingHands.scaleX = 0.985f
         dealingHands.scaleY = 0.985f
         leftCard.rotation = -2f
@@ -97,6 +130,11 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(dealingHands, View.SCALE_X, 0.985f, 1f),
                 ObjectAnimator.ofFloat(dealingHands, View.SCALE_Y, 0.985f, 1f)
             )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    status.text = "BARAJANDO DESTINOS"
+                }
+            })
         }
 
         val revealDeck = AnimatorSet().apply {
@@ -117,8 +155,8 @@ class AssigningRolesActivity : BaseActivity() {
             leftCard = leftCard,
             rightCard = rightCard,
             hands = dealingHands,
-            leftX = deckOffset - dp(52),
-            rightX = deckOffset + dp(52),
+            leftX = deckOffset - dp(metrics.shuffleWideDp),
+            rightX = deckOffset + dp(metrics.shuffleWideDp),
             leftRotation = -9f,
             rightRotation = 9f,
             handsY = dp(3).toFloat()
@@ -127,8 +165,8 @@ class AssigningRolesActivity : BaseActivity() {
             leftCard = leftCard,
             rightCard = rightCard,
             hands = dealingHands,
-            leftX = deckOffset + dp(30),
-            rightX = deckOffset - dp(30),
+            leftX = deckOffset + dp(metrics.shuffleNarrowDp),
+            rightX = deckOffset - dp(metrics.shuffleNarrowDp),
             leftRotation = 6f,
             rightRotation = -6f,
             handsY = -dp(2).toFloat()
@@ -145,8 +183,9 @@ class AssigningRolesActivity : BaseActivity() {
             duration = 280L
         )
 
-        val dealDistance = (root.width * 0.27f).coerceAtLeast(dp(150).toFloat())
-        val dealY = -(root.height * 0.06f)
+        val dealDistance = (root.width * metrics.dealDistanceRatio)
+            .coerceAtLeast(dp(metrics.minDealDistanceDp).toFloat())
+        val dealY = -(root.height * metrics.dealYRatio)
         val dealLeft = AnimatorSet().apply {
             duration = 420L
             interpolator = DecelerateInterpolator()
@@ -157,6 +196,11 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(leftCard, View.SCALE_X, 1f, 0.9f),
                 ObjectAnimator.ofFloat(leftCard, View.SCALE_Y, 1f, 0.9f)
             )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    status.text = "LA MESA ELIGE"
+                }
+            })
         }
         val dealRight = AnimatorSet().apply {
             duration = 420L
@@ -176,10 +220,10 @@ class AssigningRolesActivity : BaseActivity() {
             playTogether(
                 ObjectAnimator.ofFloat(leftCard, View.ALPHA, 1f, 0f),
                 ObjectAnimator.ofFloat(rightCard, View.ALPHA, 1f, 0f),
-                ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1f, 1.14f),
-                ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1f, 1.14f),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1f, metrics.finalScale),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1f, metrics.finalScale),
                 ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_X, deckOffset, 0f),
-                ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, 0f, -dp(7).toFloat()),
+                ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, 0f, -dp(metrics.finalLiftDp).toFloat()),
                 ObjectAnimator.ofFloat(dealingHands, View.ALPHA, 1f, 0.82f),
                 ObjectAnimator.ofFloat(dealingHands, View.TRANSLATION_Y, 0f, dp(10).toFloat()),
                 ObjectAnimator.ofFloat(status, View.ALPHA, 1f, 0.72f, 1f)
@@ -192,7 +236,7 @@ class AssigningRolesActivity : BaseActivity() {
         }
 
         val holdFinalCard = ObjectAnimator.ofFloat(finalCard, View.ALPHA, 1f, 1f).apply {
-            duration = 600L
+            duration = metrics.holdFinalMs
         }
         val exit = AnimatorSet().apply {
             duration = 350L
@@ -250,6 +294,47 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(hands, View.TRANSLATION_Y, handsY),
                 ObjectAnimator.ofFloat(hands, View.SCALE_X, 1f, 1.012f, 1f),
                 ObjectAnimator.ofFloat(hands, View.SCALE_Y, 1f, 1.012f, 1f)
+            )
+        }
+    }
+
+    private fun dealAnimationMetrics(): DealAnimationMetrics {
+        val portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        return if (portrait) {
+            DealAnimationMetrics(
+                cardWidthDp = 98,
+                cardHeightDp = 157,
+                deckOffsetRatio = 0.02f,
+                shuffleWideDp = 42,
+                shuffleNarrowDp = 26,
+                dealDistanceRatio = 0.31f,
+                minDealDistanceDp = 116,
+                dealYRatio = 0.13f,
+                finalScale = 1.24f,
+                finalLiftDp = 18,
+                handsStartYDp = 42,
+                dealingHandsStartYDp = 18,
+                statusBottomMarginDp = 56,
+                statusTextSp = 23f,
+                holdFinalMs = 820L
+            )
+        } else {
+            DealAnimationMetrics(
+                cardWidthDp = 82,
+                cardHeightDp = 131,
+                deckOffsetRatio = 0.07f,
+                shuffleWideDp = 52,
+                shuffleNarrowDp = 30,
+                dealDistanceRatio = 0.27f,
+                minDealDistanceDp = 150,
+                dealYRatio = 0.06f,
+                finalScale = 1.14f,
+                finalLiftDp = 7,
+                handsStartYDp = 34,
+                dealingHandsStartYDp = 12,
+                statusBottomMarginDp = 16,
+                statusTextSp = 21f,
+                holdFinalMs = 600L
             )
         }
     }

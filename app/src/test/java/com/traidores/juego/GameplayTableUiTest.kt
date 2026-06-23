@@ -66,6 +66,24 @@ class GameplayTableUiTest {
     }
 
     @Test
+    fun splitCompanionsForVerticalExcludesEliminatedAndKeepsColumnsBalanced() {
+        val players = players(8).map { player ->
+            if (player.name == "Jugador3") player.copy(alive = false) else player
+        }
+
+        val (left, right) = GameplayTableUi.splitCompanions(
+            players,
+            includeEliminated = false,
+            putOddExtraOnLeft = true
+        )
+
+        assertEquals(3, left.size)
+        assertEquals(3, right.size)
+        assertTrue((left + right).all { it.alive })
+        assertTrue(kotlin.math.abs(left.size - right.size) <= 1)
+    }
+
+    @Test
     fun companionCardMetricsAdaptToPlayersAndAvailableHeight() {
         val five = GameplayTableUi.companionCardMetrics(5, availableHeightDp = 360)
         val eight = GameplayTableUi.companionCardMetrics(8, availableHeightDp = 376)
@@ -73,6 +91,31 @@ class GameplayTableUiTest {
         val eightTall = GameplayTableUi.companionCardMetrics(8, availableHeightDp = 420)
         val twelveLow = GameplayTableUi.companionCardMetrics(12, availableHeightDp = 360)
         val fifteen = GameplayTableUi.companionCardMetrics(15, availableHeightDp = 360)
+        val fiveVerticalTall = GameplayTableUi.companionCardMetrics(
+            5,
+            availableHeightDp = 560,
+            availableWidthDp = 112
+        )
+        val eightVerticalTall = GameplayTableUi.companionCardMetrics(
+            8,
+            availableHeightDp = 560,
+            availableWidthDp = 96
+        )
+        val tenVerticalTall = GameplayTableUi.companionCardMetrics(
+            10,
+            availableHeightDp = 560,
+            availableWidthDp = 96
+        )
+        val thirteenVerticalTall = GameplayTableUi.companionCardMetrics(
+            13,
+            availableHeightDp = 760,
+            availableWidthDp = 96
+        )
+        val fifteenVerticalTall = GameplayTableUi.companionCardMetrics(
+            15,
+            availableHeightDp = 800,
+            availableWidthDp = 96
+        )
         val eightNarrow = GameplayTableUi.companionCardMetrics(
             8,
             availableHeightDp = 376,
@@ -94,8 +137,24 @@ class GameplayTableUiTest {
         assertEquals(36, eightTall.cardWidthDp)
         assertEquals(58, eightTall.cardHeightDp)
         assertTrue(eightNarrow.columnWidthDp <= 54)
-        assertTrue(eightNarrow.cardWidthDp < eight.cardWidthDp)
+        assertTrue(eightNarrow.cardWidthDp <= eightNarrow.columnWidthDp - 8)
+        assertTrue(eightNarrow.cardHeightDp > eight.cardHeightDp)
         assertEquals(eight.scrollEnabled, eightNarrow.scrollEnabled)
+        assertTrue(fiveVerticalTall.itemHeightDp <= 132)
+        assertTrue(fiveVerticalTall.itemGapDp > five.itemGapDp)
+        assertTrue(fiveVerticalTall.columnWidthDp <= 112)
+        assertTrue(eightVerticalTall.cardHeightDp > eight.cardHeightDp)
+        assertTrue(eightVerticalTall.itemHeightDp <= 132)
+        assertTrue(eightVerticalTall.columnWidthDp <= 96)
+        assertTrue(tenVerticalTall.itemHeightDp <= 132)
+        assertTrue(tenVerticalTall.columnWidthDp <= 96)
+        assertTrue(thirteenVerticalTall.scrollEnabled)
+        assertTrue(thirteenVerticalTall.cardHeightDp > fifteen.cardHeightDp)
+        assertTrue(thirteenVerticalTall.columnWidthDp <= 96)
+        assertTrue(fifteenVerticalTall.scrollEnabled)
+        assertTrue(fifteenVerticalTall.cardHeightDp > fifteen.cardHeightDp)
+        assertTrue(fifteenVerticalTall.itemHeightDp > fifteen.itemHeightDp)
+        assertTrue(fifteenVerticalTall.columnWidthDp <= 96)
 
         assertEquals(78, twelveLow.columnWidthDp)
         assertFalse(twelveLow.scrollEnabled)

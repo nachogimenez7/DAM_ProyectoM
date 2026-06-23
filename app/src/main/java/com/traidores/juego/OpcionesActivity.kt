@@ -257,7 +257,7 @@ class OpcionesActivity : BaseActivity() {
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
         switchBotSpicyLanguage.isChecked = preferences.getBoolean(PREF_BOT_SPICY_LANGUAGE, true)
         switchGameplayVerticalDev.isChecked =
-            preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, false)
+            preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
@@ -350,19 +350,19 @@ class OpcionesActivity : BaseActivity() {
             titleTextSize.text = "READABILITY AND ACCESSIBILITY"
             labelTextSize.text = "Text size"
             descTextSize.text = "Applied to messages, buttons and information during gameplay."
-            switchGameplayVerticalDev.text = "Vertical gameplay (in development)"
+            switchGameplayVerticalDev.text = "Vertical gameplay mode"
             descGameplayVerticalDev.text =
-                "Applies the next time you enter the lobby, role deal and gameplay."
+                "Enabled by default. Turn it off to play in landscape."
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
-            titleAccount.text = "ACCOUNT AND PROFILE"
-            accountStatus.text = "ONLINE ACCOUNT - COMING SOON"
+            titleAccount.text = "ONLINE AND PROFILE"
+            accountStatus.text = "ONLINE EXPERIMENTAL"
             accountDescription.text =
-                "When online play is implemented, you will log in here to keep statistics, achievements and customization."
+                "Firebase is active for tests. Publish the rules, join by room code and check Logcat with TraidoresOnline. Accounts and stats are still pending."
             btnFirebaseSmokeTest.text = "TEST FIREBASE"
             if (firebaseSmokeStatus.text.isNullOrBlank()) {
-                firebaseSmokeStatus.text = "Writes and verifies pruebas/conexion_inicial in Firestore."
+                firebaseSmokeStatus.text = "Checks pruebas/conexion_inicial. Use Play > Online for rooms."
             }
             btnResetOptions.text = "RESET OPTIONS"
         } else {
@@ -377,19 +377,19 @@ class OpcionesActivity : BaseActivity() {
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
             labelTextSize.text = "Tamano del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
-            switchGameplayVerticalDev.text = "Gameplay vertical (en desarrollo)"
+            switchGameplayVerticalDev.text = "Modo vertical de gameplay"
             descGameplayVerticalDev.text =
-                "Se aplica al volver a entrar al lobby, reparto y gameplay."
+                "Activado por defecto. Desactivalo para jugar en horizontal."
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traduccion completa sigue en desarrollo."
-            titleAccount.text = "CUENTA Y PERFIL"
-            accountStatus.text = "CUENTA ONLINE - PROXIMAMENTE"
+            titleAccount.text = "ONLINE Y PERFIL"
+            accountStatus.text = "ONLINE EXPERIMENTAL"
             accountDescription.text =
-                "Cuando se implemente el online, desde aqui podras iniciar sesion y conservar estadisticas, logros y personalizacion."
+                "Firebase activo para pruebas. Publica las reglas, usa codigo de sala y revisa Logcat con TraidoresOnline. Las cuentas y estadisticas siguen pendientes."
             btnFirebaseSmokeTest.text = "PROBAR FIREBASE"
             if (firebaseSmokeStatus.text.isNullOrBlank()) {
-                firebaseSmokeStatus.text = "Escribe y verifica pruebas/conexion_inicial en Firestore."
+                firebaseSmokeStatus.text = "Comprueba pruebas/conexion_inicial. Para salas usa Jugar > Online."
             }
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
@@ -405,7 +405,7 @@ class OpcionesActivity : BaseActivity() {
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
             .putBoolean(PREF_BOT_SPICY_LANGUAGE, true)
-            .putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, false)
+            .putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
             .apply()
@@ -418,7 +418,7 @@ class OpcionesActivity : BaseActivity() {
         switchEffects.isChecked = true
         switchVibration.isChecked = false
         switchBotSpicyLanguage.isChecked = true
-        switchGameplayVerticalDev.isChecked = false
+        switchGameplayVerticalDev.isChecked = true
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
         updatingControls = false
@@ -474,9 +474,9 @@ class OpcionesActivity : BaseActivity() {
 
     private fun accountPendingMessage(): String {
         return if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Online accounts are not available yet."
+            "Online is experimental; accounts and stats are still pending."
         } else {
-            "Las cuentas online todavia no estan disponibles."
+            "El online es experimental; las cuentas y estadisticas siguen pendientes."
         }
     }
 

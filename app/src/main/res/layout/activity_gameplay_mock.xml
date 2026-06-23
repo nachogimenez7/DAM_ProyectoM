@@ -171,15 +171,16 @@
 
         <LinearLayout
             android:id="@+id/deathRevealContent"
-            android:layout_width="280dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:background="@drawable/bg_translucent_game_panel"
+            android:layout_marginHorizontal="28dp"
+            android:background="@drawable/bg_reveal_event_panel"
             android:gravity="center"
             android:orientation="vertical"
             android:paddingHorizontal="22dp"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp">
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp">
 
             <TextView
                 android:layout_width="match_parent"
@@ -194,16 +195,16 @@
 
             <FrameLayout
                 android:id="@+id/deathRevealCardStage"
-                android:layout_width="150dp"
-                android:layout_height="154dp"
-                android:layout_marginTop="5dp"
+                android:layout_width="164dp"
+                android:layout_height="168dp"
+                android:layout_marginTop="8dp"
                 android:clipChildren="false"
                 android:clipToPadding="false">
 
                 <FrameLayout
                     android:id="@+id/deathRevealCard"
-                    android:layout_width="94dp"
-                    android:layout_height="124dp"
+                    android:layout_width="104dp"
+                    android:layout_height="138dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_role_card"
                     android:padding="4dp">
@@ -250,6 +251,7 @@
                 android:id="@+id/deathRevealPlayerName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:includeFontPadding="false"
@@ -280,9 +282,9 @@
                 android:fontFamily="@font/cormorant_garamond"
                 android:gravity="center"
                 android:includeFontPadding="false"
-                android:text="MuriÃ³ durante la noche"
+                android:text="Murio durante la noche"
                 android:textColor="@color/text_muted"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </FrameLayout>
 
@@ -297,15 +299,16 @@
 
         <LinearLayout
             android:id="@+id/silenceRevealContent"
-            android:layout_width="280dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:background="@drawable/bg_translucent_game_panel"
+            android:layout_marginHorizontal="28dp"
+            android:background="@drawable/bg_reveal_event_panel"
             android:gravity="center"
             android:orientation="vertical"
             android:paddingHorizontal="22dp"
-            android:paddingTop="14dp"
-            android:paddingBottom="14dp">
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp">
 
             <TextView
                 android:layout_width="match_parent"
@@ -319,16 +322,16 @@
                 android:textStyle="bold" />
 
             <FrameLayout
-                android:layout_width="174dp"
-                android:layout_height="170dp"
-                android:layout_marginTop="4dp"
+                android:layout_width="188dp"
+                android:layout_height="178dp"
+                android:layout_marginTop="8dp"
                 android:clipChildren="false"
                 android:clipToPadding="false">
 
                 <FrameLayout
                     android:id="@+id/silenceRevealCard"
-                    android:layout_width="94dp"
-                    android:layout_height="124dp"
+                    android:layout_width="104dp"
+                    android:layout_height="138dp"
                     android:layout_gravity="center"
                     android:background="@drawable/bg_role_card"
                     android:padding="4dp">
@@ -384,6 +387,7 @@
                 android:id="@+id/silenceRevealPlayerName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:fontFamily="@font/grenze"
                 android:gravity="center"
                 android:includeFontPadding="false"
@@ -402,7 +406,7 @@
                 android:includeFontPadding="false"
                 android:text="No puede hablar ni votar durante el dia"
                 android:textColor="@color/text_muted"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
     </FrameLayout>
 
@@ -1344,18 +1348,19 @@
                 <LinearLayout
                     android:id="@+id/winnerRevealContent"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:paddingHorizontal="42dp"
-                    android:paddingTop="6dp"
-                    android:paddingBottom="8dp">
+                    android:paddingHorizontal="22dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="14dp">
 
                 <TextView
                     android:id="@+id/winnerRevealTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="28dp"
+                    android:layout_marginHorizontal="10dp"
+                    android:background="@drawable/bg_winner_title_badge"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:includeFontPadding="false"
@@ -1366,10 +1371,10 @@
                     android:shadowRadius="5"
                     android:text="EL PUEBLO HA GANADO"
                     android:textColor="#3A2413"
-                    android:textSize="23sp"
+                    android:textSize="27sp"
                     android:textStyle="bold"
-                    app:autoSizeMaxTextSize="23sp"
-                    app:autoSizeMinTextSize="17sp"
+                    app:autoSizeMaxTextSize="27sp"
+                    app:autoSizeMinTextSize="18sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -1378,16 +1383,17 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
+                    android:background="@drawable/bg_winner_title_badge"
                     android:fontFamily="@font/grenze"
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:maxLines="1"
                     android:text="VICTORIA"
                     android:textColor="#765019"
-                    android:textSize="22sp"
+                    android:textSize="26sp"
                     android:textStyle="bold"
-                    app:autoSizeMaxTextSize="22sp"
-                    app:autoSizeMinTextSize="17sp"
+                    app:autoSizeMaxTextSize="26sp"
+                    app:autoSizeMinTextSize="18sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -1395,24 +1401,31 @@
                     android:id="@+id/winnerRevealCards"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="8dp"
                     android:gravity="center"
                     android:orientation="vertical" />
 
-                <LinearLayout
-                    android:id="@+id/winnerSummaryPanel"
+                <View
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="12dp"
-                    android:layout_marginTop="5dp"
-                    android:gravity="center_vertical"
-                    android:orientation="vertical"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="3dp">
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:minHeight="34dp" />
 
                     <LinearLayout
+                        android:id="@+id/winnerSummaryPanel"
                         android:layout_width="match_parent"
-                        android:layout_height="22dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="4dp"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="6dp">
+
+                    <LinearLayout
+                        android:id="@+id/winnerSummaryStatsRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="32dp"
                         android:gravity="center"
                         android:orientation="horizontal">
 
@@ -1426,7 +1439,7 @@
                             android:includeFontPadding="false"
                             android:text="4 RONDAS"
                             android:textColor="#3A2413"
-                            android:textSize="11sp"
+                            android:textSize="13.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -1439,7 +1452,7 @@
                             android:includeFontPadding="false"
                             android:text="TIEMPO 08:42"
                             android:textColor="#3A2413"
-                            android:textSize="11sp"
+                            android:textSize="13.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -1452,7 +1465,7 @@
                             android:includeFontPadding="false"
                             android:text="3 ELIMINADOS"
                             android:textColor="#3A2413"
-                            android:textSize="11sp"
+                            android:textSize="13.5sp"
                             android:textStyle="bold" />
                     </LinearLayout>
 
@@ -1467,7 +1480,7 @@
                         android:maxLines="4"
                         android:text="ELIMINADOS: MARTINA, TOMAS"
                         android:textColor="#3A2413"
-                        android:textSize="11sp"
+                        android:textSize="13sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -1480,22 +1493,22 @@
                         android:includeFontPadding="false"
                         android:text="DÃ­a 1: muriÃ³ Martina y se silenciÃ³ a Tomas.&#10;DÃ­a 2: no muriÃ³ nadie y nadie fue silenciado."
                         android:textColor="#4F321A"
-                        android:textSize="11sp"
+                        android:textSize="12.5sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
                 <Button
                     android:id="@+id/btnWinnerReturnLobby"
                     style="@style/BtnDark"
-                    android:layout_width="154dp"
-                    android:layout_height="32dp"
-                    android:layout_marginTop="6dp"
-                    android:layout_marginBottom="8dp"
+                    android:layout_width="190dp"
+                    android:layout_height="36dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="10dp"
                     android:minHeight="0dp"
                     android:minWidth="0dp"
                     android:padding="0dp"
                     android:text="VOLVER A SALA"
-                    android:textSize="11sp" />
+                    android:textSize="12sp" />
                 </LinearLayout>
             </ScrollView>
         </FrameLayout>

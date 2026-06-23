@@ -23,7 +23,7 @@ open class BaseActivity : AppCompatActivity() {
     private fun applyGameplayOrientationPreference() {
         if (!usesGameplayOrientationPreference()) return
         val verticalEnabled = getSharedPreferences(AudioPreferences.PREFS_NAME, MODE_PRIVATE)
-            .getBoolean(PREF_GAMEPLAY_VERTICAL_DEV, false)
+            .getBoolean(PREF_GAMEPLAY_VERTICAL_DEV, true)
         requestedOrientation = if (verticalEnabled) {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {

@@ -69,16 +69,23 @@ class OnlineModeActivity : BaseActivity() {
         val selectedMap = OnlineRoomFirestore.selectedMapFromKey(
             preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
         )
+        val uidTemporal = OnlineTempIdentity.getOrCreate(this)
+        OnlineDebugLog.i(
+            "create_room_requested hostId=$uidTemporal map=${selectedMap.key} player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
+        )
         val creation = OnlineRoomFirestore.createRoom(
             firestore = firestore,
             playerName = playerName,
-            uidTemporal = OnlineTempIdentity.getOrCreate(this),
+            uidTemporal = uidTemporal,
             map = selectedMap,
             origin = "android-online-create"
         )
 
         creation.commitTask
             .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "create_room_success roomId=${creation.roomReference.id} code=${creation.roomCode} hostId=$uidTemporal map=${creation.map.key}"
+                )
                 btnCreate.isEnabled = true
                 btnCreate.text = "CREAR PARTIDA"
                 val session = LocalGameFactory.createOnlineLobby(
@@ -97,11 +104,12 @@ class OnlineModeActivity : BaseActivity() {
                 )
             }
             .addOnFailureListener { error ->
+                OnlineDebugLog.e("create_room_failure hostId=$uidTemporal map=${selectedMap.key}", error)
                 btnCreate.isEnabled = true
                 btnCreate.text = "CREAR PARTIDA"
                 Toast.makeText(
                     this,
-                    "No se pudo crear la sala: ${error.message}",
+                    OnlineErrorMessages.forAction("No se pudo crear la sala", error),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -225,6 +233,7 @@ class OnlineModeActivity : BaseActivity() {
     private fun joinRoomByCode(code: String, dialog: AlertDialog, joinButton: Button) {
         joinButton.isEnabled = false
         joinButton.text = "BUSCANDO..."
+        OnlineDebugLog.i("join_code_search code=$code")
 
         firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .whereEqualTo(OnlineRoomFirestore.FIELD_ROOM_CODE, code)
@@ -233,6 +242,7 @@ class OnlineModeActivity : BaseActivity() {
             .addOnSuccessListener { snapshot ->
                 val roomSnapshot = snapshot.documents.firstOrNull()
                 if (roomSnapshot == null) {
+                    OnlineDebugLog.w("join_code_not_found code=$code")
                     joinButton.isEnabled = true
                     joinButton.text = "UNIRSE"
                     Toast.makeText(this, "No existe una sala con ese codigo.", Toast.LENGTH_LONG).show()
@@ -250,11 +260,12 @@ class OnlineModeActivity : BaseActivity() {
                 )
             }
             .addOnFailureListener { error ->
+                OnlineDebugLog.e("join_code_search_failure code=$code", error)
                 joinButton.isEnabled = true
                 joinButton.text = "UNIRSE"
                 Toast.makeText(
                     this,
-                    "No se pudo buscar la sala: ${error.message}",
+                    OnlineErrorMessages.forAction("No se pudo buscar la sala", error),
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -277,6 +288,7 @@ class OnlineModeActivity : BaseActivity() {
         val roomReference = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION).document(roomId)
         val playerReference = roomReference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
             .document(uidTemporal)
+        OnlineDebugLog.i("join_room_requested roomId=$roomId uid=$uidTemporal code=$roomCode")
 
         firestore.runTransaction { transaction ->
             val freshRoom = transaction.get(roomReference)
@@ -326,6 +338,7 @@ class OnlineModeActivity : BaseActivity() {
             )
             freshRoom.getString(OnlineRoomFirestore.FIELD_MAP_KEY).orEmpty()
         }.addOnSuccessListener { resolvedMapKey ->
+            OnlineDebugLog.i("join_room_success roomId=$roomId uid=$uidTemporal map=${resolvedMapKey.ifBlank { mapKey }}")
             dialog.dismiss()
             val finalMapKey = resolvedMapKey.ifBlank { mapKey }
             val session = LocalGameFactory.createOnlineLobby(
@@ -343,11 +356,12 @@ class OnlineModeActivity : BaseActivity() {
                     .putExtra(LobbyActivity.EXTRA_ROOM_CODE, roomCode)
             )
         }.addOnFailureListener { error ->
+            OnlineDebugLog.e("join_room_failure roomId=$roomId uid=$uidTemporal", error)
             joinButton.isEnabled = true
             joinButton.text = "UNIRSE"
             Toast.makeText(
                 this,
-                "No se pudo entrar a la sala: ${error.message}",
+                OnlineErrorMessages.forAction("No se pudo entrar a la sala", error),
                 Toast.LENGTH_LONG
             ).show()
         }

@@ -48,14 +48,20 @@ class LobbyBrowserActivity : BaseActivity() {
 
     private fun listenForOnlineRooms() {
         lobbyListener?.remove()
+        OnlineDebugLog.i("lobby_browser_listen_start")
         lobbyListener = firestore.collection(ONLINE_ROOMS_COLLECTION)
             .whereEqualTo(FIELD_STATE, ONLINE_ROOM_STATE_WAITING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
+                    OnlineDebugLog.e("lobby_browser_listen_failure", error)
                     lobbies = emptyList()
-                    showBrowserMessage("No se pudieron cargar las salas: ${error.message}")
+                    showBrowserMessage(OnlineErrorMessages.forAction("No se pudieron cargar las salas", error))
                     renderLobbyList()
-                    Toast.makeText(this, "Error cargando salas online.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this,
+                        OnlineErrorMessages.forAction("Error cargando salas online", error),
+                        Toast.LENGTH_LONG
+                    ).show()
                     return@addSnapshotListener
                 }
 
@@ -63,6 +69,7 @@ class LobbyBrowserActivity : BaseActivity() {
                     ?.mapNotNull(::parseLobby)
                     ?.sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
                     .orEmpty()
+                OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
                 showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
                 renderLobbyList()
             }
@@ -156,6 +163,7 @@ class LobbyBrowserActivity : BaseActivity() {
         val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION)
             .document(uidTemporal)
 
+        OnlineDebugLog.i("browser_join_requested roomId=${lobby.id} uid=$uidTemporal players=${lobby.players}/${lobby.limit}")
         Toast.makeText(this, "Sala ${lobby.id}. Uniendote a ${lobby.name}.", Toast.LENGTH_SHORT).show()
         firestore.runTransaction { transaction ->
             val roomSnapshot = transaction.get(roomReference)
@@ -196,6 +204,7 @@ class LobbyBrowserActivity : BaseActivity() {
             }
             !alreadyJoined
         }.addOnSuccessListener {
+            OnlineDebugLog.i("browser_join_success roomId=${lobby.id} uid=$uidTemporal")
             val session = LocalGameFactory.createOnlineLobby(
                 humanName = playerName,
                 playerCount = 1,
@@ -211,6 +220,7 @@ class LobbyBrowserActivity : BaseActivity() {
                     .putExtra(LobbyActivity.EXTRA_ROOM_CODE, lobby.code)
             )
         }.addOnFailureListener { error ->
+            OnlineDebugLog.e("browser_join_failure roomId=${lobby.id} uid=$uidTemporal", error)
             Toast.makeText(
                 this,
                 "No se pudo entrar a la sala: ${error.message}",

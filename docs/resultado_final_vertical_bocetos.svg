@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="860" viewBox="0 0 1320 860">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#15120d"/>
+      <stop offset="1" stop-color="#070707"/>
+    </linearGradient>
+    <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d3d54"/>
+      <stop offset="0.45" stop-color="#223821"/>
+      <stop offset="1" stop-color="#0d1119"/>
+    </linearGradient>
+    <linearGradient id="parchment" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e7c98e"/>
+      <stop offset="0.5" stop-color="#d7aa62"/>
+      <stop offset="1" stop-color="#b27a36"/>
+    </linearGradient>
+    <linearGradient id="premium" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22120c"/>
+      <stop offset="0.52" stop-color="#0c0d12"/>
+      <stop offset="1" stop-color="#050507"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <style>
+      .title { font-family: Georgia, serif; font-weight: 700; letter-spacing: 1px; }
+      .ui { font-family: Arial, sans-serif; font-weight: 700; }
+      .small { font-family: Arial, sans-serif; font-weight: 600; }
+      .muted { fill: #6b5430; }
+      .gold { fill: #f4c45f; }
+      .cream { fill: #fff0c7; }
+      .line { stroke: #704617; stroke-width: 2; opacity: 0.55; }
+      .phone { fill: #080807; stroke: #46321a; stroke-width: 4; rx: 30; }
+      .button { fill: #2a1710; stroke: #d9ad55; stroke-width: 2; rx: 14; }
+      .card { fill: #1a1510; stroke: #d2a64d; stroke-width: 2; rx: 9; }
+      .chip { fill: rgba(0,0,0,0.42); stroke: rgba(244,196,95,0.55); stroke-width: 1.5; rx: 10; }
+    </style>
+  </defs>
+
+  <rect width="1320" height="860" fill="url(#bg)"/>
+  <text x="660" y="46" text-anchor="middle" class="title cream" font-size="30">Bocetos pequenos - Resultado final vertical</text>
+  <text x="660" y="76" text-anchor="middle" class="small" fill="#c6b491" font-size="15">Tres direcciones posibles para victoria / derrota en gameplay vertical</text>
+
+  <!-- Option A -->
+  <g transform="translate(65 105)">
+    <text x="190" y="0" text-anchor="middle" class="ui gold" font-size="20">A. Pergamino clasico</text>
+    <rect x="0" y="20" width="380" height="720" rx="34" class="phone" filter="url(#shadow)"/>
+    <rect x="24" y="48" width="332" height="668" rx="18" fill="#241507"/>
+    <rect x="43" y="68" width="294" height="628" rx="16" fill="url(#parchment)" stroke="#5d3412" stroke-width="5"/>
+    <rect x="58" y="86" width="264" height="44" rx="6" fill="#f7e2aa" stroke="#90612d" stroke-width="2"/>
+    <text x="190" y="116" text-anchor="middle" class="title" fill="#4a220b" font-size="26">VICTORIA</text>
+    <text x="190" y="148" text-anchor="middle" class="ui muted" font-size="13">EL PUEBLO HA GANADO</text>
+
+    <text x="190" y="184" text-anchor="middle" class="ui" fill="#5a310f" font-size="13">GANADORES</text>
+    <g transform="translate(74 202)">
+      <rect width="70" height="98" class="card"/>
+      <rect x="13" y="10" width="44" height="52" rx="5" fill="#6e4a19"/>
+      <text x="35" y="80" text-anchor="middle" class="small cream" font-size="10">Nacho</text>
+      <text x="35" y="92" text-anchor="middle" class="small gold" font-size="8">ALDEANO</text>
+    </g>
+    <g transform="translate(155 202)">
+      <rect width="70" height="98" class="card"/>
+      <rect x="13" y="10" width="44" height="52" rx="5" fill="#334b63"/>
+      <text x="35" y="80" text-anchor="middle" class="small cream" font-size="10">Mora</text>
+      <text x="35" y="92" text-anchor="middle" class="small gold" font-size="8">MEDICA</text>
+    </g>
+    <g transform="translate(236 202)">
+      <rect width="70" height="98" class="card"/>
+      <rect x="13" y="10" width="44" height="52" rx="5" fill="#654126"/>
+      <text x="35" y="80" text-anchor="middle" class="small cream" font-size="10">Velen</text>
+      <text x="35" y="92" text-anchor="middle" class="small gold" font-size="8">VIGILANTE</text>
+    </g>
+
+    <line x1="70" y1="342" x2="310" y2="342" class="line"/>
+    <g transform="translate(63 365)">
+      <rect width="82" height="58" rx="8" fill="#f1d58f" stroke="#875722"/>
+      <text x="41" y="25" text-anchor="middle" class="ui" fill="#4a220b" font-size="12">3</text>
+      <text x="41" y="43" text-anchor="middle" class="small muted" font-size="10">RONDAS</text>
+    </g>
+    <g transform="translate(149 365)">
+      <rect width="82" height="58" rx="8" fill="#f1d58f" stroke="#875722"/>
+      <text x="41" y="25" text-anchor="middle" class="ui" fill="#4a220b" font-size="12">02:41</text>
+      <text x="41" y="43" text-anchor="middle" class="small muted" font-size="10">TIEMPO</text>
+    </g>
+    <g transform="translate(235 365)">
+      <rect width="82" height="58" rx="8" fill="#f1d58f" stroke="#875722"/>
+      <text x="41" y="25" text-anchor="middle" class="ui" fill="#4a220b" font-size="12">4</text>
+      <text x="41" y="43" text-anchor="middle" class="small muted" font-size="10">ELIM.</text>
+    </g>
+    <text x="190" y="466" text-anchor="middle" class="small" fill="#4d2a0f" font-size="12">Resumen corto de la partida</text>
+    <text x="190" y="486" text-anchor="middle" class="small" fill="#4d2a0f" font-size="12">sin parrafos largos.</text>
+    <rect x="106" y="598" width="168" height="44" class="button"/>
+    <text x="190" y="626" text-anchor="middle" class="ui cream" font-size="13">VOLVER A SALA</text>
+  </g>
+
+  <!-- Option B -->
+  <g transform="translate(470 105)">
+    <text x="190" y="0" text-anchor="middle" class="ui gold" font-size="20">B. Cartel premium</text>
+    <rect x="0" y="20" width="380" height="720" rx="34" class="phone" filter="url(#shadow)"/>
+    <rect x="24" y="48" width="332" height="668" rx="18" fill="url(#premium)" stroke="#c6973d" stroke-width="3"/>
+    <rect x="42" y="70" width="296" height="96" rx="12" fill="#120a07" stroke="#e4b756" stroke-width="2"/>
+    <text x="190" y="108" text-anchor="middle" class="title gold" font-size="30">VICTORIA</text>
+    <text x="190" y="137" text-anchor="middle" class="ui cream" font-size="13">TRAIDORES DOMINAN LA MESA</text>
+
+    <g transform="translate(74 198)">
+      <rect width="104" height="156" rx="10" fill="#16110d" stroke="#f4c45f" stroke-width="3"/>
+      <rect x="16" y="14" width="72" height="88" rx="7" fill="#6b1e19"/>
+      <text x="52" y="126" text-anchor="middle" class="ui cream" font-size="13">Thiago</text>
+      <text x="52" y="145" text-anchor="middle" class="small gold" font-size="10">ASESINO</text>
+    </g>
+    <g transform="translate(202 198)">
+      <rect width="104" height="156" rx="10" fill="#16110d" stroke="#f4c45f" stroke-width="3"/>
+      <rect x="16" y="14" width="72" height="88" rx="7" fill="#4c2516"/>
+      <text x="52" y="126" text-anchor="middle" class="ui cream" font-size="13">Lola</text>
+      <text x="52" y="145" text-anchor="middle" class="small gold" font-size="10">SOMBRA</text>
+    </g>
+
+    <rect x="58" y="386" width="264" height="100" rx="12" fill="#19110c" stroke="#6d4a21" stroke-width="2"/>
+    <text x="84" y="422" class="ui gold" font-size="13">RONDAS</text>
+    <text x="286" y="422" text-anchor="end" class="ui cream" font-size="15">3</text>
+    <text x="84" y="452" class="ui gold" font-size="13">TIEMPO</text>
+    <text x="286" y="452" text-anchor="end" class="ui cream" font-size="15">02:41</text>
+    <text x="84" y="482" class="ui gold" font-size="13">ELIMINADOS</text>
+    <text x="286" y="482" text-anchor="end" class="ui cream" font-size="15">4</text>
+
+    <rect x="58" y="516" width="264" height="64" rx="12" fill="#0c0d10" stroke="#3a2b18" stroke-width="2"/>
+    <text x="190" y="546" text-anchor="middle" class="small" fill="#d9c58d" font-size="12">Final dramatico, cartas grandes</text>
+    <text x="190" y="564" text-anchor="middle" class="small" fill="#d9c58d" font-size="12">y lectura de alto impacto.</text>
+    <rect x="92" y="610" width="196" height="48" fill="#d0a039" rx="14"/>
+    <text x="190" y="640" text-anchor="middle" class="ui" fill="#21140a" font-size="14">VOLVER A SALA</text>
+  </g>
+
+  <!-- Option C -->
+  <g transform="translate(875 105)">
+    <text x="190" y="0" text-anchor="middle" class="ui gold" font-size="20">C. Integrado al mapa</text>
+    <rect x="0" y="20" width="380" height="720" rx="34" class="phone" filter="url(#shadow)"/>
+    <rect x="24" y="48" width="332" height="668" rx="18" fill="url(#mapBg)"/>
+    <g opacity="0.35">
+      <rect x="42" y="80" width="70" height="140" fill="#674823" rx="6"/>
+      <rect x="238" y="92" width="76" height="160" fill="#27471f" rx="6"/>
+      <rect x="76" y="310" width="210" height="34" fill="#9a7b47" rx="17"/>
+      <path d="M44 640 C120 570 230 610 332 535" fill="none" stroke="#d2c08a" stroke-width="8" opacity="0.4"/>
+    </g>
+    <rect x="40" y="76" width="300" height="104" rx="18" fill="#000" opacity="0.58"/>
+    <rect x="56" y="92" width="268" height="72" rx="12" fill="#17100b" stroke="#d9ad55" stroke-width="2"/>
+    <text x="190" y="122" text-anchor="middle" class="title gold" font-size="27">VICTORIA</text>
+    <text x="190" y="149" text-anchor="middle" class="ui cream" font-size="12">EL MAPA QUEDA DE FONDO</text>
+
+    <rect x="54" y="214" width="272" height="212" rx="18" fill="#080808" opacity="0.50" stroke="#d9ad55"/>
+    <text x="190" y="246" text-anchor="middle" class="ui cream" font-size="13">GANADORES</text>
+    <g transform="translate(82 270)">
+      <rect width="64" height="96" class="card"/>
+      <rect x="12" y="10" width="40" height="48" rx="5" fill="#78552a"/>
+      <text x="32" y="76" text-anchor="middle" class="small cream" font-size="9">Nacho</text>
+      <text x="32" y="90" text-anchor="middle" class="small gold" font-size="7">ALD.</text>
+    </g>
+    <g transform="translate(158 270)">
+      <rect width="64" height="96" class="card"/>
+      <rect x="12" y="10" width="40" height="48" rx="5" fill="#684721"/>
+      <text x="32" y="76" text-anchor="middle" class="small cream" font-size="9">Mora</text>
+      <text x="32" y="90" text-anchor="middle" class="small gold" font-size="7">MED.</text>
+    </g>
+    <g transform="translate(234 270)">
+      <rect width="64" height="96" class="card"/>
+      <rect x="12" y="10" width="40" height="48" rx="5" fill="#3b4d5d"/>
+      <text x="32" y="76" text-anchor="middle" class="small cream" font-size="9">Velen</text>
+      <text x="32" y="90" text-anchor="middle" class="small gold" font-size="7">VIG.</text>
+    </g>
+
+    <rect x="40" y="470" width="300" height="164" rx="22" fill="#090806" opacity="0.72" stroke="#b88938" stroke-width="2"/>
+    <text x="72" y="510" class="ui gold" font-size="13">RONDAS</text>
+    <text x="190" y="510" class="ui gold" font-size="13">TIEMPO</text>
+    <text x="286" y="510" class="ui gold" font-size="13">ELIM.</text>
+    <text x="88" y="536" text-anchor="middle" class="ui cream" font-size="20">3</text>
+    <text x="208" y="536" text-anchor="middle" class="ui cream" font-size="20">02:41</text>
+    <text x="303" y="536" text-anchor="middle" class="ui cream" font-size="20">4</text>
+    <text x="190" y="574" text-anchor="middle" class="small" fill="#d8c68f" font-size="12">Resultado sobre el mapa oscuro,</text>
+    <text x="190" y="592" text-anchor="middle" class="small" fill="#d8c68f" font-size="12">menos pergamino y mas escena.</text>
+    <rect x="91" y="650" width="198" height="46" class="button"/>
+    <text x="190" y="679" text-anchor="middle" class="ui cream" font-size="13">VOLVER A SALA</text>
+  </g>
+</svg>

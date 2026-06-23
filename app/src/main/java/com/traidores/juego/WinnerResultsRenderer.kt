@@ -1,6 +1,7 @@
 package com.traidores.juego
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -34,11 +35,18 @@ class WinnerResultsRenderer(
         specialVictories: List<GameSpecialVictory>,
         themeKey: String
     ): List<View> {
+        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         applyThemeInsets(themeKey)
         val cardViews = renderCards(players)
-        rounds.text = "${summary.roundsPlayed} RONDAS"
-        duration.text = "TIEMPO ${summary.durationLabel}"
-        eliminatedCount.text = "${summary.eliminated} ELIMINADOS"
+        if (isPortrait) {
+            rounds.text = "${summary.roundsPlayed}\nRONDAS"
+            duration.text = "${summary.durationLabel}\nTIEMPO"
+            eliminatedCount.text = "${summary.eliminated}\nELIM."
+        } else {
+            rounds.text = "${summary.roundsPlayed} RONDAS"
+            duration.text = "TIEMPO ${summary.durationLabel}"
+            eliminatedCount.text = "${summary.eliminated} ELIMINADOS"
+        }
         val eliminatedLabel = if (summary.eliminatedPlayers.isEmpty()) {
             "ELIMINADOS: NINGUNO"
         } else {
@@ -65,10 +73,21 @@ class WinnerResultsRenderer(
         if (players.isEmpty()) return emptyList()
 
         val cardViews = mutableListOf<View>()
-        val rowCount = when (players.size) {
-            in 1..6 -> 1
-            in 7..10 -> 2
-            else -> 3
+        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val rowCount = if (isPortrait) {
+            when (players.size) {
+                in 1..2 -> 1
+                in 3..4 -> 2
+                in 5..8 -> 3
+                in 9..12 -> 4
+                else -> 5
+            }
+        } else {
+            when (players.size) {
+                in 1..6 -> 1
+                in 7..10 -> 2
+                else -> 3
+            }
         }
         val playersPerRow = ceil(players.size / rowCount.toDouble()).toInt()
         players.chunked(playersPerRow).forEach { rowPlayers ->
@@ -81,10 +100,12 @@ class WinnerResultsRenderer(
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                )
+                ).apply {
+                    bottomMargin = dp(if (isPortrait) 5 else 0)
+                }
             )
             rowPlayers.forEach { player ->
-                createCard(player, players.size).also {
+                createCard(player, players.size, isPortrait).also {
                     cardViews += it
                     row.addView(it)
                 }
@@ -94,27 +115,47 @@ class WinnerResultsRenderer(
     }
 
     private fun applyThemeInsets(themeKey: String) {
+        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         val top = when (themeKey) {
-            "medieval" -> 20
-            "griego" -> 12
-            else -> 8
+            "medieval" -> if (isPortrait) 20 else 20
+            "griego" -> if (isPortrait) 20 else 12
+            else -> if (isPortrait) 20 else 8
         }
-        val horizontal = when (themeKey) {
-            "medieval" -> 54
-            "griego" -> 48
-            else -> 42
+        val horizontal = if (isPortrait) {
+            when (themeKey) {
+                "medieval" -> 22
+                "griego" -> 22
+                else -> 22
+            }
+        } else {
+            when (themeKey) {
+                "medieval" -> 54
+                "griego" -> 48
+                else -> 42
+            }
         }
-        val bottom = if (themeKey == "medieval") 12 else 8
+        val bottom = if (isPortrait) 10 else if (themeKey == "medieval") 12 else 8
         content.setPadding(dp(horizontal), dp(top), dp(horizontal), dp(bottom))
     }
 
-    private fun createCard(player: GamePlayer, winnerCount: Int): View {
-        val metrics = when {
-            winnerCount == 1 -> intArrayOf(136, 80, 96, 16, 12, 21, 18)
-            winnerCount == 2 -> intArrayOf(126, 76, 92, 15, 11, 20, 18)
-            winnerCount <= 5 -> intArrayOf(106, 64, 77, 13, 10, 20, 18)
-            winnerCount <= 10 -> intArrayOf(94, 58, 72, 10, 8, 15, 12)
-            else -> intArrayOf(76, 42, 52, 9, 7, 13, 11)
+    private fun createCard(player: GamePlayer, winnerCount: Int, isPortrait: Boolean): View {
+        val metrics = if (isPortrait) {
+            when {
+                winnerCount == 1 -> intArrayOf(156, 94, 114, 18, 13, 24, 19)
+                winnerCount == 2 -> intArrayOf(142, 86, 104, 16, 12, 22, 18)
+                winnerCount <= 4 -> intArrayOf(124, 74, 90, 14, 10, 20, 15)
+                winnerCount <= 8 -> intArrayOf(104, 62, 74, 12, 9, 17, 13)
+                winnerCount <= 12 -> intArrayOf(86, 50, 62, 10, 8, 14, 12)
+                else -> intArrayOf(76, 44, 54, 9, 7, 13, 11)
+            }
+        } else {
+            when {
+                winnerCount == 1 -> intArrayOf(136, 80, 96, 16, 12, 21, 18)
+                winnerCount == 2 -> intArrayOf(126, 76, 92, 15, 11, 20, 18)
+                winnerCount <= 5 -> intArrayOf(106, 64, 77, 13, 10, 20, 18)
+                winnerCount <= 10 -> intArrayOf(94, 58, 72, 10, 8, 15, 12)
+                else -> intArrayOf(76, 42, 52, 9, 7, 13, 11)
+            }
         }
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -154,7 +195,7 @@ class WinnerResultsRenderer(
 
         val playerName = resultLabel(
             text = player.name,
-            textColor = "#352114",
+            textColor = if (isPortrait) "#FFF0C7" else "#352114",
             textSize = metrics[3],
             font = R.font.grenze,
             height = metrics[5]
@@ -163,7 +204,7 @@ class WinnerResultsRenderer(
 
         val roleLabel = resultLabel(
             text = player.role?.name?.uppercase() ?: "SIN ROL",
-            textColor = "#4F321A",
+            textColor = if (isPortrait) "#F4C45F" else "#4F321A",
             textSize = metrics[4],
             font = R.font.cormorant_garamond,
             height = metrics[6]
