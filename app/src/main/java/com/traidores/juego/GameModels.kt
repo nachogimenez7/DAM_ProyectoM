@@ -589,6 +589,18 @@ object LocalGameFactory {
         )
     }
 
+    fun onlineSafeRoleComposition(playerCount: Int): RoleCompositionConfig {
+        val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+        val counts = linkedMapOf(
+            RoleCatalog.POLICIA to 1,
+            RoleCatalog.MEDICO to 1,
+            RoleCatalog.ASESINO to 1
+        )
+        val specialCount = counts.values.sum()
+        counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
+        return RoleCompositionConfig(counts = counts, customized = true)
+    }
+
     fun editableRoleKeys(): List<String> {
         return listOf(
             RoleCatalog.ALDEANO,

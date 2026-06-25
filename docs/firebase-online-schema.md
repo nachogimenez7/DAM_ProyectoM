@@ -7,7 +7,10 @@ El modo online de Traidores sigue siendo experimental. Esta documentacion define
 - Crear y buscar salas online desde Android.
 - Unirse a una sala por codigo de 6 caracteres.
 - Mantener presencia basica de jugadores.
+- Iniciar partidas online solo con cantidad esperada completa.
+- Reconstruir partidas desde `partidaInicial` y `estadoPartida` al reingresar.
 - Registrar acciones de gameplay y mensajes de chat.
+- Reservar un ID publico numerico fijo para perfil y futuros amigos.
 - Evitar datos obviamente invalidos desde reglas y desde el cliente.
 
 El modo confiable para demo sigue siendo `Jugar vs IA` mientras el online madura.
@@ -51,8 +54,12 @@ Campos base:
 - `mapaNombre`: nombre visible del mapa.
 - `hostId`: id temporal del anfitrion.
 - `hostNombre`: nombre visible del anfitrion, maximo 18 caracteres.
-- `maxJugadores`: 1 a 15.
-- `jugadoresActuales`: contador visible de jugadores.
+- `hostActivoId`: jugador que resuelve fases en ese momento.
+- `hostVersion`: contador de handoff de host.
+- `partidaInicialCreada`: `true` cuando ya se repartieron roles una vez.
+- `jugadoresEsperados`: cantidad fija definida por el host, de 5 a 15.
+- `maxJugadores`: mismo limite visible que `jugadoresEsperados`.
+- `jugadoresActuales`: contador visible de jugadores registrados en la sala.
 - `modoPrueba`: booleano para marcar salas experimentales.
 - `origen`: origen tecnico, por ejemplo `android-online-create`.
 - `creadaEn`: timestamp de servidor.
@@ -60,7 +67,7 @@ Campos base:
 
 Campos agregados durante la partida:
 
-- `partidaInicial`: snapshot inicial que usa el host para iniciar gameplay.
+- `partidaInicial`: snapshot inicial generado una sola vez por el host. Cada jugador queda ligado por `uidTemporal`.
 - `estadoPartida`: estado autoritativo publicado por el host.
 - `estadoClientes`: estado resumido publicado por cada cliente.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
@@ -71,13 +78,100 @@ Documento de presencia por jugador.
 
 Campos:
 
-- `nombre`: nombre visible, maximo 18 caracteres.
+- `nombre`: nombre de perfil normalizado, maximo 18 caracteres.
+- `nombrePerfil`: copia del nombre de perfil para futuras pantallas publicas.
+- `nombreSala`: nombre visible dentro de esa sala. Incluye el `#` publico para distinguir nombres repetidos, por ejemplo `Federico #2`.
+- `publicId`: ID publico numerico fijo del jugador, sin el simbolo `#`.
 - `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
 - `estado`: `conectado`, `desconectado` o `listo`.
 - `esHost`: booleano opcional.
 - `listo`: booleano opcional.
+- `orden`: posicion estable del jugador dentro de la sala.
+- `activoEnPartida`: booleano para distinguir presencia de jugador activo.
 - `unidoEn`: timestamp de servidor.
 - `ultimaConexion`: timestamp de servidor.
+- `ultimaConexionLocal`: timestamp local del dispositivo.
+
+### `meta/public_ids`
+
+Documento contador para reservar IDs publicos numericos.
+
+Campos:
+
+- `nextId`: proximo numero disponible. Si el documento no existe, la app empieza en `1`.
+- `actualizadaEn`: timestamp de servidor.
+
+Este contador es experimental y funciona sin Auth para pruebas. En produccion deberia moverse a una Cloud Function o protegerse con Auth/App Check.
+
+### `perfiles_publicos/{uidTemporal}`
+
+Documento publico minimo del jugador mientras no exista login real.
+
+Campos:
+
+- `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
+- `publicId`: ID publico numerico fijo del jugador.
+- `nombrePerfil`: nombre de perfil visible.
+- `actualizadaEn`: timestamp de servidor.
+
+Regla de producto actual:
+
+- El `publicId` no se edita desde el perfil.
+- El perfil muestra el ID como `#1`, `#2`, etc.
+- Para futuros amigos se deberia buscar/agregar por `#`.
+- Si varios jugadores tienen el mismo nombre, dentro de una sala se distinguen por `nombreSala`.
+
+## Reparto online
+
+El online de prueba usa un preset seguro:
+
+- 5 a 15 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
+
+No se agregan por defecto Alcalde, Mercenario, Desertor, Espia, Bufon, Oraculo ni Payador en online. Siguen disponibles para local/IA y fases futuras.
+
+Reglas importantes:
+
+- La sala no inicia hasta que `jugadoresActuales == jugadoresEsperados` y todos esos jugadores esten `listo`.
+- Si un jugador se desconecta antes de iniciar, el host puede liberar su cupo marcando `activoEnPartida = false`; el documento queda como historial y `jugadoresActuales` se recalcula.
+- `partidaInicial` se crea una sola vez.
+- El inicio online debe escribirse por transaccion: si `partidaInicialCreada` ya es `true`, no se reparten roles de nuevo.
+- Al crear sala, la app verifica que el `codigoSala` generado no exista ya en Firestore; si colisiona, reintenta con otro codigo.
+- Al unirse por codigo, la app usa solo salas `esperando`; si hubiera mas de una sala activa con el mismo codigo, bloquea el ingreso y pide crear una sala nueva.
+- Si un cliente reingresa, reconstruye desde `partidaInicial` y `estadoPartida`.
+- Si la sala esta `esperando`, el reingreso vuelve al lobby.
+- Si la sala esta `en_juego`, el reingreso abre gameplay directo con la misma carta, fase y estado vivo/muerto.
+- El reingreso nunca debe llamar al reparto local como fallback. Si faltan `partidaInicial`, `estadoPartida`, `fase` o el jugador por `uidTemporal`, se muestra error y se limpia la recuperacion local.
+- Si un jugador esta desconectado durante noche o votacion, su accion cuenta como ausente.
+- Si el host activo cae, el primer jugador conectado segun `orden` puede tomar `hostActivoId`.
+- En gameplay online, los clientes solo registran acciones/votos; el host activo publica el resultado en `estadoPartida`.
+- La noche y la votacion esperan el timer completo. No hay avance temprano aunque todos hayan actuado.
+- En noche, si un jugador envia mas de una accion valida para la misma ronda, se toma la ultima por `creadaEnLocal`.
+- En votacion/desempate, si un jugador vota mas de una vez en la misma fase, se toma el ultimo voto por `creadaEnLocal`.
+- Las acciones o votos ausentes no bloquean la fase; cuentan como sin accion o abstencion.
+- Durante `REPARTO`, cada cliente publica en `estadoClientes.{uidTemporal}` si entro al gameplay, cuantos jugadores ve y si ya toco `EMPEZAR`.
+- El host activo no inicia la primera noche hasta que todos los jugadores esperados esten en gameplay, vean la cantidad correcta de cartas y hayan tocado `EMPEZAR`.
+- Si pasan 30 segundos y falta un celular, el host puede usar `FORZAR NOCHE`. No reparte roles de nuevo; solo publica el primer estado nocturno desde la `partidaInicial` existente.
+
+Campos actuales dentro de `estadoClientes.{uidTemporal}`:
+
+- `fase`, `ronda`, `phaseIndex`: fase local que ve ese cliente.
+- `enGameplay`: `true` cuando el cliente ya entro a gameplay.
+- `jugadoresVistos`: cantidad de cartas/jugadores que ese cliente reconstruyo.
+- `jugadoresEsperados`: cantidad esperada para esa partida.
+- `uidTemporal`: id temporal del cliente.
+- `orden`: indice del jugador humano dentro de la partida reconstruida.
+- `rolLeido`: `true` cuando el jugador toco `EMPEZAR` en la lectura inicial.
+- `estadoArranque`: `sincronizando`, `leyendo_rol`, `rol_leido` o `en_partida`.
+- `aplicoEstadoPartida`: `true` cuando el cliente ya aplico al menos un estado autoritativo o es el host activo.
+- `sincronizando`: `true` cuando el cliente esta esperando una fase publicada por el host.
+- `ultimaFaseAplicadaEnLocal`: fase e indice que el cliente tiene aplicada localmente, por ejemplo `NOCHE_ASESINO:1`.
+- `jugador`, `rolKey`: datos de depuracion para Logcat/Firebase Console.
+
+Regla de sincronizacion por fase:
+
+- En online, los invitados no avanzan fases localmente.
+- Si el timer de un invitado termina antes de recibir `estadoPartida`, queda sincronizando.
+- El host activo publica `estadoPartida`; los invitados aplican estados nuevos e ignoran estados viejos o duplicados.
 
 ### `partidas/{partidaId}/acciones/{accionId}`
 
@@ -94,7 +188,7 @@ Campos:
 - `ronda`: numero de ronda, 0 a 30.
 - `phaseIndex`: indice interno de fase, 0 a 500.
 - `modoCliente`: por ahora `android`.
-- `detalles`: mapa con datos especificos de la accion.
+- `detalles`: mapa con datos especificos de la accion. Para robustez incluye `actorOrden` y, si hay objetivo, `objetivoOrden`; los nombres siguen guardandose para lectura humana.
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
 

@@ -18,6 +18,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 
 class AssigningRolesActivity : BaseActivity() {
@@ -50,8 +51,20 @@ class AssigningRolesActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_assigning_roles)
-        val session = readSession() ?: LocalGameFactory.createSession()
-        MusicManager.playGameIntro(this, session)
+        val session = readSession()
+        if (session == null && intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()) {
+            val onlineRoomId = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
+            Toast.makeText(
+                this,
+                "La sala perdio datos de partida. Volve a entrar desde Online o creen una sala nueva.",
+                Toast.LENGTH_LONG
+            ).show()
+            OnlineRoomRecovery.clearIf(this, onlineRoomId)
+            finish()
+            return
+        }
+        val safeSession = session ?: LocalGameFactory.createSession()
+        MusicManager.playGameIntro(this, safeSession)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -302,20 +315,20 @@ class AssigningRolesActivity : BaseActivity() {
         val portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         return if (portrait) {
             DealAnimationMetrics(
-                cardWidthDp = 98,
-                cardHeightDp = 157,
-                deckOffsetRatio = 0.02f,
-                shuffleWideDp = 42,
-                shuffleNarrowDp = 26,
-                dealDistanceRatio = 0.31f,
-                minDealDistanceDp = 116,
-                dealYRatio = 0.13f,
-                finalScale = 1.24f,
-                finalLiftDp = 18,
-                handsStartYDp = 42,
-                dealingHandsStartYDp = 18,
-                statusBottomMarginDp = 56,
-                statusTextSp = 23f,
+                cardWidthDp = 86,
+                cardHeightDp = 138,
+                deckOffsetRatio = 0.01f,
+                shuffleWideDp = 32,
+                shuffleNarrowDp = 20,
+                dealDistanceRatio = 0.22f,
+                minDealDistanceDp = 84,
+                dealYRatio = 0.08f,
+                finalScale = 1.16f,
+                finalLiftDp = 10,
+                handsStartYDp = 28,
+                dealingHandsStartYDp = 10,
+                statusBottomMarginDp = 44,
+                statusTextSp = 21f,
                 holdFinalMs = 820L
             )
         } else {
@@ -371,11 +384,23 @@ class AssigningRolesActivity : BaseActivity() {
         leavingScreen = true
         handler.removeCallbacks(openGameRunnable)
         releaseDealingSound()
-        val session = readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        val session = readSession()
+        if (session == null && intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()) {
+            val onlineRoomId = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
+            Toast.makeText(
+                this,
+                "La sala perdio datos de partida. Volve a entrar desde Online o creen una sala nueva.",
+                Toast.LENGTH_LONG
+            ).show()
+            OnlineRoomRecovery.clearIf(this, onlineRoomId)
+            finish()
+            return
+        }
+        val safeSession = session ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         startActivity(
             Intent(this, GameplayMockActivity::class.java)
-                .putExtra(LobbyActivity.EXTRA_SESSION, session)
-                .putExtra(GameplayMockActivity.EXTRA_TEMA, GameplayTableUi.themeForMapKey(session.mapKey))
+                .putExtra(LobbyActivity.EXTRA_SESSION, safeSession)
+                .putExtra(GameplayMockActivity.EXTRA_TEMA, GameplayTableUi.themeForMapKey(safeSession.mapKey))
                 .putExtra(GameplayMockActivity.EXTRA_ES_NOCHE, false)
                 .putExtra(
                     GameplayMockActivity.EXTRA_ONLINE_PARTIDA_ID,

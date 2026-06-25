@@ -12,6 +12,7 @@ data class OnlineRoomCreation(
     val roomCode: String,
     val playerName: String,
     val map: GameMap,
+    val expectedPlayers: Int,
     val commitTask: Task<Void>
 )
 
@@ -30,17 +31,25 @@ object OnlineRoomFirestore {
     const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
     const val FIELD_HOST_ID = "hostId"
     const val FIELD_HOST_NAME = "hostNombre"
+    const val FIELD_EXPECTED_PLAYERS = "jugadoresEsperados"
+    const val FIELD_ACTIVE_HOST_ID = "hostActivoId"
+    const val FIELD_HOST_VERSION = "hostVersion"
+    const val FIELD_INITIAL_MATCH_CREATED = "partidaInicialCreada"
     const val FIELD_ROOM_CODE = "codigoSala"
     const val FIELD_MAP_KEY = "mapa"
     const val FIELD_MAP_NAME = "mapaNombre"
     const val FIELD_IS_HOST = "esHost"
     const val FIELD_PLAYER_STATE = "estado"
+    const val FIELD_PLAYER_ORDER = "orden"
+    const val FIELD_ACTIVE_IN_MATCH = "activoEnPartida"
     const val FIELD_UPDATED_AT = "actualizadaEn"
     const val FIELD_CREATED_AT = "creadaEn"
     const val FIELD_JOINED_AT = "unidoEn"
     const val FIELD_LAST_SEEN_AT = "ultimaConexion"
+    const val FIELD_LAST_SEEN_LOCAL = "ultimaConexionLocal"
 
-    const val DEFAULT_MAX_PLAYERS = 10
+    const val DEFAULT_EXPECTED_PLAYERS = LocalGameFactory.MIN_PLAYERS
+    const val DEFAULT_MAX_PLAYERS = LocalGameFactory.MAX_PLAYERS
     const val ROOM_CODE_LENGTH = 6
     private const val DEFAULT_PLAYER_NAME = "Nacho"
 
@@ -59,16 +68,22 @@ object OnlineRoomFirestore {
         firestore: FirebaseFirestore,
         playerName: String,
         uidTemporal: String,
+        publicId: String,
         map: GameMap,
         origin: String,
-        modePrueba: Boolean = true
+        expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
+        modePrueba: Boolean = true,
+        roomCode: String = generateRoomCode()
     ): OnlineRoomCreation {
         val roomReference = firestore.collection(ROOMS_COLLECTION).document()
         val hostReference = roomReference.collection(PLAYERS_COLLECTION)
             .document(uidTemporal)
         val roomNumber = (System.currentTimeMillis() % 10000).toString().padStart(4, '0')
-        val roomCode = generateRoomCode()
         val safePlayerName = normalizedPlayerName(playerName)
+        val safeExpectedPlayers = expectedPlayers.coerceIn(
+            LocalGameFactory.MIN_PLAYERS,
+            LocalGameFactory.MAX_PLAYERS
+        )
         val roomName = "Sala de $safePlayerName $roomNumber"
         val roomData = hashMapOf<String, Any>(
             FIELD_NAME to roomName,
@@ -78,7 +93,11 @@ object OnlineRoomFirestore {
             FIELD_MAP_NAME to map.name,
             FIELD_HOST_ID to uidTemporal,
             FIELD_HOST_NAME to safePlayerName,
-            FIELD_MAX_PLAYERS to DEFAULT_MAX_PLAYERS,
+            FIELD_ACTIVE_HOST_ID to uidTemporal,
+            FIELD_HOST_VERSION to 0,
+            FIELD_INITIAL_MATCH_CREATED to false,
+            FIELD_EXPECTED_PLAYERS to safeExpectedPlayers,
+            FIELD_MAX_PLAYERS to safeExpectedPlayers,
             FIELD_CURRENT_PLAYERS to 1,
             FIELD_TEST_MODE to modePrueba,
             "origen" to origin,
@@ -87,9 +106,16 @@ object OnlineRoomFirestore {
         )
         val hostData = hashMapOf<String, Any>(
             FIELD_NAME to safePlayerName,
+            PlayerPublicIdentity.FIELD_PUBLIC_ID to publicId,
+            PlayerPublicIdentity.FIELD_PROFILE_NAME to safePlayerName,
+            PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(safePlayerName, publicId),
             FIELD_IS_HOST to true,
             FIELD_PLAYER_STATE to "conectado",
+            FIELD_PLAYER_ORDER to 0,
+            FIELD_ACTIVE_IN_MATCH to true,
             "uidTemporal" to uidTemporal,
+            FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+            FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp(),
             FIELD_JOINED_AT to FieldValue.serverTimestamp()
         )
         val task = firestore.batch()
@@ -103,11 +129,12 @@ object OnlineRoomFirestore {
             roomCode = roomCode,
             playerName = safePlayerName,
             map = map,
+            expectedPlayers = safeExpectedPlayers,
             commitTask = task
         )
     }
 
-    private fun generateRoomCode(): String {
+    fun generateRoomCode(): String {
         val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         return buildString {
             repeat(ROOM_CODE_LENGTH) {

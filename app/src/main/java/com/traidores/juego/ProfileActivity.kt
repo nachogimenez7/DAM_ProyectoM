@@ -19,7 +19,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import java.util.concurrent.TimeUnit
+import com.google.firebase.firestore.FirebaseFirestore
 
 class ProfileActivity : BaseActivity() {
 
@@ -58,6 +58,7 @@ class ProfileActivity : BaseActivity() {
     private lateinit var profileBio: TextView
     private lateinit var favoriteRoleName: TextView
     private lateinit var editProfileButton: Button
+    private lateinit var editPublicIdIcon: View
     private lateinit var achievementViews: List<TextView>
     private lateinit var editIcons: List<View>
 
@@ -75,6 +76,7 @@ class ProfileActivity : BaseActivity() {
         }
         renderProfile()
         setEditing(restoredEditing)
+        ensureNumericPublicId()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -103,7 +105,7 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editAvatar).setOnClickListener { showAvatarSelector() }
         findViewById<View>(R.id.editBanner).setOnClickListener { showBannerSelector() }
         findViewById<View>(R.id.editName).setOnClickListener { showNameEditor() }
-        findViewById<View>(R.id.editPublicId).setOnClickListener { showPublicIdEditor() }
+        findViewById<View>(R.id.editPublicId).setOnClickListener { showFixedPublicIdMessage() }
         findViewById<View>(R.id.editBio).setOnClickListener { showBioEditor() }
         findViewById<View>(R.id.editFavoriteRole).setOnClickListener {
             showFavoriteRoleSelector()
@@ -114,13 +116,13 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editAvatar).contentDescription = "Editar foto de perfil"
         findViewById<View>(R.id.editBanner).contentDescription = "Editar banner del perfil"
         findViewById<View>(R.id.editName).contentDescription = "Editar nombre visible"
-        findViewById<View>(R.id.editPublicId).contentDescription = "Editar ID publico"
+        findViewById<View>(R.id.editPublicId).contentDescription = "ID publico fijo"
         findViewById<View>(R.id.editBio).contentDescription = "Editar frase del perfil"
         findViewById<View>(R.id.editFavoriteRole).contentDescription = "Editar rol favorito"
         findViewById<View>(R.id.editAchievements).contentDescription = "Editar logros destacados"
 
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
-        profilePublicId.setOnClickListener { if (isEditing) showPublicIdEditor() }
+        profilePublicId.setOnClickListener { showFixedPublicIdMessage() }
         profileBio.setOnClickListener { if (isEditing) showBioEditor() }
         achievementViews.forEach { view ->
             view.setOnClickListener {
@@ -143,6 +145,7 @@ class ProfileActivity : BaseActivity() {
         profileBio = findViewById(R.id.profileBio)
         favoriteRoleName = findViewById(R.id.favoriteRoleName)
         editProfileButton = findViewById(R.id.btnEditProfile)
+        editPublicIdIcon = findViewById(R.id.editPublicId)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -152,7 +155,6 @@ class ProfileActivity : BaseActivity() {
             findViewById(R.id.editAvatar),
             findViewById(R.id.editBanner),
             findViewById(R.id.editName),
-            findViewById(R.id.editPublicId),
             findViewById(R.id.editBio),
             findViewById(R.id.editFavoriteRole),
             findViewById(R.id.editAchievements)
@@ -174,9 +176,7 @@ class ProfileActivity : BaseActivity() {
 
         return ProfileDraft(
             name = preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
-            publicId = preferences.getString(PREF_PUBLIC_ID, DEFAULT_PUBLIC_ID)
-                .orEmpty()
-                .ifBlank { DEFAULT_PUBLIC_ID },
+            publicId = PlayerPublicIdentity.currentPublicId(this),
             bio = preferences.getString(PREF_BIO, DEFAULT_BIO).orEmpty(),
             avatarKey = preferences.getString(PREF_AVATAR, DEFAULT_AVATAR_KEY)
                 .orEmpty()
@@ -195,7 +195,8 @@ class ProfileActivity : BaseActivity() {
 
     private fun renderProfile() {
         profileName.text = draftProfile.name
-        profilePublicId.text = "#${draftProfile.publicId}"
+        profilePublicId.text = draftProfile.publicId.takeIf { it.isNotBlank() }?.let { "#$it" }
+            ?: "#SIN ID"
         val hasBio = draftProfile.bio.isNotBlank()
         profileBio.text = if (hasBio) {
             "\"${draftProfile.bio}\""
@@ -232,6 +233,22 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
+    private fun ensureNumericPublicId() {
+        if (draftProfile.publicId.isNotBlank()) return
+        PlayerPublicIdentity.ensurePublicId(
+            context = this,
+            firestore = FirebaseFirestore.getInstance(),
+            onReady = { publicId ->
+                savedProfile.publicId = publicId
+                draftProfile.publicId = publicId
+                renderProfile()
+            },
+            onFailure = { error ->
+                OnlineDebugLog.e("public_id_profile_allocate_fallback", error)
+            }
+        )
+    }
+
     private fun validFeaturedAchievements(names: List<String>): List<String> {
         val unlocked = ProfileCustomizationCatalog.unlockedAchievements()
         val validNames = unlocked.map { it.name }.toSet()
@@ -258,6 +275,7 @@ class ProfileActivity : BaseActivity() {
     private fun setEditing(editing: Boolean) {
         isEditing = editing
         editIcons.forEach { it.visibility = if (editing) View.VISIBLE else View.GONE }
+        editPublicIdIcon.visibility = View.GONE
         editProfileButton.text = if (editing) "GUARDAR CAMBIOS" else "EDITAR PERFIL"
         editProfileButton.contentDescription = if (editing) {
             "Guardar cambios del perfil"
@@ -268,11 +286,9 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun saveChanges() {
-        val publicIdChanged = draftProfile.publicId != savedProfile.publicId
         preferences.edit()
             .putString(PREF_NAME, draftProfile.name)
             .putString(OpcionesActivity.PREF_PLAYER_NAME, draftProfile.name)
-            .putString(PREF_PUBLIC_ID, draftProfile.publicId)
             .putString(PREF_BIO, draftProfile.bio)
             .putString(PREF_AVATAR, draftProfile.avatarKey)
             .putString(PREF_BANNER, draftProfile.bannerKey)
@@ -281,11 +297,6 @@ class ProfileActivity : BaseActivity() {
                 PREF_ACHIEVEMENTS,
                 draftProfile.achievements.joinToString(ACHIEVEMENT_SEPARATOR)
             )
-            .apply {
-                if (publicIdChanged) {
-                    putLong(PREF_PUBLIC_ID_CHANGED_AT, System.currentTimeMillis())
-                }
-            }
             .apply()
 
         savedProfile = draftProfile.copy(achievements = draftProfile.achievements.toList())
@@ -389,35 +400,12 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun showPublicIdEditor() {
-        val remainingDays = publicIdCooldownDays()
-        if (remainingDays > 0) {
-            Toast.makeText(
-                this,
-                "Podras cambiar tu ID nuevamente en $remainingDays dias.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        showTextEditor(
-            title = "Editar ID publico",
-            currentValue = draftProfile.publicId,
-            maxLength = MAX_PUBLIC_ID_LENGTH,
-            hint = "Entre 4 y 16 caracteres"
-        ) { rawValue ->
-            val value = rawValue.lowercase()
-            when {
-                value == draftProfile.publicId -> null
-                !PUBLIC_ID_PATTERN.matches(value) ->
-                    "Usa de 4 a 16 letras, numeros o guion bajo."
-                else -> {
-                    draftProfile.publicId = value
-                    renderProfile()
-                    null
-                }
-            }
-        }
+    private fun showFixedPublicIdMessage() {
+        Toast.makeText(
+            this,
+            "Tu ID publico es fijo y se usa para agregarte como amigo.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun showBioEditor() {
@@ -641,17 +629,6 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun publicIdCooldownDays(): Long {
-        if (draftProfile.publicId != savedProfile.publicId) return 0
-        val lastChange = preferences.getLong(PREF_PUBLIC_ID_CHANGED_AT, 0L)
-        if (lastChange == 0L) return 0
-
-        val availableAt = lastChange + PUBLIC_ID_COOLDOWN_MS
-        val remaining = availableAt - System.currentTimeMillis()
-        if (remaining <= 0L) return 0
-        return TimeUnit.MILLISECONDS.toDays(remaining).coerceAtLeast(0) + 1
-    }
-
     private fun alignAvatarToTop(image: ImageView) {
         image.post {
             val drawable = image.drawable ?: return@post
@@ -725,15 +702,12 @@ class ProfileActivity : BaseActivity() {
     private companion object {
         const val PREFS_NAME = "TraidoresPrefs"
         const val PREF_NAME = "profile_name"
-        const val PREF_PUBLIC_ID = "profile_public_id"
-        const val PREF_PUBLIC_ID_CHANGED_AT = "profile_public_id_changed_at"
         const val PREF_BIO = "profile_bio"
         const val PREF_AVATAR = "profile_avatar"
         const val PREF_BANNER = "profile_banner"
         const val PREF_FAVORITE_ROLE = "profile_favorite_role"
         const val PREF_ACHIEVEMENTS = "profile_achievements"
 
-        const val DEFAULT_PUBLIC_ID = "trd-a7k4p2"
         const val DEFAULT_BIO = "No fui yo. Esta vez."
         const val DEFAULT_AVATAR_KEY = "aldeana"
         const val DEFAULT_BANNER_KEY = "pampa"
@@ -744,11 +718,8 @@ class ProfileActivity : BaseActivity() {
         const val REQUEST_FAVORITE_ROLE = 103
 
         const val MAX_NAME_LENGTH = 20
-        const val MAX_PUBLIC_ID_LENGTH = 16
         const val MAX_BIO_LENGTH = 40
         const val MAX_FEATURED_ACHIEVEMENTS = 3
-        val PUBLIC_ID_PATTERN = Regex("^[a-z0-9_]{4,16}$")
-        val PUBLIC_ID_COOLDOWN_MS = TimeUnit.DAYS.toMillis(30)
         const val EMPTY_BIO_PLACEHOLDER = "Agrega una frase breve para tu perfil."
         const val STATE_IS_EDITING = "profile_state_is_editing"
         const val STATE_DRAFT_NAME = "profile_state_draft_name"

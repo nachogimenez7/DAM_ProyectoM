@@ -83,7 +83,9 @@ class LobbyBrowserActivity : BaseActivity() {
             ?: LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name
             ?: "Pampa"
         val players = document.getLong(FIELD_CURRENT_PLAYERS)?.toInt() ?: 0
-        val limit = document.getLong(FIELD_MAX_PLAYERS)?.toInt() ?: DEFAULT_MAX_PLAYERS
+        val limit = document.getLong(FIELD_EXPECTED_PLAYERS)?.toInt()
+            ?: document.getLong(FIELD_MAX_PLAYERS)?.toInt()
+            ?: DEFAULT_MAX_PLAYERS
         return OnlineLobby(
             id = document.id,
             code = document.getString(FIELD_ROOM_CODE).orEmpty(),
@@ -153,6 +155,18 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     private fun enterLobby(lobby: OnlineLobby) {
+        val existingPublicId = PlayerPublicIdentity.currentPublicId(this)
+        if (existingPublicId.isBlank()) {
+            PlayerPublicIdentity.ensurePublicId(
+                context = this,
+                firestore = firestore,
+                onReady = { enterLobby(lobby) },
+                onFailure = { error ->
+                    OnlineDebugLog.e("public_id_browser_join_fallback roomId=${lobby.id}", error)
+                }
+            )
+            return
+        }
         val playerName = OnlineRoomFirestore.normalizedPlayerName(
             getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
                 .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
@@ -170,27 +184,56 @@ class LobbyBrowserActivity : BaseActivity() {
             if (!roomSnapshot.exists()) {
                 throw IllegalStateException("La sala ya no existe.")
             }
+            if (roomSnapshot.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+                throw IllegalStateException("La sala ya no esta disponible.")
+            }
             val playerSnapshot = transaction.get(playerReference)
             val alreadyJoined = playerSnapshot.exists()
+            val wasActive = playerSnapshot.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false
             val currentPlayers = roomSnapshot.getLong(FIELD_CURRENT_PLAYERS) ?: lobby.players.toLong()
-            val limit = roomSnapshot.getLong(FIELD_MAX_PLAYERS) ?: lobby.limit.toLong()
-            if (!alreadyJoined && currentPlayers >= limit) {
+            val limit = roomSnapshot.getLong(FIELD_EXPECTED_PLAYERS)
+                ?: roomSnapshot.getLong(FIELD_MAX_PLAYERS)
+                ?: lobby.limit.toLong()
+            if ((!alreadyJoined || !wasActive) && currentPlayers >= limit) {
                 throw IllegalStateException("La sala esta llena.")
             }
 
             val connectedData = mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
+                PlayerPublicIdentity.FIELD_PUBLIC_ID to existingPublicId,
+                PlayerPublicIdentity.FIELD_PROFILE_NAME to playerName,
+                PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(playerName, existingPublicId),
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "uidTemporal" to uidTemporal,
+                OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
+                OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
                 OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
             )
             if (alreadyJoined) {
-                transaction.update(playerReference, connectedData)
+                val reactivatedData = if (wasActive) {
+                    connectedData
+                } else {
+                    connectedData + mapOf(
+                        OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
+                        OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
+                    )
+                }
+                transaction.update(playerReference, reactivatedData)
+                if (!wasActive) {
+                    transaction.update(
+                        roomReference,
+                        mapOf(
+                            FIELD_CURRENT_PLAYERS to FieldValue.increment(1),
+                            "actualizadaEn" to FieldValue.serverTimestamp()
+                        )
+                    )
+                }
             } else {
                 transaction.set(
                     playerReference,
                     connectedData + mapOf(
                         OnlineRoomFirestore.FIELD_IS_HOST to false,
+                        OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
                         OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
                     )
                 )
@@ -205,6 +248,14 @@ class LobbyBrowserActivity : BaseActivity() {
             !alreadyJoined
         }.addOnSuccessListener {
             OnlineDebugLog.i("browser_join_success roomId=${lobby.id} uid=$uidTemporal")
+            OnlineRoomRecovery.save(
+                this,
+                roomId = lobby.id,
+                roomCode = lobby.code,
+                roomName = lobby.name,
+                mapKey = lobby.mapKey,
+                isHost = false
+            )
             val session = LocalGameFactory.createOnlineLobby(
                 humanName = playerName,
                 playerCount = 1,
@@ -218,6 +269,7 @@ class LobbyBrowserActivity : BaseActivity() {
                     .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, lobby.name)
                     .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, lobby.id)
                     .putExtra(LobbyActivity.EXTRA_ROOM_CODE, lobby.code)
+                    .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, false)
             )
         }.addOnFailureListener { error ->
             OnlineDebugLog.e("browser_join_failure roomId=${lobby.id} uid=$uidTemporal", error)
@@ -251,6 +303,7 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val FIELD_MAP_KEY = "mapa"
         private const val FIELD_MAP_NAME = "mapaNombre"
         private const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
+        private const val FIELD_EXPECTED_PLAYERS = "jugadoresEsperados"
         private const val FIELD_MAX_PLAYERS = "maxJugadores"
         private const val DEFAULT_MAP_KEY = "pampa"
         private const val DEFAULT_MAX_PLAYERS = 10

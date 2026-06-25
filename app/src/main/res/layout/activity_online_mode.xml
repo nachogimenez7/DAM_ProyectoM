@@ -53,6 +53,12 @@
             android:textSize="15sp" />
 
         <Button
+            android:id="@+id/btnRecoverRoom"
+            style="@style/BtnGold"
+            android:visibility="gone"
+            android:text="REINGRESAR A PARTIDA" />
+
+        <Button
             android:id="@+id/btnQuick"
             style="@style/BtnGold"
             android:text="PARTIDA RAPIDA" />

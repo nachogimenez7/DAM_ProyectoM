@@ -146,6 +146,23 @@
                     android:textColor="@color/accent_gold"
                     android:textSize="15sp" />
 
+                <Button
+                    android:id="@+id/btnReleaseDisconnected"
+                    style="@style/BtnDark"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_btn_dark_ripple"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="LIBERAR DESCONECTADOS"
+                    android:textSize="10sp"
+                    android:visibility="gone"
+                    app:autoSizeMaxTextSize="10sp"
+                    app:autoSizeMinTextSize="7sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+
                 <LinearLayout
                     android:id="@+id/onlineCodePanel"
                     android:layout_width="match_parent"

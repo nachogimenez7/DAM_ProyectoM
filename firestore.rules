@@ -30,6 +30,10 @@ service cloud.firestore {
       return state in ['conectado', 'desconectado', 'listo'];
     }
 
+    function validPublicId(publicId) {
+      return publicId is string && publicId.matches('^[0-9]{1,12}$');
+    }
+
     function validRoomBase(data) {
       return isString(data.nombre, 1, 60)
         && validRoomCode(data.codigoSala)
@@ -38,12 +42,19 @@ service cloud.firestore {
         && isString(data.mapaNombre, 1, 40)
         && isString(data.hostId, 1, 80)
         && isString(data.hostNombre, 1, 18)
+        && isString(data.hostActivoId, 1, 80)
+        && data.hostVersion is int
+        && data.hostVersion >= 0
+        && data.partidaInicialCreada is bool
+        && data.jugadoresEsperados is int
+        && data.jugadoresEsperados >= 5
+        && data.jugadoresEsperados <= 15
         && data.maxJugadores is int
-        && data.maxJugadores >= 1
+        && data.maxJugadores >= 5
         && data.maxJugadores <= 15
         && data.jugadoresActuales is int
         && data.jugadoresActuales >= 0
-        && data.jugadoresActuales <= data.maxJugadores
+        && data.jugadoresActuales <= data.jugadoresEsperados
         && data.modoPrueba is bool
         && isString(data.origen, 1, 40);
     }
@@ -57,6 +68,10 @@ service cloud.firestore {
           'mapaNombre',
           'hostId',
           'hostNombre',
+          'hostActivoId',
+          'hostVersion',
+          'partidaInicialCreada',
+          'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
           'modoPrueba',
@@ -75,12 +90,19 @@ service cloud.firestore {
         && isString(data.mapaNombre, 1, 40)
         && isString(data.hostId, 1, 80)
         && isString(data.hostNombre, 1, 18)
+        && isString(data.hostActivoId, 1, 80)
+        && data.hostVersion is int
+        && data.hostVersion >= 0
+        && data.partidaInicialCreada is bool
+        && data.jugadoresEsperados is int
+        && data.jugadoresEsperados >= 5
+        && data.jugadoresEsperados <= 15
         && data.maxJugadores is int
-        && data.maxJugadores >= 1
+        && data.maxJugadores >= 5
         && data.maxJugadores <= 15
         && data.jugadoresActuales is int
         && data.jugadoresActuales >= 0
-        && data.jugadoresActuales <= data.maxJugadores
+        && data.jugadoresActuales <= data.jugadoresEsperados
         && data.modoPrueba is bool
         && isString(data.origen, 1, 40);
     }
@@ -100,6 +122,10 @@ service cloud.firestore {
           'mapaNombre',
           'hostId',
           'hostNombre',
+          'hostActivoId',
+          'hostVersion',
+          'partidaInicialCreada',
+          'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
           'modoPrueba',
@@ -115,6 +141,10 @@ service cloud.firestore {
           'mapaNombre',
           'hostId',
           'hostNombre',
+          'hostActivoId',
+          'hostVersion',
+          'partidaInicialCreada',
+          'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
           'modoPrueba',
@@ -130,18 +160,33 @@ service cloud.firestore {
 
         allow create, update: if hasOnly(request.resource.data, [
             'nombre',
+            'nombrePerfil',
+            'nombreSala',
+            'publicId',
             'esHost',
             'estado',
             'uidTemporal',
             'unidoEn',
             'ultimaConexion',
+            'ultimaConexionLocal',
+            'orden',
+            'activoEnPartida',
             'listo'
           ])
           && hasAll(request.resource.data, ['nombre', 'estado', 'uidTemporal'])
           && isString(request.resource.data.nombre, 1, 18)
+          && isOptionalString(request.resource.data, 'nombrePerfil', 18)
+          && isOptionalString(request.resource.data, 'nombreSala', 18)
+          && (!('publicId' in request.resource.data) || validPublicId(request.resource.data.publicId))
           && request.resource.data.uidTemporal == uidTemporal
           && validPlayerState(request.resource.data.estado)
           && (!('esHost' in request.resource.data) || request.resource.data.esHost is bool)
+          && (!('activoEnPartida' in request.resource.data) || request.resource.data.activoEnPartida is bool)
+          && (!('ultimaConexionLocal' in request.resource.data) || request.resource.data.ultimaConexionLocal is int)
+          && (!('orden' in request.resource.data) ||
+            (request.resource.data.orden is int &&
+             request.resource.data.orden >= 0 &&
+             request.resource.data.orden <= 14))
           && (!('listo' in request.resource.data) || request.resource.data.listo is bool);
 
         allow delete: if false;
@@ -208,6 +253,32 @@ service cloud.firestore {
 
         allow update, delete: if false;
       }
+    }
+
+    match /meta/public_ids {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly([
+          'nextId',
+          'actualizadaEn'
+        ])
+        && request.resource.data.nextId is int
+        && request.resource.data.nextId >= 1
+        && request.resource.data.nextId <= 999999999999;
+      allow delete: if false;
+    }
+
+    match /perfiles_publicos/{uidTemporal} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly([
+          'uidTemporal',
+          'publicId',
+          'nombrePerfil',
+          'actualizadaEn'
+        ])
+        && request.resource.data.uidTemporal == uidTemporal
+        && validPublicId(request.resource.data.publicId)
+        && isString(request.resource.data.nombrePerfil, 1, 18);
+      allow delete: if false;
     }
 
     match /{document=**} {

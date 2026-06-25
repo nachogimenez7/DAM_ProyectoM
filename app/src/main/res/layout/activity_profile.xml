@@ -152,7 +152,7 @@
                     android:gravity="center"
                     android:maxLines="1"
                     android:paddingHorizontal="38dp"
-                    android:text="#trd-a7k4p2"
+                    android:text="#SIN ID"
                     android:textColor="@color/accent_gold"
                     android:textSize="16sp"
                     android:textStyle="bold"

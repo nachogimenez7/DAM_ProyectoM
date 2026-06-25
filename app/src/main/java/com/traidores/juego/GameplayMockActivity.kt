@@ -43,9 +43,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.TextViewCompat
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.SetOptions
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -110,10 +112,24 @@ class GameplayMockActivity : BaseActivity() {
     private var lastPublishedOnlineStateKey = ""
     private var lastPublishedAuthoritativeOnlineStateKey = ""
     private var lastAppliedAuthoritativeOnlineStateKey = ""
+    private var lastAppliedAuthoritativePhaseLabel = ""
     private var onlineAwaitingHostAdvance = false
+    private var onlineInitialRoleRead = false
+    private var onlineStartupGateStartedAtMs = 0L
+    private var onlineStartupGateResult: OnlineStartupGateResult? = null
+    private var onlineStartupForceAvailable = false
+    private var lastOnlineStartupGateKey = ""
+    private var lastOnlineStartupClientStates = emptyList<OnlineStartupClientState>()
     private var onlineNightResolutionInProgress = false
+    private var onlineVoteResolutionInProgress = false
     private var onlineStateListener: ListenerRegistration? = null
     private var onlineChatListener: ListenerRegistration? = null
+    private var onlinePlayersListener: ListenerRegistration? = null
+    private var onlineActiveHostId = ""
+    private var onlineHostHandoffInProgress = false
+    private var onlineGameplayStartedAtMs = 0L
+    private var lastOnlinePresencePulseAtMs = 0L
+    private var lastOnlineWatchdogReason = ""
     private var lastOnlineChatSentAtMs = 0L
     private var lastOnlineChatMessage = ""
     private val submittedOnlineNightActions = mutableSetOf<String>()
@@ -122,6 +138,16 @@ class GameplayMockActivity : BaseActivity() {
     private val voteResultAutoContinueRunnable = Runnable { handleVoteResultAutoContinue() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
+    private val onlineStartupForceRefreshRunnable = Runnable {
+        if (isOnlineStartupPhase()) {
+            refreshOnlineStartupGateFromLastStates()
+        }
+    }
+    private val onlineSyncWatchdogRunnable = object : Runnable {
+        override fun run() {
+            runOnlineSyncWatchdog()
+        }
+    }
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val typingBotSpeakers = linkedSetOf<String>()
     private val enableInitialRoleReadyRunnable = Runnable {
@@ -315,17 +341,19 @@ class GameplayMockActivity : BaseActivity() {
         var selected: Boolean = false
     )
 
-    private data class OnlineRecordedAction(
-        val action: String,
-        val actorName: String,
-        val targetName: String
-    )
-
     private data class OnlineChatEntry(
         val id: String,
         val speaker: String,
         val message: String,
         val isGod: Boolean
+    )
+
+    private data class OnlinePresencePlayer(
+        val id: String,
+        val name: String,
+        val order: Int,
+        val state: String,
+        val activeInMatch: Boolean
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -334,13 +362,32 @@ class GameplayMockActivity : BaseActivity() {
 
         @Suppress("DEPRECATION")
         val restoredSession = savedInstanceState?.getSerializable(STATE_SESSION) as? GameSession
-        session = restoredSession ?: readSession() ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
-        onlinePartidaId = savedInstanceState?.getString(STATE_ONLINE_PARTIDA_ID)
+        val incomingOnlinePartidaId = savedInstanceState?.getString(STATE_ONLINE_PARTIDA_ID)
             ?: intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
-        onlinePlayerId = savedInstanceState?.getString(STATE_ONLINE_PLAYER_ID)
+        val incomingOnlinePlayerId = savedInstanceState?.getString(STATE_ONLINE_PLAYER_ID)
             ?: intent.getStringExtra(EXTRA_ONLINE_PLAYER_ID).orEmpty()
+        val incomingOnline = incomingOnlinePartidaId.isNotBlank() || incomingOnlinePlayerId.isNotBlank()
+        val incomingSession = restoredSession ?: readSession()
+        if (incomingSession == null && incomingOnline) {
+            OnlineDebugLog.w("gameplay_missing_online_session roomId=$incomingOnlinePartidaId uid=$incomingOnlinePlayerId")
+            Toast.makeText(
+                this,
+                "La sala perdio datos de partida. Reingresa desde Online o creen una sala nueva.",
+                Toast.LENGTH_LONG
+            ).show()
+            if (incomingOnlinePartidaId.isNotBlank()) {
+                OnlineRoomRecovery.clearIf(this, incomingOnlinePartidaId)
+            }
+            finish()
+            return
+        }
+        session = incomingSession ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        onlinePartidaId = incomingOnlinePartidaId
+        onlinePlayerId = incomingOnlinePlayerId
         onlineIsHost = savedInstanceState?.getBoolean(STATE_ONLINE_IS_HOST)
             ?: intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
+        onlineInitialRoleRead = savedInstanceState?.getBoolean(STATE_ONLINE_INITIAL_ROLE_READ)
+            ?: (session.phase != GamePhase.REPARTO)
         if (onlinePartidaId.isNotBlank() || onlinePlayerId.isNotBlank()) {
             OnlineDebugLog.i(
                 "gameplay_enter roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost restored=${savedInstanceState != null}"
@@ -696,7 +743,13 @@ class GameplayMockActivity : BaseActivity() {
         chatNewMessages.setOnClickListener {
             acknowledgeNewChatMessages()
         }
-        roleCard.setOnClickListener { showRolePreview() }
+        roleCard.setOnClickListener {
+            if (session.phase != GamePhase.REPARTO && !isCardRevealed) {
+                toggleHumanCard()
+            } else {
+                showRolePreview()
+            }
+        }
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
         privateFeedbackOverlay.setOnClickListener { dismissCurrentFeedback() }
@@ -742,6 +795,19 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
+        startOnlinePlayersPresenceListener()
+        startOnlineSyncWatchdog()
+    }
+
+    override fun onStop() {
+        stopOnlineSyncWatchdog()
+        markOnlineGameplayPresence(PLAYER_STATE_DISCONNECTED)
+        super.onStop()
+    }
+
     override fun onDestroy() {
         autoAdvanceHandler.removeCallbacks(enableInitialRoleReadyRunnable)
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
@@ -761,11 +827,15 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
+        autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         onlineStateListener?.remove()
         onlineStateListener = null
         onlineChatListener?.remove()
         onlineChatListener = null
+        onlinePlayersListener?.remove()
+        onlinePlayersListener = null
         cancelPendingBotChat()
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
@@ -857,6 +927,7 @@ class GameplayMockActivity : BaseActivity() {
         outState.putString(STATE_ONLINE_PARTIDA_ID, onlinePartidaId)
         outState.putString(STATE_ONLINE_PLAYER_ID, onlinePlayerId)
         outState.putBoolean(STATE_ONLINE_IS_HOST, onlineIsHost)
+        outState.putBoolean(STATE_ONLINE_INITIAL_ROLE_READ, onlineInitialRoleRead)
         outState.putBoolean(
             STATE_VOTE_NO_EXPULSION_PRESENTED,
             voteNoExpulsionPresented
@@ -916,6 +987,9 @@ class GameplayMockActivity : BaseActivity() {
             renderGame()
             return
         }
+        if (handleOnlineStartupAction()) {
+            return
+        }
 
         val selectedAction = confirmedTargetActionLabel()
         if (selectedAction != null) {
@@ -929,6 +1003,14 @@ class GameplayMockActivity : BaseActivity() {
         }
 
         if (GameEngine.needsInitialDesertorChoice(session) || GameEngine.canDesertorReconsider(session)) {
+            if (
+                blockUnsupportedOnlineLocalDecision(
+                    decision = "desertor_team_choice",
+                    message = "El Desertor online queda deshabilitado en esta prueba estable."
+                )
+            ) {
+                return
+            }
             showDesertorTeamDialog()
             return
         }
@@ -939,13 +1021,16 @@ class GameplayMockActivity : BaseActivity() {
             currentActionSession.phase == GamePhase.NOCHE_ORACULO &&
             human.role?.key == RoleCatalog.ORACULO
         ) {
-            val resolved = GameEngine.skipOraclePower(currentActionSession)
-            session = if (isOnlineNightActionWindow()) {
-                submittedOnlineNightActions.add(onlineDeferredActionKey())
-                mergeOnlineNightActionResult(session, resolved)
-            } else {
-                resolved
+            if (isOnlineNightActionWindow()) {
+                recordOnlineSkippedNightAction(
+                    before = currentActionSession,
+                    roleKey = RoleCatalog.ORACULO,
+                    actionType = "guardar_poder"
+                )
+                return
             }
+            val resolved = GameEngine.skipOraclePower(currentActionSession)
+            session = resolved
             renderGame()
             return
         }
@@ -956,6 +1041,14 @@ class GameplayMockActivity : BaseActivity() {
             human.role?.key == "alcalde" &&
             !session.alcaldeRevealed
         ) {
+            if (
+                blockUnsupportedOnlineLocalDecision(
+                    decision = "alcalde_reveal",
+                    message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable."
+                )
+            ) {
+                return
+            }
             val before = session
             session = GameEngine.revealAlcalde(session)
             val feedback = GameplayTableUi.feedbackForMayorReveal(before, session)
@@ -978,7 +1071,27 @@ class GameplayMockActivity : BaseActivity() {
             return
         }
 
+        if (blockOnlineGuestLocalPhaseAdvance("manual_or_auto_advance")) {
+            return
+        }
+
         advanceCurrentPhase()
+    }
+
+    private fun blockOnlineGuestLocalPhaseAdvance(reason: String): Boolean {
+        if (OnlinePhaseGate.canAdvanceLocally(isOnlineGameplay(), onlineIsHost)) return false
+        onlineAwaitingHostAdvance = true
+        lastPublishedOnlineStateKey = ""
+        OnlineDebugLog.i(
+            "phase_client_syncing roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
+        )
+        Toast.makeText(
+            this,
+            "Sincronizando con el pueblo...",
+            Toast.LENGTH_SHORT
+        ).show()
+        renderGame()
+        return true
     }
 
     private fun advanceCurrentPhase() {
@@ -1026,22 +1139,14 @@ class GameplayMockActivity : BaseActivity() {
         val before = actionSession
         selectedTarget = targetName
         val resolved = GameEngine.resolveHumanTargetAction(actionSession, targetName)
+        if (isOnlineDeferredActionWindow()) {
+            recordOnlineDeferredPlayerAction(before, resolved, targetName)
+            return
+        }
         recordOnlinePlayerAction(before, resolved, targetName)
         playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
-        session = if (isOnlineDeferredActionWindow()) {
-            submittedOnlineNightActions.add(onlineDeferredActionKey())
-            if (isOnlineNightActionWindow()) {
-                mergeOnlineNightActionResult(session, resolved)
-            } else {
-                session.copy(
-                    privateHint = "Accion registrada. Espera a que termine el tiempo.",
-                    actionHistory = resolved.actionHistory
-                )
-            }
-        } else {
-            resolved
-        }
+        session = resolved
         stageBotBurstForCurrentPhase()
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
@@ -1062,6 +1167,90 @@ class GameplayMockActivity : BaseActivity() {
             }
             GameplayFeedbackState.Presentation.NONE -> renderGame()
         }
+    }
+
+    private fun recordOnlineDeferredPlayerAction(
+        before: GameSession,
+        resolved: GameSession,
+        targetName: String
+    ) {
+        val actionKey = onlineDeferredActionKey()
+        val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
+        val waitingMessage = if (
+            session.phase == GamePhase.VOTACION ||
+            session.phase == GamePhase.DESEMPATE_VOTACION ||
+            session.phase == GamePhase.ALCALDE_DESEMPATE
+        ) {
+            "Voto registrado. Esperando al pueblo..."
+        } else {
+            "Accion registrada. Esperando al pueblo..."
+        }
+        recordOnlinePlayerAction(
+            before = before,
+            after = resolved,
+            targetName = targetName,
+            onSuccess = {
+                submittedOnlineNightActions.add(actionKey)
+                playResolvedActionSound(before, resolved)
+                session = session.copy(
+                    privateHint = waitingMessage,
+                    actionHistory = resolved.actionHistory
+                )
+                clearSelection()
+                renderGame()
+                if (feedback?.blocksGameplay == true) {
+                    Toast.makeText(this, feedback.message, Toast.LENGTH_LONG).show()
+                } else if (feedback != null) {
+                    showActionFeedbackBanner(feedback)
+                }
+            },
+            onFailure = {
+                renderGame()
+            }
+        )
+    }
+
+    private fun recordOnlineSkippedNightAction(
+        before: GameSession,
+        roleKey: String,
+        actionType: String
+    ) {
+        val actionKey = onlineDeferredActionKey()
+        recordOnlineAction(
+            type = "accion_jugador",
+            targetName = "",
+            details = mapOf(
+                "accion" to actionType,
+                "rolActor" to roleKey,
+                "faseResultado" to before.phase.name,
+                "phaseIndexResultado" to before.phaseIndex
+            ),
+            onSuccess = {
+                submittedOnlineNightActions.add(actionKey)
+                session = session.copy(privateHint = "Accion omitida. Esperando al pueblo...")
+                clearSelection()
+                renderGame()
+            },
+            onFailure = {
+                renderGame()
+            }
+        )
+    }
+
+    private fun blockUnsupportedOnlineLocalDecision(
+        decision: String,
+        message: String,
+        rerender: Boolean = true
+    ): Boolean {
+        if (!isOnlineGameplay()) return false
+        OnlineDebugLog.w(
+            "online_local_decision_blocked roomId=$onlinePartidaId uid=$onlinePlayerId decision=$decision phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
+        )
+        GameplayEffects.play(this, GameplayEffect.ERROR)
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        session = session.copy(privateHint = message)
+        if (rerender) renderGame()
+        return true
     }
 
     private fun renderGame() {
@@ -1121,6 +1310,11 @@ class GameplayMockActivity : BaseActivity() {
         currentPlayerName.text = GameEngine.humanPlayer(session).name
         renderPersonalStatus()
         currentPlayerHint.text = privateHintText()
+        if (isOnlineStartupPhase()) {
+            currentPlayerHint.text = onlineStartupHintText()
+        } else if (onlineAwaitingHostAdvance) {
+            currentPlayerHint.text = "Sincronizando con el pueblo..."
+        }
         renderAdvanceButton()
         renderHumanCardIfVisible()
         renderPlayerColumns(newlyDeadPlayers.map { it.name }.toSet())
@@ -1146,6 +1340,10 @@ class GameplayMockActivity : BaseActivity() {
             session.phase.name,
             session.round,
             session.phaseIndex,
+            session.players.size,
+            onlineInitialRoleRead,
+            onlineAwaitingHostAdvance,
+            lastAppliedAuthoritativePhaseLabel,
             session.publicAnnouncement,
             session.winner
         ).joinToString("|")
@@ -1154,8 +1352,15 @@ class GameplayMockActivity : BaseActivity() {
 
         val human = GameEngine.humanPlayer(session)
         OnlineDebugLog.i(
-            "client_state_publish_requested roomId=$onlinePartidaId uid=$onlinePlayerId player=${human.name} phase=${session.phase.name} round=${session.round}"
+            "client_state_publish_requested roomId=$onlinePartidaId uid=$onlinePlayerId player=${human.name} phase=${session.phase.name} round=${session.round} visiblePlayers=${session.players.size}/${expectedOnlineStartupPlayers()} roleRead=$onlineInitialRoleRead"
         )
+        val humanOrder = session.players.indexOfFirst { it.isHuman }.coerceAtLeast(0)
+        val startupState = when {
+            !isOnlineStartupPhase() -> OnlineStartupGate.STARTUP_PHASE_IN_MATCH
+            session.players.size < expectedOnlineStartupPlayers() -> OnlineStartupGate.STARTUP_PHASE_SYNCING
+            onlineInitialRoleRead -> OnlineStartupGate.STARTUP_PHASE_READY
+            else -> OnlineStartupGate.STARTUP_PHASE_READING
+        }
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -1165,6 +1370,16 @@ class GameplayMockActivity : BaseActivity() {
                         "fase" to session.phase.name,
                         "ronda" to session.round,
                         "phaseIndex" to session.phaseIndex,
+                        "enGameplay" to true,
+                        "jugadoresVistos" to session.players.size,
+                        "jugadoresEsperados" to expectedOnlineStartupPlayers(),
+                        "uidTemporal" to onlinePlayerId,
+                        "orden" to humanOrder,
+                        "rolLeido" to onlineInitialRoleRead,
+                        "estadoArranque" to startupState,
+                        "aplicoEstadoPartida" to authoritativeStateAppliedLocally(),
+                        "sincronizando" to onlineAwaitingHostAdvance,
+                        "ultimaFaseAplicadaEnLocal" to latestAppliedPhaseLabel(),
                         "jugador" to human.name,
                         "rolKey" to human.role?.key.orEmpty(),
                         "anuncioPublico" to session.publicAnnouncement,
@@ -1183,14 +1398,22 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun publishAuthoritativeOnlineState() {
-        if (onlinePartidaId.isBlank() || onlinePlayerId.isBlank() || !onlineIsHost) return
+        if (onlinePartidaId.isBlank() || onlinePlayerId.isBlank()) return
+        if (
+            !OnlinePhaseGate.canPublishAuthoritativeState(
+                isOnline = isOnlineGameplay(),
+                isHost = onlineIsHost,
+                isStartupPhase = isOnlineStartupPhase()
+            )
+        ) {
+            return
+        }
         val stateKey = listOf(
             session.phase.name,
             session.round,
             session.phaseIndex,
             session.publicAnnouncement,
             session.publicHistory.joinToString("#"),
-            session.privateHint,
             session.winner,
             session.nightKillTarget,
             session.nightSilenceTarget,
@@ -1233,6 +1456,7 @@ class GameplayMockActivity : BaseActivity() {
                 "actualizadaEnLocal" to System.currentTimeMillis(),
                 "actualizadaPor" to onlinePlayerId
             ),
+            OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID to onlinePlayerId,
             "ultimaActividadOnline" to FieldValue.serverTimestamp()
         )
         if (session.winner.isNotBlank()) {
@@ -1246,7 +1470,7 @@ class GameplayMockActivity : BaseActivity() {
             .update(roomUpdate)
             .addOnSuccessListener {
                 OnlineDebugLog.i(
-                    "authoritative_state_publish roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
+                    "phase_host_publish roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
                 )
             }
             .addOnFailureListener { error ->
@@ -1258,7 +1482,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun startAuthoritativeOnlineStateListener() {
-        if (!isOnlineGameplay() || onlineIsHost || onlineStateListener != null) return
+        if (!isOnlineGameplay() || onlineStateListener != null) return
         OnlineDebugLog.i("authoritative_listener_start roomId=$onlinePartidaId uid=$onlinePlayerId")
         onlineStateListener = FirebaseFirestore.getInstance()
             .collection("partidas")
@@ -1272,17 +1496,192 @@ class GameplayMockActivity : BaseActivity() {
                     OnlineDebugLog.w("authoritative_listener_missing roomId=$onlinePartidaId uid=$onlinePlayerId")
                     return@addSnapshotListener
                 }
-                val state = snapshot.get("estadoPartida").asStringAnyMap() ?: return@addSnapshotListener
+                val roomState = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
+                if (
+                    roomState == OnlineRoomFirestore.STATE_FINISHED ||
+                    roomState == OnlineRoomFirestore.STATE_ABANDONED
+                ) {
+                    OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+                }
+                onlineActiveHostId = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: onlineActiveHostId
+                if (onlineActiveHostId == onlinePlayerId && !onlineIsHost) {
+                    promoteToOnlineHost("room_snapshot")
+                }
+                handleOnlineStartupSnapshot(snapshot.get("estadoClientes").asStringAnyMap())
+                val state = snapshot.get("estadoPartida").asStringAnyMap()
+                    ?: run {
+                        handleMissingAuthoritativeOnlineState()
+                        return@addSnapshotListener
+                    }
                 applyAuthoritativeOnlineState(state)
             }
     }
 
+    private fun handleMissingAuthoritativeOnlineState() {
+        if (!isOnlineGameplay() || onlineIsHost || isOnlineStartupPhase()) return
+        if (!onlineAwaitingHostAdvance) {
+            OnlineDebugLog.w(
+                "phase_missing_authoritative_state roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
+            )
+        }
+        onlineAwaitingHostAdvance = true
+        lastPublishedOnlineStateKey = ""
+        renderGame()
+    }
+
+    private fun handleOnlineStartupSnapshot(clientStatesRaw: Map<String, Any?>?) {
+        if (!isOnlineStartupPhase()) return
+        val clientStates = clientStatesRaw
+            ?.mapNotNull { (uid, rawState) -> onlineStartupClientState(uid, rawState.asStringAnyMap()) }
+            .orEmpty()
+        lastOnlineStartupClientStates = clientStates
+        refreshOnlineStartupGateFromLastStates()
+    }
+
+    private fun refreshOnlineStartupGateFromLastStates() {
+        if (!isOnlineStartupPhase()) return
+        val elapsedMs = onlineStartupElapsedMs()
+        val expectedPlayers = expectedOnlineStartupPlayers()
+        val result = OnlineStartupGate.evaluate(
+            expectedPlayers = expectedPlayers,
+            clientStates = lastOnlineStartupClientStates,
+            elapsedMs = elapsedMs
+        )
+        onlineStartupGateResult = result
+        onlineStartupForceAvailable = result.canForce
+        val gateKey = listOf(
+            result.loadedPlayers,
+            result.readyPlayers,
+            result.mismatchedPlayers,
+            result.canStart,
+            result.canForce
+        ).joinToString("|")
+        if (gateKey != lastOnlineStartupGateKey) {
+            lastOnlineStartupGateKey = gateKey
+            OnlineDebugLog.i(
+                "startup_gate roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost loaded=${result.loadedPlayers}/$expectedPlayers ready=${result.readyPlayers}/$expectedPlayers mismatched=${result.mismatchedPlayers} canStart=${result.canStart} canForce=${result.canForce}"
+            )
+        }
+        scheduleOnlineStartupForceRefresh()
+        if (onlineIsHost && result.canStart) {
+            startOnlineFirstNight("all_ready")
+        } else {
+            renderOnlineStartupHint()
+        }
+    }
+
+    private fun onlineStartupClientState(uid: String, state: Map<String, Any?>?): OnlineStartupClientState? {
+        if (uid.isBlank() || state == null) return null
+        return OnlineStartupClientState(
+            uid = uid,
+            inGameplay = (state["enGameplay"] as? Boolean) ?: false,
+            visiblePlayers = (state["jugadoresVistos"] as? Number)?.toInt() ?: 0,
+            phase = (state["fase"] as? String).orEmpty(),
+            phaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: -1,
+            roleRead = (state["rolLeido"] as? Boolean) ?: false,
+            order = (state["orden"] as? Number)?.toInt() ?: Int.MAX_VALUE
+        )
+    }
+
+    private fun markOnlineInitialRoleRead() {
+        if (!isOnlineStartupPhase() || onlineInitialRoleRead) return
+        onlineInitialRoleRead = true
+        onlineAwaitingHostAdvance = true
+        lastPublishedOnlineStateKey = ""
+        OnlineDebugLog.i(
+            "startup_role_read roomId=$onlinePartidaId uid=$onlinePlayerId visiblePlayers=${session.players.size}/${expectedOnlineStartupPlayers()}"
+        )
+        Toast.makeText(
+            this,
+            "Esperando a que todos terminen de leer...",
+            Toast.LENGTH_SHORT
+        ).show()
+        publishOnlineClientState()
+    }
+
+    private fun handleOnlineStartupAction(): Boolean {
+        if (!isOnlineStartupPhase()) return false
+        if (onlineIsHost && onlineStartupForceAvailable) {
+            startOnlineFirstNight("forced_by_host")
+            return true
+        }
+        GameplayEffects.play(this, GameplayEffect.ERROR)
+        Toast.makeText(
+            this,
+            onlineStartupGateResult?.waitingMessage ?: "Esperando sincronizacion online...",
+            Toast.LENGTH_SHORT
+        ).show()
+        renderGame()
+        return true
+    }
+
+    private fun startOnlineFirstNight(reason: String) {
+        if (!onlineIsHost || !isOnlineStartupPhase()) return
+        OnlineDebugLog.i(
+            "startup_first_night_start roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason players=${session.players.size}"
+        )
+        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
+        val before = session
+        session = GameEngine.startNight(session)
+        onlineAwaitingHostAdvance = false
+        onlineStartupForceAvailable = false
+        onlineStartupGateResult = null
+        recordOnlinePhaseAdvance(before, session)
+        clearSelection()
+        renderGame()
+    }
+
+    private fun renderOnlineStartupHint() {
+        if (!isOnlineStartupPhase() || !::currentPlayerHint.isInitialized) return
+        currentPlayerHint.text = onlineStartupHintText()
+        renderAdvanceButton()
+    }
+
+    private fun onlineStartupHintText(): String {
+        val gate = onlineStartupGateResult
+        return when {
+            session.players.size < expectedOnlineStartupPlayers() -> "Sincronizando cartas..."
+            !onlineInitialRoleRead -> "Lee tu rol y toca EMPEZAR."
+            onlineIsHost && gate?.canForce == true -> "Falta alguien. Podes forzar la primera noche."
+            gate != null -> gate.waitingMessage
+            else -> "Esperando a que todos terminen de leer..."
+        }
+    }
+
+    private fun isOnlineStartupPhase(): Boolean {
+        return isOnlineGameplay() &&
+            ::session.isInitialized &&
+            session.phase == GamePhase.REPARTO &&
+            session.phaseIndex == 0
+    }
+
+    private fun expectedOnlineStartupPlayers(): Int {
+        return session.initialPlayerCount.coerceAtLeast(session.players.size)
+    }
+
+    private fun onlineStartupElapsedMs(): Long {
+        if (onlineStartupGateStartedAtMs == 0L) {
+            onlineStartupGateStartedAtMs = SystemClock.elapsedRealtime()
+        }
+        return SystemClock.elapsedRealtime() - onlineStartupGateStartedAtMs
+    }
+
+    private fun scheduleOnlineStartupForceRefresh() {
+        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
+        if (!isOnlineStartupPhase() || !onlineIsHost || onlineStartupForceAvailable) return
+        val remainingMs = OnlineStartupGate.STARTUP_FORCE_AFTER_MS - onlineStartupElapsedMs()
+        if (remainingMs > 0L) {
+            autoAdvanceHandler.postDelayed(onlineStartupForceRefreshRunnable, remainingMs)
+        }
+    }
+
     private fun applyAuthoritativeOnlineState(state: Map<String, Any?>) {
-        if (onlineIsHost || !::session.isInitialized) return
+        if (!::session.isInitialized) return
         val phaseName = state["fase"] as? String ?: return
         val phase = runCatching { GamePhase.valueOf(phaseName) }.getOrNull() ?: return
         val phaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: return
-        if (phaseIndex < session.phaseIndex) return
 
         val stateKey = listOf(
             phase.name,
@@ -1299,14 +1698,32 @@ class GameplayMockActivity : BaseActivity() {
             stringListFromAuthoritativeState(state, "candidatosAlcalde").joinToString("#"),
             publicPlayerStateKey(state)
         ).joinToString("|")
-        if (stateKey == lastAppliedAuthoritativeOnlineStateKey) return
+        when (
+            OnlinePhaseGate.evaluateIncomingState(
+                isHost = onlineIsHost,
+                currentPhaseIndex = session.phaseIndex,
+                incomingPhaseIndex = phaseIndex,
+                incomingStateKey = stateKey,
+                lastAppliedStateKey = lastAppliedAuthoritativeOnlineStateKey
+            )
+        ) {
+            OnlinePhaseDecision.HOST_IGNORES -> return
+            OnlinePhaseDecision.IGNORE_OLD -> {
+                OnlineDebugLog.w(
+                    "phase_ignore_old roomId=$onlinePartidaId uid=$onlinePlayerId current=${session.phase.name}:${session.phaseIndex} incoming=$phaseName:$phaseIndex"
+                )
+                return
+            }
+            OnlinePhaseDecision.IGNORE_DUPLICATE -> return
+            OnlinePhaseDecision.APPLY -> Unit
+        }
         lastAppliedAuthoritativeOnlineStateKey = stateKey
 
         val previousPhaseIndex = session.phaseIndex
         val previousPrivateHint = session.privateHint
         val updatedPlayers = playersFromAuthoritativeState(state) ?: session.players
         OnlineDebugLog.i(
-            "authoritative_state_apply roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} round=${(state["ronda"] as? Number)?.toInt() ?: session.round} phaseIndex=$phaseIndex"
+            "phase_apply_authoritative roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} round=${(state["ronda"] as? Number)?.toInt() ?: session.round} phaseIndex=$phaseIndex"
         )
         session = session.copy(
             phase = phase,
@@ -1328,37 +1745,54 @@ class GameplayMockActivity : BaseActivity() {
             alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: session.alcaldeCorruption,
             privateHint = previousPrivateHint
         )
+        onlineAwaitingHostAdvance = false
+        lastAppliedAuthoritativePhaseLabel = latestAppliedPhaseLabel()
         if (phaseIndex != previousPhaseIndex) {
+            if (previousPhaseIndex == 0 && phase != GamePhase.REPARTO) {
+                OnlineDebugLog.i(
+                    "startup_first_night_received roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} phaseIndex=$phaseIndex"
+                )
+            }
             onlineAwaitingHostAdvance = false
-            clearSelection()
-            clearCountdown()
+            onlineInitialRoleRead = phase != GamePhase.REPARTO || onlineInitialRoleRead
+            clearOnlineAuthoritativePhaseUi()
             submittedOnlineNightActions.removeAll { it.startsWith("$onlinePartidaId:$onlinePlayerId:${session.round - 1}:") }
         }
         renderGame()
+    }
+
+    private fun authoritativeStateAppliedLocally(): Boolean {
+        return onlineIsHost || lastAppliedAuthoritativeOnlineStateKey.isNotBlank()
+    }
+
+    private fun latestAppliedPhaseLabel(): String {
+        return "${session.phase.name}:${session.phaseIndex}"
+    }
+
+    private fun clearOnlineAuthoritativePhaseUi() {
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(voteResultAutoContinueRunnable)
+        dismissActionFeedbackBannerNow()
+        if (isRolePreviewOpen) {
+            closeRolePreview(resumeGameFlow = false)
+        }
+        hideTieVoteWindow(clearSelection = true)
+        cancelVoteResult()
+        clearSelection()
+        clearCountdown()
     }
 
     private fun publicPlayerStateKey(state: Map<String, Any?>): String {
         return (state["jugadores"] as? List<*>)
             ?.mapNotNull { it as? Map<*, *> }
             ?.joinToString("#") {
-                "${it["nombre"]}:${it["vivo"]}:${it["muteado"]}:${it["ultimaRondaSilenciado"]}"
+                "${it["orden"]}:${it["nombre"]}:${it["vivo"]}:${it["muteado"]}:${it["ultimaRondaSilenciado"]}"
             }
             .orEmpty()
     }
 
     private fun playersFromAuthoritativeState(state: Map<String, Any?>): List<GamePlayer>? {
-        val playerStates = (state["jugadores"] as? List<*>)
-            ?.mapNotNull { it as? Map<*, *> }
-            ?.associateBy { (it["nombre"] as? String).orEmpty() }
-            ?: return null
-        return session.players.map { player ->
-            val playerState = playerStates[player.name] ?: return@map player
-            player.copy(
-                alive = (playerState["vivo"] as? Boolean) ?: player.alive,
-                muted = (playerState["muteado"] as? Boolean) ?: player.muted,
-                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt()
-            )
-        }
+        return OnlineAuthoritativeStateMapper.playersFromState(session.players, state)
     }
 
     private fun publicHistoryFromAuthoritativeState(state: Map<String, Any?>): List<String> {
@@ -1406,7 +1840,13 @@ class GameplayMockActivity : BaseActivity() {
         )
     }
 
-    private fun recordOnlinePlayerAction(before: GameSession, after: GameSession, targetName: String) {
+    private fun recordOnlinePlayerAction(
+        before: GameSession,
+        after: GameSession,
+        targetName: String,
+        onSuccess: (() -> Unit)? = null,
+        onFailure: ((Exception) -> Unit)? = null
+    ) {
         if (!isOnlineGameplay()) return
         val human = GameEngine.humanPlayer(before)
         val actionType = when (before.phase) {
@@ -1429,20 +1869,33 @@ class GameplayMockActivity : BaseActivity() {
                 "rolActor" to human.role?.key.orEmpty(),
                 "faseResultado" to after.phase.name,
                 "phaseIndexResultado" to after.phaseIndex
-            )
+            ),
+            onSuccess = onSuccess,
+            onFailure = onFailure
         )
     }
 
     private fun recordOnlineAction(
         type: String,
         targetName: String,
-        details: Map<String, Any?>
+        details: Map<String, Any?>,
+        onSuccess: (() -> Unit)? = null,
+        onFailure: ((Exception) -> Unit)? = null
     ) {
         if (!isOnlineGameplay()) return
         val human = GameEngine.humanPlayer(session)
         OnlineDebugLog.i(
             "action_record_requested roomId=$onlinePartidaId uid=$onlinePlayerId type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round} host=$onlineIsHost"
         )
+        val actorOrder = session.players.indexOfFirst { it.isHuman }.coerceAtLeast(0)
+        val targetOrder = session.players.indexOfFirst { it.name == targetName }
+        val orderedDetails = details +
+            mapOf("actorOrden" to actorOrder) +
+            if (targetOrder >= 0) {
+                mapOf("objetivoOrden" to targetOrder)
+            } else {
+                emptyMap()
+            }
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -1458,7 +1911,7 @@ class GameplayMockActivity : BaseActivity() {
                     "ronda" to session.round,
                     "phaseIndex" to session.phaseIndex,
                     "modoCliente" to "android",
-                    "detalles" to details,
+                    "detalles" to orderedDetails,
                     "creadaEn" to FieldValue.serverTimestamp(),
                     "creadaEnLocal" to System.currentTimeMillis()
                 )
@@ -1467,6 +1920,7 @@ class GameplayMockActivity : BaseActivity() {
                 OnlineDebugLog.i(
                     "action_record_success roomId=$onlinePartidaId actionId=${reference.id} type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round}"
                 )
+                onSuccess?.invoke()
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e(
@@ -1479,11 +1933,204 @@ class GameplayMockActivity : BaseActivity() {
                     OnlineErrorMessages.forAction("No se pudo registrar la accion online", error),
                     Toast.LENGTH_LONG
                 ).show()
+                onFailure?.invoke(error)
             }
     }
 
     private fun isOnlineGameplay(): Boolean {
         return onlinePartidaId.isNotBlank() && onlinePlayerId.isNotBlank()
+    }
+
+    private fun markOnlineGameplayPresence(state: String) {
+        if (!isOnlineGameplay() || !::session.isInitialized) return
+        lastOnlinePresencePulseAtMs = SystemClock.elapsedRealtime()
+        val human = GameEngine.humanPlayer(session)
+        FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+            .document(onlinePlayerId)
+            .set(
+                mapOf(
+                    OnlineRoomFirestore.FIELD_NAME to human.name,
+                    OnlineRoomFirestore.FIELD_PLAYER_STATE to state,
+                    "uidTemporal" to onlinePlayerId,
+                    OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "gameplay_presence_failure roomId=$onlinePartidaId uid=$onlinePlayerId state=$state",
+                    error
+                )
+            }
+    }
+
+    private fun startOnlineSyncWatchdog() {
+        if (!isOnlineGameplay()) return
+        if (onlineGameplayStartedAtMs == 0L) {
+            onlineGameplayStartedAtMs = SystemClock.elapsedRealtime()
+        }
+        if (lastOnlinePresencePulseAtMs == 0L) {
+            lastOnlinePresencePulseAtMs = SystemClock.elapsedRealtime()
+        }
+        autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
+        autoAdvanceHandler.postDelayed(
+            onlineSyncWatchdogRunnable,
+            OnlineSyncWatchdog.CHECK_INTERVAL_MS
+        )
+    }
+
+    private fun stopOnlineSyncWatchdog() {
+        autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
+    }
+
+    private fun runOnlineSyncWatchdog() {
+        if (!isOnlineGameplay() || !::session.isInitialized) return
+        val now = SystemClock.elapsedRealtime()
+        if (onlineGameplayStartedAtMs == 0L) {
+            onlineGameplayStartedAtMs = now
+        }
+        val decision = OnlineSyncWatchdog.evaluate(
+            isOnline = isOnlineGameplay(),
+            isHost = onlineIsHost,
+            isStartupPhase = isOnlineStartupPhase(),
+            hasAppliedAuthoritativeState = authoritativeStateAppliedLocally(),
+            awaitingHostAdvance = onlineAwaitingHostAdvance,
+            lastPresencePulseElapsedMs = now - lastOnlinePresencePulseAtMs,
+            elapsedSinceGameplayStartMs = now - onlineGameplayStartedAtMs
+        )
+        if (decision.reason != "ok" && decision.reason != lastOnlineWatchdogReason) {
+            lastOnlineWatchdogReason = decision.reason
+            OnlineDebugLog.w(
+                "sync_watchdog roomId=$onlinePartidaId uid=$onlinePlayerId host=$onlineIsHost reason=${decision.reason} phase=${session.phase.name} phaseIndex=${session.phaseIndex} awaiting=$onlineAwaitingHostAdvance applied=${authoritativeStateAppliedLocally()}"
+            )
+        }
+        if (decision.shouldForceSyncing) {
+            onlineAwaitingHostAdvance = true
+            lastPublishedOnlineStateKey = ""
+            renderGame()
+        } else if (decision.shouldPublishClientState) {
+            lastPublishedOnlineStateKey = ""
+            publishOnlineClientState()
+        }
+        if (decision.shouldPublishPresence) {
+            markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
+        }
+        autoAdvanceHandler.postDelayed(
+            onlineSyncWatchdogRunnable,
+            OnlineSyncWatchdog.CHECK_INTERVAL_MS
+        )
+    }
+
+    private fun startOnlinePlayersPresenceListener() {
+        if (!isOnlineGameplay() || onlinePlayersListener != null) return
+        onlinePlayersListener = FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    OnlineDebugLog.e("players_presence_listener_failure roomId=$onlinePartidaId uid=$onlinePlayerId", error)
+                    return@addSnapshotListener
+                }
+                val players = snapshot?.documents
+                    ?.map { document ->
+                        OnlinePresencePlayer(
+                            id = document.id,
+                            name = document.getString(OnlineRoomFirestore.FIELD_NAME).orEmpty(),
+                            order = document.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt()
+                                ?: Int.MAX_VALUE,
+                            state = document.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE)
+                                ?: PLAYER_STATE_CONNECTED,
+                            activeInMatch = document.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false
+                        )
+                    }
+                    ?.filter { it.activeInMatch }
+                    ?.sortedWith(compareBy<OnlinePresencePlayer> { it.order }.thenBy { it.id })
+                    .orEmpty()
+                handleOnlineHostHandoff(players)
+            }
+    }
+
+    private fun handleOnlineHostHandoff(players: List<OnlinePresencePlayer>) {
+        if (!isOnlineGameplay() || players.isEmpty() || onlineHostHandoffInProgress) return
+        val activeHostId = onlineActiveHostId.takeIf { it.isNotBlank() } ?: return
+        val activeHost = players.firstOrNull { it.id == activeHostId }
+        val activeHostConnected = activeHost?.state == PLAYER_STATE_CONNECTED
+        val candidate = players.firstOrNull { it.state == PLAYER_STATE_CONNECTED } ?: return
+        if (!activeHostConnected && candidate.id == onlinePlayerId) {
+            claimOnlineHostHandoff(activeHostId)
+        }
+    }
+
+    private fun claimOnlineHostHandoff(previousHostId: String) {
+        onlineHostHandoffInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION).document(onlinePartidaId)
+        val previousHostReference = roomReference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+            .document(previousHostId)
+        val candidateReference = roomReference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+            .document(onlinePlayerId)
+        OnlineDebugLog.w(
+            "host_handoff_claim_requested roomId=$onlinePartidaId previousHost=$previousHostId candidate=$onlinePlayerId"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            val currentHostId = room.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID)
+                ?.takeIf { it.isNotBlank() }
+                ?: previousHostId
+            val previousHost = transaction.get(previousHostReference)
+            val candidate = transaction.get(candidateReference)
+            if (currentHostId != previousHostId) {
+                return@runTransaction false
+            }
+            if (previousHost.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED) {
+                return@runTransaction false
+            }
+            if (candidate.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+                return@runTransaction false
+            }
+            transaction.update(
+                roomReference,
+                mapOf(
+                    OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID to onlinePlayerId,
+                    OnlineRoomFirestore.FIELD_HOST_VERSION to FieldValue.increment(1),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            true
+        }.addOnSuccessListener { claimed ->
+            onlineHostHandoffInProgress = false
+            if (claimed == true) {
+                OnlineDebugLog.w(
+                    "host_handoff_claim_success roomId=$onlinePartidaId previousHost=$previousHostId newHost=$onlinePlayerId"
+                )
+                promoteToOnlineHost("handoff_claim")
+            }
+        }.addOnFailureListener { error ->
+            onlineHostHandoffInProgress = false
+            OnlineDebugLog.e(
+                "host_handoff_claim_failure roomId=$onlinePartidaId previousHost=$previousHostId candidate=$onlinePlayerId",
+                error
+            )
+        }
+    }
+
+    private fun promoteToOnlineHost(reason: String) {
+        if (onlineIsHost) return
+        onlineIsHost = true
+        onlineActiveHostId = onlinePlayerId
+        OnlineDebugLog.w(
+            "host_promoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} round=${session.round}"
+        )
+        if (onlineAwaitingHostAdvance) {
+            onlineAwaitingHostAdvance = false
+            autoAdvanceHandler.post { handleCurrentPhase() }
+        }
     }
 
     private fun actionSession(): GameSession {
@@ -1507,7 +2154,11 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun isOnlineVotingActionWindow(): Boolean {
         return isOnlineGameplay() &&
-            (session.phase == GamePhase.VOTACION || session.phase == GamePhase.DESEMPATE_VOTACION)
+            (
+                session.phase == GamePhase.VOTACION ||
+                    session.phase == GamePhase.DESEMPATE_VOTACION ||
+                    session.phase == GamePhase.ALCALDE_DESEMPATE
+                )
     }
 
     private fun isOnlineDeferredActionWindow(): Boolean {
@@ -1817,6 +2468,9 @@ class GameplayMockActivity : BaseActivity() {
                 !session.alcaldeRevealed)
         val label = when {
             session.winner.isNotBlank() -> "FINAL"
+            isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
+            isOnlineStartupPhase() -> "ESPERANDO"
+            onlineAwaitingHostAdvance -> "SINCRONIZANDO"
             selectedAction != null -> selectedAction
             canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
@@ -1841,6 +2495,8 @@ class GameplayMockActivity : BaseActivity() {
             (selectedAction != null || canSelfProtect || specialDecision)
         btnAction.isEnabled = !transitionLocked &&
             session.winner.isBlank() &&
+            (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
+            !onlineAwaitingHostAdvance &&
             !mustWaitForPhaseTimer() &&
             (!mandatoryTargetSelection || selectedAction != null || canSelfProtect || specialDecision)
         applyPrimaryActionVisual(label, requiresAttention)
@@ -2401,7 +3057,7 @@ class GameplayMockActivity : BaseActivity() {
                 else -> "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
             }
         } else if (onlineDeferredActionSubmitted()) {
-            "Accion registrada. Espera a que termine la noche."
+            "Accion registrada. Esperando al pueblo..."
         } else {
             "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
         }
@@ -3095,6 +3751,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun scheduleBotChatReactions(rawHumanMessage: String) {
+        if (isOnlineGameplay()) return
         cancelPendingBotChat()
         val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         if (humanMessage.isBlank() || LocalBotAi.isDebugVoteCommand(session, humanMessage)) return
@@ -3117,6 +3774,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun stageBotBurstForCurrentPhase() {
+        if (isOnlineGameplay()) return
         if (!::session.isInitialized || stagedBotBurstPhaseIndex == session.phaseIndex) return
         if (
             session.phase != GamePhase.DIA_DEBATE &&
@@ -3210,8 +3868,14 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun botReactionDelayMs(index: Int, message: String): Long {
-        val readingDelay = (message.length * 22L).coerceAtMost(900L)
-        return FIRST_BOT_REACTION_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS + readingDelay
+        val readingDelay = (message.length * 38L).coerceAtMost(1_800L)
+        val punctuationDelay = message.count { it == '?' || it == ',' }.coerceAtMost(3) * 180L
+        val humanJitter = ((message.hashCode() and 0x7fffffff) % 1_250).toLong()
+        return FIRST_BOT_REACTION_DELAY_MS +
+            humanJitter +
+            index * NEXT_BOT_REACTION_DELAY_MS +
+            readingDelay +
+            punctuationDelay
     }
 
     private fun clearChatComposerAfterSend() {
@@ -3375,6 +4039,10 @@ class GameplayMockActivity : BaseActivity() {
         if (isOnlineGameplay()) {
             if (!onlineIsHost) {
                 onlineAwaitingHostAdvance = true
+                lastPublishedOnlineStateKey = ""
+                OnlineDebugLog.i(
+                    "phase_gate_wait roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} reason=timer_expired_guest"
+                )
                 renderGame()
                 return
             }
@@ -3388,6 +4056,10 @@ class GameplayMockActivity : BaseActivity() {
             }
             if (expiredPhase == GamePhase.DESEMPATE_VOTACION) {
                 resolveOnlineVotingFromFirestore(tieVote = true)
+                return
+            }
+            if (expiredPhase == GamePhase.ALCALDE_DESEMPATE) {
+                resolveOnlineAlcaldeDecisionFromFirestore()
                 return
             }
         }
@@ -3476,23 +4148,13 @@ class GameplayMockActivity : BaseActivity() {
             .collection("acciones")
             .get()
             .addOnSuccessListener { snapshot ->
-                val actions = snapshot.documents.mapNotNull { document ->
-                    val type = document.getString("tipo").orEmpty()
-                    val round = document.getLong("ronda")?.toInt()
-                    if (type != "accion_jugador" || round != session.round) return@mapNotNull null
-                    val details = document.get("detalles").asStringAnyMap()
-                    val action = details?.get("accion") as? String ?: return@mapNotNull null
-                    OnlineRecordedAction(
-                        action = action,
-                        actorName = document.getString("actorNombre").orEmpty(),
-                        targetName = document.getString("objetivoNombre").orEmpty()
-                    )
-                }
+                val actions = onlineActionRecordsFromSnapshot(snapshot.documents)
                 val before = session
+                val nightActions = OnlineActionResolver.nightActions(actions, session.round)
                 OnlineDebugLog.i(
-                    "night_resolve_actions_loaded roomId=$onlinePartidaId round=${session.round} actions=${actions.size}"
+                    "night_resolve_actions_loaded roomId=$onlinePartidaId round=${session.round} actions=${actions.size} valid=${nightActions.validActionCount} assassinVotes=${nightActions.assassinVotes.size}"
                 )
-                session = resolveOnlineNightWindow(actions)
+                session = resolveOnlineNightWindow(nightActions)
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
                 stageBotBurstForCurrentPhase()
@@ -3516,40 +4178,37 @@ class GameplayMockActivity : BaseActivity() {
             }
     }
 
-    private fun resolveOnlineNightWindow(actions: List<OnlineRecordedAction>): GameSession {
+    private fun resolveOnlineNightWindow(actions: OnlineNightResolutionActions): GameSession {
         var resolved = session
-        val assassinVotes = actions
-            .filter { it.action == "matar" && it.actorName.isNotBlank() && it.targetName.isNotBlank() }
-            .associate { it.actorName to it.targetName }
         resolved = GameEngine.resolveAssassinWithRecordedVotes(
             resolved.copy(phase = GamePhase.NOCHE_ASESINO),
-            assassinVotes
+            actions.assassinVotes
         )
         resolved = resolveOnlineNightPhaseAction(
             current = resolved,
             phase = GamePhase.NOCHE_MERCENARIO,
-            action = actions.lastOrNull { it.action == "silenciar" },
+            action = actions.mercenaryAction,
             fallback = { GameEngine.resolveMercenary(it, "") },
             resolver = { current, target -> GameEngine.resolveMercenary(current, target) }
         )
         resolved = resolveOnlineNightPhaseAction(
             current = resolved,
             phase = GamePhase.NOCHE_POLICIA,
-            action = actions.lastOrNull { it.action == "investigar" },
+            action = actions.policeAction,
             fallback = { GameEngine.resolvePolice(it, "") },
             resolver = { current, target -> GameEngine.resolvePolice(current, target) }
         )
         resolved = resolveOnlineNightPhaseAction(
             current = resolved,
             phase = GamePhase.NOCHE_MEDICO,
-            action = actions.lastOrNull { it.action == "salvar" },
+            action = actions.medicAction,
             fallback = { GameEngine.resolveMedic(it, "") },
             resolver = { current, target -> GameEngine.resolveMedic(current, target) }
         )
         resolved = resolveOnlineNightPhaseAction(
             current = resolved,
             phase = GamePhase.NOCHE_ORACULO,
-            action = actions.lastOrNull { it.action == "invitar_muerto" },
+            action = actions.oracleAction,
             fallback = { GameEngine.resolveOracle(it, "") },
             resolver = { current, target -> GameEngine.resolveOracle(current, target) }
         )
@@ -3559,7 +4218,7 @@ class GameplayMockActivity : BaseActivity() {
     private fun resolveOnlineNightPhaseAction(
         current: GameSession,
         phase: GamePhase,
-        action: OnlineRecordedAction?,
+        action: OnlineActionRecord?,
         fallback: (GameSession) -> GameSession,
         resolver: (GameSession, String) -> GameSession
     ): GameSession {
@@ -3582,7 +4241,34 @@ class GameplayMockActivity : BaseActivity() {
         )
     }
 
+    private fun onlineActionRecordsFromSnapshot(documents: List<DocumentSnapshot>): List<OnlineActionRecord> {
+        return documents.mapNotNull { document ->
+            if (document.getString("tipo").orEmpty() != "accion_jugador") return@mapNotNull null
+            val details = document.get("detalles").asStringAnyMap()
+            val action = details?.get("accion") as? String ?: return@mapNotNull null
+            val actorOrder = (details["actorOrden"] as? Number)?.toInt() ?: -1
+            val targetOrder = (details["objetivoOrden"] as? Number)?.toInt() ?: -1
+            val actorName = session.players.getOrNull(actorOrder)?.name
+                ?: document.getString("actorNombre").orEmpty()
+            val targetName = session.players.getOrNull(targetOrder)?.name
+                ?: document.getString("objetivoNombre").orEmpty()
+            OnlineActionRecord(
+                action = action,
+                actorName = actorName,
+                targetName = targetName,
+                phaseName = document.getString("fase").orEmpty(),
+                round = document.getLong("ronda")?.toInt() ?: -1,
+                phaseIndex = document.getLong("phaseIndex")?.toInt() ?: -1,
+                createdAtLocal = document.getLong("creadaEnLocal") ?: 0L,
+                actorOrder = actorOrder,
+                targetOrder = targetOrder
+            )
+        }
+    }
+
     private fun resolveOnlineVotingFromFirestore(tieVote: Boolean) {
+        if (onlineVoteResolutionInProgress) return
+        onlineVoteResolutionInProgress = true
         OnlineDebugLog.i(
             "vote_resolve_requested roomId=$onlinePartidaId host=$onlineIsHost round=${session.round} tie=$tieVote phase=${session.phase.name}"
         )
@@ -3597,32 +4283,29 @@ class GameplayMockActivity : BaseActivity() {
                 } else {
                     GamePhase.VOTACION.name
                 }
-                val votes = snapshot.documents.mapNotNull { document ->
-                    if (document.getString("tipo").orEmpty() != "accion_jugador") return@mapNotNull null
-                    if (document.getLong("ronda")?.toInt() != session.round) return@mapNotNull null
-                    if (document.getString("fase").orEmpty() != expectedPhase) return@mapNotNull null
-                    val details = document.get("detalles").asStringAnyMap()
-                    if ((details?.get("accion") as? String) != "votar") return@mapNotNull null
-                    val voter = document.getString("actorNombre").orEmpty()
-                    val target = document.getString("objetivoNombre").orEmpty()
-                    if (voter.isBlank() || target.isBlank()) return@mapNotNull null
-                    voter to target
-                }.toMap()
+                val actionRecords = onlineActionRecordsFromSnapshot(snapshot.documents)
+                val votes = OnlineActionResolver.votes(
+                    records = actionRecords,
+                    round = session.round,
+                    expectedPhaseName = expectedPhase
+                )
                 val before = session
                 OnlineDebugLog.i(
-                    "vote_resolve_votes_loaded roomId=$onlinePartidaId round=${session.round} tie=$tieVote votes=${votes.size}"
+                    "vote_resolve_votes_loaded roomId=$onlinePartidaId round=${session.round} tie=$tieVote actions=${actionRecords.size} votes=${votes.size}"
                 )
                 session = if (tieVote) {
                     GameEngine.resolveTieVotingWithRecordedVotes(session, votes)
                 } else {
                     GameEngine.resolveVotingWithRecordedVotes(session, votes)
                 }
+                onlineVoteResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
                 if (tieVote) hideTieVoteWindow(clearSelection = true)
                 clearSelection()
                 renderGame()
             }
             .addOnFailureListener { error ->
+                onlineVoteResolutionInProgress = false
                 OnlineDebugLog.e(
                     "vote_resolve_failure roomId=$onlinePartidaId round=${session.round} tie=$tieVote phase=${session.phase.name}",
                     error
@@ -3640,6 +4323,74 @@ class GameplayMockActivity : BaseActivity() {
                 }
                 recordOnlinePhaseAdvance(before, session)
                 if (tieVote) hideTieVoteWindow(clearSelection = true)
+                clearSelection()
+                renderGame()
+            }
+    }
+
+    private fun resolveOnlineAlcaldeDecisionFromFirestore() {
+        OnlineDebugLog.i(
+            "alcalde_resolve_requested roomId=$onlinePartidaId host=$onlineIsHost round=${session.round} phase=${session.phase.name}"
+        )
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .collection("acciones")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val decision = snapshot.documents.mapNotNull { document ->
+                    if (document.getString("tipo").orEmpty() != "accion_jugador") return@mapNotNull null
+                    if (document.getLong("ronda")?.toInt() != session.round) return@mapNotNull null
+                    if (document.getString("fase").orEmpty() != GamePhase.ALCALDE_DESEMPATE.name) return@mapNotNull null
+                    val details = document.get("detalles").asStringAnyMap()
+                    if ((details?.get("accion") as? String) != "votar") return@mapNotNull null
+                    val actor = document.getString("actorNombre").orEmpty()
+                    val target = document.getString("objetivoNombre").orEmpty()
+                    if (actor.isBlank() || target.isBlank()) return@mapNotNull null
+                    Triple(actor, target, document.getLong("creadaEnLocal") ?: 0L)
+                }
+                    .sortedBy { it.third }
+                    .lastOrNull()
+                val before = session
+                OnlineDebugLog.i(
+                    "alcalde_resolve_decision_loaded roomId=$onlinePartidaId round=${session.round} hasDecision=${decision != null}"
+                )
+                session = if (decision == null) {
+                    GameEngine.resolveAlcaldeTieTimeout(session)
+                } else {
+                    val actorName = decision.first
+                    val targetName = decision.second
+                    val mayorSession = session.copy(
+                        alcaldeRevealed = true,
+                        players = session.players.map { player ->
+                            player.copy(isHuman = player.name == actorName)
+                        }
+                    )
+                    val resolved = GameEngine.chooseAlcaldeTie(mayorSession, targetName)
+                    resolved.copy(
+                        players = resolved.players.map { resolvedPlayer ->
+                            val original = session.players.firstOrNull { it.name == resolvedPlayer.name }
+                            resolvedPlayer.copy(isHuman = original?.isHuman == true)
+                        }
+                    )
+                }
+                recordOnlinePhaseAdvance(before, session)
+                clearSelection()
+                renderGame()
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "alcalde_resolve_failure roomId=$onlinePartidaId round=${session.round} phase=${session.phase.name}",
+                    error
+                )
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo leer decision del alcalde", error),
+                    Toast.LENGTH_LONG
+                ).show()
+                val before = session
+                session = GameEngine.resolveAlcaldeTieTimeout(session)
+                recordOnlinePhaseAdvance(before, session)
                 clearSelection()
                 renderGame()
             }
@@ -3839,6 +4590,9 @@ class GameplayMockActivity : BaseActivity() {
             ).show()
             return
         }
+        val shouldMarkOnlineRoleRead = resumeGameFlow &&
+            initialRoleReadingActive &&
+            isOnlineStartupPhase()
         autoAdvanceHandler.removeCallbacks(enableInitialRoleReadyRunnable)
         initialRoleReadingActive = false
         val wasOpen = isRolePreviewOpen
@@ -3850,7 +4604,12 @@ class GameplayMockActivity : BaseActivity() {
 
         rolePreviewAnimator.dismiss {
             isRolePreviewOpen = false
-            resumeGameFlowAfterBlockingUi()
+            if (shouldMarkOnlineRoleRead) {
+                markOnlineInitialRoleRead()
+                renderGame()
+            } else {
+                resumeGameFlowAfterBlockingUi()
+            }
         }
     }
 
@@ -4020,6 +4779,10 @@ class GameplayMockActivity : BaseActivity() {
         val eliminated = !GameEngine.humanPlayer(session).alive
         actionControls.visibility = if (eliminated) View.GONE else View.VISIBLE
         eliminatedStatePanel.visibility = if (eliminated) View.VISIBLE else View.GONE
+        currentPlayerHint.maxLines = if (eliminated) 1 else 2
+        if (eliminated) {
+            currentPlayerHint.text = "Observando la partida."
+        }
         currentPlayerStatus.visibility =
             if (status == null || eliminated) View.GONE else View.VISIBLE
         currentPlayerStatus.text = status.orEmpty()
@@ -4485,6 +5248,16 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun revealMayorFromTieVote() {
+        if (
+            blockUnsupportedOnlineLocalDecision(
+                decision = "alcalde_tie_reveal",
+                message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable.",
+                rerender = false
+            )
+        ) {
+            renderTieVoteWindow()
+            return
+        }
         val before = session
         session = GameEngine.revealAlcalde(session)
         if (before == session) return
@@ -5106,6 +5879,14 @@ class GameplayMockActivity : BaseActivity() {
 
     private fun showDesertorTeamDialog() {
         if (desertorDialogOpen || isFinishing) return
+        if (
+            blockUnsupportedOnlineLocalDecision(
+                decision = "desertor_dialog",
+                message = "El Desertor online queda deshabilitado en esta prueba estable."
+            )
+        ) {
+            return
+        }
         pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)
@@ -5177,11 +5958,13 @@ class GameplayMockActivity : BaseActivity() {
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
+        private const val PLAYER_STATE_CONNECTED = "conectado"
+        private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val MAX_STAGGERED_BOT_REACTIONS = 3
-        private const val FIRST_BOT_REACTION_DELAY_MS = 2_100L
-        private const val NEXT_BOT_REACTION_DELAY_MS = 1_850L
-        private const val PHASE_BOT_BURST_DELAY_MS = 1_350L
-        private const val BOT_TYPING_LEAD_DELAY_MS = 1_050L
+        private const val FIRST_BOT_REACTION_DELAY_MS = 3_200L
+        private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
+        private const val PHASE_BOT_BURST_DELAY_MS = 1_800L
+        private const val BOT_TYPING_LEAD_DELAY_MS = 1_650L
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_CHAT_OPEN = "chat_open"
@@ -5206,6 +5989,7 @@ class GameplayMockActivity : BaseActivity() {
         private const val STATE_ONLINE_PARTIDA_ID = "online_partida_id"
         private const val STATE_ONLINE_PLAYER_ID = "online_player_id"
         private const val STATE_ONLINE_IS_HOST = "online_is_host"
+        private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val JESTER_VICTORY_DURATION_MS = 5000L
         private const val COUNTDOWN_TICK_MS = 200L
