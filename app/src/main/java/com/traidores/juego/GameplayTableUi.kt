@@ -26,8 +26,8 @@ enum class GameplayActionTone(val colorHex: String, val darkText: Boolean) {
     KILL("#8F2633", false),
     SAVE("#5A8A3C", false),
     INVESTIGATE("#4A7FB5", false),
-    SILENCE("#9A6A32", false),
-    DECIDE("#D4A24E", true),
+    SILENCE("#111111", false),
+    DECIDE("#5F4524", false),
     DEFAULT("#2A2318", false)
 }
 
@@ -138,8 +138,7 @@ object GameplayTableUi {
         val period = if (isNightPhase(session.phase)) GameplayPeriod.NIGHT else GameplayPeriod.DAY
         val visualNumber = when {
             period == GameplayPeriod.NIGHT -> session.round
-            session.phase == GamePhase.REPARTO -> 1
-            else -> session.round + 1
+            else -> session.round
         }
         val label = if (period == GameplayPeriod.NIGHT) "NOCHE" else "DÍA"
         return GameplayTransitionSpec(
@@ -381,27 +380,27 @@ object GameplayTableUi {
         return when (session.phase) {
             GamePhase.REPARTO -> fallback
             GamePhase.NOCHE_ASESINO -> if (isHumanTurn(session, RoleCatalog.ASESINO)) {
-                "Elegi a quien eliminar esta noche."
+                "Elige a quien eliminar esta noche."
             } else {
                 "Los Traidores eligen a su victima."
             }
             GamePhase.NOCHE_MERCENARIO -> if (isHumanTurn(session, RoleCatalog.MERCENARIO)) {
-                "Elegi a quien silenciar durante el proximo dia."
+                "Elige a quien silenciar durante el proximo dia."
             } else {
                 "El Mercenario decide que voz callar."
             }
             GamePhase.NOCHE_POLICIA -> if (isHumanTurn(session, RoleCatalog.POLICIA)) {
-                "Elegi a quien investigar esta noche."
+                "Elige a quien investigar esta noche."
             } else {
                 "El Detective busca una pista en secreto."
             }
             GamePhase.NOCHE_MEDICO -> if (isHumanTurn(session, RoleCatalog.MEDICO)) {
-                "Elegi a quien proteger esta noche."
+                "Elige a quien proteger esta noche."
             } else {
                 "El Medico decide a quien proteger."
             }
             GamePhase.NOCHE_ORACULO -> if (isHumanTurn(session, RoleCatalog.ORACULO)) {
-                "Elegi una voz para el debate o guarda tu poder."
+                "Elige una voz para el debate o guarda tu poder."
             } else {
                 "El Oraculo decide si devuelve una voz al pueblo."
             }
@@ -417,7 +416,7 @@ object GameplayTableUi {
             GamePhase.CONTRAPUNTO ->
                 "Escucha a los participantes y senala al mas sospechoso."
             GamePhase.VOTACION ->
-                "Elegi a un jugador y confirma tu voto."
+                "Elige a un jugador y confirma tu voto."
             GamePhase.RECUENTO_VOTOS ->
                 "El pueblo cuenta los votos recibidos."
             GamePhase.DESEMPATE_VOTACION ->

@@ -117,7 +117,7 @@ class GameEngineTest {
 
     @Test
     fun timingConfigUsesDefaultsAndClampsEveryField() {
-        assertEquals("3 / 40 / 120 / 20", GameTimingConfig().summary())
+        assertEquals("4 / 40 / 120 / 20", GameTimingConfig().summary())
         assertEquals(GameTimingPreset.NORMAL, GameTimingConfig().preset())
 
         val minimums = GameTimingConfig(
@@ -145,8 +145,8 @@ class GameEngineTest {
 
     @Test
     fun timingPresetsUseExpectedValues() {
-        assertEquals(GameTimingConfig(5, 90, 180, 60), GameTimingPreset.SLOW.config)
-        assertEquals(GameTimingConfig(3, 40, 120, 20), GameTimingPreset.NORMAL.config)
+        assertEquals(GameTimingConfig(6, 90, 180, 60), GameTimingPreset.SLOW.config)
+        assertEquals(GameTimingConfig(4, 40, 120, 20), GameTimingPreset.NORMAL.config)
         assertEquals(GameTimingConfig(2, 20, 60, 15), GameTimingPreset.FAST.config)
         assertEquals(GameTimingPreset.SLOW, GameTimingPreset.SLOW.config.preset())
         assertEquals(null, GameTimingConfig(4, 35, 90, 25).preset())
@@ -176,38 +176,48 @@ class GameEngineTest {
     }
 
     @Test
-    fun firstNightTimeoutLosesActionAndSecondConsecutiveTimeoutExpelsForAfk() {
+    fun firstNightTimeoutSkipsActionAndWarnsWithoutBlocking() {
         val firstNight = sessionWithHumanRole("medico").copy(phase = GamePhase.NOCHE_MEDICO)
 
         val firstMiss = GameEngine.resolveHumanTimeout(firstNight)
-        val warnedHuman = GameEngine.humanPlayer(firstMiss)
+        val human = GameEngine.humanPlayer(firstMiss)
 
         assertEquals(GamePhase.AMANECER, firstMiss.phase)
-        assertTrue(warnedHuman.alive)
-        assertEquals(1, warnedHuman.consecutiveNightAfk)
+        assertTrue(human.alive)
+        assertEquals(1, human.consecutiveNightAfk)
         assertTrue(firstMiss.privateHint.contains("proxima noche"))
-
-        val secondMiss = GameEngine.resolveHumanTimeout(
-            firstMiss.copy(phase = GamePhase.NOCHE_MEDICO, round = 2, winner = "")
-        )
-        val expelledHuman = GameEngine.humanPlayer(secondMiss)
-
-        assertFalse(expelledHuman.alive)
-        assertEquals(2, expelledHuman.consecutiveNightAfk)
-        assertTrue(secondMiss.publicHistory.any { it.contains("expulsado por inactividad") })
+        assertFalse(firstMiss.publicHistory.any { it.contains("expulsado por inactividad") })
     }
 
     @Test
-    fun afkExpulsionRechecksVictoryImmediately() {
+    fun assassinNightTimeoutKillsNobodyAndFinishesUnifiedNight() {
         val firstNight = sessionWithHumanRole("asesino").copy(phase = GamePhase.NOCHE_ASESINO)
-        val firstMiss = GameEngine.resolveHumanTimeout(firstNight)
+        val resolved = GameEngine.resolveHumanTimeout(firstNight)
 
-        val secondMiss = GameEngine.resolveHumanTimeout(
-            firstMiss.copy(phase = GamePhase.NOCHE_ASESINO, round = 2, winner = "")
+        assertEquals(GamePhase.AMANECER, resolved.phase)
+        assertEquals("", resolved.nightKillTarget)
+        assertTrue(resolved.players.all { it.alive })
+        assertEquals("", resolved.winner)
+        assertEquals(1, GameEngine.humanPlayer(resolved).consecutiveNightAfk)
+    }
+
+    @Test
+    fun secondNightTimeoutExpelsForAfkAfterSkippingAction() {
+        val secondNight = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            round = 2,
+            players = sessionWithHumanRole("medico").players.map {
+                if (it.isHuman) it.copy(consecutiveNightAfk = 1) else it
+            }
         )
 
-        assertFalse(GameEngine.humanPlayer(secondMiss).alive)
-        assertEquals(GameRules.TOWN_WINNER, secondMiss.winner)
+        val secondMiss = GameEngine.resolveHumanTimeout(secondNight)
+        val human = GameEngine.humanPlayer(secondMiss)
+
+        assertEquals(GamePhase.AMANECER, secondMiss.phase)
+        assertFalse(human.alive)
+        assertEquals(2, human.consecutiveNightAfk)
+        assertTrue(secondMiss.publicHistory.any { it.contains("expulsado por inactividad") })
     }
 
     @Test
@@ -1575,6 +1585,95 @@ class GameEngineTest {
     }
 
     @Test
+    fun botUnderstandsHumanDetectiveClaimWithInnocentResult() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            players = publicNameSession().players.map { player ->
+                when (player.name) {
+                    "Humano" -> player.copy(role = role("policia", "Comisario", "Pueblo"))
+                    "Beto" -> player.copy(role = role("aldeano", "Aldeano", "Pueblo"))
+                    else -> player
+                }
+            }
+        )
+
+        val resolved = GameEngine.addHumanChatMessage(session, "soy detective, pregunte por Dina y es inocente")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { it.message }
+
+        assertTrue("Respuestas: $botText", botText.contains("dina", ignoreCase = true))
+        assertTrue(
+            "Respuestas: $botText",
+            botText.contains("limpio") ||
+                botText.contains("no lo votaria") ||
+                botText.contains("queda mas abajo")
+        )
+        assertFalse("Respuestas: $botText", botText.contains("a quien investigaste"))
+    }
+
+    @Test
+    fun botKeepsContextWhenHumanClarifiesAnswerWasForIt() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            players = publicNameSession().players.map { player ->
+                when (player.name) {
+                    "Humano" -> player.copy(role = role("policia", "Comisario", "Pueblo"))
+                    "Beto" -> player.copy(role = role("aldeano", "Aldeano", "Pueblo"))
+                    else -> player
+                }
+            },
+            chatHistory = listOf(
+                GameChatMessage("Humano", "soy detective, pregunte por Dina y es inocente"),
+                GameChatMessage("Beto", "Humano vos q decis de todo esto?")
+            )
+        )
+
+        val resolved = GameEngine.addHumanChatMessage(session, "a vos te dije")
+        val botText = resolved.chatHistory
+            .filter { it.speaker != "Humano" }
+            .joinToString(" ") { it.message }
+
+        assertTrue("Respuestas: $botText", botText.contains("dina", ignoreCase = true))
+        assertTrue(
+            "Respuestas: $botText",
+            botText.contains("me lo decias a mi") ||
+                botText.contains("entendi") ||
+                botText.contains("tomo esa lectura") ||
+                botText.contains("lectura")
+        )
+    }
+
+    @Test
+    fun botDoesNotOvervoteAfkHumanAfterUsefulDetectiveRead() {
+        val base = publicNameSession()
+        val session = base.copy(
+            code = "AFK-DETECTIVE-READ",
+            phase = GamePhase.VOTACION,
+            players = base.players.map { player ->
+                when (player.name) {
+                    "Humano" -> player.copy(role = role("policia", "Comisario", "Pueblo"))
+                    "Beto" -> player.copy(role = role("aldeano", "Aldeano", "Pueblo"))
+                    else -> player
+                }
+            },
+            chatHistory = listOf(
+                GameChatMessage("Humano", "soy detective, pregunte por Dina y es inocente"),
+                GameChatMessage("Ciro", "Humano vos q lectura tenes?"),
+                GameChatMessage("Beto", "Ana esta rara"),
+                GameChatMessage("Dina", "Ana tiene que responder")
+            )
+        )
+        val ciro = GameEngine.playerByName(session, "Ciro")!!
+
+        assertEquals(
+            "Plan: ${LocalBotAi.votePlanSnapshot(session, ciro.name)}",
+            "Ana",
+            LocalBotAi.chooseVoteTarget(session, ciro)
+        )
+    }
+
+    @Test
     fun botVotesUsePublicDoubleClaimAsSuspicion() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,
@@ -1927,6 +2026,56 @@ class GameEngineTest {
     }
 
     @Test
+    fun hardDifficultyTrustsAccumulatedVoteHistoryMoreThanNormal() {
+        val base = publicNameSession().copy(
+            code = "DIFF-HISTORY",
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Dina pq cambiaste de tema?"),
+                GameChatMessage("Ciro", "Dina me hace ruido"),
+                GameChatMessage("Humano", "Dina esta rara")
+            )
+        )
+
+        val normalPlan = LocalBotAi.votePlanSnapshot(
+            base.copy(botDifficulty = BotDifficulty.NORMAL),
+            "Beto"
+        )
+        val hardPlan = LocalBotAi.votePlanSnapshot(
+            base.copy(botDifficulty = BotDifficulty.HARD),
+            "Beto"
+        )
+
+        assertEquals("Dina", normalPlan?.target)
+        assertEquals("Dina", hardPlan?.target)
+        assertTrue("Normal: $normalPlan Hard: $hardPlan", hardPlan!!.confidence > normalPlan!!.confidence)
+        assertTrue("Hard: $hardPlan", hardPlan.beats >= normalPlan.beats)
+    }
+
+    @Test
+    fun hardDifficultyKeepsRespondingToPendingThreadsLonger() {
+        val base = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "dina me hace ruido"),
+                GameChatMessage("Ciro", "si, q explique algo")
+            )
+        )
+
+        val normalReplies = LocalBotAi.reactionsToHumanMessage(
+            base.copy(botDifficulty = BotDifficulty.NORMAL),
+            "dina no me cierra"
+        )
+        val hardReplies = LocalBotAi.reactionsToHumanMessage(
+            base.copy(botDifficulty = BotDifficulty.HARD),
+            "dina no me cierra"
+        )
+
+        assertTrue("Normal: $normalReplies Hard: $hardReplies", hardReplies.size >= normalReplies.size)
+        assertTrue("Hard: $hardReplies", hardReplies.any { it.second.contains("dina", ignoreCase = true) })
+    }
+
+    @Test
     fun botVotesFollowPublicSuspicionInsteadOfSecretInvestigation() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,
@@ -2019,6 +2168,51 @@ class GameEngineTest {
         val beto = GameEngine.playerByName(session, "Beto")!!
 
         assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, beto))
+    }
+
+    @Test
+    fun botVotePrefersConversationHistoryOverSingleFreshAccusation() {
+        val session = publicNameSession().copy(
+            code = "HISTORY-VOTE",
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Dina pq cambiaste de tema?"),
+                GameChatMessage("Ciro", "Dina me hace ruido"),
+                GameChatMessage("Humano", "Ana esta rara")
+            )
+        )
+        val ciro = GameEngine.playerByName(session, "Ciro")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, ciro))
+    }
+
+    @Test
+    fun botVotingIntentExplainsAccumulatedStory() {
+        val session = publicNameSession().copy(
+            code = "HISTORY-SPEECH",
+            phase = GamePhase.VOTACION,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Dina pq cambiaste de tema?"),
+                GameChatMessage("Ciro", "Dina me hace ruido"),
+                GameChatMessage("Humano", "Dina esta rara")
+            )
+        )
+
+        val message = LocalBotAi.votingIntentMessages(session, limit = 5)
+            .firstOrNull { it.first == "Beto" }
+            ?.second
+            .orEmpty()
+
+        assertTrue("Mensaje Beto: $message", message.contains("dina", ignoreCase = true))
+        assertTrue(
+            "Mensaje Beto: $message",
+            message.contains("secuencia") ||
+                message.contains("no es una corazonada") ||
+                message.contains("viene mal") ||
+                message.contains("sale de esto") ||
+                message.contains("pregunta colgada") ||
+                message.contains("yo ya lo venia siguiendo")
+        )
     }
 
     @Test
@@ -2284,6 +2478,31 @@ class GameEngineTest {
         }
 
         assertEquals("Traidores", GameRules.winnerFor(parityPlayers))
+    }
+
+    @Test
+    fun desertorSupportingTraitorsDoesNotAccelerateParityWin() {
+        val players = listOf(
+            GamePlayer("Humano", "H", role = role("desertor", "Desertor", "Neutral"), isHuman = true),
+            GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+            GamePlayer("Mercenario", "R", role = role("mercenario", "Mercenario", "Traidores")),
+            GamePlayer("Policia", "P", role = role("policia", "Comisario", "Pueblo")),
+            GamePlayer("Medico", "M", role = role("medico", "Medico", "Pueblo")),
+            GamePlayer("Alcalde", "L", role = role("alcalde", "Alcalde", "Pueblo")),
+            GamePlayer("Bufon", "B", role = role("bufon", "Bufon", "Neutral")),
+            GamePlayer("Aldeano1", "1", role = role("aldeano", "Aldeano", "Pueblo"), alive = false),
+            GamePlayer("Aldeano2", "2", role = role("aldeano", "Aldeano", "Pueblo"), alive = false)
+        )
+
+        val session = GameSession(
+            code = "DESERTOR",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = players,
+            desertorTeam = GameRules.TRAITOR_WINNER
+        )
+
+        assertEquals("", GameRules.winnerFor(session))
     }
 
     private fun sessionWithHumanRole(roleKey: String): GameSession {

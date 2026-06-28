@@ -45,7 +45,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:fontFamily="@font/grenze"
+                android:fontFamily="@font/bree_serif"
                 android:letterSpacing="0.04"
                 android:text="AYUDA"
                 android:textColor="@color/accent_gold"
@@ -57,11 +57,11 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:layout_marginBottom="22dp"
-                android:fontFamily="@font/cormorant_garamond"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:text="Todo lo necesario para entrar al pueblo y sobrevivir a sus sospechas."
                 android:textColor="@color/text_secondary"
-                android:textSize="16sp" />
+                android:textSize="18sp" />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -93,7 +93,7 @@
 
             <TextView
                 style="@style/HelpHighlightCard"
-                android:text="Se permite mentir sobre tu rol, inventar una investigacion, negar una accion, acusar para desviar sospechas o fingir que tenes informacion.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar informacion externa para demostrar que decis la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
+                android:text="Se permite mentir sobre tu rol, inventar una investigacion, negar una accion, acusar para desviar sospechas o fingir que tienes informacion.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar informacion externa para demostrar que dices la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -119,10 +119,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="10dp"
-                android:fontFamily="@font/cormorant_garamond"
+                android:fontFamily="sans-serif"
                 android:text="Toca un rol para consultar su funcion y su consejo."
                 android:textColor="@color/text_secondary"
-                android:textSize="15sp" />
+                android:textSize="17sp" />
 
             <LinearLayout
                 android:id="@+id/roleGuidesContainer"

@@ -17,6 +17,19 @@ object OnlineLobbyRules {
         return players.filter { it.activeInMatch && !it.connected }
     }
 
+    fun hostHandoffCandidate(
+        players: List<OnlineLobbyParticipant>,
+        activeHostId: String
+    ): OnlineLobbyParticipant? {
+        if (activeHostId.isBlank()) return null
+        val activePlayers = activePlayers(players)
+        val activeHost = activePlayers.firstOrNull { it.id == activeHostId }
+        if (activeHost?.connected == true) return null
+        return activePlayers
+            .filter { it.connected }
+            .minWithOrNull(compareBy<OnlineLobbyParticipant> { it.order }.thenBy { it.id })
+    }
+
     fun canStart(
         players: List<OnlineLobbyParticipant>,
         expectedPlayers: Int,

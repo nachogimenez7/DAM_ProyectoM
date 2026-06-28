@@ -67,8 +67,10 @@ class LobbyActivity : BaseActivity() {
     private var onlineStartedNoticeShown = false
     private var recoveringOnlineMatch = false
     private var onlineRoomDeletedHandled = false
+    private var onlineRemovalHandled = false
     private var leavingOnlineLobby = false
     private var enteringOnlineMatch = false
+    private var onlineHostHandoffInProgress = false
     private var roomListener: ListenerRegistration? = null
     private var playersListener: ListenerRegistration? = null
     private var onlinePlayers = emptyList<OnlineLobbyPlayer>()
@@ -266,7 +268,7 @@ class LobbyActivity : BaseActivity() {
                 ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
                 ?: "LOBBY ONLINE - SALA ENCONTRADA"
             MODE_ONLINE_QUICK -> "LOBBY ONLINE - PARTIDA RAPIDA"
-            else -> "JUGAR VS IA"
+            else -> "JUGAR vs IA"
         }
         lobbyModeHint.text = when (lobbyMode) {
             MODE_ONLINE_CREATE, MODE_ONLINE_SEARCH -> onlineLobbyHint()
@@ -315,15 +317,27 @@ class LobbyActivity : BaseActivity() {
             row.findViewById<ImageButton>(R.id.btnPlayerProfile).contentDescription =
                 "Ver perfil de ${player.name}"
             row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
-                isEnabled = index != 0 && !isOnlineGuest() && !isFirestoreOnlineLobby()
+                val canRemoveOnlinePlayer = isFirestoreOnlineLobby() &&
+                    onlinePlayer != null &&
+                    canCurrentHostRemoveOnlinePlayer(onlinePlayer)
+                isEnabled = if (isFirestoreOnlineLobby()) {
+                    canRemoveOnlinePlayer
+                } else {
+                    index != 0 && !isOnlineGuest()
+                }
                 alpha = if (isEnabled) 1f else 0.28f
                 contentDescription = when {
+                    isFirestoreOnlineLobby() && onlinePlayer?.id == onlineTempUid ->
+                        "No podes expulsarte de la sala"
+                    isFirestoreOnlineLobby() && !currentUserIsOnlineHost() ->
+                        "Solo el anfitrion puede expulsar jugadores online"
+                    isFirestoreOnlineLobby() && onlinePlayer != null ->
+                        "Expulsar a ${onlinePlayer.name} de la sala online"
+                    isOnlineGuest() -> "Solo el anfitrion puede expulsar jugadores"
                     index == 0 -> "El anfitrion no se puede expulsar"
-                    isOnlineGuest() || isFirestoreOnlineLobby() ->
-                        "La expulsion online todavia esta en desarrollo"
                     else -> "Expulsar a ${player.name}"
                 }
-                setOnClickListener { confirmPlayerRemoval(index, player) }
+                setOnClickListener { confirmPlayerRemoval(index, player, onlinePlayer) }
             }
             playersContainer.addView(row)
         }
@@ -358,6 +372,7 @@ class LobbyActivity : BaseActivity() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
         OnlineDebugLog.i("presence_update roomId=$onlinePartidaId uid=$onlineTempUid state=$state")
         val firestore = FirebaseFirestore.getInstance()
+        val currentlyReleased = onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false
         val playerData = hashMapOf<String, Any>(
                     FIELD_NAME to onlinePlayerName,
                     PlayerPublicIdentity.FIELD_PUBLIC_ID to PlayerPublicIdentity.currentPublicId(this),
@@ -368,10 +383,13 @@ class LobbyActivity : BaseActivity() {
                     ),
                     FIELD_PLAYER_STATE to state,
                     "uidTemporal" to onlineTempUid,
-            OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
+            OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to !currentlyReleased,
             OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
             OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
         )
+        if (currentlyReleased) {
+            playerData[FIELD_PLAYER_READY] = false
+        }
         firestore
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -517,6 +535,90 @@ class LobbyActivity : BaseActivity() {
         }
     }
 
+    private fun canCurrentHostRemoveOnlinePlayer(player: OnlineLobbyPlayer): Boolean {
+        return isFirestoreOnlineLobby() &&
+            currentUserIsOnlineHost() &&
+            onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
+            player.activeInMatch &&
+            player.id != onlineTempUid
+    }
+
+    private fun removeOnlinePlayer(player: OnlineLobbyPlayer) {
+        if (!canCurrentHostRemoveOnlinePlayer(player)) {
+            Toast.makeText(this, "No se puede expulsar a ese jugador ahora.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id)
+        OnlineDebugLog.w(
+            "online_kick_requested roomId=$onlinePartidaId hostId=$onlineTempUid target=${player.id}"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            if (!room.exists()) {
+                throw IllegalStateException("La sala ya no existe.")
+            }
+            if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+                throw IllegalStateException("La sala ya no esta esperando jugadores.")
+            }
+            val activeHostId = room.getString(FIELD_ACTIVE_HOST_ID).orEmpty()
+            val hostId = room.getString(FIELD_HOST_ID).orEmpty()
+            if (activeHostId != onlineTempUid && hostId != onlineTempUid) {
+                throw IllegalStateException("Solo el anfitrion puede expulsar jugadores.")
+            }
+            if (activeHostId == player.id) {
+                throw IllegalStateException("No se puede expulsar al anfitrion activo.")
+            }
+            val target = transaction.get(playerReference)
+            if (!target.exists()) {
+                throw IllegalStateException("El jugador ya no esta en la sala.")
+            }
+            if (target.getString("uidTemporal") != player.id) {
+                throw IllegalStateException("El jugador no coincide con la sala.")
+            }
+            val targetStillActive = target.getBoolean(FIELD_ACTIVE_IN_MATCH) != false
+            if (!targetStillActive) return@runTransaction false
+
+            transaction.update(
+                playerReference,
+                mapOf(
+                    FIELD_ACTIVE_IN_MATCH to false,
+                    FIELD_PLAYER_READY to false,
+                    FIELD_PLAYER_STATE to PLAYER_STATE_DISCONNECTED,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                )
+            )
+            val currentPlayers = (room.getLong(OnlineRoomFirestore.FIELD_CURRENT_PLAYERS)
+                ?: activeOnlinePlayers().size.toLong()).toInt()
+            transaction.update(
+                roomReference,
+                mapOf(
+                    OnlineRoomFirestore.FIELD_CURRENT_PLAYERS to (currentPlayers - 1).coerceAtLeast(0),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            true
+        }.addOnSuccessListener { removed ->
+            OnlineDebugLog.w(
+                "online_kick_success roomId=$onlinePartidaId hostId=$onlineTempUid target=${player.id} removed=$removed"
+            )
+            Toast.makeText(this, "${player.name} fue expulsado de la sala.", Toast.LENGTH_SHORT).show()
+            renderLobby()
+        }.addOnFailureListener { error ->
+            OnlineDebugLog.e(
+                "online_kick_failure roomId=$onlinePartidaId hostId=$onlineTempUid target=${player.id}",
+                error
+            )
+            Toast.makeText(
+                this,
+                OnlineErrorMessages.forAction("No se pudo expulsar al jugador", error),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun copyOnlineRoomCode() {
         if (onlineRoomCode.isBlank()) {
             Toast.makeText(this, "Todavia no hay codigo de sala.", Toast.LENGTH_SHORT).show()
@@ -549,8 +651,11 @@ class LobbyActivity : BaseActivity() {
             return
         }
         val isHost = currentUserIsOnlineHost()
+        val handoffCandidate = if (isHost) onlineLobbyHostHandoffCandidate(excludeCurrent = true) else null
         val title = if (isHost) "Salir de la sala online" else "Salir del lobby"
-        val message = if (isHost) {
+        val message = if (isHost && handoffCandidate != null) {
+            "Si salis, ${handoffCandidate.name} quedara como anfitrion activo de la sala."
+        } else if (isHost) {
             "Si salis, la sala quedara abandonada y ya no aparecera en buscar partida."
         } else {
             "Vas a salir de la sala. El resto de jugadores seguira en el lobby."
@@ -560,8 +665,12 @@ class LobbyActivity : BaseActivity() {
             .setMessage(message)
             .setNegativeButton("CANCELAR", null)
             .setPositiveButton("SALIR") { _, _ ->
-                leavingOnlineLobby = true
-                finish()
+                if (isHost && handoffCandidate != null) {
+                    transferLobbyHostAndExit(handoffCandidate)
+                } else {
+                    leavingOnlineLobby = true
+                    finish()
+                }
             }
             .show()
     }
@@ -591,6 +700,10 @@ class LobbyActivity : BaseActivity() {
                             .thenBy { it.id }
                     )
                     .orEmpty()
+                if (onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false) {
+                    handleRemovedFromOnlineLobby()
+                    return@addSnapshotListener
+                }
                 OnlineDebugLog.i(
                     "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} active=${activeOnlinePlayers().size} connected=${activeOnlinePlayers().count { it.status == PLAYER_STATE_CONNECTED }}"
                 )
@@ -604,6 +717,7 @@ class LobbyActivity : BaseActivity() {
                         )
                     }
                 )
+                maybeClaimOnlineLobbyHostHandoff()
                 renderLobby()
             }
     }
@@ -651,6 +765,7 @@ class LobbyActivity : BaseActivity() {
             onlineStartedNoticeShown = true
             startOnlineMatch()
         }
+        maybeClaimOnlineLobbyHostHandoff()
         renderLobby()
     }
 
@@ -661,8 +776,7 @@ class LobbyActivity : BaseActivity() {
             ?.take(18)
             ?.takeIf { it.isNotBlank() }
             ?: return null
-        val isHost = document.getBoolean(FIELD_IS_HOST) == true ||
-            document.id == onlineHostId
+        val isHost = document.id == onlineActiveHostId.ifBlank { onlineHostId }
         return OnlineLobbyPlayer(
             id = document.id,
             name = name,
@@ -711,6 +825,14 @@ class LobbyActivity : BaseActivity() {
         finish()
     }
 
+    private fun handleRemovedFromOnlineLobby() {
+        if (onlineRemovalHandled) return
+        onlineRemovalHandled = true
+        OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+        Toast.makeText(this, "Fuiste expulsado de la sala online.", Toast.LENGTH_LONG).show()
+        finish()
+    }
+
     private fun onlineLobbyHint(): String {
         val codeText = if (onlineRoomCode.isNotBlank()) {
             " Codigo $onlineRoomCode."
@@ -744,6 +866,161 @@ class LobbyActivity : BaseActivity() {
         return onlineActiveHostId == onlineTempUid ||
             (onlineActiveHostId.isBlank() && onlineHostId == onlineTempUid) ||
             (onlineHostId.isBlank() && lobbyMode == MODE_ONLINE_CREATE)
+    }
+
+    private fun onlineLobbyHostHandoffCandidate(excludeCurrent: Boolean = false): OnlineLobbyPlayer? {
+        if (excludeCurrent) {
+            return activeOnlinePlayers()
+                .filter { it.id != onlineTempUid && it.status == PLAYER_STATE_CONNECTED }
+                .minWithOrNull(compareBy<OnlineLobbyPlayer> { it.order }.thenBy { it.id })
+        }
+        val candidateId = OnlineLobbyRules.hostHandoffCandidate(
+            players = onlineParticipants(),
+            activeHostId = onlineActiveHostId.ifBlank { onlineHostId }
+        )?.id ?: return null
+        return onlinePlayers.firstOrNull { it.id == candidateId }
+    }
+
+    private fun maybeClaimOnlineLobbyHostHandoff() {
+        if (
+            !isFirestoreOnlineLobby() ||
+            onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
+            onlineHostHandoffInProgress ||
+            onlineTempUid.isBlank()
+        ) {
+            return
+        }
+        val previousHostId = onlineActiveHostId.ifBlank { onlineHostId }
+        val candidate = onlineLobbyHostHandoffCandidate() ?: return
+        if (candidate.id == onlineTempUid) {
+            claimOnlineLobbyHostHandoff(previousHostId)
+        }
+    }
+
+    private fun claimOnlineLobbyHostHandoff(previousHostId: String) {
+        if (previousHostId.isBlank()) return
+        onlineHostHandoffInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val previousHostReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION)
+            .document(previousHostId)
+        val candidateReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION)
+            .document(onlineTempUid)
+        OnlineDebugLog.w(
+            "lobby_host_handoff_claim_requested roomId=$onlinePartidaId previousHost=$previousHostId candidate=$onlineTempUid"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            if (!room.exists()) {
+                throw IllegalStateException("La sala ya no existe.")
+            }
+            if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+                return@runTransaction false
+            }
+            val currentHostId = room.getString(FIELD_ACTIVE_HOST_ID)
+                ?.takeIf { it.isNotBlank() }
+                ?: previousHostId
+            if (currentHostId != previousHostId) {
+                return@runTransaction false
+            }
+            val previousHost = transaction.get(previousHostReference)
+            val candidate = transaction.get(candidateReference)
+            if (previousHost.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED) {
+                return@runTransaction false
+            }
+            if (candidate.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+                return@runTransaction false
+            }
+            if (candidate.getBoolean(FIELD_ACTIVE_IN_MATCH) == false) {
+                return@runTransaction false
+            }
+            transaction.update(
+                roomReference,
+                mapOf(
+                    FIELD_ACTIVE_HOST_ID to onlineTempUid,
+                    FIELD_HOST_VERSION to FieldValue.increment(1),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            true
+        }.addOnSuccessListener { claimed ->
+            onlineHostHandoffInProgress = false
+            if (claimed == true) {
+                onlineActiveHostId = onlineTempUid
+                onlineHostVersion += 1
+                OnlineDebugLog.w(
+                    "lobby_host_handoff_claim_success roomId=$onlinePartidaId previousHost=$previousHostId newHost=$onlineTempUid"
+                )
+                Toast.makeText(this, "Ahora sos el anfitrion de la sala.", Toast.LENGTH_SHORT).show()
+                renderLobby()
+            }
+        }.addOnFailureListener { error ->
+            onlineHostHandoffInProgress = false
+            OnlineDebugLog.e(
+                "lobby_host_handoff_claim_failure roomId=$onlinePartidaId previousHost=$previousHostId candidate=$onlineTempUid",
+                error
+            )
+        }
+    }
+
+    private fun transferLobbyHostAndExit(candidate: OnlineLobbyPlayer) {
+        if (onlineHostHandoffInProgress) return
+        onlineHostHandoffInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val candidateReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(candidate.id)
+        OnlineDebugLog.w(
+            "lobby_host_transfer_exit_requested roomId=$onlinePartidaId previousHost=$onlineTempUid candidate=${candidate.id}"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            if (!room.exists()) {
+                throw IllegalStateException("La sala ya no existe.")
+            }
+            if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+                throw IllegalStateException("La sala ya no esta esperando jugadores.")
+            }
+            val activeHostId = room.getString(FIELD_ACTIVE_HOST_ID).orEmpty()
+            val hostId = room.getString(FIELD_HOST_ID).orEmpty()
+            if (activeHostId != onlineTempUid && hostId != onlineTempUid) {
+                throw IllegalStateException("Ya no sos el anfitrion activo.")
+            }
+            val candidateSnapshot = transaction.get(candidateReference)
+            if (candidateSnapshot.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+                throw IllegalStateException("El nuevo anfitrion ya no esta conectado.")
+            }
+            if (candidateSnapshot.getBoolean(FIELD_ACTIVE_IN_MATCH) == false) {
+                throw IllegalStateException("El nuevo anfitrion ya no esta activo.")
+            }
+            transaction.update(
+                roomReference,
+                mapOf(
+                    FIELD_ACTIVE_HOST_ID to candidate.id,
+                    FIELD_HOST_VERSION to FieldValue.increment(1),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            true
+        }.addOnSuccessListener {
+            onlineHostHandoffInProgress = false
+            onlineActiveHostId = candidate.id
+            leavingOnlineLobby = false
+            OnlineDebugLog.w(
+                "lobby_host_transfer_exit_success roomId=$onlinePartidaId previousHost=$onlineTempUid newHost=${candidate.id}"
+            )
+            finish()
+        }.addOnFailureListener { error ->
+            onlineHostHandoffInProgress = false
+            OnlineDebugLog.e(
+                "lobby_host_transfer_exit_failure roomId=$onlinePartidaId previousHost=$onlineTempUid candidate=${candidate.id}",
+                error
+            )
+            Toast.makeText(
+                this,
+                OnlineErrorMessages.forAction("No se pudo transferir el anfitrion", error),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun renderStartButtonState() {
@@ -1266,7 +1543,7 @@ class LobbyActivity : BaseActivity() {
                 alpha = if (customMode) 1f else 0.82f
             }
             presetDescription.text = if (customMode) {
-                "Configuracion personalizada. Podes ajustar cada tiempo manualmente."
+                "Configuracion personalizada. Puedes ajustar cada tiempo manualmente."
             } else {
                 selectedPreset?.description.orEmpty()
             }
@@ -1411,6 +1688,7 @@ class LobbyActivity : BaseActivity() {
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
         val revealRolesSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
             text = "Mostrar roles al morir"
             isChecked = revealRolesOnDeath
             setTextColor(getColor(R.color.text_primary))
@@ -1429,6 +1707,7 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(4), 0, dp(4), dp(8))
         })
         val individualVotesSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
             text = "MOSTRAR VOTOS INDIVIDUALES"
             isChecked = showIndividualVotes
             setTextColor(getColor(R.color.text_primary))
@@ -1448,6 +1727,7 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(4), 0, dp(4), dp(8))
         })
         val quickTestSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
             text = "MODO TEST RAPIDO"
             isChecked = quickTestMode
             setTextColor(getColor(R.color.text_primary))
@@ -1523,6 +1803,7 @@ class LobbyActivity : BaseActivity() {
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         if (isDebugBuild && lobbyMode == MODE_LOCAL) {
             content.addView(SwitchCompat(this).apply {
+                applyTraidoresSwitchStyle()
                 text = "IA DE PRUEBA: OBEDECER VOTOS"
                 isChecked = debugBotsObeyVoteCommands
                 setTextColor(getColor(R.color.text_primary))
@@ -1540,6 +1821,7 @@ class LobbyActivity : BaseActivity() {
                 setPadding(dp(4), 0, dp(4), dp(8))
             })
             content.addView(SwitchCompat(this).apply {
+                applyTraidoresSwitchStyle()
                 text = "PRUEBA: FORZAR EMPATES"
                 isChecked = debugForceVoteTies
                 setTextColor(getColor(R.color.text_primary))
@@ -1946,9 +2228,31 @@ class LobbyActivity : BaseActivity() {
             .show()
     }
 
-    private fun confirmPlayerRemoval(index: Int, player: GamePlayer) {
-        if (isOnlineGuest() || isFirestoreOnlineLobby()) {
-            Toast.makeText(this, "La expulsion online todavia esta en desarrollo.", Toast.LENGTH_SHORT).show()
+    private fun confirmPlayerRemoval(
+        index: Int,
+        player: GamePlayer,
+        onlinePlayer: OnlineLobbyPlayer? = null
+    ) {
+        if (isFirestoreOnlineLobby()) {
+            if (onlinePlayer == null || !canCurrentHostRemoveOnlinePlayer(onlinePlayer)) {
+                Toast.makeText(this, "No se puede expulsar a ese jugador ahora.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Expulsar participante online")
+                .setMessage(
+                    "Quitar a ${onlinePlayer.name} de la sala? " +
+                        "Su cupo quedara liberado y no podra iniciar esta partida."
+                )
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Expulsar") { _, _ ->
+                    removeOnlinePlayer(onlinePlayer)
+                }
+                .show()
+            return
+        }
+        if (isOnlineGuest()) {
+            Toast.makeText(this, "Solo el anfitrion puede expulsar jugadores.", Toast.LENGTH_SHORT).show()
             return
         }
         if (index == 0) {

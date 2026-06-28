@@ -29,7 +29,7 @@
             android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="sans-serif"
             android:letterSpacing="0.02" />
 
         <TextView
@@ -47,7 +47,7 @@
             android:layout_height="wrap_content"
             android:textSize="10sp"
             android:textStyle="bold"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="sans-serif"
             android:letterSpacing="0.04"
             android:layout_marginTop="2dp"
             android:layout_marginBottom="6dp" />
@@ -58,7 +58,7 @@
             android:layout_height="wrap_content"
             android:textColor="@color/text_secondary"
             android:textSize="12sp"
-            android:fontFamily="@font/cormorant_garamond"
+            android:fontFamily="sans-serif"
             android:lineSpacingExtra="3dp" />
 
         <TextView
@@ -79,7 +79,7 @@
             android:layout_height="wrap_content"
             android:textColor="@color/text_muted"
             android:textSize="12sp"
-            android:fontFamily="@font/cormorant_garamond"
+            android:fontFamily="sans-serif"
             android:lineSpacingExtra="3dp" />
 
     </LinearLayout>

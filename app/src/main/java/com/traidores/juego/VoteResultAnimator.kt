@@ -34,7 +34,13 @@ class VoteResultAnimator(
     private val onContinueReady: (() -> Unit)? = null
 ) {
     private companion object {
-        const val REVEALED_CARD_READ_MS = 2_000L
+        const val RECOUNT_INITIAL_DELAY_MS = 420L
+        const val RECOUNT_TOKEN_STEP_MS = 420L
+        const val RECOUNT_FINAL_READ_MS = 700L
+        const val EXPULSION_NAME_READ_MS = 2_500L
+        const val REVEALED_CARD_READ_MS = 3_500L
+        const val BOOT_IMPACT_PAUSE_MS = 120L
+        const val EXPULSION_AFTER_KICK_READ_MS = 1_800L
         const val RECOUNT_PANEL_WIDTH_DP = 500
         const val EXPULSION_PANEL_WIDTH_DP = 520
         const val RECOUNT_SCROLL_HEIGHT_DP = 170
@@ -134,10 +140,10 @@ class VoteResultAnimator(
             return
         }
         tokens.forEachIndexed { index, token ->
-            schedule(index * 300L + 280L) {
+            schedule(index * RECOUNT_TOKEN_STEP_MS + RECOUNT_INITIAL_DELAY_MS) {
                 addVoteToken(session, token)
                 if (index == tokens.lastIndex) {
-                    schedule(380L) { finishRecount(session) }
+                    schedule(RECOUNT_FINAL_READ_MS) { finishRecount(session) }
                 }
             }
         }
@@ -216,7 +222,7 @@ class VoteResultAnimator(
                         }
                     }
                 } else {
-                    schedule(620L) {
+                    schedule(EXPULSION_NAME_READ_MS) {
                         kickExpulsionCard(session, holder, onFinished)
                     }
                 }
@@ -315,18 +321,20 @@ class VoteResultAnimator(
         title.text = if (session.alcaldeCorruption) {
             "CORRUPCION EN EL PUEBLO"
         } else {
-            "EXPULSION"
+            "SENTENCIA DEL PUEBLO"
         }
         subtitle.text = if (session.revealRolesOnDeath) {
             "$targetName fue revelado y expulsado."
         } else {
             "La carta de $targetName permanece oculta."
         }
-        notice.text = "El pueblo dicta su sentencia."
+        notice.text = "La sentencia esta por cumplirse."
         boot.visibility = View.VISIBLE
         boot.alpha = 1f
         boot.translationX = overlay.width.toFloat()
-        boot.rotation = -8f
+        boot.rotation = -14f
+        boot.scaleX = 1.08f
+        boot.scaleY = 1.08f
 
         val overlayLocation = IntArray(2)
         val holderLocation = IntArray(2)
@@ -336,36 +344,44 @@ class VoteResultAnimator(
         val bootTravel = targetCenter - overlay.width - dp(44)
         boot.animate()
             .translationX(bootTravel)
-            .rotation(-2f)
-            .setDuration(440L)
+            .rotation(-4f)
+            .scaleX(1.16f)
+            .scaleY(1.16f)
+            .setDuration(360L)
             .withEndAction {
-                holder.root.animate()
-                    .translationX(-overlay.width.toFloat())
-                    .rotation(-18f)
-                    .alpha(0f)
-                    .setDuration(480L)
-                    .start()
-                boot.animate()
-                    .translationX(bootTravel + dp(80))
-                    .rotation(-16f)
-                    .setDuration(260L)
-                    .withEndAction {
-                        boot.visibility = View.INVISIBLE
-                        title.text = "$targetName FUE EXPULSADO"
-                        subtitle.text = if (session.revealRolesOnDeath) {
-                            "Su carta ya fue revelada."
-                        } else {
-                            "Su carta permanece oculta."
+                schedule(BOOT_IMPACT_PAUSE_MS) {
+                    holder.root.animate()
+                        .translationX(-overlay.width.toFloat())
+                        .rotation(46f)
+                        .alpha(0f)
+                        .setDuration(420L)
+                        .start()
+                    boot.animate()
+                        .translationX(bootTravel + dp(120))
+                        .rotation(-22f)
+                        .scaleX(0.98f)
+                        .scaleY(0.98f)
+                        .setDuration(260L)
+                        .withEndAction {
+                            boot.visibility = View.INVISIBLE
+                            title.text = "$targetName FUE EXPULSADO"
+                            subtitle.text = if (session.revealRolesOnDeath) {
+                                "Su carta ya fue revelada."
+                            } else {
+                                "Su carta permanece oculta."
+                            }
+                            notice.text = if (session.alcaldeCorruption) {
+                                "El poder deja su marca en la jornada."
+                            } else {
+                                "El pueblo continua con la partida."
+                            }
+                            schedule(EXPULSION_AFTER_KICK_READ_MS) {
+                                setContinueReady("CONTINUAR")
+                                onFinished()
+                            }
                         }
-                        notice.text = if (session.alcaldeCorruption) {
-                            "El poder deja su marca en la jornada."
-                        } else {
-                            "El pueblo continua con la partida."
-                        }
-                        setContinueReady("CONTINUAR")
-                        onFinished()
-                    }
-                    .start()
+                        .start()
+                }
             }
             .start()
     }
@@ -541,7 +557,7 @@ class VoteResultAnimator(
             text = player.name
             setTextColor(context.getColor(R.color.text_primary))
             textSize = 14f
-            typeface = ResourcesCompat.getFont(context, R.font.grenze) ?: Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25)))
 
         val total = TextView(context).apply {
@@ -611,7 +627,7 @@ class VoteResultAnimator(
             text = player.name
             setTextColor(context.getColor(R.color.text_primary))
             textSize = 16f
-            typeface = ResourcesCompat.getFont(context, R.font.grenze) ?: Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
 
         val total = TextView(context).apply {
@@ -640,7 +656,7 @@ class VoteResultAnimator(
             text = "NO SE EMITIERON VOTOS"
             setTextColor(context.getColor(R.color.text_secondary))
             textSize = 18f
-            typeface = ResourcesCompat.getFont(context, R.font.grenze) ?: Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(dp(320), LinearLayout.LayoutParams.MATCH_PARENT)
         }
     }

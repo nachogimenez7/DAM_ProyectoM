@@ -446,7 +446,7 @@ object GameEngine {
         return session.copy(
             alcaldeRevealed = true,
             publicAnnouncement = message,
-            privateHint = "Alcalde revelado. Tu voto vale doble y decidis empates entre los mas votados."
+            privateHint = "Alcalde revelado. Tu voto vale doble y decides empates entre los mas votados."
         ).withPublicHistory(message)
     }
 
@@ -840,15 +840,15 @@ object GameEngine {
             ).transitionTo(
                 GamePhase.ALCALDE_DESEMPATE,
                 "Corrupcion en el pueblo: el Alcalde quedo protegido y decidira quien sera expulsado.",
-                "Tu cargo te protege. Elegi a quien expulsar entre ${opponents.joinToString(" o ")}."
+                "Tu cargo te protege. Elige a quien expulsar entre ${opponents.joinToString(" o ")}."
             )
         }
 
         if (alcalde.isHuman) {
             val privateMessage = if (session.alcaldeRevealed) {
-                "Elegi quien sera expulsado entre ${candidates.joinToString(" o ")}."
+                "Elige quien sera expulsado entre ${candidates.joinToString(" o ")}."
             } else {
-                "Podes revelarte como Alcalde y decidir el empate."
+                "Puedes revelarte como Alcalde y decidir el empate."
             }
             return session.copy(
                 dayEliminationTarget = "",
@@ -949,12 +949,12 @@ object GameEngine {
             ""
         }
         val alcaldeHint = if (role.key == "alcalde" && session.alcaldeRevealed) {
-            " Estas revelado: tu voto vale doble y decidis empates."
+            " Estas revelado: tu voto vale doble y decides empates."
         } else {
             ""
         }
         val desertorHint = if (role.key == "desertor") {
-            if (session.desertorTeam.isBlank()) " Elegi tu bando." else " Tu bando actual es ${session.desertorTeam}."
+            if (session.desertorTeam.isBlank()) " Elige tu bando." else " Tu bando actual es ${session.desertorTeam}."
         } else {
             ""
         }
@@ -967,8 +967,8 @@ object GameEngine {
             session.phase == GamePhase.DIA_DEBATE &&
                 session.oracleInvitedPlayer == human.name ->
                 " El Oraculo te devolvio la voz durante este debate. No podes votar."
-            !human.alive -> " Estas eliminado."
-            human.muted -> " Estas muteado durante el dia."
+            !human.alive -> " Estás eliminado."
+            human.muted -> " Estás silenciado durante el dia."
             else -> ""
         }
         return "${role.name} - ${role.team}.$statusHint$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
@@ -1250,6 +1250,7 @@ object GameEngine {
 
     private fun resolveNightTimeout(session: GameSession): GameSession {
         if (!requiresHumanInput(session)) return session
+
         val missed = registerHumanAfkMiss(session, night = true)
         if (missed.session.winner.isNotBlank()) return missed.session
 
@@ -1283,12 +1284,10 @@ object GameEngine {
                         } else {
                             nightContinuesMessage(missed.session)
                         }
+                } else if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
+                    dawnApproachesMessage()
                 } else {
-                    if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
-                        dawnApproachesMessage()
-                    } else {
-                        nightContinuesMessage(missed.session)
-                    }
+                    nightContinuesMessage(missed.session)
                 },
                 missed.session.privateHint
             )
@@ -1303,7 +1302,7 @@ object GameEngine {
             )
             else -> missed.session
         }
-        return advanced
+        return if (isNightActionPhase(advanced.phase)) enterUnifiedNight(advanced) else advanced
     }
 
     private fun resolveVotingTimeout(session: GameSession): GameSession {
@@ -1389,7 +1388,7 @@ object GameEngine {
             return AfkMissResult(
                 session = session.copy(
                     players = updatedPlayers,
-                    privateHint = "Perdiste tu $action. Si volves a ausentarte en tu $nextOpportunity, seras expulsado por AFK."
+                    privateHint = "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, seras expulsado por AFK."
                 ),
                 expelled = false,
                 humanName = human.name

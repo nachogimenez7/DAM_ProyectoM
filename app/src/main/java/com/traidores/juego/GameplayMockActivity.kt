@@ -101,6 +101,7 @@ class GameplayMockActivity : BaseActivity() {
     private var knownMutedPlayers = emptySet<String>()
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
+    private var lastPresentedCentralEventKey: String? = null
     private var lastPresentedAssassinVoteLogKey: String? = null
     private var stagedBotBurstPhaseIndex = -1
     private val feedbackState = GameplayFeedbackState()
@@ -138,6 +139,7 @@ class GameplayMockActivity : BaseActivity() {
     private val voteResultAutoContinueRunnable = Runnable { handleVoteResultAutoContinue() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
+    private val centralPublicEventDismissRunnable = Runnable { hideCentralPublicEventBanner() }
     private val onlineStartupForceRefreshRunnable = Runnable {
         if (isOnlineStartupPhase()) {
             refreshOnlineStartupGateFromLastStates()
@@ -171,6 +173,7 @@ class GameplayMockActivity : BaseActivity() {
     }
     private var actionPulseAnimator: AnimatorSet? = null
     private var eventLogHeightAnimator: ValueAnimator? = null
+    private var centralPublicEventAnimator: AnimatorSet? = null
     private var feedbackAnimator: AnimatorSet? = null
     private lateinit var rolePreviewAnimator: RolePreviewAnimator
     private lateinit var traitorRevealAnimator: TraitorRevealAnimator
@@ -200,6 +203,13 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var chatRoleChip: TextView
     private lateinit var chatStatusRow: LinearLayout
     private lateinit var chatUnreadBadge: TextView
+    private lateinit var centralPublicEventBanner: FrameLayout
+    private lateinit var centralPublicEventIcon: TextView
+    private lateinit var centralPublicEventLabel: TextView
+    private lateinit var centralPublicEventMessage: TextView
+    private lateinit var centralPublicEventShine: View
+    private lateinit var centralPublicEventTitle: TextView
+    private lateinit var centralPublicEventTone: View
     private lateinit var currentPlayerHint: TextView
     private lateinit var currentPlayerName: TextView
     private lateinit var currentPlayerStatus: TextView
@@ -470,6 +480,13 @@ class GameplayMockActivity : BaseActivity() {
         chatStatusRow = findViewById(R.id.chatStatusRow)
         chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
         chatUnreadBadge.bringToFront()
+        centralPublicEventBanner = findViewById(R.id.centralPublicEventBanner)
+        centralPublicEventIcon = findViewById(R.id.centralPublicEventIcon)
+        centralPublicEventLabel = findViewById(R.id.centralPublicEventLabel)
+        centralPublicEventMessage = findViewById(R.id.centralPublicEventMessage)
+        centralPublicEventShine = findViewById(R.id.centralPublicEventShine)
+        centralPublicEventTitle = findViewById(R.id.centralPublicEventTitle)
+        centralPublicEventTone = findViewById(R.id.centralPublicEventTone)
         currentPlayerHint = findViewById(R.id.currentPlayerHint)
         currentPlayerName = findViewById(R.id.currentPlayerName)
         currentPlayerStatus = findViewById(R.id.currentPlayerStatus)
@@ -821,12 +838,14 @@ class GameplayMockActivity : BaseActivity() {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        hideCentralPublicEventBanner(immediate = true)
         cancelFeedbackPresentation(keepPending = false)
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
@@ -859,12 +878,14 @@ class GameplayMockActivity : BaseActivity() {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        hideCentralPublicEventBanner(immediate = true)
         cancelFeedbackPresentation(keepPending = true)
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
         super.onPause()
@@ -1644,7 +1665,7 @@ class GameplayMockActivity : BaseActivity() {
         return when {
             session.players.size < expectedOnlineStartupPlayers() -> "Sincronizando cartas..."
             !onlineInitialRoleRead -> "Lee tu rol y toca EMPEZAR."
-            onlineIsHost && gate?.canForce == true -> "Falta alguien. Podes forzar la primera noche."
+            onlineIsHost && gate?.canForce == true -> "Falta alguien. Puedes forzar la primera noche."
             gate != null -> gate.waitingMessage
             else -> "Esperando a que todos terminen de leer..."
         }
@@ -2272,6 +2293,10 @@ class GameplayMockActivity : BaseActivity() {
         eventLogColorBar.setBackgroundColor(
             Color.parseColor(GameplayTableUi.eventTypeFor(latestEvent, session.phase).colorHex)
         )
+        val previousLastEvent = lastRenderedEventMessages.lastOrNull()
+        if (latestEvent != previousLastEvent) {
+            maybeShowCentralPublicEvent(latestEvent)
+        }
         val visibleEvents = if (isEventLogExpanded) allEvents.takeLast(5) else listOf(latestEvent)
         if (
             visibleEvents == lastRenderedEventMessages &&
@@ -2279,19 +2304,12 @@ class GameplayMockActivity : BaseActivity() {
         ) {
             return
         }
-        val previousLastEvent = lastRenderedEventMessages.lastOrNull()
         eventLogContainer.removeAllViews()
         visibleEvents.forEachIndexed { index, message ->
             val row = createEventRow(message)
             eventLogContainer.addView(row)
             if (message != previousLastEvent && index == visibleEvents.lastIndex) {
-                row.alpha = 0f
-                row.translationY = dp(6).toFloat()
-                row.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(200L)
-                    .start()
+                animateNewEventRow(row)
             }
         }
         lastRenderedEventMessages = visibleEvents
@@ -2304,6 +2322,198 @@ class GameplayMockActivity : BaseActivity() {
             }
         }
     }
+
+    private fun animateNewEventRow(row: View) {
+        row.animate().cancel()
+        row.alpha = 0f
+        row.translationY = dp(8).toFloat()
+        row.scaleX = 0.985f
+
+        AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(row, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(row, View.TRANSLATION_Y, row.translationY, 0f),
+                ObjectAnimator.ofFloat(row, View.SCALE_X, 0.985f, 1f)
+            )
+            duration = 280L
+            interpolator = DecelerateInterpolator()
+            start()
+        }
+
+        eventLogColorBar.animate().cancel()
+        eventLogColorBar.pivotX = 0f
+        eventLogColorBar.scaleX = 1f
+        eventLogColorBar.animate()
+            .scaleX(2.35f)
+            .setDuration(110L)
+            .withEndAction {
+                eventLogColorBar.animate()
+                    .scaleX(1f)
+                    .setDuration(260L)
+                    .start()
+            }
+            .start()
+
+        eventLogSummary.animate().cancel()
+        eventLogSummary.alpha = 0.58f
+        eventLogSummary.translationX = dp(8).toFloat()
+        eventLogSummary.animate()
+            .alpha(1f)
+            .translationX(0f)
+            .setDuration(320L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+    }
+
+    private fun maybeShowCentralPublicEvent(message: String) {
+        val spec = centralPublicEventSpec(message) ?: return
+        val key = "${session.round}:${session.phaseIndex}:${spec.title}:${spec.message}"
+        if (key == lastPresentedCentralEventKey) return
+        lastPresentedCentralEventKey = key
+        showCentralPublicEventBanner(spec)
+    }
+
+    private fun centralPublicEventSpec(message: String): CentralPublicEventSpec? {
+        val clean = message.trim()
+        if (clean.isBlank()) return null
+
+        val text = clean.lowercase()
+        return when {
+            text.contains("alcalde") && (text.contains("revelo") || text.contains("revelado")) ->
+                CentralPublicEventSpec(
+                    icon = "A",
+                    label = "AUTORIDAD REVELADA",
+                    title = "ALCALDE REVELADO",
+                    message = "El pueblo ya sabe quien tiene la ultima palabra.",
+                    colorHex = CENTRAL_EVENT_VOTE_HEX,
+                    iconColorHex = CENTRAL_EVENT_VOTE_HEX
+                )
+            text.contains("fue expulsado por inactividad") ->
+                CentralPublicEventSpec(
+                    icon = "!",
+                    label = "INACTIVIDAD",
+                    title = "FUERA DEL PUEBLO",
+                    message = clean.takeIf { it.length <= 74 } ?: "Un jugador fue expulsado por ausentarse demasiado.",
+                    colorHex = CENTRAL_EVENT_DANGER_HEX,
+                    iconColorHex = CENTRAL_EVENT_DANGER_HEX
+                )
+            text.contains("no murio nadie") ->
+                CentralPublicEventSpec(
+                    icon = "+",
+                    label = "AMANECER DEL DIA ${session.round}",
+                    title = "NOCHE SIN MUERTES",
+                    message = "El pueblo despierta sin victimas.",
+                    colorHex = CENTRAL_EVENT_SAFE_HEX,
+                    iconColorHex = CENTRAL_EVENT_MEDIC_HEX
+                )
+            else -> null
+        }
+    }
+
+    private fun showCentralPublicEventBanner(spec: CentralPublicEventSpec) {
+        if (!::centralPublicEventBanner.isInitialized) return
+        autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
+        centralPublicEventAnimator?.cancel()
+        centralPublicEventBanner.animate().cancel()
+        centralPublicEventShine.animate().cancel()
+
+        centralPublicEventLabel.text = spec.label
+        centralPublicEventIcon.text = spec.icon
+        centralPublicEventIcon.setTextColor(Color.parseColor(spec.iconColorHex))
+        centralPublicEventTitle.text = spec.title
+        centralPublicEventMessage.text = spec.message
+        centralPublicEventTone.setBackgroundColor(Color.parseColor(spec.colorHex))
+
+        centralPublicEventBanner.visibility = View.VISIBLE
+        centralPublicEventBanner.alpha = 0f
+        centralPublicEventBanner.translationY = dp(18).toFloat()
+        centralPublicEventBanner.scaleX = 0.9f
+        centralPublicEventBanner.scaleY = 0.9f
+        centralPublicEventShine.alpha = 0f
+        centralPublicEventShine.translationX = -dp(96).toFloat()
+
+        centralPublicEventAnimator = AnimatorSet().apply {
+            playSequentially(
+                AnimatorSet().apply {
+                    playTogether(
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.ALPHA, 0f, 1f),
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.TRANSLATION_Y, dp(18).toFloat(), 0f),
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.SCALE_X, 0.9f, 1.04f),
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.SCALE_Y, 0.9f, 1.04f)
+                    )
+                    duration = 260L
+                    interpolator = DecelerateInterpolator()
+                },
+                AnimatorSet().apply {
+                    playTogether(
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.SCALE_X, 1.04f, 1f),
+                        ObjectAnimator.ofFloat(centralPublicEventBanner, View.SCALE_Y, 1.04f, 1f)
+                    )
+                    duration = 170L
+                    interpolator = AccelerateDecelerateInterpolator()
+                }
+            )
+            interpolator = DecelerateInterpolator()
+            start()
+        }
+        centralPublicEventBanner.post {
+            if (centralPublicEventBanner.visibility != View.VISIBLE) return@post
+            centralPublicEventShine.animate()
+                .alpha(1f)
+                .translationX(centralPublicEventBanner.width + dp(96).toFloat())
+                .setStartDelay(260L)
+                .setDuration(760L)
+                .withEndAction {
+                    centralPublicEventShine.alpha = 0f
+                    centralPublicEventShine.translationX = -dp(96).toFloat()
+                }
+                .start()
+        }
+        autoAdvanceHandler.postDelayed(centralPublicEventDismissRunnable, CENTRAL_PUBLIC_EVENT_DURATION_MS)
+    }
+
+    private fun hideCentralPublicEventBanner(immediate: Boolean = false) {
+        autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
+        if (!::centralPublicEventBanner.isInitialized) return
+        centralPublicEventAnimator?.cancel()
+        centralPublicEventAnimator = null
+        centralPublicEventBanner.animate().cancel()
+        centralPublicEventShine.animate().cancel()
+        if (immediate || centralPublicEventBanner.visibility != View.VISIBLE) {
+            centralPublicEventBanner.visibility = View.GONE
+            centralPublicEventBanner.alpha = 1f
+            centralPublicEventBanner.translationY = 0f
+            centralPublicEventBanner.scaleX = 1f
+            centralPublicEventBanner.scaleY = 1f
+            centralPublicEventShine.alpha = 0f
+            centralPublicEventShine.translationX = -dp(96).toFloat()
+            return
+        }
+        centralPublicEventBanner.animate()
+            .alpha(0f)
+            .translationY(-dp(6).toFloat())
+            .setDuration(220L)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                centralPublicEventBanner.visibility = View.GONE
+                centralPublicEventBanner.alpha = 1f
+                centralPublicEventBanner.translationY = 0f
+                centralPublicEventBanner.scaleX = 1f
+                centralPublicEventBanner.scaleY = 1f
+                centralPublicEventShine.alpha = 0f
+                centralPublicEventShine.translationX = -dp(96).toFloat()
+            }
+            .start()
+    }
+
+    private data class CentralPublicEventSpec(
+        val icon: String,
+        val label: String,
+        val title: String,
+        val message: String,
+        val colorHex: String,
+        val iconColorHex: String
+    )
 
     private fun maybeExpandPrivateAssassinVoteLog() {
         val key = privateAssassinVoteLogKey() ?: return
@@ -2574,7 +2784,7 @@ class GameplayMockActivity : BaseActivity() {
         val portrait = isPortrait()
         val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(
             session.players,
-            includeEliminated = !portrait,
+            includeEliminated = true,
             putOddExtraOnLeft = portrait
         )
         val displayedPlayers = if (portrait) {
@@ -2891,8 +3101,7 @@ class GameplayMockActivity : BaseActivity() {
         name.includeFontPadding = false
         name.maxLines = 1
         name.setSingleLine(true)
-        name.typeface = ResourcesCompat.getFont(this, R.font.cormorant_garamond)
-        name.setTypeface(name.typeface, Typeface.BOLD)
+        name.typeface = Typeface.DEFAULT_BOLD
         item.addView(
             name,
             LinearLayout.LayoutParams(
@@ -2940,6 +3149,12 @@ class GameplayMockActivity : BaseActivity() {
         } else {
             "\u2620"
         }
+        holder.avatar.setBackgroundResource(
+            if (isOnlineGameplay()) R.drawable.bg_player_avatar else R.drawable.bg_player_avatar_offline
+        )
+        holder.avatar.setTextColor(
+            getColor(if (isOnlineGameplay()) R.color.accent_gold else R.color.text_primary)
+        )
         holder.avatar.textSize =
             if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
         holder.mutedBadge.visibility = if (isAlive && player.muted) View.VISIBLE else View.GONE
@@ -2958,6 +3173,9 @@ class GameplayMockActivity : BaseActivity() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(3).toFloat()
                 setColor(Color.parseColor(tone.colorHex))
+                if (tone == GameplayActionTone.SILENCE) {
+                    setStroke(dp(1), getColor(R.color.accent_gold))
+                }
             }
             holder.actionBadge.setTextColor(
                 getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
@@ -3049,11 +3267,11 @@ class GameplayMockActivity : BaseActivity() {
         }
         return if (requiresHumanInput()) {
             when (actionSession().phase) {
-                GamePhase.NOCHE_ASESINO -> "Elegi junto a los Traidores a quien atacar esta noche."
-                GamePhase.NOCHE_MERCENARIO -> "Elegi a quien silenciar mientras el pueblo duerme."
-                GamePhase.NOCHE_POLICIA -> "Elegi a quien investigar durante esta noche."
-                GamePhase.NOCHE_MEDICO -> "Elegi a quien proteger antes del amanecer."
-                GamePhase.NOCHE_ORACULO -> "Elegi si una voz eliminada vuelve a discutir manana."
+                GamePhase.NOCHE_ASESINO -> "Elige junto a los Traidores a quien atacar esta noche."
+                GamePhase.NOCHE_MERCENARIO -> "Elige a quien silenciar mientras el pueblo duerme."
+                GamePhase.NOCHE_POLICIA -> "Elige a quien investigar durante esta noche."
+                GamePhase.NOCHE_MEDICO -> "Elige a quien proteger antes del amanecer."
+                GamePhase.NOCHE_ORACULO -> "Elige si una voz eliminada vuelve a discutir manana."
                 else -> "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
             }
         } else if (onlineDeferredActionSubmitted()) {
@@ -3630,8 +3848,8 @@ class GameplayMockActivity : BaseActivity() {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             val human = GameEngine.humanPlayer(session)
             val message = when {
-                !human.alive -> "Estas eliminado. Podes mirar el chat, no escribir."
-                human.muted -> "Estas muteado. Podes mirar el chat, no escribir."
+                !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
+                human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
                 GameplayTableUi.isNightPhase(session.phase) ->
                     "El pueblo duerme. Las voces deben esperar al amanecer."
                 else -> "No podes escribir durante esta fase."
@@ -3661,8 +3879,8 @@ class GameplayMockActivity : BaseActivity() {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             val human = GameEngine.humanPlayer(session)
             val text = when {
-                !human.alive -> "Estas eliminado. Podes mirar el chat, no escribir."
-                human.muted -> "Estas muteado. Podes mirar el chat, no escribir."
+                !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
+                human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
                 GameplayTableUi.isNightPhase(session.phase) ->
                     "El pueblo duerme. Las voces deben esperar al amanecer."
                 else -> "No podes escribir durante esta fase."
@@ -4614,17 +4832,17 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun roleFunction(roleKey: String): String = when (roleKey) {
-        "asesino" -> "Cada noche elegis una victima para eliminar. Ganas cuando los Traidores logran controlar el pueblo."
+        "asesino" -> "Cada noche eliges una victima para eliminar. Ganas cuando los Traidores logran controlar el pueblo."
         "mercenario" -> "Cada noche silencias a un jugador. Esa persona no podra hablar ni votar durante el dia siguiente."
-        "policia" -> "Cada noche investigas a un jugador y recibis en privado una pista sobre su bando."
+        "policia" -> "Cada noche investigas a un jugador y recibes en privado una pista sobre su bando."
         "medico" -> "Cada noche proteges a un jugador. Si los Traidores lo atacan, evitas su eliminacion."
-        "alcalde" -> "Podes revelar tu identidad durante el debate. Desde entonces tu voto vale doble y decidis ciertos empates."
+        "alcalde" -> "Puedes revelar tu identidad durante el debate. Desde entonces tu voto vale doble y decides ciertos empates."
         "payador" -> "Una vez por partida inicias un Contrapunto entre dos jugadores y agregas un voto al mas sospechoso."
-        "desertor" -> "Elegis un bando al comenzar y ganas con ese equipo si sobrevivis. Mas adelante podes cambiarlo una sola vez."
+        "desertor" -> "Eliges un bando al comenzar y ganas con ese equipo si sobrevives. Mas adelante puedes cambiarlo una sola vez."
         "espia" -> "Formas parte de los Traidores, pero cuando te investiga el Detective apareces como inocente."
         "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votacion. Esa es tu unica condicion de victoria."
-        "oraculo" -> "Una vez por partida podes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
-        else -> "No tenes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
+        "oraculo" -> "Una vez por partida puedes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
+        else -> "No tienes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
     }
 
     private fun refreshPhaseAdvice(publicMessage: String) {
@@ -4687,7 +4905,7 @@ class GameplayMockActivity : BaseActivity() {
             "alcalde" -> if (session.alcaldeRevealed) {
                 "Tu voto pesa mas. Usa esa autoridad para ordenar el debate, no solo para imponerlo."
             } else {
-                "Podes revelarte para dirigir al pueblo o guardar tu autoridad para un empate decisivo."
+                "Puedes revelarte para dirigir al pueblo o guardar tu autoridad para un empate decisivo."
             }
             "payador" -> if (session.payadorUsed) {
                 "El Contrapunto ya fue usado. Observa si sus respuestas cambiaron las sospechas del pueblo."
@@ -4697,14 +4915,14 @@ class GameplayMockActivity : BaseActivity() {
             "desertor" -> if (session.desertorTeam.isBlank()) {
                 "Observa que bando parece mejor preparado antes de comprometerte."
             } else {
-                "Elegiste apoyar a ${session.desertorTeam}. Hace todo lo posible para que ese bando gane."
+                "Elegiste apoyar a ${session.desertorTeam}. Haz todo lo posible para que ese bando gane."
             }
             "bufon" ->
                 "Contradicete, interrumpe y provoca, pero evita parecer demasiado desesperado por recibir votos."
             "oraculo" -> if (session.oracleUsed) {
                 "Tu invocacion termino. Escucha como cambia el debate despues de devolver una voz."
             } else {
-                "Elegi libremente: una voz experimentada puede orientar al pueblo y un acusado puede defenderse."
+                "Elige libremente: una voz experimentada puede orientar al pueblo y un acusado puede defenderse."
             }
             else ->
                 "No tener una habilidad no te quita influencia. Compara versiones y recorda quien defendio a quien."
@@ -4729,7 +4947,7 @@ class GameplayMockActivity : BaseActivity() {
             "Cerras los ojos. Alguien pisa una rama y todos fingen no haber escuchado.",
             "El pueblo duerme. Una sombra parece saber demasiado, pero no declara.",
             "Se escuchan susurros, pasos y una puerta que nadie va a admitir haber abierto.",
-            "La noche hace su trabajo. Vos sobrevivis mirando el techo.",
+            "La noche hace su trabajo. Sobrevives mirando el techo.",
             "Alguien se mueve en secreto. El mate queda frio y las sospechas calientes."
         )
         val index = (session.round * 31 + session.phaseIndex * 7 + session.phase.ordinal)
@@ -4953,7 +5171,7 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.NOCHE_POLICIA -> "Selecciona un jugador y confirma INVESTIGAR."
             GamePhase.NOCHE_MEDICO -> "Selecciona un jugador y confirma SALVAR."
             GamePhase.NOCHE_ORACULO -> "Selecciona un jugador muerto para INVOCAR o guarda el poder."
-            GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o continuar a la votacion."
+            GamePhase.DIA_DEBATE -> "Puedes usar tu habilidad o continuar a la votacion."
             GamePhase.CONTRAPUNTO -> "Selecciona un participante y confirma SENALAR."
             GamePhase.VOTACION -> "Selecciona un jugador y confirma VOTAR."
             GamePhase.DESEMPATE_VOTACION -> "Selecciona un jugador empatado y confirma VOTAR."
@@ -5122,7 +5340,7 @@ class GameplayMockActivity : BaseActivity() {
         btnTieVoteChat.alpha = if (btnTieVoteChat.isEnabled) 1f else 0.45f
         tieVoteSubtitle.text = when {
             session.alcaldeRevealed && human.role?.key == "alcalde" ->
-                "Tu voto vale doble. Elegi entre las cartas empatadas."
+                "Tu voto vale doble. Elige entre las cartas empatadas."
             else -> "Vota nuevamente entre los jugadores empatados."
         }
         tieVoteNotice.text =
@@ -5186,8 +5404,7 @@ class GameplayMockActivity : BaseActivity() {
                 ellipsize = TextUtils.TruncateAt.END
                 setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
                 textSize = 13f
-                typeface = ResourcesCompat.getFont(this@GameplayMockActivity, R.font.grenze)
-                setTypeface(typeface, Typeface.BOLD)
+                typeface = Typeface.DEFAULT_BOLD
             },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25))
         )
@@ -5890,45 +6107,49 @@ class GameplayMockActivity : BaseActivity() {
         pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)
-        val title = if (isInitial) "Elegi tu bando" else "Queres cambiar de bando?"
+        val title = if (isInitial) "Elige tu bando" else "¿Quieres cambiar de bando?"
         val message = if (isInitial) {
-            "Tu eleccion es secreta. Para ganar tenes que sobrevivir y lograr que venza tu bando."
+            "Tu eleccion es secreta. Para ganar tienes que sobrevivir y lograr que venza tu bando."
         } else {
-            "Esta es tu unica oportunidad de reconsiderarlo. Tambien podes mantener el mismo bando."
+            "Esta es tu unica oportunidad de reconsiderarlo. Tambien puedes mantener el mismo bando."
         }
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("PUEBLO") { _, _ ->
-                desertorDialogOpen = false
-                val changedTeam = session.desertorTeam.isNotBlank() &&
-                    session.desertorTeam != GameRules.TOWN_WINNER
-                session = GameEngine.chooseDesertorTeam(session, GameRules.TOWN_WINNER)
-                renderGame()
-                showActionFeedbackBanner(
-                    GameplayTableUi.feedbackForDesertorChoice(
-                        GameRules.TOWN_WINNER,
-                        changedTeam
-                    )
-                )
-                resumeGameFlowAfterBlockingUi()
-            }
-            .setNegativeButton("TRAIDORES") { _, _ ->
-                desertorDialogOpen = false
-                val changedTeam = session.desertorTeam.isNotBlank() &&
-                    session.desertorTeam != GameRules.TRAITOR_WINNER
-                session = GameEngine.chooseDesertorTeam(session, GameRules.TRAITOR_WINNER)
-                renderGame()
-                showActionFeedbackBanner(
-                    GameplayTableUi.feedbackForDesertorChoice(
-                        GameRules.TRAITOR_WINNER,
-                        changedTeam
-                    )
-                )
-                resumeGameFlowAfterBlockingUi()
-            }
+        val content = layoutInflater.inflate(R.layout.dialog_desertor_choice, null)
+        content.findViewById<TextView>(R.id.desertorChoiceTitle).text = title.uppercase()
+        content.findViewById<TextView>(R.id.desertorChoiceMessage).text = message
+        content.findViewById<ImageView>(R.id.desertorChoiceImage)
+            .setImageResource(roleImageFor(GameEngine.humanPlayer(session).role))
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
             .setCancelable(false)
-            .show()
+            .create()
+
+        fun chooseTeam(team: String) {
+            desertorDialogOpen = false
+            val changedTeam = session.desertorTeam.isNotBlank() && session.desertorTeam != team
+            session = GameEngine.chooseDesertorTeam(session, team)
+            dialog.dismiss()
+            renderGame()
+            showActionFeedbackBanner(
+                GameplayTableUi.feedbackForDesertorChoice(team, changedTeam)
+            )
+            resumeGameFlowAfterBlockingUi()
+        }
+
+        content.findViewById<View>(R.id.btnDesertorTown).setOnClickListener {
+            chooseTeam(GameRules.TOWN_WINNER)
+        }
+        content.findViewById<View>(R.id.btnDesertorTraitors).setOnClickListener {
+            chooseTeam(GameRules.TRAITOR_WINNER)
+        }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                val maxWidth = (resources.displayMetrics.widthPixels - dp(28)).coerceAtLeast(dp(280))
+                setLayout(dp(360).coerceAtMost(maxWidth), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
     }
 
     private data class PhaseText(
@@ -5995,6 +6216,11 @@ class GameplayMockActivity : BaseActivity() {
         private const val COUNTDOWN_TICK_MS = 200L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 6_000L
+        private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 2_800L
+        private const val CENTRAL_EVENT_SAFE_HEX = "#5A8A3C"
+        private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
+        private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
+        private const val CENTRAL_EVENT_MEDIC_HEX = "#C94343"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 6
 

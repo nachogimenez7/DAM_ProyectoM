@@ -29,7 +29,7 @@
             android:text="TRAIDORES"
             android:textColor="@color/text_primary"
             android:textSize="11sp"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="@font/bree_serif"
             android:letterSpacing="0.04" />
 
         <ImageButton
@@ -72,7 +72,7 @@
             android:textColor="@color/accent_gold"
             android:textSize="44sp"
             android:textStyle="bold"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="@font/bree_serif"
             android:letterSpacing="0"
             android:shadowColor="#CC000000"
             android:shadowDx="2"
@@ -86,8 +86,8 @@
             android:layout_height="wrap_content"
             android:text="Desconfia de todos."
             android:textColor="@color/text_secondary"
-            android:textSize="16sp"
-            android:fontFamily="@font/cormorant_garamond"
+            android:textSize="17sp"
+            android:fontFamily="sans-serif"
             android:letterSpacing="0"
             android:layout_marginBottom="48dp" />
 
@@ -147,7 +147,7 @@
             android:text="@string/version"
             android:textColor="@color/text_muted"
             android:textSize="11sp"
-            android:fontFamily="@font/cormorant_garamond" />
+            android:fontFamily="sans-serif" />
     </LinearLayout>
 
 </RelativeLayout>

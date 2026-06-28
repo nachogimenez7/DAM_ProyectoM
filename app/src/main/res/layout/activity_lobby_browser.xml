@@ -37,7 +37,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="@font/bree_serif"
             android:text="BUSCAR PARTIDA"
             android:textColor="@color/accent_gold"
             android:textSize="22sp"
@@ -46,10 +46,10 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/cormorant_garamond"
+            android:fontFamily="sans-serif"
             android:text="Salas disponibles en Argentina"
             android:textColor="@color/text_secondary"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <ScrollView

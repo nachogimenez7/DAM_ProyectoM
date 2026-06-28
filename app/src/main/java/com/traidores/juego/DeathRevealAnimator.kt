@@ -86,7 +86,7 @@ internal class DeathRevealAnimator(
             interpolator = AccelerateDecelerateInterpolator()
         }
         val reveal = if (revealRole) roleRevealAnimation() else hiddenRoleAnimation()
-        val hold = ValueAnimator.ofFloat(0f, 1f).apply { duration = 1050L }
+        val hold = ValueAnimator.ofFloat(0f, 1f).apply { duration = 2300L }
         val exit = ObjectAnimator.ofFloat(overlay, View.ALPHA, 1f, 0f).apply {
             duration = 320L
             interpolator = AccelerateInterpolator()

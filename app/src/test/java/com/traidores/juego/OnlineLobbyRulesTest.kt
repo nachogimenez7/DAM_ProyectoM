@@ -70,6 +70,44 @@ class OnlineLobbyRulesTest {
         )
     }
 
+    @Test
+    fun handoffCandidateIsFirstConnectedActivePlayerWhenHostDisconnects() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("candidate-b", connected = true, ready = true, active = true, order = 2),
+            participant("candidate-a", connected = true, ready = true, active = true, order = 1)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(players, activeHostId = "host")
+
+        assertEquals("candidate-a", candidate?.id)
+    }
+
+    @Test
+    fun connectedHostDoesNotNeedHandoff() {
+        val players = listOf(
+            participant("host", connected = true, ready = true, active = true, order = 0),
+            participant("candidate", connected = true, ready = true, active = true, order = 1)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(players, activeHostId = "host")
+
+        assertEquals(null, candidate)
+    }
+
+    @Test
+    fun releasedHostDoesNotBecomeHandoffCandidate() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("released", connected = true, ready = true, active = false, order = 1),
+            participant("candidate", connected = true, ready = true, active = true, order = 2)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(players, activeHostId = "host")
+
+        assertEquals("candidate", candidate?.id)
+    }
+
     private fun participant(
         id: String,
         connected: Boolean,

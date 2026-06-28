@@ -33,8 +33,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="10dp"
-            android:fontFamily="@font/grenze"
-            android:text="JUGAR VS LA IA"
+            android:fontFamily="@font/bree_serif"
+            android:text="JUGAR vs IA"
             android:textColor="@color/accent_gold"
             android:textSize="24sp" />
 
@@ -43,13 +43,13 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="28dp"
             android:background="@drawable/bg_btn_dark"
-            android:fontFamily="@font/cormorant_garamond"
+            android:fontFamily="sans-serif"
             android:gravity="center"
             android:lineSpacingExtra="3dp"
             android:padding="16dp"
-            android:text="Elegi una dificultad. Despues vas al lobby para ajustar mapa, tiempos y cantidad de jugadores."
+            android:text="Elige una dificultad. Después irás al lobby para ajustar mapa, tiempos y cantidad de jugadores."
             android:textColor="@color/text_secondary"
-            android:textSize="16sp" />
+            android:textSize="17sp" />
 
         <Button
             android:id="@+id/btnNormalAi"

@@ -146,13 +146,13 @@ object RoleCatalog {
         MEDICO to
             "No confies en nadie durante la primera noche. Protegerte puede darte tiempo; mas adelante, aliarte con el Detective puede sostener la informacion del pueblo.",
         ALCALDE to
-            "Podes revelarte para ordenar el debate o guardar tu autoridad para un empate decisivo. Una revelacion temprana tambien te convierte en objetivo.",
+            "Puedes revelarte para ordenar el debate o guardar tu autoridad para un empate decisivo. Una revelacion temprana tambien te convierte en objetivo.",
         ASESINO to
             "Actua con calma. Acusar demasiado o defender siempre a tus aliados puede delatarte. Mentir con seguridad suele funcionar mejor que controlar cada conversacion.",
         ESPIA to
             "El Detective te vera como inocente. Aprovecha esa ventaja para proteger al bando traidor sin confiarte ni defender a tus aliados de forma demasiado evidente.",
         MERCENARIO to
-            "Silencia a quien pueda convencer al pueblo o compartir informacion importante. De dia, evita que tus defensas revelen quienes son tus companeros.",
+            "Silencia a quien pueda convencer al pueblo o compartir informacion importante. De dia, evita que tus defensas revelen quienes son tus compañeros.",
         DESERTOR to
             "Observa la ventaja de cada bando antes de elegir. Una vez comprometido, debes ayudar a ese equipo y sobrevivir hasta su victoria.",
         PAYADOR to
@@ -160,7 +160,7 @@ object RoleCatalog {
         BUFON to
             "Contradicete, interrumpe y provoca, pero evita parecer desesperado por recibir votos. Solo ganas si el pueblo te expulsa durante la votacion.",
         ORACULO to
-            "Elegi bien cuando devolver una voz. Un jugador experimentado puede ordenar el debate, mientras que un acusado puede usar esa oportunidad para defenderse o enganar."
+            "Elige bien cuando devolver una voz. Un jugador experimentado puede ordenar el debate, mientras que un acusado puede usar esa oportunidad para defenderse o enganar."
     )
 
     fun definition(key: String): RoleDefinition {

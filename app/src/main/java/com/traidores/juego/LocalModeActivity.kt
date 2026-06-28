@@ -34,7 +34,6 @@ class LocalModeActivity : BaseActivity() {
     }
 
     private fun startVsAi(difficulty: BotDifficulty) {
-        val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         startActivity(
             Intent(this, LobbyActivity::class.java)
                 .putExtra(
@@ -42,10 +41,7 @@ class LocalModeActivity : BaseActivity() {
                     LocalGameFactory.createSession(humanName = savedPlayerName())
                         .copy(
                             botDifficulty = difficulty,
-                            botSpicyLanguage = preferences.getBoolean(
-                                OpcionesActivity.PREF_BOT_SPICY_LANGUAGE,
-                                true
-                            )
+                            quickTestMode = false
                         )
                 )
         )

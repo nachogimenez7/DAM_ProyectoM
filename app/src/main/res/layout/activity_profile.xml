@@ -33,7 +33,7 @@
         android:layout_height="44dp"
         android:layout_alignTop="@id/btnBack"
         android:layout_centerHorizontal="true"
-        android:fontFamily="@font/grenze"
+        android:fontFamily="@font/bree_serif"
         android:gravity="center"
         android:text="PERFIL"
         android:textColor="@color/accent_gold"
@@ -119,16 +119,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
-                    android:fontFamily="@font/grenze"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:maxLines="1"
                     android:paddingHorizontal="38dp"
                     android:text="Jugador"
                     android:textColor="@color/text_primary"
-                    android:textSize="25sp"
+                    android:textSize="32sp"
                     android:textStyle="bold"
-                    app:autoSizeMaxTextSize="25sp"
-                    app:autoSizeMinTextSize="18sp"
+                    app:autoSizeMaxTextSize="32sp"
+                    app:autoSizeMinTextSize="22sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -148,16 +148,16 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:maxLines="1"
                     android:paddingHorizontal="38dp"
                     android:text="#SIN ID"
-                    android:textColor="@color/accent_gold"
-                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="21sp"
                     android:textStyle="bold"
-                    app:autoSizeMaxTextSize="16sp"
-                    app:autoSizeMinTextSize="12sp"
+                    app:autoSizeMaxTextSize="21sp"
+                    app:autoSizeMinTextSize="15sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -178,15 +178,15 @@
                     android:id="@+id/profileBio"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:paddingStart="44dp"
-                    android:paddingTop="12dp"
+                    android:paddingTop="14dp"
                     android:paddingEnd="44dp"
-                    android:paddingBottom="12dp"
+                    android:paddingBottom="14dp"
                     android:text="&quot;No fui yo. Esta vez.&quot;"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="16sp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="21sp"
                     android:textStyle="italic" />
 
                 <ImageButton
@@ -200,10 +200,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:fontFamily="@font/grenze"
+                android:fontFamily="sans-serif"
                 android:text="ESTADISTICAS"
                 android:textColor="@color/accent_gold"
-                android:textSize="15sp"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -214,7 +214,7 @@
 
                 <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_height="72dp"
+                    android:layout_height="94dp"
                     android:layout_marginEnd="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_profile_stat"
@@ -225,25 +225,26 @@
                         android:id="@+id/statMatchesValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/grenze"
+                        android:fontFamily="sans-serif"
                         android:text="--"
-                        android:textColor="@color/text_primary"
-                        android:textSize="22sp"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="30sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/statMatchesLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/cormorant_garamond"
+                        android:fontFamily="sans-serif"
                         android:text="Partidas"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textColor="@color/accent_gold"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_height="72dp"
+                    android:layout_height="94dp"
                     android:layout_marginHorizontal="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_profile_stat"
@@ -254,25 +255,26 @@
                         android:id="@+id/statWinsValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/grenze"
+                        android:fontFamily="sans-serif"
                         android:text="--"
                         android:textColor="@color/accent_green"
-                        android:textSize="22sp"
+                        android:textSize="30sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/statWinsLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/cormorant_garamond"
+                        android:fontFamily="sans-serif"
                         android:text="Victorias"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textColor="@color/accent_green"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_height="72dp"
+                    android:layout_height="94dp"
                     android:layout_marginStart="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_profile_stat"
@@ -283,20 +285,21 @@
                         android:id="@+id/statWinRateValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/grenze"
+                        android:fontFamily="sans-serif"
                         android:text="--%"
                         android:textColor="@color/accent_gold"
-                        android:textSize="22sp"
+                        android:textSize="30sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/statWinRateLabel"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/cormorant_garamond"
+                        android:fontFamily="sans-serif"
                         android:text="Porcentaje"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
+                        android:textColor="@color/accent_gold"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -305,11 +308,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:fontFamily="@font/cormorant_garamond"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:text="Las estadisticas se mostraran cuando este perfil tenga progreso registrado."
-                android:textColor="@color/text_muted"
-                android:textSize="11sp" />
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
 
             <LinearLayout
                 android:id="@+id/favoriteRoleCard"
@@ -342,24 +345,25 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/cormorant_garamond"
+                        android:fontFamily="sans-serif"
                         android:text="ROL FAVORITO"
-                        android:textColor="@color/text_muted"
-                        android:textSize="11sp" />
+                        android:textColor="@color/accent_gold"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/favoriteRoleName"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:ellipsize="end"
-                        android:fontFamily="@font/grenze"
+                        android:fontFamily="sans-serif"
                         android:maxLines="1"
                         android:text="Detective"
                         android:textColor="@color/text_primary"
-                        android:textSize="18sp"
+                        android:textSize="24sp"
                         android:textStyle="bold"
-                        app:autoSizeMaxTextSize="18sp"
-                        app:autoSizeMinTextSize="13sp"
+                        app:autoSizeMaxTextSize="24sp"
+                        app:autoSizeMinTextSize="16sp"
                         app:autoSizeStepGranularity="1sp"
                         app:autoSizeTextType="uniform" />
                 </LinearLayout>
@@ -377,11 +381,11 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/grenze"
+                    android:fontFamily="sans-serif"
                     android:gravity="center_vertical"
                     android:text="LOGROS DESTACADOS"
                     android:textColor="@color/accent_gold"
-                    android:textSize="15sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
 
                 <ImageButton
@@ -408,16 +412,16 @@
                     android:clickable="true"
                     android:ellipsize="end"
                     android:focusable="true"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:minHeight="48dp"
+                    android:minHeight="56dp"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="Engano"
                     android:textColor="@color/text_primary"
-                    android:textSize="13sp"
-                    app:autoSizeMaxTextSize="13sp"
-                    app:autoSizeMinTextSize="8sp"
+                    android:textSize="16sp"
+                    app:autoSizeMaxTextSize="16sp"
+                    app:autoSizeMinTextSize="10sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -431,16 +435,16 @@
                     android:clickable="true"
                     android:ellipsize="end"
                     android:focusable="true"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:minHeight="48dp"
+                    android:minHeight="56dp"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="Sobrevivir"
                     android:textColor="@color/text_primary"
-                    android:textSize="13sp"
-                    app:autoSizeMaxTextSize="13sp"
-                    app:autoSizeMinTextSize="8sp"
+                    android:textSize="16sp"
+                    app:autoSizeMaxTextSize="16sp"
+                    app:autoSizeMinTextSize="10sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -454,16 +458,16 @@
                     android:clickable="true"
                     android:ellipsize="end"
                     android:focusable="true"
-                    android:fontFamily="@font/cormorant_garamond"
+                    android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:minHeight="48dp"
+                    android:minHeight="56dp"
                     android:maxLines="1"
                     android:singleLine="true"
                     android:text="Ojo experto"
                     android:textColor="@color/text_primary"
-                    android:textSize="13sp"
-                    app:autoSizeMaxTextSize="13sp"
-                    app:autoSizeMinTextSize="8sp"
+                    android:textSize="16sp"
+                    app:autoSizeMaxTextSize="16sp"
+                    app:autoSizeMinTextSize="10sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
             </LinearLayout>

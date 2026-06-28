@@ -91,7 +91,7 @@ internal class SilenceRevealAnimator(
             duration = 320L
             interpolator = AccelerateDecelerateInterpolator()
         }
-        val hold = ValueAnimator.ofFloat(0f, 1f).apply { duration = 900L }
+        val hold = ValueAnimator.ofFloat(0f, 1f).apply { duration = 1800L }
         val exit = ObjectAnimator.ofFloat(overlay, View.ALPHA, 1f, 0f).apply {
             duration = 300L
             interpolator = AccelerateInterpolator()

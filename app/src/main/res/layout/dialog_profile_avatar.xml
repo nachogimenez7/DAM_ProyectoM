@@ -20,7 +20,7 @@
             android:clipToOutline="true"
             android:contentDescription="Foto de perfil ampliada"
             android:outlineProvider="background"
-            android:scaleType="matrix"
+            android:scaleType="centerCrop"
             android:src="@drawable/rol_aldeano_gaucho" />
     </FrameLayout>
 </FrameLayout>

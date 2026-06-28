@@ -4,6 +4,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.MediaPlayer
@@ -12,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
@@ -81,6 +83,14 @@ class AssigningRolesActivity : BaseActivity() {
     }
 
     private fun startDealingAnimation() {
+        if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            startPortraitDealingAnimation()
+            return
+        }
+        startLandscapeDealingAnimation()
+    }
+
+    private fun startPortraitDealingAnimation() {
         val root = findViewById<FrameLayout>(R.id.assigningRoot)
         val stage = findViewById<FrameLayout>(R.id.animationStage)
         val openHands = findViewById<ImageView>(R.id.assigningHands)
@@ -89,6 +99,207 @@ class AssigningRolesActivity : BaseActivity() {
         val rightCard = findViewById<ImageView>(R.id.shuffleCardRight)
         val finalCard = findViewById<ImageView>(R.id.finalRoleCard)
         val status = findViewById<TextView>(R.id.assigningStatus)
+        val table = findViewById<View>(R.id.assigningTable)
+
+        openHands.setImageResource(R.drawable.assigning_vertical_hands_throw)
+        dealingHands.setImageResource(R.drawable.assigning_roles_dealing_hands)
+
+        val cardWidth = dp(124)
+        val cardHeight = dp(196)
+        val cardTop = (root.height * 0.29f).toInt()
+        val cardSettleY = -root.height * 0.02f
+        val cardBounceDown = cardSettleY + dp(12)
+
+        listOf(leftCard, rightCard, finalCard).forEach { card ->
+            card.layoutParams = (card.layoutParams as FrameLayout.LayoutParams).apply {
+                width = cardWidth
+                height = cardHeight
+                gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.TOP
+                topMargin = cardTop
+            }
+        }
+        leftCard.visibility = View.GONE
+        rightCard.visibility = View.GONE
+        openHands.visibility = View.VISIBLE
+        dealingHands.visibility = View.GONE
+        table.layoutParams = (table.layoutParams as FrameLayout.LayoutParams).apply {
+            width = (root.width * 0.9f).toInt()
+            height = (root.height * 0.6f).toInt()
+            gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.TOP
+            topMargin = cardTop - dp(94)
+        }
+        openHands.layoutParams = (openHands.layoutParams as FrameLayout.LayoutParams).apply {
+            width = (root.width * 0.96f).toInt()
+            height = (root.height * 0.34f).toInt().coerceAtLeast(dp(280))
+            gravity = android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.TOP
+            topMargin = cardTop - dp(150)
+        }
+        table.alpha = 0f
+        openHands.alpha = 0f
+        openHands.translationY = -dp(92).toFloat()
+        openHands.translationX = 0f
+        openHands.scaleX = 0.96f
+        openHands.scaleY = 0.96f
+
+        status.layoutParams = (status.layoutParams as FrameLayout.LayoutParams).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(108)
+        }
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+        status.text = "REPARTIENDO ROLES"
+
+        finalCard.alpha = 0f
+        finalCard.translationX = 0f
+        finalCard.translationY = -dp(88).toFloat()
+        finalCard.scaleX = 0.86f
+        finalCard.scaleY = 0.86f
+        finalCard.rotation = -2f
+        stage.alpha = 1f
+
+        val entrance = AnimatorSet().apply {
+            duration = 760L
+            interpolator = DecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(stage, View.ALPHA, 0.55f, 1f),
+                ObjectAnimator.ofFloat(table, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(openHands, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(openHands, View.TRANSLATION_Y, -dp(92).toFloat(), 0f),
+                ObjectAnimator.ofFloat(openHands, View.TRANSLATION_X, 0f, 0f),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_X, 0.96f, 1.04f),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_Y, 0.96f, 1.04f),
+                ObjectAnimator.ofFloat(finalCard, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, -dp(88).toFloat(), cardSettleY + dp(8)),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 0.86f, 1.04f),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 0.86f, 1.04f),
+                ObjectAnimator.ofFloat(finalCard, View.ROTATION, -2f, 0f),
+                ObjectAnimator.ofFloat(status, View.ALPHA, 0f, 1f)
+            )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    status.text = "REPARTIENDO TU CARTA"
+                }
+            })
+        }
+
+        val settleCard = AnimatorSet().apply {
+            duration = 360L
+            interpolator = AccelerateDecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(openHands, View.ALPHA, 1f, 1f),
+                ObjectAnimator.ofFloat(openHands, View.TRANSLATION_Y, 0f, dp(10).toFloat()),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_X, 1.04f, 1.02f),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_Y, 1.04f, 1.02f),
+                ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, cardSettleY + dp(8), cardBounceDown, cardSettleY + dp(2)),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1.04f, 1.0f, 1.06f),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1.04f, 1.0f, 1.06f)
+            )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    status.text = "LA CARTA CAE SOBRE LA MESA"
+                }
+            })
+        }
+
+        val releaseHands = AnimatorSet().apply {
+            duration = 780L
+            interpolator = DecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(openHands, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(openHands, View.TRANSLATION_Y, dp(10).toFloat(), -dp(96).toFloat()),
+                ObjectAnimator.ofFloat(openHands, View.TRANSLATION_X, 0f, 0f),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_X, 1.02f, 0.96f),
+                ObjectAnimator.ofFloat(openHands, View.SCALE_Y, 1.02f, 0.96f),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1.06f, 1.13f),
+                ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1.06f, 1.13f),
+                ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, cardSettleY + dp(2), cardSettleY - dp(2))
+            )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    status.text = "EL DESTINO QUEDA SELLADO"
+                }
+            })
+        }
+
+        val holdFinalCard = AnimatorSet().apply {
+            interpolator = AccelerateDecelerateInterpolator()
+            val cardPulseX = ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1.13f, 1.08f).apply {
+                duration = 450L
+                repeatCount = 3
+                repeatMode = ValueAnimator.REVERSE
+            }
+            val cardPulseY = ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1.13f, 1.08f).apply {
+                duration = 450L
+                repeatCount = 3
+                repeatMode = ValueAnimator.REVERSE
+            }
+            val cardBreath = ObjectAnimator.ofFloat(
+                finalCard,
+                View.TRANSLATION_Y,
+                cardSettleY - dp(2),
+                cardSettleY + dp(5)
+            ).apply {
+                duration = 450L
+                repeatCount = 3
+                repeatMode = ValueAnimator.REVERSE
+            }
+            val statusPulse = ObjectAnimator.ofFloat(status, View.ALPHA, 1f, 0.72f).apply {
+                duration = 450L
+                repeatCount = 3
+                repeatMode = ValueAnimator.REVERSE
+            }
+            playTogether(cardPulseX, cardPulseY, cardBreath, statusPulse)
+        }
+
+        val exit = AnimatorSet().apply {
+            duration = 480L
+            interpolator = DecelerateInterpolator()
+            playTogether(
+                ObjectAnimator.ofFloat(stage, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(table, View.ALPHA, table.alpha, 0f),
+                ObjectAnimator.ofFloat(openHands, View.ALPHA, openHands.alpha, 0f),
+                ObjectAnimator.ofFloat(findViewById<ImageButton>(R.id.btnBack), View.ALPHA, 1f, 0f)
+            )
+        }
+
+        playDealingSound()
+        dealingAnimator = AnimatorSet().apply {
+            playSequentially(
+                entrance,
+                settleCard,
+                releaseHands,
+                holdFinalCard,
+                exit
+            )
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    handler.removeCallbacks(openGameRunnable)
+                    openGame()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun startLandscapeDealingAnimation() {
+        val root = findViewById<FrameLayout>(R.id.assigningRoot)
+        val stage = findViewById<FrameLayout>(R.id.animationStage)
+        val openHands = findViewById<ImageView>(R.id.assigningHands)
+        val dealingHands = findViewById<ImageView>(R.id.assigningDealingHands)
+        val leftCard = findViewById<ImageView>(R.id.shuffleCardLeft)
+        val rightCard = findViewById<ImageView>(R.id.shuffleCardRight)
+        val finalCard = findViewById<ImageView>(R.id.finalRoleCard)
+        val status = findViewById<TextView>(R.id.assigningStatus)
+
+        openHands.setImageResource(R.drawable.assigning_roles_hands)
+        dealingHands.setImageResource(R.drawable.assigning_roles_dealing_hands)
+        listOf(openHands, dealingHands).forEach { hands ->
+            hands.layoutParams = (hands.layoutParams as FrameLayout.LayoutParams).apply {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+                gravity = android.view.Gravity.CENTER
+                topMargin = 0
+            }
+        }
 
         val metrics = dealAnimationMetrics()
         val cardViews = listOf(leftCard, rightCard, finalCard)

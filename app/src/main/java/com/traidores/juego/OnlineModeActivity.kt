@@ -84,7 +84,7 @@ class OnlineModeActivity : BaseActivity() {
         content.addView(dialogTitle("CREAR SALA ONLINE"))
 
         val subtitle = TextView(this).apply {
-            text = "Elegi cuantos jugadores reales van a entrar. La sala no inicia hasta que esten todos listos."
+            text = "Elige cuantos jugadores reales van a entrar. La sala no inicia hasta que esten todos listos."
             setTextColor(resources.getColor(R.color.text_secondary, theme))
             textSize = 16f
             gravity = Gravity.CENTER

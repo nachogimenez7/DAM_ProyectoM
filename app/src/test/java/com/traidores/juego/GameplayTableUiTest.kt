@@ -66,21 +66,39 @@ class GameplayTableUiTest {
     }
 
     @Test
-    fun splitCompanionsForVerticalExcludesEliminatedAndKeepsColumnsBalanced() {
+    fun splitCompanionsForVerticalKeepsEliminatedVisibleAndColumnsBalanced() {
         val players = players(8).map { player ->
             if (player.name == "Jugador3") player.copy(alive = false) else player
         }
 
         val (left, right) = GameplayTableUi.splitCompanions(
             players,
-            includeEliminated = false,
+            includeEliminated = true,
             putOddExtraOnLeft = true
         )
 
-        assertEquals(3, left.size)
+        assertEquals(4, left.size)
         assertEquals(3, right.size)
-        assertTrue((left + right).all { it.alive })
+        assertTrue((left + right).any { !it.alive })
         assertTrue(kotlin.math.abs(left.size - right.size) <= 1)
+    }
+
+    @Test
+    fun splitCompanionsForFivePlayersShowsFourCompanionCardsEvenWithEliminated() {
+        val players = players(5).map { player ->
+            if (player.name == "Jugador2") player.copy(alive = false) else player
+        }
+
+        val (left, right) = GameplayTableUi.splitCompanions(
+            players,
+            includeEliminated = true,
+            putOddExtraOnLeft = true
+        )
+
+        assertEquals(4, left.size + right.size)
+        assertEquals(2, left.size)
+        assertEquals(2, right.size)
+        assertTrue((left + right).none { it.isHuman })
     }
 
     @Test
@@ -480,7 +498,7 @@ class GameplayTableUiTest {
             GameplayTableUi.transitionSpec(base.copy(phase = GamePhase.NOCHE_ASESINO))
         )
         assertEquals(
-            GameplayTransitionSpec(GameplayPeriod.DAY, "DÍA 2", "DAY_2"),
+            GameplayTransitionSpec(GameplayPeriod.DAY, "DÍA 1", "DAY_1"),
             GameplayTableUi.transitionSpec(base.copy(phase = GamePhase.AMANECER))
         )
         assertEquals(
@@ -511,7 +529,7 @@ class GameplayTableUiTest {
         }
 
         assertEquals(setOf("NIGHT_1"), nightSpecs.map { it.key }.toSet())
-        assertEquals(setOf("DAY_2"), daySpecs.map { it.key }.toSet())
+        assertEquals(setOf("DAY_1"), daySpecs.map { it.key }.toSet())
         assertTrue(GameplayTableUi.shouldPresentTransition(nightSpecs.first(), null))
         nightSpecs.drop(1).forEach { spec ->
             assertFalse(GameplayTableUi.shouldPresentTransition(spec, nightSpecs.first().key))
@@ -661,7 +679,7 @@ class GameplayTableUiTest {
         )
 
         assertEquals(
-            "Elegi a quien eliminar esta noche.",
+            "Elige a quien eliminar esta noche.",
             GameplayTableUi.centralPhaseMessage(assassinTurn, "Texto de respaldo")
         )
         assertEquals(
@@ -690,7 +708,7 @@ class GameplayTableUiTest {
             GameplayTableUi.centralPhaseMessage(dawn, "El pueblo despierta.")
         )
         assertEquals(
-            "Elegi a un jugador y confirma tu voto.",
+            "Elige a un jugador y confirma tu voto.",
             GameplayTableUi.centralPhaseMessage(
                 base.copy(phase = GamePhase.VOTACION),
                 "Votacion"

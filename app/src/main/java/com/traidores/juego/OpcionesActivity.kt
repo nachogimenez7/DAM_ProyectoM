@@ -43,7 +43,6 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var switchMusic: SwitchCompat
     private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
-    private lateinit var switchBotSpicyLanguage: SwitchCompat
     private lateinit var switchGameplayVerticalDev: SwitchCompat
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
@@ -93,7 +92,6 @@ class OpcionesActivity : BaseActivity() {
         switchMusic = findViewById(R.id.switchMusic)
         switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
-        switchBotSpicyLanguage = findViewById(R.id.switchBotSpicyLanguage)
         switchGameplayVerticalDev = findViewById(R.id.switchGameplayVerticalDev)
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
@@ -168,12 +166,6 @@ class OpcionesActivity : BaseActivity() {
         switchVibration.setOnCheckedChangeListener { _, enabled ->
             if (updatingControls) return@setOnCheckedChangeListener
             preferences.edit().putBoolean(PREF_VIBRATION_ON, enabled).apply()
-            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
-        }
-
-        switchBotSpicyLanguage.setOnCheckedChangeListener { _, enabled ->
-            if (updatingControls) return@setOnCheckedChangeListener
-            preferences.edit().putBoolean(PREF_BOT_SPICY_LANGUAGE, enabled).apply()
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
 
@@ -255,7 +247,6 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = AudioPreferences.isMusicEnabled(preferences)
         switchEffects.isChecked = AudioPreferences.areEffectsEnabled(preferences)
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
-        switchBotSpicyLanguage.isChecked = preferences.getBoolean(PREF_BOT_SPICY_LANGUAGE, true)
         switchGameplayVerticalDev.isChecked =
             preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
@@ -346,7 +337,6 @@ class OpcionesActivity : BaseActivity() {
             switchEffects.text = "Sound effects"
             descSound.text = "Control music and game effects independently."
             switchVibration.text = "Vibration on interaction"
-            switchBotSpicyLanguage.text = "Spicy bot language"
             titleTextSize.text = "READABILITY AND ACCESSIBILITY"
             labelTextSize.text = "Text size"
             descTextSize.text = "Applied to messages, buttons and information during gameplay."
@@ -373,7 +363,6 @@ class OpcionesActivity : BaseActivity() {
             switchEffects.text = "Efectos de sonido"
             descSound.text = "Controla por separado la musica y los efectos del juego."
             switchVibration.text = "Vibracion al interactuar"
-            switchBotSpicyLanguage.text = "Lenguaje picante de bots"
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
             labelTextSize.text = "Tamano del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
@@ -404,7 +393,6 @@ class OpcionesActivity : BaseActivity() {
             .putInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
-            .putBoolean(PREF_BOT_SPICY_LANGUAGE, true)
             .putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
@@ -417,7 +405,6 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = true
         switchEffects.isChecked = true
         switchVibration.isChecked = false
-        switchBotSpicyLanguage.isChecked = true
         switchGameplayVerticalDev.isChecked = true
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
@@ -529,7 +516,6 @@ class OpcionesActivity : BaseActivity() {
         private const val PREF_VIBRATION_ON = "vibration_on"
         private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
         private const val PREF_LANGUAGE = "language"
-        const val PREF_BOT_SPICY_LANGUAGE = "bot_spicy_language"
         private const val DEFAULT_VOLUME = 80
         private const val DEFAULT_TEXT_SIZE = 1
         private const val LANGUAGE_SPANISH = "Espanol (ES)"

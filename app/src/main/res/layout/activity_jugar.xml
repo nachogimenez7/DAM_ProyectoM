@@ -27,7 +27,7 @@
         android:layout_height="wrap_content"
         android:layout_centerHorizontal="true"
         android:layout_marginTop="28dp"
-        android:fontFamily="@font/grenze"
+        android:fontFamily="@font/bree_serif"
         android:letterSpacing="0"
         android:text="SELECCIONAR MODO"
         android:textColor="@color/accent_gold"
@@ -67,9 +67,9 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
-                android:fontFamily="@font/grenze"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
-                android:text="JUGAR VS LA IA"
+                android:text="JUGAR vs IA"
                 android:textColor="@color/text_primary"
                 android:textSize="19sp" />
         </LinearLayout>
@@ -97,7 +97,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
-                android:fontFamily="@font/grenze"
+                android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:text="JUGAR EN LINEA"
                 android:textColor="@color/text_primary"

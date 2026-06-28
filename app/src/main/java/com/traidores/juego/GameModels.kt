@@ -14,7 +14,6 @@ data class GameSession(
     val showIndividualVotes: Boolean = true,
     val quickTestMode: Boolean = false,
     val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
-    val botSpicyLanguage: Boolean = true,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
@@ -229,7 +228,7 @@ data class GameTimingConfig(
     }
 
     companion object {
-        const val DEFAULT_TRANSITION_SECONDS = 3
+        const val DEFAULT_TRANSITION_SECONDS = 4
         const val DEFAULT_NIGHT_SECONDS = 40
         const val DEFAULT_DISCUSSION_SECONDS = 120
         const val DEFAULT_VOTING_SECONDS = 20
@@ -260,12 +259,12 @@ enum class GameTimingPreset(
     SLOW(
         "LENTO",
         "Ideal para partidas online o grupos con mucha gente.",
-        GameTimingConfig(5, 90, 180, 60)
+        GameTimingConfig(6, 90, 180, 60)
     ),
     NORMAL(
         "NORMAL",
         "Ritmo equilibrado para la mayoria de las partidas.",
-        GameTimingConfig(3, 40, 120, 20)
+        GameTimingConfig(4, 40, 120, 20)
     ),
     FAST(
         "RAPIDO",
@@ -346,9 +345,8 @@ object GameRules {
         if (alive.none { it.role?.key in killerRoleKeys }) return TOWN_WINNER
 
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
-        val desertorSupportsTraitors = desertor != null && session.desertorTeam == TRAITOR_WINNER
         val desertorSupportsTown = desertor != null && session.desertorTeam == TOWN_WINNER
-        val traitors = alive.count { isTraitorRole(it.role) } + if (desertorSupportsTraitors) 1 else 0
+        val traitors = alive.count { isTraitorRole(it.role) }
         val town = alive.count { it.role?.team == TOWN_WINNER } + if (desertorSupportsTown) 1 else 0
         return when {
             traitors >= town -> TRAITOR_WINNER
@@ -419,7 +417,9 @@ object LocalGameFactory {
             code = if (joinedByCode) "PAMPA-42" else "SALA-01",
             mapKey = map.key,
             mapName = map.name,
-            players = players.take(MIN_PLAYERS)
+            players = players.take(MIN_PLAYERS),
+            quickTestMode = true,
+            debugBotsObeyVoteCommands = true
         )
     }
 
@@ -440,7 +440,11 @@ object LocalGameFactory {
                 players = session.players.filterNot { it.isHuman } + human
             )
         }
-        return session.copy(code = "ONLINE-MOCK")
+        return session.copy(
+            code = "ONLINE-MOCK",
+            quickTestMode = false,
+            debugBotsObeyVoteCommands = false
+        )
     }
 
     fun selectMap(session: GameSession, mapKey: String): GameSession {

@@ -203,9 +203,7 @@ class ProfileActivity : BaseActivity() {
         } else {
             EMPTY_BIO_PLACEHOLDER
         }
-        profileBio.setTextColor(
-            getColor(if (hasBio) R.color.text_secondary else R.color.text_muted)
-        )
+        profileBio.setTextColor(getColor(R.color.text_primary))
 
         val avatar = ProfileRoleCatalog.find(draftProfile.avatarKey).role
         setRoleImage(profileAvatar, avatar)
@@ -356,7 +354,7 @@ class ProfileActivity : BaseActivity() {
                 val maxHeight = (resources.displayMetrics.heightPixels - dp(48)).coerceAtLeast(dp(220))
                 setLayout(dp(320).coerceAtMost(maxWidth), dp(320).coerceAtMost(maxHeight))
             }
-            alignAvatarToTop(expandedAvatar)
+            expandedAvatar.scaleType = ImageView.ScaleType.CENTER_CROP
         }
         dialog.show()
     }

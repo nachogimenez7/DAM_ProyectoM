@@ -33,7 +33,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:fontFamily="@font/grenze"
+            android:fontFamily="@font/bree_serif"
             android:text="JUGAR EN LINEA"
             android:textColor="@color/accent_gold"
             android:textSize="24sp" />
@@ -44,13 +44,13 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="20dp"
             android:background="@drawable/bg_btn_dark"
-            android:fontFamily="@font/cormorant_garamond"
+            android:fontFamily="sans-serif"
             android:gravity="center"
             android:lineSpacingExtra="2dp"
             android:padding="12dp"
             android:text="ONLINE EXPERIMENTAL\nPuede fallar. Recomendado para pruebas."
             android:textColor="@color/text_secondary"
-            android:textSize="15sp" />
+            android:textSize="16sp" />
 
         <Button
             android:id="@+id/btnRecoverRoom"

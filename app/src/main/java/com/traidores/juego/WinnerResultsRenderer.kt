@@ -197,7 +197,7 @@ class WinnerResultsRenderer(
             text = player.name,
             textColor = if (isPortrait) "#FFF0C7" else "#352114",
             textSize = metrics[3],
-            font = R.font.grenze,
+            font = null,
             height = metrics[5]
         )
         container.addView(playerName)
@@ -206,7 +206,7 @@ class WinnerResultsRenderer(
             text = player.role?.name?.uppercase() ?: "SIN ROL",
             textColor = if (isPortrait) "#F4C45F" else "#4F321A",
             textSize = metrics[4],
-            font = R.font.cormorant_garamond,
+            font = null,
             height = metrics[6]
         )
         container.addView(roleLabel)
@@ -217,7 +217,7 @@ class WinnerResultsRenderer(
         text: String,
         textColor: String,
         textSize: Int,
-        font: Int,
+        font: Int?,
         height: Int
     ): TextView = TextView(context).apply {
         this.text = text
@@ -226,7 +226,7 @@ class WinnerResultsRenderer(
         setSingleLine(true)
         setTextColor(Color.parseColor(textColor))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize.toFloat())
-        typeface = ResourcesCompat.getFont(context, font)
+        typeface = font?.let { ResourcesCompat.getFont(context, it) } ?: Typeface.DEFAULT_BOLD
         setTypeface(typeface, Typeface.BOLD)
         includeFontPadding = false
         layoutParams = LinearLayout.LayoutParams(
