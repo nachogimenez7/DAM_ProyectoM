@@ -5,8 +5,6 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.content.Context
-import android.media.MediaPlayer
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
@@ -17,7 +15,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 internal class SilenceRevealAnimator(
-    private val context: Context,
     private val overlay: FrameLayout,
     private val content: LinearLayout,
     private val card: FrameLayout,
@@ -33,7 +30,6 @@ internal class SilenceRevealAnimator(
         private set
 
     private var animator: AnimatorSet? = null
-    private var soundPlayer: MediaPlayer? = null
 
     fun start(player: GamePlayer) {
         cancel()
@@ -41,7 +37,6 @@ internal class SilenceRevealAnimator(
         playerName.text = player.name.uppercase()
         resetViews()
         overlay.visibility = View.VISIBLE
-        playSound()
 
         val entrance = AnimatorSet().apply {
             startDelay = REVEAL_GAP_MS
@@ -115,7 +110,6 @@ internal class SilenceRevealAnimator(
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f
-        releaseSound()
     }
 
     private fun resetViews() {
@@ -144,32 +138,7 @@ internal class SilenceRevealAnimator(
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f
-        releaseSound()
         onFinished()
-    }
-
-    private fun playSound() {
-        releaseSound()
-        val preferences = AudioPreferences.preferences(context)
-        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
-        val volume = AudioPreferences.effectsVolume(preferences)
-        if (!effectsOn || volume <= 0f) return
-        soundPlayer = MediaPlayer.create(context, R.raw.silence_reveal)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (soundPlayer === completed) soundPlayer = null
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseSound() {
-        soundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        soundPlayer = null
     }
 
     private companion object {

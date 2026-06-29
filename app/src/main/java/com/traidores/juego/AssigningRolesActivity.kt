@@ -7,7 +7,6 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.content.res.Configuration
-import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,7 +26,6 @@ class AssigningRolesActivity : BaseActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var dealingAnimator: AnimatorSet? = null
-    private var dealingSoundPlayer: MediaPlayer? = null
     private var leavingScreen = false
 
     private val openGameRunnable = Runnable { openGame() }
@@ -564,37 +562,13 @@ class AssigningRolesActivity : BaseActivity() {
     }
 
     private fun playDealingSound() {
-        releaseDealingSound()
-        val preferences = AudioPreferences.preferences(this)
-        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
-        val volume = AudioPreferences.effectsVolume(preferences)
-        if (!effectsOn || volume <= 0f) return
-
-        dealingSoundPlayer = MediaPlayer.create(this, R.raw.card_shuffle_deal)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (dealingSoundPlayer === completed) {
-                    dealingSoundPlayer = null
-                }
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseDealingSound() {
-        dealingSoundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        dealingSoundPlayer = null
+        GameplayAudioDirector.play(this, GameSound.CARD_DEAL)
     }
 
     private fun openGame() {
         if (leavingScreen || isFinishing || isDestroyed) return
         leavingScreen = true
         handler.removeCallbacks(openGameRunnable)
-        releaseDealingSound()
         val session = readSession()
         if (session == null && intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()) {
             val onlineRoomId = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
@@ -635,7 +609,6 @@ class AssigningRolesActivity : BaseActivity() {
         handler.removeCallbacks(openGameRunnable)
         dealingAnimator?.removeAllListeners()
         dealingAnimator?.cancel()
-        releaseDealingSound()
         finish()
     }
 
@@ -644,7 +617,6 @@ class AssigningRolesActivity : BaseActivity() {
         dealingAnimator?.removeAllListeners()
         dealingAnimator?.cancel()
         dealingAnimator = null
-        releaseDealingSound()
         super.onDestroy()
     }
 

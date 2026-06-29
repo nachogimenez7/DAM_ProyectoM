@@ -24,7 +24,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.HorizontalScrollView
@@ -41,7 +40,6 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.widget.doAfterTextChanged
 import androidx.core.widget.TextViewCompat
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -54,19 +52,13 @@ import android.view.animation.DecelerateInterpolator
 import java.util.ArrayDeque
 import kotlin.math.ceil
 
-class GameplayMockActivity : BaseActivity() {
+class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private var isCardRevealed = false
     private var appliedGameplayTextScale = 1f
-    private var isChatOpen = false
-    private var isChatKeyboardCompact = false
-    private var isBottomPlayerPanelCompact = false
-    private var chatKeyboardBottomInset = 0
-    private var newChatMessagesWhileTyping = 0
     private var isEventLogExpanded = false
     private var lastRenderedAnnouncement = ""
     private var lastRenderedPhase: GamePhase? = null
-    private var lastSeenChatCount = 0
     private var selectedTarget = ""
     private var desertorDialogOpen = false
     private var isDayNightTransitionRunning = false
@@ -83,7 +75,6 @@ class GameplayMockActivity : BaseActivity() {
     private var isJesterVictoryVisible = false
     private var isVoteResultVisible = false
     private var isTieVoteVisible = false
-    private var restoreTieVoteAfterChat = false
     private var voteExpulsionComplete = false
     private var voteNoExpulsionPresented = false
     private var isTraitorRevealDismissing = false
@@ -106,7 +97,17 @@ class GameplayMockActivity : BaseActivity() {
     private var stagedBotBurstPhaseIndex = -1
     private val feedbackState = GameplayFeedbackState()
     private lateinit var session: GameSession
-    private var unreadChatCount = 0
+    override var currentSession: GameSession
+        get() = session
+        set(value) {
+            session = value
+        }
+    override val gameplayTextScale: Float
+        get() = appliedGameplayTextScale
+    override val onlineRoomId: String
+        get() = onlinePartidaId
+    override val onlinePlayerUid: String
+        get() = onlinePlayerId
     private var onlinePartidaId = ""
     private var onlinePlayerId = ""
     private var onlineIsHost = false
@@ -124,15 +125,12 @@ class GameplayMockActivity : BaseActivity() {
     private var onlineNightResolutionInProgress = false
     private var onlineVoteResolutionInProgress = false
     private var onlineStateListener: ListenerRegistration? = null
-    private var onlineChatListener: ListenerRegistration? = null
     private var onlinePlayersListener: ListenerRegistration? = null
     private var onlineActiveHostId = ""
     private var onlineHostHandoffInProgress = false
     private var onlineGameplayStartedAtMs = 0L
     private var lastOnlinePresencePulseAtMs = 0L
     private var lastOnlineWatchdogReason = ""
-    private var lastOnlineChatSentAtMs = 0L
-    private var lastOnlineChatMessage = ""
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
@@ -150,8 +148,6 @@ class GameplayMockActivity : BaseActivity() {
             runOnlineSyncWatchdog()
         }
     }
-    private val pendingBotChatRunnables = mutableListOf<Runnable>()
-    private val typingBotSpeakers = linkedSetOf<String>()
     private val enableInitialRoleReadyRunnable = Runnable {
         if (initialRoleReadingActive && ::btnContinueRolePreview.isInitialized) {
             btnContinueRolePreview.visibility = View.VISIBLE
@@ -175,6 +171,7 @@ class GameplayMockActivity : BaseActivity() {
     private var eventLogHeightAnimator: ValueAnimator? = null
     private var centralPublicEventAnimator: AnimatorSet? = null
     private var feedbackAnimator: AnimatorSet? = null
+    private lateinit var chatController: GameplayChatController
     private lateinit var rolePreviewAnimator: RolePreviewAnimator
     private lateinit var traitorRevealAnimator: TraitorRevealAnimator
     private lateinit var jesterVictoryAnimator: JesterVictoryAnimator
@@ -189,20 +186,7 @@ class GameplayMockActivity : BaseActivity() {
     private lateinit var btnCloseRolePreview: ImageButton
     private lateinit var btnContinueRolePreview: Button
     private lateinit var btnRevealCard: Button
-    private lateinit var btnToggleChat: ImageButton
     private lateinit var btnToggleEventLog: Button
-    private lateinit var btnSendChat: Button
-    private lateinit var chatCharacterCount: TextView
-    private lateinit var chatComposer: LinearLayout
-    private lateinit var chatHeader: LinearLayout
-    private lateinit var chatInput: EditText
-    private lateinit var chatMessagesContainer: LinearLayout
-    private lateinit var chatMessagesScroll: ScrollView
-    private lateinit var chatNewMessages: TextView
-    private lateinit var chatPanel: LinearLayout
-    private lateinit var chatRoleChip: TextView
-    private lateinit var chatStatusRow: LinearLayout
-    private lateinit var chatUnreadBadge: TextView
     private lateinit var centralPublicEventBanner: FrameLayout
     private lateinit var centralPublicEventIcon: TextView
     private lateinit var centralPublicEventLabel: TextView
@@ -348,7 +332,9 @@ class GameplayMockActivity : BaseActivity() {
         val mutedBadge: TextView,
         val actionBadge: TextView,
         val name: TextView,
-        var selected: Boolean = false
+        var selected: Boolean = false,
+        var actionPulseKey: String? = null,
+        var actionBadgeAnimator: AnimatorSet? = null
     )
 
     private data class OnlineChatEntry(
@@ -433,7 +419,6 @@ class GameplayMockActivity : BaseActivity() {
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
-        isChatOpen = savedInstanceState?.getBoolean(STATE_CHAT_OPEN) ?: false
         isEventLogExpanded = false
         voteNoExpulsionPresented =
             savedInstanceState?.getBoolean(STATE_VOTE_NO_EXPULSION_PRESENTED) ?: false
@@ -453,8 +438,6 @@ class GameplayMockActivity : BaseActivity() {
         )
         knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
         knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
-        lastSeenChatCount = session.chatHistory.size
-
         val btnSettings: ImageButton = findViewById(R.id.btnSettings)
         actionFeedbackBanner = findViewById(R.id.actionFeedbackBanner)
         actionFeedbackBannerMessage = findViewById(R.id.actionFeedbackBannerMessage)
@@ -465,21 +448,7 @@ class GameplayMockActivity : BaseActivity() {
         btnCloseRolePreview = findViewById(R.id.btnCloseRolePreview)
         btnContinueRolePreview = findViewById(R.id.btnContinueRolePreview)
         btnRevealCard = findViewById(R.id.btnRevealCard)
-        btnToggleChat = findViewById(R.id.btnToggleChat)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
-        btnSendChat = findViewById(R.id.btnSendChat)
-        chatCharacterCount = findViewById(R.id.chatCharacterCount)
-        chatComposer = findViewById(R.id.chatComposer)
-        chatHeader = findViewById(R.id.chatHeader)
-        chatInput = findViewById(R.id.chatInput)
-        chatMessagesContainer = findViewById(R.id.chatMessagesContainer)
-        chatMessagesScroll = findViewById(R.id.chatMessagesScroll)
-        chatNewMessages = findViewById(R.id.chatNewMessages)
-        chatPanel = findViewById(R.id.chatPanel)
-        chatRoleChip = findViewById(R.id.chatRoleChip)
-        chatStatusRow = findViewById(R.id.chatStatusRow)
-        chatUnreadBadge = findViewById(R.id.chatUnreadBadge)
-        chatUnreadBadge.bringToFront()
         centralPublicEventBanner = findViewById(R.id.centralPublicEventBanner)
         centralPublicEventIcon = findViewById(R.id.centralPublicEventIcon)
         centralPublicEventLabel = findViewById(R.id.centralPublicEventLabel)
@@ -569,7 +538,6 @@ class GameplayMockActivity : BaseActivity() {
         transitionTitle = findViewById(R.id.transitionTitle)
         transitionToBackground = findViewById(R.id.transitionToBackground)
         dayNightTransitionAnimator = DayNightTransitionAnimator(
-            context = this,
             handler = autoAdvanceHandler,
             overlay = dayNightTransitionOverlay,
             fromBackground = transitionFromBackground,
@@ -589,7 +557,6 @@ class GameplayMockActivity : BaseActivity() {
             }
         )
         deathRevealAnimator = DeathRevealAnimator(
-            context = this,
             overlay = deathRevealOverlay,
             content = deathRevealContent,
             card = deathRevealCard,
@@ -605,7 +572,6 @@ class GameplayMockActivity : BaseActivity() {
             onFinished = ::finishDeathReveal
         )
         silenceRevealAnimator = SilenceRevealAnimator(
-            context = this,
             overlay = silenceRevealOverlay,
             content = silenceRevealContent,
             card = silenceRevealCard,
@@ -657,7 +623,13 @@ class GameplayMockActivity : BaseActivity() {
         btnTieVoteChat = findViewById(R.id.btnTieVoteChat)
         btnTieRevealMayor = findViewById(R.id.btnTieRevealMayor)
         btnConfirmTieVote = findViewById(R.id.btnConfirmTieVote)
-        btnTieVoteChat.setOnClickListener { openChatFromTieVote() }
+        chatController = GameplayChatController(this, gameplayRoot)
+        chatController.onCreate(savedInstanceState)
+        btnTieVoteChat.setOnClickListener {
+            if (!GameEngine.canHumanChat(session)) return@setOnClickListener
+            hideTieVoteWindow(clearSelection = false)
+            chatController.openFromTieVote()
+        }
         btnTieRevealMayor.setOnClickListener { revealMayorFromTieVote() }
         btnConfirmTieVote.setOnClickListener { confirmTieVoteSelection() }
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
@@ -731,35 +703,8 @@ class GameplayMockActivity : BaseActivity() {
         }
         btnAction.setOnClickListener { handleCurrentPhase() }
         btnRevealCard.setOnClickListener { toggleHumanCard() }
-        btnToggleChat.setOnClickListener { toggleChatPanel() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
         eventLogHeader.setOnClickListener { toggleEventLog() }
-        findViewById<ImageButton>(R.id.btnCloseChat).setOnClickListener {
-            GameplayEffects.play(this, GameplayEffect.PANEL)
-            closeChatPanel()
-        }
-        btnSendChat.setOnClickListener { sendHumanChatMessage() }
-        chatInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND) {
-                sendHumanChatMessage()
-                true
-            } else {
-                false
-            }
-        }
-        chatInput.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
-                setChatKeyboardState(true, chatKeyboardBottomInset)
-            } else {
-                applyKeyboardAwarePlayerPanel()
-            }
-        }
-        chatInput.doAfterTextChanged { text ->
-            renderChatCharacterCount(text?.length ?: 0)
-        }
-        chatNewMessages.setOnClickListener {
-            acknowledgeNewChatMessages()
-        }
         roleCard.setOnClickListener {
             if (session.phase != GamePhase.REPARTO && !isCardRevealed) {
                 toggleHumanCard()
@@ -790,15 +735,12 @@ class GameplayMockActivity : BaseActivity() {
         })
 
         eventLogBackground.setImageResource(logDrawableFor(themeKey))
-        configureChatPanelLayout()
-        renderChatPanelVisibility(animate = false)
         if (shouldPresentRolePreview) {
             isRolePreviewOpen = true
             rolePreviewAnimator.reserveVisible()
         }
         renderGame()
         startAuthoritativeOnlineStateListener()
-        startOnlineChatListener()
         gameplayRoot.post {
             renderPlayerColumns()
             if (shouldPresentRolePreview) {
@@ -851,11 +793,9 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         onlineStateListener?.remove()
         onlineStateListener = null
-        onlineChatListener?.remove()
-        onlineChatListener = null
         onlinePlayersListener?.remove()
         onlinePlayersListener = null
-        cancelPendingBotChat()
+        chatController.onDestroy()
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
         } else {
@@ -886,7 +826,7 @@ class GameplayMockActivity : BaseActivity() {
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
-        cancelPendingBotChat()
+        chatController.cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
         super.onPause()
     }
@@ -943,7 +883,7 @@ class GameplayMockActivity : BaseActivity() {
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
         outState.putInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT, presentedSpecialVictoryCount)
-        outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
+        chatController.onSaveInstanceState(outState)
         outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
         outState.putString(STATE_ONLINE_PARTIDA_ID, onlinePartidaId)
         outState.putString(STATE_ONLINE_PLAYER_ID, onlinePlayerId)
@@ -989,7 +929,7 @@ class GameplayMockActivity : BaseActivity() {
         when {
             isWinnerRevealVisible -> returnToLobby()
             isRolePreviewOpen -> closeRolePreview()
-            isChatOpen -> closeChatPanel()
+            chatController.onBackPressed() -> Unit
             actionFeedbackBanner.visibility == View.VISIBLE -> hideActionFeedbackBanner()
             isEventLogExpanded -> toggleEventLog()
             else -> finish()
@@ -1116,7 +1056,7 @@ class GameplayMockActivity : BaseActivity() {
     }
 
     private fun advanceCurrentPhase() {
-        cancelPendingBotChat()
+        chatController.cancelPendingBotChat()
         val before = session
         session = when (session.phase) {
             GamePhase.REPARTO -> GameEngine.startNight(session)
@@ -1135,14 +1075,14 @@ class GameplayMockActivity : BaseActivity() {
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
         }
         recordOnlinePhaseAdvance(before, session)
-        stageBotBurstForCurrentPhase()
+        chatController.stageBotBurstForCurrentPhase()
         clearSelection()
         renderGame()
     }
 
     private fun performTargetAction(targetName: String) {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        cancelPendingBotChat()
+        chatController.cancelPendingBotChat()
         if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
@@ -1168,7 +1108,7 @@ class GameplayMockActivity : BaseActivity() {
         playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
         session = resolved
-        stageBotBurstForCurrentPhase()
+        chatController.stageBotBurstForCurrentPhase()
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
         blockingFeedbackPeriod = if (
@@ -1316,7 +1256,6 @@ class GameplayMockActivity : BaseActivity() {
         refreshPhaseAdvice(narratorMessage)
         val eventChanged =
             lastRenderedPhase != session.phase || lastRenderedAnnouncement != narratorMessage
-        updateUnreadChatCount()
         val visiblePeriod = when {
             blockingFeedbackPending -> blockingFeedbackPeriod ?: GameplayPeriod.NIGHT
             specialVictoryPending -> presentedPeriod ?: GameplayPeriod.DAY
@@ -1339,9 +1278,7 @@ class GameplayMockActivity : BaseActivity() {
         renderAdvanceButton()
         renderHumanCardIfVisible()
         renderPlayerColumns(newlyDeadPlayers.map { it.name }.toSet())
-        renderChatPanel()
-        applyKeyboardAwarePlayerPanel()
-        renderChatBadge()
+        chatController.onSessionUpdated()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
@@ -1746,14 +1683,19 @@ class GameplayMockActivity : BaseActivity() {
         OnlineDebugLog.i(
             "phase_apply_authoritative roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} round=${(state["ronda"] as? Number)?.toInt() ?: session.round} phaseIndex=$phaseIndex"
         )
+        val authoritativePublicHistory = publicHistoryFromAuthoritativeState(state)
         session = session.copy(
             phase = phase,
             round = (state["ronda"] as? Number)?.toInt() ?: session.round,
             phaseIndex = phaseIndex,
             players = updatedPlayers,
             publicAnnouncement = (state["anuncioPublico"] as? String).orEmpty(),
-            publicHistory = publicHistoryFromAuthoritativeState(state),
-            godHistory = publicHistoryFromAuthoritativeState(state),
+            publicHistory = authoritativePublicHistory,
+            godHistory = authoritativePublicHistory,
+            chatHistory = GameplayFeedMessages.appendGodEvents(
+                session.chatHistory,
+                authoritativePublicHistory
+            ),
             winner = (state["ganador"] as? String).orEmpty(),
             nightKillTarget = (state["victimaNoche"] as? String).orEmpty(),
             nightSilenceTarget = (state["silenciado"] as? String).orEmpty(),
@@ -1958,8 +1900,25 @@ class GameplayMockActivity : BaseActivity() {
             }
     }
 
-    private fun isOnlineGameplay(): Boolean {
+    override fun isOnlineGameplay(): Boolean {
         return onlinePartidaId.isNotBlank() && onlinePlayerId.isNotBlank()
+    }
+
+    override fun isTransitionLocked(phaseIndex: Int): Boolean {
+        return countdown.isTransitionLocked(phaseIndex)
+    }
+
+    override fun hideKeyboard() {
+        WindowCompat.getInsetsController(window, gameplayRoot)
+            .hide(WindowInsetsCompat.Type.ime())
+    }
+
+    override fun showToast(message: String, duration: Int) {
+        Toast.makeText(this, message, duration).show()
+    }
+
+    override fun showTieVoteWindowAfterChat() {
+        showTieVoteWindow()
     }
 
     private fun markOnlineGameplayPresence(state: String) {
@@ -2522,9 +2481,7 @@ class GameplayMockActivity : BaseActivity() {
         lastPresentedAssassinVoteLogKey = key
         if (!isEventLogExpanded) {
             isEventLogExpanded = true
-            if (isChatOpen) {
-                closeChatPanel()
-            }
+            chatController.onBackPressed()
             lastRenderedEventExpanded = null
         }
     }
@@ -2555,8 +2512,8 @@ class GameplayMockActivity : BaseActivity() {
     private fun toggleEventLog() {
         GameplayEffects.play(this, GameplayEffect.PANEL)
         isEventLogExpanded = !isEventLogExpanded
-        if (isEventLogExpanded && isChatOpen) {
-            closeChatPanel()
+        if (isEventLogExpanded) {
+            chatController.onBackPressed()
         }
         renderEventLogPanel(animate = true)
         lastRenderedEventExpanded = null
@@ -2703,11 +2660,12 @@ class GameplayMockActivity : BaseActivity() {
         btnAction.text = label
         val requiresAttention = session.winner.isBlank() &&
             (selectedAction != null || canSelfProtect || specialDecision)
+        val actionReadyDuringTimer = selectedAction != null || canSelfProtect || specialDecision
         btnAction.isEnabled = !transitionLocked &&
             session.winner.isBlank() &&
             (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
             !onlineAwaitingHostAdvance &&
-            !mustWaitForPhaseTimer() &&
+            (!mustWaitForPhaseTimer() || actionReadyDuringTimer) &&
             (!mandatoryTargetSelection || selectedAction != null || canSelfProtect || specialDecision)
         applyPrimaryActionVisual(label, requiresAttention)
         btnAction.alpha = when {
@@ -2750,23 +2708,26 @@ class GameplayMockActivity : BaseActivity() {
         lastActionAttentionKey = attentionKey
         if (attentionKey == null) return
 
-        val grow = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(btnAction, View.SCALE_X, 1f, 1.05f),
-                ObjectAnimator.ofFloat(btnAction, View.SCALE_Y, 1f, 1.05f)
-            )
-            duration = 180L
+        val isKillAction = btnAction.text.toString().equals("MATAR", ignoreCase = true)
+        val lift = dp(1).toFloat()
+        val floatY = ObjectAnimator.ofFloat(btnAction, View.TRANSLATION_Y, 0f, -lift, 0f).apply {
+            duration = if (isKillAction) 1150L else 1250L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
         }
-        val settle = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(btnAction, View.SCALE_X, 1.05f, 1f),
-                ObjectAnimator.ofFloat(btnAction, View.SCALE_Y, 1.05f, 1f)
-            )
-            duration = 240L
+        val scaleX = ObjectAnimator.ofFloat(btnAction, View.SCALE_X, 1f, if (isKillAction) 1.012f else 1.006f, 1f).apply {
+            duration = floatY.duration
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        val scaleY = ObjectAnimator.ofFloat(btnAction, View.SCALE_Y, 1f, if (isKillAction) 1.012f else 1.006f, 1f).apply {
+            duration = floatY.duration
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
         }
         actionPulseAnimator = AnimatorSet().apply {
             interpolator = AccelerateDecelerateInterpolator()
-            playSequentially(grow, settle)
+            playTogether(floatY, scaleX, scaleY)
             start()
         }
     }
@@ -2777,6 +2738,8 @@ class GameplayMockActivity : BaseActivity() {
         if (::btnAction.isInitialized) {
             btnAction.scaleX = 1f
             btnAction.scaleY = 1f
+            btnAction.translationX = 0f
+            btnAction.translationY = 0f
         }
     }
 
@@ -2928,7 +2891,7 @@ class GameplayMockActivity : BaseActivity() {
         return (combinedSideWidth / 2).coerceIn(54, 78)
     }
 
-    private fun isPortrait(): Boolean {
+    override fun isPortrait(): Boolean {
         return resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     }
 
@@ -3056,17 +3019,18 @@ class GameplayMockActivity : BaseActivity() {
         val mutedBadge = TextView(this)
         mutedBadge.text = "MUDO"
         mutedBadge.gravity = Gravity.CENTER
-        mutedBadge.setTextColor(getColor(R.color.accent_gold))
+        mutedBadge.includeFontPadding = false
+        mutedBadge.setTextColor(getColor(R.color.text_primary))
         mutedBadge.setBackgroundResource(R.drawable.bg_player_chip)
-        mutedBadge.textSize = 5.5f
+        mutedBadge.textSize = 6.5f
         mutedBadge.setTypeface(null, Typeface.BOLD)
-        mutedBadge.setPadding(dp(3), 0, dp(3), 0)
+        mutedBadge.setPadding(dp(2), 0, dp(2), 0)
         cardFace.addView(
             mutedBadge,
             FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                dp(12),
-                Gravity.TOP or Gravity.END
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(13),
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
             )
         )
 
@@ -3144,19 +3108,18 @@ class GameplayMockActivity : BaseActivity() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         }
-        holder.avatar.text = if (isAlive || isOracleGuest) {
-            GameplayTableUi.playerInitial(player)
-        } else {
-            "\u2620"
+        holder.avatar.visibility = if (isOnlineGameplay()) View.VISIBLE else View.GONE
+        if (isOnlineGameplay()) {
+            holder.avatar.text = if (isAlive || isOracleGuest) {
+                GameplayTableUi.playerInitial(player)
+            } else {
+                "\u2620"
+            }
+            holder.avatar.setBackgroundResource(R.drawable.bg_player_avatar)
+            holder.avatar.setTextColor(getColor(R.color.accent_gold))
+            holder.avatar.textSize =
+                if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
         }
-        holder.avatar.setBackgroundResource(
-            if (isOnlineGameplay()) R.drawable.bg_player_avatar else R.drawable.bg_player_avatar_offline
-        )
-        holder.avatar.setTextColor(
-            getColor(if (isOnlineGameplay()) R.color.accent_gold else R.color.text_primary)
-        )
-        holder.avatar.textSize =
-            if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
         holder.mutedBadge.visibility = if (isAlive && player.muted) View.VISIBLE else View.GONE
         holder.actionBadge.layoutParams = (holder.actionBadge.layoutParams as FrameLayout.LayoutParams).apply {
             height = dp((metrics.nameHeightDp - 2).coerceIn(12, 16))
@@ -3173,16 +3136,23 @@ class GameplayMockActivity : BaseActivity() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(3).toFloat()
                 setColor(Color.parseColor(tone.colorHex))
-                if (tone == GameplayActionTone.SILENCE) {
-                    setStroke(dp(1), getColor(R.color.accent_gold))
+                when (tone) {
+                    GameplayActionTone.KILL -> setStroke(dp(1), Color.parseColor("#F1C36A"))
+                    GameplayActionTone.SILENCE -> setStroke(dp(1), Color.parseColor("#B46A72"))
+                    else -> Unit
                 }
             }
             holder.actionBadge.setTextColor(
                 getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
             )
+            updateSideActionBadgePulse(holder, player, actionLabel, tone)
+        } else {
+            stopSideActionBadgePulse(holder)
+            holder.actionPulseKey = null
         }
 
         holder.name.layoutParams = (holder.name.layoutParams as LinearLayout.LayoutParams).apply {
+            width = dp(metrics.cardWidthDp)
             height = dp(metrics.nameHeightDp)
         }
         holder.name.text = player.name
@@ -3194,15 +3164,24 @@ class GameplayMockActivity : BaseActivity() {
             TypedValue.COMPLEX_UNIT_SP
         )
         holder.name.setTextColor(
-            getColor(
-                when {
-                    isOracleGuest -> R.color.accent_gold
-                    !isAlive -> R.color.text_muted
-                    isSelected -> R.color.accent_gold
-                    else -> R.color.text_primary
-                }
-            )
+            when {
+                isOracleGuest -> getColor(R.color.accent_gold)
+                !isAlive -> getColor(R.color.text_muted)
+                isSelected -> getColor(R.color.accent_gold)
+                else -> PlayerChatColor.colorFor(player.name, session)
+            }
         )
+        holder.name.alpha = if (isAlive || isOracleGuest) 1f else 0.72f
+        if (isOnlineGameplay()) {
+            holder.name.setShadowLayer(
+                if (isActionable || isSelected) 3f else 1.5f,
+                0f,
+                1f,
+                Color.BLACK
+            )
+        } else {
+            holder.name.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+        }
         holder.name.paintFlags = if (isAlive) {
             holder.name.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
         } else {
@@ -3215,7 +3194,17 @@ class GameplayMockActivity : BaseActivity() {
             cornerRadius = dp(4).toFloat()
             when {
                 isSelected -> setStroke(dp(3), getColor(R.color.accent_gold))
-                isActionable -> setStroke(dp(2), getColor(R.color.accent_gold))
+                isActionable -> {
+                    val tone = GameplayTableUi.actionToneFor(actionLabel)
+                    setStroke(
+                        dp(2),
+                        when (tone) {
+                            GameplayActionTone.KILL -> Color.parseColor("#D12A1E")
+                            GameplayActionTone.SILENCE -> Color.parseColor("#7C2A37")
+                            else -> getColor(R.color.accent_gold)
+                        }
+                    )
+                }
             }
         }
         if (holder.selected != isSelected) {
@@ -3252,6 +3241,52 @@ class GameplayMockActivity : BaseActivity() {
             isActionable -> "${player.name}, objetivo disponible para $actionLabel"
             else -> player.name
         }
+    }
+
+    private fun updateSideActionBadgePulse(
+        holder: SidePlayerCardHolder,
+        player: GamePlayer,
+        actionLabel: String,
+        tone: GameplayActionTone
+    ) {
+        val pulseKey = "${session.phaseIndex}:${player.name}:$actionLabel:${tone.name}"
+        if (holder.actionPulseKey == pulseKey) return
+
+        stopSideActionBadgePulse(holder)
+        holder.actionPulseKey = pulseKey
+
+        val lift = dp(1).toFloat()
+        val durationMs = if (tone == GameplayActionTone.KILL) 1100L else 1250L
+        val floatY = ObjectAnimator.ofFloat(holder.actionBadge, View.TRANSLATION_Y, 0f, -lift, 0f).apply {
+            duration = durationMs
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        val scaleX = ObjectAnimator.ofFloat(holder.actionBadge, View.SCALE_X, 1f, 1.016f, 1f).apply {
+            duration = durationMs
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        val scaleY = ObjectAnimator.ofFloat(holder.actionBadge, View.SCALE_Y, 1f, 1.016f, 1f).apply {
+            duration = durationMs
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        holder.actionBadgeAnimator = AnimatorSet().apply {
+            playTogether(floatY, scaleX, scaleY)
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+    }
+
+    private fun stopSideActionBadgePulse(holder: SidePlayerCardHolder) {
+        holder.actionBadgeAnimator?.cancel()
+        holder.actionBadgeAnimator = null
+        holder.actionBadge.animate().cancel()
+        holder.actionBadge.translationY = 0f
+        holder.actionBadge.scaleX = 1f
+        holder.actionBadge.scaleY = 1f
+        holder.actionBadge.alpha = 1f
     }
 
     private fun nightSubtitle(): String {
@@ -3349,782 +3384,6 @@ class GameplayMockActivity : BaseActivity() {
                 "El pueblo conoce el resultado.",
                 if (session.winner.isBlank()) "CONTINUAR" else "FINAL"
             )
-        }
-    }
-
-    private fun toggleChatPanel() {
-        GameplayEffects.play(this, GameplayEffect.PANEL)
-        if (isChatOpen) {
-            closeChatPanel()
-            return
-        }
-        isChatOpen = true
-        unreadChatCount = 0
-        newChatMessagesWhileTyping = 0
-        lastSeenChatCount = session.chatHistory.size
-        renderChatPanelVisibility(animate = true)
-        renderChatPanel()
-        renderChatBadge()
-    }
-
-    private fun closeChatPanel() {
-        if (!isChatOpen) return
-        isChatOpen = false
-        newChatMessagesWhileTyping = 0
-        chatInput.clearFocus()
-        WindowCompat.getInsetsController(window, gameplayRoot)
-            .hide(WindowInsetsCompat.Type.ime())
-        setChatKeyboardState(false, 0)
-        renderChatPanelVisibility(animate = true)
-        renderChatBadge()
-        renderNewChatMessageNotice()
-        if (
-            restoreTieVoteAfterChat &&
-            session.phase == GamePhase.DESEMPATE_VOTACION
-        ) {
-            restoreTieVoteAfterChat = false
-            gameplayRoot.post { showTieVoteWindow() }
-        }
-    }
-
-    private fun renderChatPanelVisibility(animate: Boolean) {
-        chatPanel.animate().cancel()
-        if (isChatOpen) {
-            chatPanel.visibility = View.VISIBLE
-            if (animate) {
-                if (isPortrait()) {
-                    chatPanel.translationY = (chatPanel.height.takeIf { it > 0 } ?: dp(420)).toFloat()
-                    chatPanel.translationX = 0f
-                    chatPanel.alpha = 1f
-                    chatPanel.animate()
-                        .translationY(0f)
-                        .setDuration(220L)
-                        .start()
-                } else {
-                    chatPanel.translationX = dp(36).toFloat()
-                    chatPanel.translationY = 0f
-                    chatPanel.alpha = 0f
-                    chatPanel.animate()
-                        .translationX(0f)
-                        .alpha(1f)
-                        .setDuration(210L)
-                        .start()
-                }
-            } else {
-                chatPanel.translationX = 0f
-                chatPanel.translationY = 0f
-                chatPanel.alpha = 1f
-            }
-        } else if (animate && chatPanel.visibility == View.VISIBLE) {
-            if (isPortrait()) {
-                val endOffset = (chatPanel.height.takeIf { it > 0 } ?: dp(420)).toFloat()
-                chatPanel.animate()
-                    .translationY(endOffset)
-                    .setDuration(190L)
-                    .withEndAction {
-                        chatPanel.visibility = View.GONE
-                        chatPanel.translationY = 0f
-                        chatPanel.alpha = 1f
-                    }
-                    .start()
-            } else {
-                chatPanel.animate()
-                    .translationX(dp(36).toFloat())
-                    .alpha(0f)
-                    .setDuration(190L)
-                    .withEndAction {
-                        chatPanel.visibility = View.GONE
-                        chatPanel.translationX = 0f
-                        chatPanel.alpha = 1f
-                    }
-                    .start()
-            }
-        } else {
-            chatPanel.visibility = View.GONE
-            chatPanel.translationX = 0f
-            chatPanel.translationY = 0f
-            chatPanel.alpha = 1f
-        }
-        btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
-        updateChatToggleContentDescription()
-    }
-
-    private fun renderChatPanel() {
-        btnToggleChat.alpha = if (isChatOpen) 1f else 0.9f
-        if (!isChatOpen) return
-
-        val messages = session.chatHistory.filterNot { it.isGod }.takeLast(12)
-        renderChatMessages(messages)
-
-        val canChat = GameEngine.canHumanChat(session)
-        chatInput.isEnabled = canChat
-        btnSendChat.isEnabled = canChat
-        chatInput.hint = chatInputHint(canChat)
-        btnSendChat.alpha = if (canChat) 1f else 0.45f
-        renderChatCharacterCount(chatInput.text.length)
-        renderNewChatMessageNotice()
-        if (newChatMessagesWhileTyping == 0) {
-            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-        }
-    }
-
-    private fun configureChatPanelLayout() {
-        centerColumn.post {
-            applyChatPanelDimensions()
-        }
-        ViewCompat.setOnApplyWindowInsetsListener(gameplayRoot) { _, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val imeBottomInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            setChatKeyboardState(imeVisible, imeBottomInset)
-            insets
-        }
-        ViewCompat.requestApplyInsets(gameplayRoot)
-    }
-
-    private fun setChatKeyboardState(compact: Boolean, bottomInset: Int) {
-        if (
-            isChatKeyboardCompact == compact &&
-            chatKeyboardBottomInset == bottomInset &&
-            chatPanel.isLaidOut
-        ) {
-            applyKeyboardAwarePlayerPanel()
-            return
-        }
-        isChatKeyboardCompact = compact
-        chatKeyboardBottomInset = bottomInset
-        applyChatPanelDimensions()
-        applyKeyboardAwarePlayerPanel()
-        if (compact) {
-            chatPanel.bringToFront()
-            chatPanel.visibility = View.VISIBLE
-            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-        }
-    }
-
-    private fun shouldCompactBottomPlayerPanel(): Boolean {
-        return isPortrait() && isChatOpen && isChatKeyboardCompact && chatInput.hasFocus()
-    }
-
-    private fun applyKeyboardAwarePlayerPanel() {
-        if (!::bottomPlayerPanel.isInitialized) return
-        val compact = shouldCompactBottomPlayerPanel()
-        if (compact) {
-            isBottomPlayerPanelCompact = true
-            compactBottomPlayerPanelForKeyboard()
-        } else if (isBottomPlayerPanelCompact || !bottomPlayerPanel.isLaidOut) {
-            isBottomPlayerPanelCompact = false
-            restoreBottomPlayerPanelFromKeyboard()
-        } else {
-            isBottomPlayerPanelCompact = false
-        }
-    }
-
-    private fun compactBottomPlayerPanelForKeyboard() {
-        bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
-            height = dp(BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP)
-        }
-        bottomPlayerPanel.gravity = Gravity.CENTER
-        bottomPlayerPanel.setPadding(dp(8), dp(4), dp(8), dp(4))
-        roleCard.visibility = View.GONE
-        currentPlayerName.visibility = View.GONE
-        currentPlayerStatus.visibility = View.GONE
-        currentPlayerHint.visibility = View.GONE
-        actionControls.visibility = View.GONE
-        eliminatedStatePanel.visibility = View.GONE
-        chatRoleChip.text = compactRoleChipText()
-        chatRoleChip.visibility = View.VISIBLE
-        roleName.visibility = View.VISIBLE
-        roleName.text = compactRoleChipText()
-        roleName.gravity = Gravity.CENTER
-        roleName.maxLines = 1
-        roleName.setPadding(dp(10), 0, dp(10), 0)
-        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        roleName.background = compactRoleChipBackground()
-    }
-
-    private fun restoreBottomPlayerPanelFromKeyboard() {
-        bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
-            height = dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)
-        }
-        bottomPlayerPanel.gravity = Gravity.CENTER
-        bottomPlayerPanel.setPadding(dp(8), dp(6), dp(8), dp(6))
-        roleCard.visibility = View.VISIBLE
-        currentPlayerName.visibility = View.VISIBLE
-        currentPlayerHint.visibility = View.VISIBLE
-        roleName.gravity = Gravity.NO_GRAVITY
-        roleName.setPadding(0, 0, 0, 0)
-        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-        roleName.background = null
-        chatRoleChip.visibility = View.GONE
-        renderHumanCardIfVisible()
-        renderPersonalStatus()
-    }
-
-    private fun compactRoleChipText(): String {
-        return GameEngine.humanPlayer(session).role?.name?.uppercase() ?: "SIN ROL"
-    }
-
-    private fun compactRoleChipBackground(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#E6231810"))
-            setStroke(dp(1), getColor(R.color.accent_gold))
-            cornerRadius = dp(8).toFloat()
-        }
-    }
-
-    private fun applyChatPanelDimensions() {
-        if (!::chatPanel.isInitialized || gameplayRoot.width == 0) return
-        if (isPortrait()) {
-            applyChatSheetDimensionsPortrait()
-            return
-        }
-        val containerWidth = centerColumn.width.takeIf { it > 0 } ?: gameplayRoot.width
-        val params = chatPanel.layoutParams as FrameLayout.LayoutParams
-        val widthRatio = if (isChatKeyboardCompact) {
-            CHAT_PANEL_COMPACT_WIDTH_RATIO
-        } else {
-            CHAT_PANEL_WIDTH_RATIO
-        }
-        params.width = (containerWidth * widthRatio)
-            .toInt()
-            .coerceIn(
-                dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_WIDTH_DP else CHAT_PANEL_MIN_WIDTH_DP),
-                dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_WIDTH_DP else CHAT_PANEL_MAX_WIDTH_DP)
-            )
-        params.topMargin = dp(
-            if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else CHAT_PANEL_TOP_MARGIN_DP
-        )
-        params.bottomMargin = dp(
-            if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else CHAT_PANEL_BOTTOM_MARGIN_DP
-        )
-        chatPanel.layoutParams = params
-        chatPanel.setPadding(
-            dp(if (isChatKeyboardCompact) 7 else 11),
-            dp(if (isChatKeyboardCompact) 4 else 11),
-            dp(if (isChatKeyboardCompact) 7 else 11),
-            dp(if (isChatKeyboardCompact) 5 else 11)
-        )
-        chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 24 else 34)
-        }
-        chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-        chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 18 else 22)
-        }
-        chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-        btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-    }
-
-    private fun applyChatSheetDimensionsPortrait() {
-        val params = chatPanel.layoutParams as ViewGroup.MarginLayoutParams
-        val heightRatio = if (isChatKeyboardCompact) {
-            CHAT_SHEET_COMPACT_HEIGHT_RATIO
-        } else {
-            CHAT_SHEET_HEIGHT_RATIO
-        }
-        params.width = ViewGroup.LayoutParams.MATCH_PARENT
-        params.height = dp((resources.configuration.screenHeightDp * heightRatio).toInt())
-            .coerceIn(dp(CHAT_SHEET_MIN_HEIGHT_DP), dp(CHAT_SHEET_MAX_HEIGHT_DP))
-        params.marginStart = dp(CHAT_SHEET_SIDE_MARGIN_DP)
-        params.marginEnd = dp(CHAT_SHEET_SIDE_MARGIN_DP)
-        params.topMargin = 0
-        params.bottomMargin = dp(
-            when {
-                shouldCompactBottomPlayerPanel() -> CHAT_SHEET_KEYBOARD_BOTTOM_MARGIN_DP
-                isChatKeyboardCompact -> 4
-                else -> 10
-            }
-        )
-        chatPanel.layoutParams = params
-        chatPanel.setPadding(dp(12), dp(11), dp(12), dp(11))
-        chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = dp(36)
-        }
-        chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = dp(44)
-        }
-        chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = dp(22)
-        }
-        chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = dp(44)
-        }
-        btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = dp(44)
-        }
-    }
-
-    private fun renderChatMessages(messages: List<GameChatMessage>) {
-        chatMessagesContainer.removeAllViews()
-        if (messages.isEmpty() && typingBotSpeakers.isEmpty()) {
-            chatMessagesContainer.addView(TextView(this).apply {
-                text = "Todavia no hay mensajes."
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(16), dp(8), dp(16))
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 12f * appliedGameplayTextScale
-            })
-            return
-        }
-
-        val humanName = GameEngine.humanPlayer(session).name
-        val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: dp(320)) - dp(56))
-            .coerceIn(dp(190), dp(300))
-        messages.forEach { message ->
-            val ownMessage = message.speaker == humanName
-            addChatBubble(
-                speaker = if (ownMessage) "VOS" else message.speaker.uppercase(),
-                body = message.message,
-                ownMessage = ownMessage,
-                bubbleMaxWidth = bubbleMaxWidth,
-                muted = false
-            )
-        }
-        typingBotSpeakers.forEach { speaker ->
-            addChatBubble(
-                speaker = speaker.uppercase(),
-                body = "esta escribiendo...",
-                ownMessage = false,
-                bubbleMaxWidth = bubbleMaxWidth,
-                muted = true
-            )
-        }
-    }
-
-    private fun addChatBubble(
-        speaker: String,
-        body: String,
-        ownMessage: Boolean,
-        bubbleMaxWidth: Int,
-        muted: Boolean
-    ) {
-        val row = LinearLayout(this).apply {
-            gravity = if (ownMessage) Gravity.END else Gravity.START
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(3), 0, dp(3))
-        }
-        val bubble = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(7), dp(10), dp(8))
-            setBackgroundResource(
-                if (ownMessage) {
-                    R.drawable.bg_chat_bubble_own
-                } else {
-                    R.drawable.bg_chat_bubble_other
-                }
-            )
-            alpha = if (muted) 0.78f else 1f
-        }
-        bubble.addView(TextView(this).apply {
-            text = speaker
-            maxLines = 1
-            setTextColor(getColor(if (ownMessage) R.color.bg_dark else R.color.accent_gold))
-            textSize = 9f * appliedGameplayTextScale
-            typeface = Typeface.DEFAULT_BOLD
-        })
-        bubble.addView(TextView(this).apply {
-            text = body
-            maxWidth = bubbleMaxWidth
-            setTextColor(getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary))
-            textSize = 12f * appliedGameplayTextScale
-            if (muted) typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
-        })
-        row.addView(
-            bubble,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                if (ownMessage) marginStart = dp(30) else marginEnd = dp(30)
-            }
-        )
-        chatMessagesContainer.addView(
-            row,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        )
-    }
-
-    private fun updateUnreadChatCount() {
-        val currentCount = session.chatHistory.size
-        if (currentCount > lastSeenChatCount) {
-            val humanName = GameEngine.humanPlayer(session).name
-            val newMessages = session.chatHistory.drop(lastSeenChatCount)
-                .count { !it.isGod && it.speaker != humanName }
-            if (isChatOpen) {
-                unreadChatCount = 0
-                if (chatInput.hasFocus()) {
-                    newChatMessagesWhileTyping += newMessages
-                }
-            } else {
-                unreadChatCount += newMessages
-            }
-            lastSeenChatCount = currentCount
-        }
-    }
-
-    private fun renderChatCharacterCount(length: Int) {
-        chatCharacterCount.text = "$length/$CHAT_MESSAGE_MAX_LENGTH"
-        chatCharacterCount.setTextColor(
-            getColor(
-                when {
-                    length >= CHAT_MESSAGE_MAX_LENGTH -> R.color.accent_red
-                    length >= CHAT_MESSAGE_WARNING_LENGTH -> R.color.accent_gold
-                    else -> R.color.text_muted
-                }
-            )
-        )
-    }
-
-    private fun renderNewChatMessageNotice() {
-        chatNewMessages.visibility =
-            if (newChatMessagesWhileTyping > 0) View.VISIBLE else View.INVISIBLE
-        if (newChatMessagesWhileTyping > 0) {
-            val label = if (newChatMessagesWhileTyping == 1) "MENSAJE NUEVO" else "MENSAJES NUEVOS"
-            chatNewMessages.text = "$newChatMessagesWhileTyping $label - VER"
-        }
-        chatNewMessages.contentDescription = if (newChatMessagesWhileTyping > 0) {
-            "Ver $newChatMessagesWhileTyping mensajes nuevos"
-        } else {
-            "Sin mensajes nuevos"
-        }
-    }
-
-    private fun acknowledgeNewChatMessages() {
-        newChatMessagesWhileTyping = 0
-        renderNewChatMessageNotice()
-        chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    private fun renderChatBadge() {
-        chatUnreadBadge.visibility = if (unreadChatCount > 0) View.VISIBLE else View.GONE
-        chatUnreadBadge.text = unreadChatCount.coerceAtMost(99).toString()
-        chatUnreadBadge.bringToFront()
-        updateChatToggleContentDescription()
-    }
-
-    private fun updateChatToggleContentDescription() {
-        btnToggleChat.contentDescription = when {
-            isChatOpen -> "Cerrar chat"
-            unreadChatCount > 0 -> {
-                val suffix = if (unreadChatCount == 1) "mensaje nuevo" else "mensajes nuevos"
-                "Abrir chat, $unreadChatCount $suffix"
-            }
-            else -> "Abrir chat"
-        }
-    }
-
-    private fun sendHumanChatMessage() {
-        if (countdown.isTransitionLocked(session.phaseIndex)) {
-            Toast.makeText(this, "El chat se habilita al comenzar la fase.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val rawMessage = chatInput.text.toString()
-        if (isOnlineGameplay()) {
-            sendOnlineHumanChatMessage(rawMessage)
-            return
-        }
-        val before = session.chatHistory.size
-        session = GameEngine.addHumanChatMessage(
-            session,
-            rawMessage,
-            includeBotReactions = false
-        )
-        if (session.chatHistory.size > before) {
-            GameplayEffects.play(this, GameplayEffect.CHAT)
-            scheduleBotChatReactions(rawMessage)
-            clearChatComposerAfterSend()
-            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-        } else if (!GameEngine.canHumanChat(session)) {
-            GameplayEffects.play(this, GameplayEffect.ERROR)
-            val human = GameEngine.humanPlayer(session)
-            val message = when {
-                !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
-                human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
-                GameplayTableUi.isNightPhase(session.phase) ->
-                    "El pueblo duerme. Las voces deben esperar al amanecer."
-                else -> "No podes escribir durante esta fase."
-            }
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
-        updateUnreadChatCount()
-        renderChatPanel()
-        renderChatBadge()
-    }
-
-    private fun sendOnlineHumanChatMessage(rawMessage: String) {
-        val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
-        if (message.isBlank()) return
-        val now = SystemClock.elapsedRealtime()
-        if (now - lastOnlineChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
-            GameplayEffects.play(this, GameplayEffect.ERROR)
-            Toast.makeText(this, "Espera un momento antes de enviar otro mensaje.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (message.equals(lastOnlineChatMessage, ignoreCase = true)) {
-            GameplayEffects.play(this, GameplayEffect.ERROR)
-            Toast.makeText(this, "Ese mensaje ya fue enviado.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (!GameEngine.canHumanChat(session)) {
-            GameplayEffects.play(this, GameplayEffect.ERROR)
-            val human = GameEngine.humanPlayer(session)
-            val text = when {
-                !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
-                human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
-                GameplayTableUi.isNightPhase(session.phase) ->
-                    "El pueblo duerme. Las voces deben esperar al amanecer."
-                else -> "No podes escribir durante esta fase."
-            }
-            Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val human = GameEngine.humanPlayer(session)
-        FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(onlinePartidaId)
-            .collection("chat")
-            .add(
-                mapOf(
-                    "actorId" to onlinePlayerId,
-                    "speaker" to human.name,
-                    "mensaje" to message,
-                    "fase" to session.phase.name,
-                    "ronda" to session.round,
-                    "isGod" to false,
-                    "creadaEn" to FieldValue.serverTimestamp(),
-                    "creadaEnLocal" to System.currentTimeMillis()
-                )
-            )
-            .addOnSuccessListener {
-                OnlineDebugLog.i(
-                    "chat_send_success roomId=$onlinePartidaId uid=$onlinePlayerId speaker=${human.name} phase=${session.phase.name}"
-                )
-                lastOnlineChatSentAtMs = SystemClock.elapsedRealtime()
-                lastOnlineChatMessage = message
-                GameplayEffects.play(this, GameplayEffect.CHAT)
-                clearChatComposerAfterSend()
-            }
-            .addOnFailureListener { error ->
-                OnlineDebugLog.e(
-                    "chat_send_failure roomId=$onlinePartidaId uid=$onlinePlayerId speaker=${human.name} phase=${session.phase.name}",
-                    error
-                )
-                GameplayEffects.play(this, GameplayEffect.ERROR)
-                Toast.makeText(
-                    this,
-                    OnlineErrorMessages.forAction("No se pudo enviar el mensaje", error),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-    }
-
-    private fun startOnlineChatListener() {
-        if (!isOnlineGameplay() || onlineChatListener != null) return
-        OnlineDebugLog.i("chat_listener_start roomId=$onlinePartidaId uid=$onlinePlayerId")
-        onlineChatListener = FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(onlinePartidaId)
-            .collection("chat")
-            .orderBy("creadaEnLocal")
-            .limit(40)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    OnlineDebugLog.e("chat_listener_failure roomId=$onlinePartidaId uid=$onlinePlayerId", error)
-                    return@addSnapshotListener
-                }
-                if (snapshot == null) return@addSnapshotListener
-                val entries = snapshot.documents.map { document ->
-                    OnlineChatEntry(
-                        id = document.id,
-                        speaker = document.getString("speaker").orEmpty(),
-                        message = document.getString("mensaje").orEmpty(),
-                        isGod = document.getBoolean("isGod") ?: false
-                    )
-                }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
-                OnlineDebugLog.i("chat_snapshot roomId=$onlinePartidaId uid=$onlinePlayerId messages=${entries.size}")
-                applyOnlineChatEntries(entries)
-            }
-    }
-
-    private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
-        val previousCount = session.chatHistory.size
-        val godMessages = session.chatHistory.filter { it.isGod }
-        val onlineMessages = entries.map { GameChatMessage(it.speaker, it.message, it.isGod) }
-        session = session.copy(chatHistory = (godMessages + onlineMessages).takeLast(40))
-        if (session.chatHistory.size > previousCount) {
-            updateUnreadChatCount()
-        }
-        renderChatPanel()
-        renderChatBadge()
-    }
-
-    private fun scheduleBotChatReactions(rawHumanMessage: String) {
-        if (isOnlineGameplay()) return
-        cancelPendingBotChat()
-        val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
-        if (humanMessage.isBlank() || LocalBotAi.isDebugVoteCommand(session, humanMessage)) return
-        val phaseIndex = session.phaseIndex
-        val phase = session.phase
-        val reactions = try {
-            LocalBotAi.reactionsToHumanMessage(session, humanMessage)
-        } catch (_: RuntimeException) {
-            emptyList()
-        }
-        reactions.take(MAX_STAGGERED_BOT_REACTIONS).forEachIndexed { index, (speaker, message) ->
-            scheduleBotChatMessage(
-                speaker = speaker,
-                message = message,
-                phaseIndex = phaseIndex,
-                phase = phase,
-                delayMs = botReactionDelayMs(index, message)
-            )
-        }
-    }
-
-    private fun stageBotBurstForCurrentPhase() {
-        if (isOnlineGameplay()) return
-        if (!::session.isInitialized || stagedBotBurstPhaseIndex == session.phaseIndex) return
-        if (
-            session.phase != GamePhase.DIA_DEBATE &&
-            session.phase != GamePhase.CONTRAPUNTO &&
-            session.phase != GamePhase.VOTACION &&
-            session.phase != GamePhase.DESEMPATE_VOTACION
-        ) {
-            return
-        }
-        val humanName = GameEngine.humanPlayer(session).name
-        val trailingBotMessages = session.chatHistory
-            .asReversed()
-            .takeWhile { !it.isGod && it.speaker != humanName }
-            .asReversed()
-        if (trailingBotMessages.size <= 1) return
-
-        val visibleNow = trailingBotMessages.first()
-        val staged = trailingBotMessages.drop(1)
-        session = session.copy(
-            chatHistory = session.chatHistory.dropLast(trailingBotMessages.size) + visibleNow
-        )
-        stagedBotBurstPhaseIndex = session.phaseIndex
-        staged.forEachIndexed { index, message ->
-            scheduleBotChatMessage(
-                speaker = message.speaker,
-                message = message.message,
-                phaseIndex = session.phaseIndex,
-                phase = session.phase,
-                delayMs = PHASE_BOT_BURST_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS
-            )
-        }
-    }
-
-    private fun scheduleBotChatMessage(
-        speaker: String,
-        message: String,
-        phaseIndex: Int,
-        phase: GamePhase,
-        delayMs: Long
-    ) {
-        val typingRunnable = object : Runnable {
-            override fun run() {
-                pendingBotChatRunnables.remove(this)
-                if (
-                    !::session.isInitialized ||
-                    session.phaseIndex != phaseIndex ||
-                    session.phase != phase ||
-                    session.winner.isNotBlank()
-                ) {
-                    return
-                }
-                typingBotSpeakers += speaker
-                renderChatPanel()
-                chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-            }
-        }
-        val runnable = object : Runnable {
-            override fun run() {
-                pendingBotChatRunnables.remove(this)
-                typingBotSpeakers -= speaker
-                if (
-                    !::session.isInitialized ||
-                    session.phaseIndex != phaseIndex ||
-                    session.phase != phase ||
-                    session.winner.isNotBlank()
-                ) {
-                    return
-                }
-                val beforeCount = session.chatHistory.size
-                session = GameEngine.addBotChatMessage(session, speaker, message)
-                if (session.chatHistory.size == beforeCount) return
-                GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.CHAT)
-                updateUnreadChatCount()
-                renderChatPanel()
-                renderChatBadge()
-            }
-        }
-        pendingBotChatRunnables += typingRunnable
-        pendingBotChatRunnables += runnable
-        autoAdvanceHandler.postDelayed(
-            typingRunnable,
-            (delayMs - BOT_TYPING_LEAD_DELAY_MS).coerceAtLeast(250L)
-        )
-        autoAdvanceHandler.postDelayed(runnable, delayMs)
-    }
-
-    private fun cancelPendingBotChat() {
-        pendingBotChatRunnables.forEach(autoAdvanceHandler::removeCallbacks)
-        pendingBotChatRunnables.clear()
-        typingBotSpeakers.clear()
-    }
-
-    private fun botReactionDelayMs(index: Int, message: String): Long {
-        val readingDelay = (message.length * 38L).coerceAtMost(1_800L)
-        val punctuationDelay = message.count { it == '?' || it == ',' }.coerceAtMost(3) * 180L
-        val humanJitter = ((message.hashCode() and 0x7fffffff) % 1_250).toLong()
-        return FIRST_BOT_REACTION_DELAY_MS +
-            humanJitter +
-            index * NEXT_BOT_REACTION_DELAY_MS +
-            readingDelay +
-            punctuationDelay
-    }
-
-    private fun clearChatComposerAfterSend() {
-        chatInput.text.clear()
-        chatInput.setText("")
-        chatInput.setSelection(0)
-        chatInput.post {
-            if (::chatInput.isInitialized) {
-                chatInput.text.clear()
-                chatInput.setText("")
-                chatInput.setSelection(0)
-                renderChatCharacterCount(0)
-            }
-        }
-    }
-
-    private fun chatInputHint(canChat: Boolean): String {
-        if (canChat) return "Escribir..."
-        val human = GameEngine.humanPlayer(session)
-        if (!human.alive) return "Eliminado: solo lectura"
-        if (human.muted) return "Muteado: solo lectura"
-        return when (session.phase) {
-            GamePhase.NOCHE_ASESINO,
-            GamePhase.NOCHE_MERCENARIO,
-            GamePhase.NOCHE_POLICIA,
-            GamePhase.NOCHE_MEDICO -> "El pueblo duerme..."
-            GamePhase.NOCHE_ORACULO -> "El pueblo duerme..."
-            GamePhase.REPARTO,
-            GamePhase.AMANECER,
-            GamePhase.RESULTADO -> "Solo lectura"
-            else -> "Solo lectura"
         }
     }
 
@@ -4375,7 +3634,7 @@ class GameplayMockActivity : BaseActivity() {
                 session = resolveOnlineNightWindow(nightActions)
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
-                stageBotBurstForCurrentPhase()
+                chatController.stageBotBurstForCurrentPhase()
                 clearSelection()
                 renderGame()
             }
@@ -4390,7 +3649,7 @@ class GameplayMockActivity : BaseActivity() {
                 session = resolveOnlineNightWindow()
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
-                stageBotBurstForCurrentPhase()
+                chatController.stageBotBurstForCurrentPhase()
                 clearSelection()
                 renderGame()
             }
@@ -4683,7 +3942,7 @@ class GameplayMockActivity : BaseActivity() {
         renderHumanCardIfVisible()
     }
 
-    private fun renderHumanCardIfVisible() {
+    override fun renderHumanCardIfVisible() {
         val role = GameEngine.humanPlayer(session).role
         val showRole = isCardRevealed || session.phase == GamePhase.REPARTO
         val borderColor = if (showRole) {
@@ -4992,7 +4251,7 @@ class GameplayMockActivity : BaseActivity() {
         return "$base$selection"
     }
 
-    private fun renderPersonalStatus() {
+    override fun renderPersonalStatus() {
         val status = GameplayTableUi.personalStatus(session)
         val eliminated = !GameEngine.humanPlayer(session).alive
         actionControls.visibility = if (eliminated) View.GONE else View.VISIBLE
@@ -5237,6 +4496,7 @@ class GameplayMockActivity : BaseActivity() {
         dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
+        GameplayAudioDirector.play(this, GameSound.ELIMINATION)
         deathRevealAnimator.start(player, session.revealRolesOnDeath)
     }
 
@@ -5284,8 +4544,7 @@ class GameplayMockActivity : BaseActivity() {
         if (isTieVoteVisible) return true
         if (
             session.phase != GamePhase.DESEMPATE_VOTACION ||
-            isChatOpen ||
-            restoreTieVoteAfterChat
+            chatController.isOpenOrRestoringTieVote()
         ) {
             return false
         }
@@ -5297,6 +4556,7 @@ class GameplayMockActivity : BaseActivity() {
         if (session.phase != GamePhase.DESEMPATE_VOTACION) return
         dismissActionFeedbackBannerNow()
         isTieVoteVisible = true
+        GameplayAudioDirector.play(this, GameSound.TIE_BREAK)
         tieVoteOverlay.visibility = View.VISIBLE
         tieVoteOverlay.alpha = 0f
         tieVotePanel.scaleX = 0.96f
@@ -5482,13 +4742,6 @@ class GameplayMockActivity : BaseActivity() {
         renderTieVoteWindow()
     }
 
-    private fun openChatFromTieVote() {
-        if (!GameEngine.canHumanChat(session)) return
-        restoreTieVoteAfterChat = true
-        hideTieVoteWindow(clearSelection = false)
-        toggleChatPanel()
-    }
-
     private fun hideTieVoteWindow(clearSelection: Boolean) {
         if (!::tieVoteOverlay.isInitialized) return
         tieVoteOverlay.animate().cancel()
@@ -5526,6 +4779,7 @@ class GameplayMockActivity : BaseActivity() {
             session.dayEliminationTarget.isNotBlank() &&
             !voteExpulsionComplete
         ) {
+            GameplayAudioDirector.play(this, GameSound.EXPULSION)
             voteResultAnimator.playExpulsion(session) {
                 voteExpulsionComplete = true
             }
@@ -5579,6 +4833,7 @@ class GameplayMockActivity : BaseActivity() {
         dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         isSilenceRevealRunning = true
+        GameplayAudioDirector.play(this, GameSound.SILENCE)
         silenceRevealAnimator.start(player)
     }
 
@@ -5684,20 +4939,28 @@ class GameplayMockActivity : BaseActivity() {
         eventLogHeightAnimator?.cancel()
         isJesterVictoryVisible = true
         presentedSpecialVictoryCount += 1
-        jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÓN"
+        jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÃ“N"
         jesterVictoryMessage.text =
-            "Consiguió que el pueblo lo expulsara durante la votación."
+            "ConsiguiÃ³ que el pueblo lo expulsara durante la votaciÃ³n."
         val player = session.players.firstOrNull { it.name == victory.playerName }
         jesterVictoryImage.setImageResource(roleImageFor(player?.role))
         MusicManager.playVictoryMusic(this)
-        GameplaySoundEffects.play(this, R.raw.jester_victory)
+        GameplayAudioDirector.play(this, GameSound.JESTER)
         jesterVictoryAnimator.show(JESTER_VICTORY_DURATION_MS)
     }
 
     private fun playResolvedActionSound(before: GameSession, after: GameSession) {
         when {
             !before.payadorUsed && after.payadorUsed -> {
-                GameplaySoundEffects.play(this, R.raw.payador_ability)
+                GameplayAudioDirector.play(this, GameSound.PAYADOR)
+            }
+            before.phase == GamePhase.NOCHE_ORACULO && after.oracleUsed && !before.oracleUsed -> {
+                GameplayAudioDirector.play(this, GameSound.ORACLE)
+            }
+            before.phase == GamePhase.VOTACION ||
+                before.phase == GamePhase.DESEMPATE_VOTACION ||
+                before.phase == GamePhase.ALCALDE_DESEMPATE -> {
+                GameplayAudioDirector.play(this, GameSound.VOTE_CAST)
             }
         }
     }
@@ -5977,11 +5240,20 @@ class GameplayMockActivity : BaseActivity() {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         val fromPeriod = presentedPeriod ?: spec.period
+        transitionSoundForCurrentPhase()?.let { GameplayAudioDirector.play(this, it) }
         dayNightTransitionAnimator.start(
             spec,
             fromPeriod,
             session.timingConfig.normalized().transitionSeconds * 1000L
         )
+    }
+
+    private fun transitionSoundForCurrentPhase(): GameSound? {
+        return when {
+            GameplayTableUi.isNightPhase(session.phase) -> GameSound.NIGHT_FALL
+            session.phase == GamePhase.AMANECER -> GameSound.DAWN
+            else -> null
+        }
     }
 
     private fun finishDayNightTransition(spec: GameplayTransitionSpec) {
@@ -6070,7 +5342,7 @@ class GameplayMockActivity : BaseActivity() {
         }
     }
 
-    private fun dp(value: Int): Int {
+    override fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
 
@@ -6107,7 +5379,7 @@ class GameplayMockActivity : BaseActivity() {
         pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)
-        val title = if (isInitial) "Elige tu bando" else "¿Quieres cambiar de bando?"
+        val title = if (isInitial) "Elige tu bando" else "Â¿Quieres cambiar de bando?"
         val message = if (isInitial) {
             "Tu eleccion es secreta. Para ganar tienes que sobrevivir y lograr que venza tu bando."
         } else {
@@ -6159,36 +5431,11 @@ class GameplayMockActivity : BaseActivity() {
     )
 
     companion object {
-        private const val CHAT_PANEL_WIDTH_RATIO = 0.46f
-        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.72f
-        private const val CHAT_PANEL_MIN_WIDTH_DP = 320
-        private const val CHAT_PANEL_MAX_WIDTH_DP = 420
-        private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 300
-        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 520
-        private const val CHAT_PANEL_COMPACT_MARGIN_DP = 5
-        private const val CHAT_PANEL_TOP_MARGIN_DP = 86
-        private const val CHAT_PANEL_BOTTOM_MARGIN_DP = 96
-        private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
-        private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f
-        private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
-        private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
-        private const val CHAT_SHEET_SIDE_MARGIN_DP = 6
-        private const val CHAT_SHEET_KEYBOARD_BOTTOM_MARGIN_DP = 0
-        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
-        private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
-        private const val CHAT_MESSAGE_MAX_LENGTH = 140
-        private const val CHAT_MESSAGE_WARNING_LENGTH = 120
-        private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
         private const val PLAYER_STATE_CONNECTED = "conectado"
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
-        private const val MAX_STAGGERED_BOT_REACTIONS = 3
-        private const val FIRST_BOT_REACTION_DELAY_MS = 3_200L
-        private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
-        private const val PHASE_BOT_BURST_DELAY_MS = 1_800L
-        private const val BOT_TYPING_LEAD_DELAY_MS = 1_650L
+        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
-        private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
         private const val STATE_VOTE_NO_EXPULSION_PRESENTED =
             "vote_no_expulsion_presented"

@@ -1674,6 +1674,74 @@ class GameEngineTest {
     }
 
     @Test
+    fun botReactsToPublicDeathEventWithoutLeakingSecretRoles() {
+        val session = publicNameSession().copy(
+            code = "EVENT-DEATH",
+            phase = GamePhase.DIA_DEBATE,
+            publicAnnouncement = "Amanecer: murio Dina."
+        )
+        val event = LocalBotAi.publicEventFromAnnouncement(session)
+
+        assertEquals(LocalBotAi.BotEventType.MUERTE_NOCTURNA, event?.type)
+        assertEquals("Dina", event?.target)
+
+        val reactions = LocalBotAi.reactionsToEvent(session, event!!)
+        val text = reactions.joinToString(" ") { it.second }
+
+        assertTrue("Reacciones: $reactions", reactions.isNotEmpty())
+        assertTrue("Reacciones: $reactions", reactions.size <= 3)
+        assertTrue("Reacciones: $text", text.contains("Dina", ignoreCase = true))
+        assertFalse("Reacciones: $text", text.contains("asesino", ignoreCase = true))
+        assertFalse("Reacciones: $text", text.contains("traidor", ignoreCase = true))
+    }
+
+    @Test
+    fun publicEventPrefersSilenceWhenNobodyDied() {
+        val session = publicNameSession().copy(
+            publicAnnouncement = "Amanecer: no murio nadie. Dina no puede hablar ni votar hoy."
+        )
+
+        val event = LocalBotAi.publicEventFromAnnouncement(session)
+
+        assertEquals(LocalBotAi.BotEventType.SILENCIO, event?.type)
+        assertEquals("Dina", event?.target)
+    }
+
+    @Test
+    fun botVoteUsesPublicTrustThenAccuseContradiction() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.VOTACION,
+            claimLedger = mapOf(
+                "Dina" to listOf(
+                    ClaimRecord(
+                        round = 1,
+                        phase = GamePhase.DIA_DEBATE,
+                        statementType = StatementType.TRUST,
+                        target = "Ana"
+                    ),
+                    ClaimRecord(
+                        round = 1,
+                        phase = GamePhase.DIA_DEBATE,
+                        statementType = StatementType.ACCUSE,
+                        target = "Ana"
+                    )
+                )
+            )
+        )
+        val ciro = GameEngine.playerByName(session, "Ciro")!!
+
+        assertEquals("Dina", LocalBotAi.chooseVoteTarget(session, ciro))
+    }
+
+    @Test
+    fun gameSoundRelativeVolumesOnlyAttenuate() {
+        GameSound.entries.forEach { sound ->
+            assertTrue("${sound.name}: ${sound.relativeVolume}", sound.relativeVolume > 0f)
+            assertTrue("${sound.name}: ${sound.relativeVolume}", sound.relativeVolume <= 1f)
+        }
+    }
+
+    @Test
     fun botVotesUsePublicDoubleClaimAsSuspicion() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,

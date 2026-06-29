@@ -1,6 +1,13 @@
 # App Traidores
 
-Proyecto Android/Kotlin del juego **Traidores**, una simulacion mobile de partida social con lobby, asignacion de roles, fases de noche/dia, votacion, expulsion y resultados.
+Proyecto Android/Kotlin del juego **Traidores**, un juego mobile de deduccion social con lobby, asignacion de roles, fases de noche/dia, votacion, expulsion y resultados.
+
+Tiene dos modos:
+
+- **Local (vs IA):** completo y offline. Jugas contra bots conversacionales (`LocalBotAi`).
+- **Online (experimental):** real, sobre **Firebase Firestore** (crear/buscar sala por codigo, presencia, sincronizacion por fases y recuperacion). Todavia sin Firebase Auth, App Check ni Cloud Functions. Ver [`docs/firebase-online-schema.md`](docs/firebase-online-schema.md).
+
+Version actual: `0.1.0-alpha`.
 
 ## Como abrir el proyecto
 
@@ -9,6 +16,8 @@ Proyecto Android/Kotlin del juego **Traidores**, una simulacion mobile de partid
 3. Elegir esta carpeta del proyecto: `App Traidores`.
 4. Esperar la sincronizacion de Gradle.
 5. Ejecutar la app en un emulador o dispositivo Android.
+
+> Para compilar se necesita `app/google-services.json` (Firebase, gitignored). El modo local funciona offline; el online requiere internet y Firebase configurado.
 
 ## Pantallas principales
 
@@ -34,4 +43,14 @@ En **Lobby > Opciones avanzadas** existe `MODO TEST RAPIDO`. Al activarlo, la pa
 - `roles_gauchos/`, `roles_griegos/`, `roles_medievales/`: recursos visuales de roles por mapa/tematica.
 - `tmp/`: archivos temporales o previews locales, no necesarios para compilar.
 
-Mas detalle en `docs/project-structure.md`.
+## Documentacion
+
+Toda la documentacion del proyecto esta en [`docs/`](docs/README.md):
+
+- **General:** [vision/objetivos/alcance](docs/general/01-vision-objetivos-alcance.md), [mecanicas](docs/general/02-mecanicas.md), [arquitectura](docs/general/03-arquitectura.md), [tecnologias](docs/general/04-tecnologias.md), [estructura](docs/general/05-estructura-proyecto.md), [convenciones](docs/general/06-convenciones-codigo.md), [flujo](docs/general/07-flujo-funcionamiento.md).
+- **Desarrollo:** [guia para nuevos devs](docs/desarrollo/guia-nuevos-desarrolladores.md), [backlog](docs/desarrollo/backlog.md), [decisiones de arquitectura](docs/desarrollo/decisiones-arquitectura.md).
+- **Online:** [contrato Firestore](docs/firebase-online-schema.md).
+
+> La documentacion para la facultad (Analisis de Sistemas / Bases de Datos) se movio fuera del repo a `Facultad/Objetos/App Traidores - Analisis y BD/`.
+
+> Nota: [`docs/project-structure.md`](docs/project-structure.md) quedo parcialmente desactualizado; la version vigente es [`docs/general/05-estructura-proyecto.md`](docs/general/05-estructura-proyecto.md).

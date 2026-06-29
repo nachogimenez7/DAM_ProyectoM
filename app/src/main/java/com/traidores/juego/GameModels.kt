@@ -523,7 +523,7 @@ object LocalGameFactory {
             publicAnnouncement = publicStart,
             privateHint = privateStart,
             publicHistory = listOf(publicStart),
-            chatHistory = emptyList(),
+            chatHistory = listOf(GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, publicStart, isGod = true)),
             claimLedger = emptyMap(),
             godHistory = listOf(publicStart),
             actionHistory = emptyList(),

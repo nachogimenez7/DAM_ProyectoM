@@ -4,9 +4,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
-import android.content.Context
 import android.graphics.Path
-import android.media.MediaPlayer
 import android.os.Handler
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -15,7 +13,6 @@ import android.widget.ImageView
 import android.widget.TextView
 
 internal class DayNightTransitionAnimator(
-    private val context: Context,
     private val handler: Handler,
     private val overlay: FrameLayout,
     private val fromBackground: ImageView,
@@ -32,7 +29,6 @@ internal class DayNightTransitionAnimator(
         private set
 
     private var animator: AnimatorSet? = null
-    private var soundPlayer: MediaPlayer? = null
     private var durationScale = 1f
     private val musicCue = Runnable {
         if (running) onMusicCue()
@@ -57,7 +53,6 @@ internal class DayNightTransitionAnimator(
         overlay.alpha = 1f
         overlay.visibility = View.VISIBLE
 
-        playSound(spec.period)
         handler.postDelayed(musicCue, scaled(MUSIC_DELAY_MS))
         overlay.post {
             if (running) animate(spec, fromPeriod)
@@ -70,7 +65,6 @@ internal class DayNightTransitionAnimator(
         animator?.cancel()
         animator = null
         handler.removeCallbacks(musicCue)
-        releaseSound()
         overlay.visibility = View.GONE
         overlay.alpha = 1f
     }
@@ -178,7 +172,6 @@ internal class DayNightTransitionAnimator(
         running = false
         animator = null
         handler.removeCallbacks(musicCue)
-        releaseSound()
         overlay.visibility = View.GONE
         overlay.alpha = 1f
         onFinished(spec)
@@ -235,36 +228,6 @@ internal class DayNightTransitionAnimator(
 
     private fun scaled(valueMs: Long): Long {
         return (valueMs * durationScale).toLong().coerceAtLeast(1L)
-    }
-
-    private fun playSound(period: GameplayPeriod) {
-        releaseSound()
-        val preferences = AudioPreferences.preferences(context)
-        val effectsOn = AudioPreferences.areEffectsEnabled(preferences)
-        val volume = AudioPreferences.effectsVolume(preferences)
-        if (!effectsOn || volume <= 0f) return
-
-        val soundRes = if (period == GameplayPeriod.NIGHT) {
-            R.raw.transition_night
-        } else {
-            R.raw.transition_day
-        }
-        soundPlayer = MediaPlayer.create(context, soundRes)?.apply {
-            setVolume(volume, volume)
-            setOnCompletionListener { completed ->
-                if (soundPlayer === completed) soundPlayer = null
-                completed.release()
-            }
-            start()
-        }
-    }
-
-    private fun releaseSound() {
-        soundPlayer?.runCatching {
-            stop()
-            release()
-        }
-        soundPlayer = null
     }
 
     private companion object {

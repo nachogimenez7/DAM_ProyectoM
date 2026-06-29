@@ -1,5 +1,7 @@
 # Estructura del proyecto
 
+> ⚠️ **Documento parcialmente desactualizado.** Menciona archivos que ya no existen (`PlayerProfileStore.kt`, `OnlineLobbyModels.kt`, `OnlineLobbyStore.kt`) y describe el online como "simulado/local" cuando hoy es real sobre Firestore. La versión vigente es [`general/05-estructura-proyecto.md`](general/05-estructura-proyecto.md). Se conserva como referencia histórica.
+
 Esta guia resume donde esta cada parte importante sin mover paquetes Kotlin antes de la presentacion.
 
 ## Raiz

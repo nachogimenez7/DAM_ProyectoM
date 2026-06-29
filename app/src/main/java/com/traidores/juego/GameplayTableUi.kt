@@ -23,10 +23,11 @@ enum class PublicEventType(val colorHex: String) {
 }
 
 enum class GameplayActionTone(val colorHex: String, val darkText: Boolean) {
-    KILL("#8F2633", false),
+    KILL("#D12A1E", false),
     SAVE("#5A8A3C", false),
     INVESTIGATE("#4A7FB5", false),
-    SILENCE("#111111", false),
+    SILENCE("#6E2632", false),
+    CONTRAPUNTO("#D4A24E", true),
     DECIDE("#5F4524", false),
     DEFAULT("#2A2318", false)
 }
@@ -177,10 +178,10 @@ object GameplayTableUi {
             "INVESTIGAR",
             "INVOCAR" -> GameplayActionTone.INVESTIGATE
             "SILENCIAR" -> GameplayActionTone.SILENCE
+            "CONTRAPUNTO",
+            "SENALAR" -> GameplayActionTone.CONTRAPUNTO
             "VOTAR",
             "DECIDIR",
-            "CONTRAPUNTO",
-            "SENALAR",
             "REVELARME",
             "ELEGIR BANDO",
             "REVISAR BANDO" -> GameplayActionTone.DECIDE
@@ -234,13 +235,19 @@ object GameplayTableUi {
             )
             GamePhase.DIA_DEBATE -> actionConfirmation(
                 title = "CONTRAPUNTO",
-                message = "Elegiste a $target.",
-                target = target
+                message = if (after.phase == GamePhase.CONTRAPUNTO) {
+                    "Elegiste a $target. El Contrapunto empieza ahora."
+                } else {
+                    "Elegiste a $target. Falta un participante."
+                },
+                target = target,
+                tone = GameplayActionTone.CONTRAPUNTO
             )
             GamePhase.CONTRAPUNTO -> actionConfirmation(
                 title = "SENALAMIENTO",
                 message = "Senalaste a $target.",
-                target = target
+                target = target,
+                tone = GameplayActionTone.CONTRAPUNTO
             )
             GamePhase.VOTACION -> actionConfirmation(
                 title = "VOTO REGISTRADO",
@@ -310,14 +317,15 @@ object GameplayTableUi {
     private fun actionConfirmation(
         title: String,
         message: String,
-        target: String
+        target: String,
+        tone: GameplayActionTone = GameplayActionTone.DECIDE
     ): GameplayFeedbackSpec {
         return GameplayFeedbackSpec(
             type = GameplayFeedbackType.ACTION_CONFIRMATION,
             title = title,
             message = message,
             target = target,
-            tone = GameplayActionTone.DECIDE,
+            tone = tone,
             durationMs = 1200L
         )
     }

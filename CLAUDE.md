@@ -4,9 +4,11 @@
 
 **App Traidores**
 
-App Traidores es un juego móvil Android de deducción social con ambientación histórica y medieval. Actualmente permite recorrer menús, configurar partidas, usar perfiles personalizables y jugar una simulación local del flujo de una partida; las superficies online todavía funcionan con datos simulados.
+App Traidores es un juego móvil Android de deducción social con ambientación histórica y medieval. Actualmente permite recorrer menús, configurar partidas, usar perfiles personalizables y jugar una partida completa contra IA en modo local. El modo online es **real pero experimental**: usa Firebase Firestore (colección `partidas`) para crear/buscar salas, presencia, sincronización por fases y recuperación, sin Firebase Auth, App Check ni Cloud Functions todavía. Ver `docs/firebase-online-schema.md`.
 
 Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, perfil y chat antes de incorporar nuevos roles o servicios reales.
+
+> Documentación completa del proyecto en `docs/` (índice en `docs/README.md`): visión, arquitectura, mecánicas, estructura, convenciones, guía de desarrollo, backlog y material para la facultad (casos de uso, modelo de dominio, DER/relacional, diccionario de datos).
 
 **Core Value:** El jugador debe poder recorrer y utilizar las pantallas principales sin contenido cortado, controles confusos, rutas rotas ni pérdida inesperada de estado.
 
@@ -67,7 +69,7 @@ Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, pe
 
 ## Configuration
 
-- No environment variables are required.
+- No environment variables are required, but Firebase needs `app/google-services.json` (gitignored) for the build to succeed, since the `com.google.gms.google-services` plugin is applied.
 - `local.properties` contains machine-specific Android SDK configuration and is gitignored.
 - User preferences and profile mock data use `SharedPreferences` under the `TraidoresPrefs` namespace.
 - `settings.gradle` defines repositories and the single `:app` module.
@@ -80,7 +82,7 @@ Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, pe
 - Android Studio/JDK and Android SDK 34 are required.
 - The project has no command-line Node.js dependency.
 - Single Android APK application with application ID `com.traidores.juego`.
-- Current implementation is local/mock-first and does not require network access.
+- The local (vs AI) mode works fully offline. The online mode is experimental and requires network access plus a configured Firebase project (Firestore); `INTERNET` permission is declared in the manifest.
 
 <!-- GSD:stack-end -->
 

@@ -111,6 +111,7 @@ object OnlineMatchSessionBuilder {
             publicAnnouncement = publicStart,
             privateHint = privateStart,
             publicHistory = listOf(publicStart),
+            chatHistory = listOf(GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, publicStart, isGod = true)),
             godHistory = listOf(publicStart),
             desertorTeam = initialOnlineDesertorTeam(players, base.code)
         )
@@ -158,6 +159,10 @@ object OnlineMatchSessionBuilder {
                 ?: base.publicAnnouncement,
             publicHistory = publicHistory,
             godHistory = publicHistory,
+            chatHistory = GameplayFeedMessages.appendGodEvents(
+                base.chatHistory,
+                publicHistory
+            ),
             winner = (state["ganador"] as? String).orEmpty(),
             nightKillTarget = (state["victimaNoche"] as? String).orEmpty(),
             nightSilenceTarget = (state["silenciado"] as? String).orEmpty(),

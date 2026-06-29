@@ -1873,11 +1873,14 @@ object GameEngine {
         return copy(
             publicHistory = (publicHistory + message).takeLast(8),
             godHistory = (godHistory + message).takeLast(32)
-        )
+        ).withChatMessage("Dios", message, isGod = true)
     }
 
     private fun GameSession.withChatMessage(speaker: String, message: String, isGod: Boolean = false): GameSession {
-        return copy(chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod)).takeLast(40))
+        return copy(
+            chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod))
+                .takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+        )
     }
 
     private fun GameSession.withRecordedClaim(speaker: String, message: String): GameSession {

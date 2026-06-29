@@ -6,7 +6,7 @@ import android.media.MediaPlayer
 object GameplaySoundEffects {
     private val activePlayers = mutableSetOf<MediaPlayer>()
 
-    fun play(context: Context, soundRes: Int) {
+    fun play(context: Context, soundRes: Int, volumeScale: Float = 1f) {
         val preferences = AudioPreferences.preferences(context)
         if (!AudioPreferences.areEffectsEnabled(preferences)) return
 
@@ -15,7 +15,8 @@ object GameplaySoundEffects {
 
         val player = MediaPlayer.create(context.applicationContext, soundRes) ?: return
         activePlayers += player
-        player.setVolume(volume, volume)
+        val effectiveVolume = volume * volumeScale.coerceIn(0f, 1f)
+        player.setVolume(effectiveVolume, effectiveVolume)
         player.setOnCompletionListener(::release)
         player.setOnErrorListener { failed, _, _ ->
             release(failed)
