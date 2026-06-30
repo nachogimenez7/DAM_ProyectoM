@@ -18,8 +18,8 @@ object MusicManager {
 
     private val pauseIfBackground = Runnable {
         if (activeScreens == 0) {
-            player?.pause()
-            victoryPlayer?.pause()
+            pausePlayer()
+            pauseVictoryPlayer()
         }
     }
 
@@ -42,29 +42,21 @@ object MusicManager {
         val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
         val volume = AudioPreferences.musicVolume(sharedPref)
 
-        if (player == null) {
-            player = MediaPlayer.create(appContext, currentTrackRes).apply {
-                isLooping = true
-            }
-        }
+        ensurePlayer(appContext)
 
-        player?.setVolume(volume, volume)
-        victoryPlayer?.setVolume(volume, volume)
+        player.runCatchingIfPresent { setVolume(volume, volume) }
+        victoryPlayer.runCatchingIfPresent { setVolume(volume, volume) }
 
         if (activeScreens > 0 && musicOn && volume > 0f && !transitionPaused) {
-            if (player?.isPlaying == false) {
-                player?.start()
-            }
+            startPlayer()
         } else {
-            player?.pause()
+            pausePlayer()
         }
 
         if (activeScreens > 0 && musicOn && volume > 0f && victoryPlayer != null) {
-            if (victoryPlayer?.isPlaying == false) {
-                victoryPlayer?.start()
-            }
+            startVictoryPlayer()
         } else if (!musicOn || volume <= 0f) {
-            victoryPlayer?.pause()
+            pauseVictoryPlayer()
         }
     }
 
@@ -89,13 +81,13 @@ object MusicManager {
 
     fun pauseForTransition() {
         transitionPaused = true
-        player?.pause()
+        pausePlayer()
     }
 
     fun resumeGamePhaseAfterTransition(context: Context, session: GameSession) {
         if (session.winner.isNotBlank()) {
             transitionPaused = true
-            player?.pause()
+            pausePlayer()
             return
         }
         transitionPaused = false
@@ -104,11 +96,11 @@ object MusicManager {
 
     fun prepareGamePhaseWithoutPlayback(session: GameSession) {
         transitionPaused = false
-        player?.pause()
+        pausePlayer()
         val trackRes = trackForSession(session)
         if (currentTrackRes != trackRes) {
             currentTrackRes = trackRes
-            player?.release()
+            releasePlayer()
             player = null
         }
     }
@@ -120,7 +112,7 @@ object MusicManager {
         }
 
         transitionPaused = true
-        player?.pause()
+        pausePlayer()
         val appContext = context.applicationContext
         val sharedPref = AudioPreferences.preferences(appContext)
         val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
@@ -130,24 +122,36 @@ object MusicManager {
         victoryPlayer = MediaPlayer.create(appContext, R.raw.victory_music)?.apply {
             isLooping = false
             setVolume(volume, volume)
+            setOnErrorListener { errored, _, _ ->
+                if (victoryPlayer === errored) {
+                    victoryPlayer = null
+                }
+                errored.runCatching { release() }
+                true
+            }
             setOnCompletionListener { completed ->
                 if (victoryPlayer === completed) {
                     victoryPlayer = null
                 }
-                completed.release()
+                completed.runCatching { release() }
             }
-            start()
+            runCatching { start() }.onFailure {
+                if (victoryPlayer === this) {
+                    victoryPlayer = null
+                }
+                runCatching { release() }
+            }
         }
     }
 
     fun resumeVictoryMusic(context: Context) {
         transitionPaused = true
-        player?.pause()
+        pausePlayer()
         refresh(context)
     }
 
     fun pauseVictoryMusic() {
-        victoryPlayer?.pause()
+        pauseVictoryPlayer()
     }
 
     fun stopVictoryMusic() {
@@ -192,5 +196,59 @@ object MusicManager {
         player?.release()
         player = null
         refresh(context)
+    }
+
+    private fun ensurePlayer(context: Context) {
+        if (player != null) return
+        player = MediaPlayer.create(context, currentTrackRes)?.apply {
+            isLooping = true
+            setOnErrorListener { errored, _, _ ->
+                if (player === errored) {
+                    player = null
+                }
+                errored.runCatching { release() }
+                true
+            }
+        }
+    }
+
+    private fun startPlayer() {
+        val current = player ?: return
+        runCatching {
+            if (!current.isPlaying) current.start()
+        }.onFailure {
+            if (player === current) {
+                player = null
+            }
+            current.runCatching { release() }
+        }
+    }
+
+    private fun pausePlayer() {
+        player.runCatchingIfPresent { pause() }
+    }
+
+    private fun releasePlayer() {
+        player.runCatchingIfPresent { release() }
+    }
+
+    private fun startVictoryPlayer() {
+        val current = victoryPlayer ?: return
+        runCatching {
+            if (!current.isPlaying) current.start()
+        }.onFailure {
+            if (victoryPlayer === current) {
+                victoryPlayer = null
+            }
+            current.runCatching { release() }
+        }
+    }
+
+    private fun pauseVictoryPlayer() {
+        victoryPlayer.runCatchingIfPresent { pause() }
+    }
+
+    private inline fun MediaPlayer?.runCatchingIfPresent(block: MediaPlayer.() -> Unit) {
+        this?.runCatching(block)
     }
 }

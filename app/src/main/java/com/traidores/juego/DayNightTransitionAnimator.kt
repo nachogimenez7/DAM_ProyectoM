@@ -23,6 +23,7 @@ internal class DayNightTransitionAnimator(
     private val title: TextView,
     private val backgroundFor: (GameplayPeriod) -> Int,
     private val onMusicCue: () -> Unit,
+    private val onRevealBackground: (GameplayTransitionSpec) -> Unit,
     private val onFinished: (GameplayTransitionSpec) -> Unit
 ) {
     var running: Boolean = false
@@ -153,7 +154,16 @@ internal class DayNightTransitionAnimator(
             duration = scaled(420L)
         }
         animators += fadeAnimator(title, 1f, 0f, 1600L, 360L)
-        animators += fadeAnimator(overlay, 1f, 0f, 1850L, 350L)
+        // Justo cuando el overlay empieza a desvanecerse (todavia 100% opaco) intercambiamos
+        // el mapa de fondo real al nuevo periodo. Asi el fade revela el mapa nuevo y no se
+        // asoma por un frame el mapa de la fase anterior.
+        animators += fadeAnimator(overlay, 1f, 0f, 1850L, 350L).apply {
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: Animator) {
+                    if (running) onRevealBackground(spec)
+                }
+            })
+        }
 
         animator = AnimatorSet().apply {
             interpolator = AccelerateDecelerateInterpolator()

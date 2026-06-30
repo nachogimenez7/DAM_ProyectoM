@@ -556,6 +556,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onMusicCue = {
                 MusicManager.resumeGamePhaseAfterTransition(this, session)
             },
+            onRevealBackground = { spec ->
+                revealDayNightBackground(spec)
+            },
             onFinished = { spec ->
                 finishDayNightTransition(spec)
             }
@@ -2366,15 +2369,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     colorHex = CENTRAL_EVENT_DANGER_HEX,
                     iconColorHex = CENTRAL_EVENT_DANGER_HEX
                 )
-            text.contains("no murio nadie") ->
-                CentralPublicEventSpec(
-                    icon = "+",
-                    label = "AMANECER DEL DIA ${session.round}",
-                    title = "NOCHE SIN MUERTES",
-                    message = "El pueblo despierta sin victimas.",
-                    colorHex = CENTRAL_EVENT_SAFE_HEX,
-                    iconColorHex = CENTRAL_EVENT_MEDIC_HEX
-                )
+            // "Noche sin muertes" ya se anuncia en el chat central (mensaje de Dios);
+            // no abrimos una ventana aparte para ese caso.
             else -> null
         }
     }
@@ -2690,16 +2686,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val frame = revealPanelBackgroundForMap(session.mapKey)
         // Reveals grandes: marco ornamental (xxhdpi). El contenido se insetea para caer dentro
         // del centro oscuro del marco (los bordes decorativos ocupan ~56dp por lado).
+        // Reveal de muerte: layout horizontal (carta a la izquierda, texto a la derecha),
+        // por eso el marco va mas ancho y mas bajo que los reveals verticales.
         deathRevealContent.setBackgroundResource(frame)
-        deathRevealContent.setPadding(dp(50), dp(66), dp(50), dp(42))
+        deathRevealContent.setPadding(dp(56), dp(50), dp(56), dp(48))
         silenceRevealContent.setBackgroundResource(frame)
         silenceRevealContent.setPadding(dp(50), dp(60), dp(50), dp(48))
         voteResultPanel.setBackgroundResource(frame)
         voteResultPanel.setPadding(dp(46), dp(60), dp(46), dp(42))
-        // Ventana de info privada: panel compacto. El marco ornamental grande desordena
-        // este caso porque avisa una decision puntual, no un reveal dramatico.
-        privateFeedbackPanel.setBackgroundResource(compactPanelBackgroundForMap(session.mapKey))
-        privateFeedbackPanel.setPadding(dp(18), dp(12), dp(18), dp(12))
+        // Ventana de info privada: usa el mismo marco ornamental por mapa que los reveals.
+        // El contenido se insetea para caer dentro del centro oscuro (bordes ~56dp por lado).
+        privateFeedbackPanel.setBackgroundResource(frame)
+        privateFeedbackPanel.setPadding(dp(52), dp(56), dp(52), dp(50))
     }
 
     private fun revealPanelBackgroundForMap(mapKey: String): Int {
@@ -2708,15 +2706,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "medieval" -> R.drawable.ui_frame_event_medieval
             "pampa" -> R.drawable.ui_frame_event_pampa
             else -> R.drawable.bg_reveal_event_panel
-        }
-    }
-
-    private fun compactPanelBackgroundForMap(mapKey: String): Int {
-        return when (mapKey) {
-            "grecia" -> R.drawable.bg_chat_box_grecia
-            "medieval" -> R.drawable.bg_chat_box_medieval
-            "pampa" -> R.drawable.bg_chat_box_pampa
-            else -> R.drawable.bg_translucent_game_panel
         }
     }
 
@@ -5356,6 +5345,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
+    private fun revealDayNightBackground(spec: GameplayTransitionSpec) {
+        // Llamado cuando el overlay empieza a desvanecerse: cambiamos el mapa de fondo real
+        // al nuevo periodo mientras el overlay todavia lo tapa, para que el fade no muestre
+        // por un frame el mapa de la fase anterior.
+        if (!isDayNightTransitionRunning) return
+        presentedPeriod = spec.period
+        renderThemedBackground(spec.period)
+    }
+
     private fun finishDayNightTransition(spec: GameplayTransitionSpec) {
         if (!isDayNightTransitionRunning) return
         isDayNightTransitionRunning = false
@@ -5565,10 +5563,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 8_000L
         private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 5_200L
-        private const val CENTRAL_EVENT_SAFE_HEX = "#5A8A3C"
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
-        private const val CENTRAL_EVENT_MEDIC_HEX = "#C94343"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 6
 
