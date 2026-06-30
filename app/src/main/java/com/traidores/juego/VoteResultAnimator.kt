@@ -10,7 +10,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,8 +21,7 @@ class VoteResultAnimator(
     private val handler: Handler,
     private val overlay: FrameLayout,
     private val panel: LinearLayout,
-    private val cards: LinearLayout,
-    private val scroll: HorizontalScrollView,
+    private val cards: GridLayout,
     private val title: TextView,
     private val subtitle: TextView,
     private val notice: TextView,
@@ -41,10 +39,7 @@ class VoteResultAnimator(
         const val REVEALED_CARD_READ_MS = 3_500L
         const val BOOT_IMPACT_PAUSE_MS = 120L
         const val EXPULSION_AFTER_KICK_READ_MS = 1_800L
-        const val RECOUNT_PANEL_WIDTH_DP = 500
-        const val EXPULSION_PANEL_WIDTH_DP = 520
-        const val RECOUNT_SCROLL_HEIGHT_DP = 170
-        const val EXPULSION_SCROLL_HEIGHT_DP = 158
+        const val PANEL_MARGIN_HORIZONTAL_DP = 18
     }
 
     private data class VoteToken(
@@ -67,9 +62,10 @@ class VoteResultAnimator(
 
     fun show(session: GameSession) {
         cancelAnimations()
-        applyPanelMode(expulsion = false)
+        // Vaciar la grilla ANTES de tocar columnCount (evita estados invalidos del GridLayout).
         cardHolders.clear()
         cards.removeAllViews()
+        applyPanelMode(expulsion = false)
         overlay.visibility = View.VISIBLE
         overlay.alpha = 1f
         panel.alpha = 0f
@@ -98,7 +94,7 @@ class VoteResultAnimator(
         } else {
             "La identidad de los votantes permanece oculta."
         }
-        notice.text = ""
+        setNotice("")
 
         val candidateNames = session.players
             .map { it.name }
@@ -108,22 +104,43 @@ class VoteResultAnimator(
                     (session.voteRound == 3 && session.dayEliminationTarget == candidate)
             }
         if (candidateNames.isEmpty()) {
-            cards.addView(emptyVoteMessage())
+            cards.columnCount = 1
+            cards.addView(
+                emptyVoteMessage(),
+                GridLayout.LayoutParams().apply {
+                    width = dp(200)
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    setMargins(dp(6), dp(6), dp(6), dp(6))
+                }
+            )
         } else {
-            candidateNames.forEach { candidate ->
+            val cols = recountColumnCount(candidateNames.size)
+            cards.columnCount = cols
+            val (cardWidth, cardHeight) = recountCardSize(candidateNames.size)
+            val denseCards = candidateNames.size > 4
+            val cardMargin = if (denseCards) 3 else 5
+            val oddLast = cols == 2 && candidateNames.size % 2 == 1
+            candidateNames.forEachIndexed { index, candidate ->
                 val player = session.players.first { it.name == candidate }
-                val holder = createVoteCard(player)
+                val holder = createVoteCard(player, dense = denseCards)
                 cardHolders[candidate] = holder
-                cards.addView(
-                    holder.root,
-                    LinearLayout.LayoutParams(dp(136), dp(168)).apply {
-                        marginStart = dp(9)
-                        marginEnd = dp(9)
-                    }
-                )
+                val row = index / cols
+                val col = index % cols
+                val params = GridLayout.LayoutParams(
+                    GridLayout.spec(row),
+                    GridLayout.spec(col)
+                ).apply {
+                    width = dp(cardWidth)
+                    height = dp(cardHeight)
+                    setMargins(dp(cardMargin), dp(cardMargin), dp(cardMargin), dp(cardMargin))
+                }
+                // La ultima carta impar se centra abarcando ambas columnas.
+                if (oddLast && index == candidateNames.lastIndex) {
+                    params.columnSpec = GridLayout.spec(0, 2, GridLayout.CENTER)
+                }
+                cards.addView(holder.root, params)
             }
         }
-        setCardsViewportWidth(fill = candidateNames.size <= 2)
 
         panel.animate()
             .alpha(1f)
@@ -153,18 +170,21 @@ class VoteResultAnimator(
         cancelScheduled()
         title.text = "EL PUEBLO NO LLEGO A UN ACUERDO"
         subtitle.text = "Nadie sera expulsado esta jornada."
-        notice.text = "La noche volvera a caer sobre el pueblo."
+        setNotice("La noche volvera a caer sobre el pueblo.")
         setContinueReady("CONTINUAR")
     }
 
     fun playExpulsion(session: GameSession, onFinished: () -> Unit) {
         cancelScheduled()
+        // Vaciar la grilla ANTES de cambiar columnCount (evita estados invalidos del GridLayout).
+        cards.removeAllViews()
+        cardHolders.clear()
         applyPanelMode(expulsion = true)
         val targetName = session.dayEliminationTarget
         val targetPlayer = session.players.firstOrNull { it.name == targetName }
         if (targetPlayer == null) {
             title.text = "$targetName FUE EXPULSADO"
-            notice.text = "El pueblo dicto su sentencia."
+            setNotice("El pueblo dicto su sentencia.")
             setContinueReady("CONTINUAR")
             onFinished()
             return
@@ -184,26 +204,24 @@ class VoteResultAnimator(
         } else {
             "El pueblo ha tomado su decision."
         }
-        notice.text = if (session.alcaldeCorruption) {
+        setNotice(if (session.alcaldeCorruption) {
             "$targetName sera expulsado en lugar del Alcalde."
         } else if (session.revealRolesOnDeath) {
             "$targetName sera expulsado. Su carta se revelara primero."
         } else {
             "$targetName sera expulsado del pueblo."
-        }
+        })
         boot.visibility = View.INVISIBLE
-        cards.removeAllViews()
-        cardHolders.clear()
-        scroll.scrollTo(0, 0)
-        setCardsViewportWidth(fill = true)
+        cards.columnCount = 1
 
         val holder = createExpulsionCard(targetPlayer)
         cardHolders[targetName] = holder
         cards.addView(
             holder.root,
-            LinearLayout.LayoutParams(dp(156), dp(154)).apply {
-                marginStart = dp(8)
-                marginEnd = dp(8)
+            GridLayout.LayoutParams().apply {
+                width = dp(142)
+                height = dp(142)
+                setMargins(dp(6), dp(6), dp(6), dp(6))
             }
         )
         holder.root.alpha = 0f
@@ -261,7 +279,7 @@ class VoteResultAnimator(
         val player = session.players.firstOrNull { it.name == session.dayEliminationTarget }
         title.text = "CARTA REVELADA"
         subtitle.text = "${player?.name.orEmpty()} era ${player?.role?.name ?: "DESCONOCIDO"}."
-        notice.text = "La identidad queda expuesta ante todo el pueblo."
+        setNotice("La identidad queda expuesta ante todo el pueblo.")
         holder.total.text = player?.role?.name ?: "DESCONOCIDO"
         holder.roleImage.setImageResource(roleImageFor(player?.role))
         holder.roleImage.alpha = 0f
@@ -285,31 +303,36 @@ class VoteResultAnimator(
     }
 
     private fun applyPanelMode(expulsion: Boolean) {
-        panel.layoutParams = panel.layoutParams.apply {
-            width = if (expulsion) {
-                dp(EXPULSION_PANEL_WIDTH_DP)
-            } else {
-                dp(RECOUNT_PANEL_WIDTH_DP)
-            }
-        }
-        scroll.layoutParams = scroll.layoutParams.apply {
-            height = dp(if (expulsion) EXPULSION_SCROLL_HEIGHT_DP else RECOUNT_SCROLL_HEIGHT_DP)
+        panel.layoutParams = (panel.layoutParams as FrameLayout.LayoutParams).apply {
+            width = FrameLayout.LayoutParams.MATCH_PARENT
+            height = FrameLayout.LayoutParams.WRAP_CONTENT
+            gravity = Gravity.CENTER
+            leftMargin = dp(PANEL_MARGIN_HORIZONTAL_DP)
+            rightMargin = dp(PANEL_MARGIN_HORIZONTAL_DP)
         }
         cards.layoutParams = cards.layoutParams.apply {
             width = ViewGroup.LayoutParams.WRAP_CONTENT
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
         }
-        cards.gravity = Gravity.CENTER
+        cards.columnCount = if (expulsion) 1 else 2
+        cards.useDefaultMargins = false
     }
 
-    private fun setCardsViewportWidth(fill: Boolean) {
-        cards.layoutParams = cards.layoutParams.apply {
-            width = if (fill) {
-                ViewGroup.LayoutParams.MATCH_PARENT
-            } else {
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            }
+    private fun recountColumnCount(candidateCount: Int): Int {
+        return when {
+            candidateCount <= 1 -> 1
+            candidateCount <= 4 -> 2
+            else -> 3
         }
-        cards.gravity = Gravity.CENTER
+    }
+
+    private fun recountCardSize(candidateCount: Int): Pair<Int, Int> {
+        // Las cartas deben entrar en el centro util del marco ornamental, sin scroll.
+        return when {
+            candidateCount <= 2 -> 96 to 136
+            candidateCount <= 4 -> 92 to 128
+            else -> 64 to 108
+        }
     }
 
     private fun kickExpulsionCard(
@@ -328,7 +351,7 @@ class VoteResultAnimator(
         } else {
             "La carta de $targetName permanece oculta."
         }
-        notice.text = "La sentencia esta por cumplirse."
+        setNotice("La sentencia esta por cumplirse.")
         boot.visibility = View.VISIBLE
         boot.alpha = 1f
         boot.translationX = overlay.width.toFloat()
@@ -370,11 +393,11 @@ class VoteResultAnimator(
                             } else {
                                 "Su carta permanece oculta."
                             }
-                            notice.text = if (session.alcaldeCorruption) {
+                            setNotice(if (session.alcaldeCorruption) {
                                 "El poder deja su marca en la jornada."
                             } else {
                                 "El pueblo continua con la partida."
-                            }
+                            })
                             schedule(EXPULSION_AFTER_KICK_READ_MS) {
                                 setContinueReady("CONTINUAR")
                                 onFinished()
@@ -391,12 +414,12 @@ class VoteResultAnimator(
         when {
             tied && session.voteRound == 1 -> {
                 title.text = "EMPATE"
-                notice.text = "SI EL EMPATE SE REPITE, NADIE SERA EXPULSADO."
+                setNotice("SI EL EMPATE SE REPITE, NADIE SERA EXPULSADO.")
                 setContinueReady("IR AL DESEMPATE")
             }
             tied -> {
                 title.text = "EL EMPATE SE REPITIO"
-                notice.text = "El Alcalde podra intervenir. Sin su decision, nadie sera expulsado."
+                setNotice("El Alcalde podra intervenir. Sin su decision, nadie sera expulsado.")
                 setContinueReady("RESOLVER EMPATE")
             }
             session.dayEliminationTarget.isNotBlank() -> {
@@ -407,18 +430,18 @@ class VoteResultAnimator(
                 } else {
                     "MAYORIA ALCANZADA"
                 }
-                notice.text = if (session.voteRound == 4) {
+                setNotice(if (session.voteRound == 4) {
                     "El Alcalde evito su expulsion. ${session.dayEliminationTarget} pagara el precio."
                 } else if (session.voteRound == 3) {
                     "El Alcalde eligio expulsar a ${session.dayEliminationTarget}."
                 } else {
                     "${session.dayEliminationTarget} recibio la mayor cantidad de votos."
-                }
+                })
                 setContinueReady("VER EXPULSION")
             }
             else -> {
                 title.text = "SIN MAYORIA"
-                notice.text = "El pueblo no alcanzo una decision."
+                setNotice("El pueblo no alcanzo una decision.")
                 setContinueReady("CONTINUAR")
             }
         }
@@ -433,6 +456,11 @@ class VoteResultAnimator(
             .setDuration(180L)
             .start()
         onContinueReady?.invoke()
+    }
+
+    private fun setNotice(message: String) {
+        notice.text = message
+        notice.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
     }
 
     private fun voteTokens(session: GameSession): List<VoteToken> {
@@ -467,7 +495,7 @@ class VoteResultAnimator(
                 context.theme
             )
             gravity = Gravity.CENTER
-            text = if (session.showIndividualVotes) token.initial else "•"
+            text = if (session.showIndividualVotes) token.initial else "*"
             setTextColor(context.getColor(R.color.bg_dark))
             textSize = if (session.showIndividualVotes) 8f else 10f
             typeface = Typeface.DEFAULT_BOLD
@@ -481,8 +509,8 @@ class VoteResultAnimator(
             }
         }
         val params = GridLayout.LayoutParams().apply {
-            width = dp(16)
-            height = dp(16)
+            width = dp(10)
+            height = dp(10)
             setMargins(dp(1), dp(1), dp(1), dp(1))
         }
         holder.voterTokens.addView(tokenView, params)
@@ -502,11 +530,31 @@ class VoteResultAnimator(
             .start()
     }
 
-    private fun createVoteCard(player: GamePlayer): VoteCardHolder {
+    private fun createVoteCard(player: GamePlayer, dense: Boolean): VoteCardHolder {
+        val rootPaddingHorizontal = if (dense) 4 else 5
+        val rootPaddingTop = if (dense) 4 else 5
+        val rootPaddingBottom = if (dense) 3 else 4
+        val cardBackWidth = if (dense) 32 else 38
+        val cardBackHeight = if (dense) 44 else 52
+        val avatarSize = if (dense) 23 else 28
+        val roleImageSize = if (dense) 32 else 38
+        val portraitWidth = if (dense) 42 else 52
+        val portraitHeight = if (dense) 43 else 54
+        val nameHeight = if (dense) 15 else 18
+        val totalHeight = if (dense) 15 else 18
+        val tokensHeight = 24
+        val tokenColumns = if (dense) 4 else 5
+        val nameTextSize = if (dense) 10f else 12f
+        val totalTextSize = if (dense) 10f else 12f
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(8), dp(8), dp(8), dp(6))
+            setPadding(
+                dp(rootPaddingHorizontal),
+                dp(rootPaddingTop),
+                dp(rootPaddingHorizontal),
+                dp(rootPaddingBottom)
+            )
             background = ResourcesCompat.getDrawable(
                 context.resources,
                 R.drawable.bg_vote_result_card,
@@ -527,7 +575,7 @@ class VoteResultAnimator(
             gravity = Gravity.CENTER
             text = player.initial
             setTextColor(context.getColor(R.color.bg_dark))
-            textSize = 17f
+            textSize = if (dense) 12f else 14f
             typeface = Typeface.DEFAULT_BOLD
         }
         val roleImage = ImageView(context).apply {
@@ -540,15 +588,15 @@ class VoteResultAnimator(
             )
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        portrait.addView(cardBack, FrameLayout.LayoutParams(dp(56), dp(76), Gravity.CENTER))
+        portrait.addView(cardBack, FrameLayout.LayoutParams(dp(cardBackWidth), dp(cardBackHeight), Gravity.CENTER))
         portrait.addView(
             avatar,
-            FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            FrameLayout.LayoutParams(dp(avatarSize), dp(avatarSize), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
                 topMargin = dp(0)
             }
         )
-        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
-        root.addView(portrait, LinearLayout.LayoutParams(dp(72), dp(78)))
+        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(roleImageSize), dp(roleImageSize), Gravity.CENTER))
+        root.addView(portrait, LinearLayout.LayoutParams(dp(portraitWidth), dp(portraitHeight)))
 
         root.addView(TextView(context).apply {
             gravity = Gravity.CENTER
@@ -556,28 +604,28 @@ class VoteResultAnimator(
             maxLines = 1
             text = player.name
             setTextColor(context.getColor(R.color.text_primary))
-            textSize = 14f
+            textSize = nameTextSize
             typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25)))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(nameHeight)))
 
         val total = TextView(context).apply {
             gravity = Gravity.CENTER
             text = "0 VOTOS"
             setTextColor(context.getColor(R.color.accent_gold))
-            textSize = 14f
+            textSize = totalTextSize
             typeface = Typeface.DEFAULT_BOLD
         }
-        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24)))
+        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(totalHeight)))
 
         val voterTokens = GridLayout(context).apply {
-            columnCount = 6
+            columnCount = tokenColumns
             alignmentMode = GridLayout.ALIGN_BOUNDS
             useDefaultMargins = false
-            setPadding(0, dp(3), 0, 0)
+            setPadding(0, dp(2), 0, 0)
         }
         root.addView(
             voterTokens,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25))
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(tokensHeight))
         )
         return VoteCardHolder(root, avatar, roleImage, total, voterTokens)
     }
@@ -586,7 +634,7 @@ class VoteResultAnimator(
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(8), dp(9), dp(8), dp(6))
+            setPadding(dp(8), dp(8), dp(8), dp(6))
             background = ResourcesCompat.getDrawable(
                 context.resources,
                 R.drawable.bg_vote_result_card,
@@ -603,7 +651,7 @@ class VoteResultAnimator(
             gravity = Gravity.CENTER
             text = player.initial
             setTextColor(context.getColor(R.color.bg_dark))
-            textSize = 30f
+            textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
         }
         val roleImage = ImageView(context).apply {
@@ -616,9 +664,9 @@ class VoteResultAnimator(
             )
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        portrait.addView(avatar, FrameLayout.LayoutParams(dp(70), dp(70), Gravity.CENTER))
-        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(70), dp(70), Gravity.CENTER))
-        root.addView(portrait, LinearLayout.LayoutParams(dp(76), dp(76)))
+        portrait.addView(avatar, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
+        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
+        root.addView(portrait, LinearLayout.LayoutParams(dp(66), dp(62)))
 
         root.addView(TextView(context).apply {
             gravity = Gravity.CENTER
@@ -626,18 +674,18 @@ class VoteResultAnimator(
             maxLines = 1
             text = player.name
             setTextColor(context.getColor(R.color.text_primary))
-            textSize = 16f
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24)))
 
         val total = TextView(context).apply {
             gravity = Gravity.CENTER
             text = "SERA EXPULSADO"
             setTextColor(context.getColor(R.color.accent_gold))
-            textSize = 12f
+            textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
         }
-        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(22)))
+        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(20)))
 
         val voterTokens = GridLayout(context).apply {
             visibility = View.GONE
@@ -657,7 +705,6 @@ class VoteResultAnimator(
             setTextColor(context.getColor(R.color.text_secondary))
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(dp(320), LinearLayout.LayoutParams.MATCH_PARENT)
         }
     }
 

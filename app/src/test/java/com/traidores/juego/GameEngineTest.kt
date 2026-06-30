@@ -1997,6 +1997,51 @@ class GameEngineTest {
     }
 
     @Test
+    fun botDebateAndVotingBatchesDoNotRepeatSameLine() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "Dina esta rara"),
+                GameChatMessage("Beto", "Dina pq cambiaste de tema?"),
+                GameChatMessage("Ciro", "Dina tiene que responder eso")
+            )
+        )
+
+        val opening = LocalBotAi.openingDebateMessages(session, limit = 5).map { it.second }
+        val voting = LocalBotAi.votingIntentMessages(session.copy(phase = GamePhase.VOTACION), limit = 5)
+            .map { it.second }
+
+        assertEquals(opening.map { botLineKey(it) }.distinct().size, opening.size)
+        assertEquals(voting.map { botLineKey(it) }.distinct().size, voting.size)
+    }
+
+    @Test
+    fun botAccusedByAnotherBotDefendsInsteadOfAgreeingAgainstItself() {
+        val session = publicNameSession().copy(
+            phase = GamePhase.DIA_DEBATE,
+            chatHistory = listOf(
+                GameChatMessage("Beto", "dina esta rara, para mi hay que mirar fuerte a dina")
+            )
+        )
+
+        val dinaLine = LocalBotAi.openingDebateMessages(session, limit = 5)
+            .firstOrNull { it.first == "Dina" }
+            ?.second
+            .orEmpty()
+
+        assertTrue("Dina no hablo en la tanda: $dinaLine", dinaLine.isNotBlank())
+        assertFalse("Dina se autoacuso: $dinaLine", isSelfAccusatoryBotLine("Dina", dinaLine))
+        assertTrue(
+            "Dina deberia defenderse o pedir razon: $dinaLine",
+            dinaLine.contains("me marcas") ||
+                dinaLine.contains("ahora yo") ||
+                dinaLine.contains("tirame una razon") ||
+                dinaLine.contains("decime q hice") ||
+                dinaLine.contains("yo no dije")
+        )
+    }
+
+    @Test
     fun botFollowsUpWhenItsQuestionWasIgnored() {
         val session = publicNameSession().copy(
             phase = GamePhase.DIA_DEBATE,
@@ -2713,5 +2758,32 @@ class GameEngineTest {
 
     private fun role(key: String, name: String, team: String): GameRole {
         return GameRole(key, name, team, "rol_${key}_gaucho")
+    }
+
+    private fun botLineKey(line: String): String {
+        return line.lowercase()
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(42)
+    }
+
+    private fun isSelfAccusatoryBotLine(name: String, line: String): Boolean {
+        val text = line.lowercase()
+        val lowerName = name.lowercase()
+        val accusatory = listOf(
+            "sospe",
+            "raro",
+            "rara",
+            "miente",
+            "voto",
+            "culpa",
+            "callado",
+            "punta con",
+            "voy con",
+            "mirar fuerte",
+            "me hace ruido"
+        ).any { text.contains(it) }
+        val defensive = listOf("confio", "inocente", "limpio", "defiendo", "creo en").any { text.contains(it) }
+        return text.contains(lowerName) && accusatory && !defensive
     }
 }

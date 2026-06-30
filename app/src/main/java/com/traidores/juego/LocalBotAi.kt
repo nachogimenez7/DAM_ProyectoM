@@ -548,7 +548,7 @@ internal object LocalBotAi {
             }
             if (name == declared) {
                 confidence += 6
-                reasons += "yo ya lo venia siguiendo"
+                reasons += "vengo marcando eso"
             }
             if (expelled != null && pushedPublicTarget(session, name, expelled)) {
                 confidence += 5
@@ -1013,12 +1013,12 @@ internal object LocalBotAi {
                     "${social.ignoredBy} me sigue debiendo una respuesta de antes"
                 expelled != null && index == 1 ->
                     "ayer sacamos a $expelled y seguimos igual, no votemos por inercia"
+                roleLine != null -> roleLine
                 coordinationLine != null -> coordinationLine
                 botToBotLine(session, bot, index) != null ->
                     botToBotLine(session, bot, index).orEmpty()
                 muted != null && index == 0 ->
                     "bueno $muted no puede contestar, $target vos q onda? bancas lo q dijiste?"
-                roleLine != null -> roleLine
                 fakeClaim != null -> fakeClaim
                 objectiveLine != null -> objectiveLine
                 playerLine != null -> playerLine
@@ -1031,7 +1031,7 @@ internal object LocalBotAi {
             val allowRoleTerms = line.contains("soy ", ignoreCase = true) ||
                 line.contains("rol", ignoreCase = true)
             bot.name to finishSpeech(line, session, bot, "opening:$index", allowRoleTerms = allowRoleTerms)
-        }
+        }.dedupeBotMessages()
     }
 
     fun votingIntentMessages(session: GameSession, limit: Int = 4): List<Pair<String, String>> {
@@ -1131,7 +1131,7 @@ internal object LocalBotAi {
                 }
             }
             bot.name to finishSpeech(line, session, bot, "vote:$index")
-        }
+        }.dedupeBotMessages()
     }
 
     fun reactionsToHumanMessage(session: GameSession, humanMessage: String): List<Pair<String, String>> {
@@ -1201,9 +1201,6 @@ internal object LocalBotAi {
                 baseTarget
             }
             val unanswered = memory.unansweredTarget
-                ?.takeIf { unansweredTarget ->
-                    focusNames.contains(unansweredTarget) || mentionsName(humanMessage, unansweredTarget)
-                }
                 ?.takeUnless { unansweredTarget -> unansweredTarget == bot.name }
             val claimLine = roleClaim?.let { claim ->
                 roleClaimReaction(session, bot, claim, claimResponder, index)
@@ -1228,6 +1225,10 @@ internal object LocalBotAi {
                 statementLine != null -> statementLine
                 questionKind != null -> humanQuestionReply(session, bot, questionKind, read, index)
                 casualMessage -> casualHumanReply(session, bot, humanMessage, index)
+                unanswered != null && (
+                    intent == Intent.FOLLOW_UP ||
+                        messageIntent in setOf(HumanMessageIntent.ACCUSE, HumanMessageIntent.DOUBT, HumanMessageIntent.OTHER)
+                    ) -> "$unanswered igual sigo esperando esa respuesta"
                 messageIntent == HumanMessageIntent.DOUBT ->
                     humanDoubtReply(session, bot, read, index)
                 claimsHiddenInfo && index == 0 ->
@@ -1236,8 +1237,6 @@ internal object LocalBotAi {
                     "$target me hace ruido por lo q vimos nomas, $reason"
                 focusNames.contains(bot.name) ->
                     defensiveLine(session, bot, mood)
-                unanswered != null && intent == Intent.FOLLOW_UP ->
-                    "$unanswered igual sigo esperando esa respuesta"
                 else -> lineForIntent(session, bot, intent, target, reason, contextSeed)
             }
             bot.name to finishSpeech(
@@ -2493,6 +2492,12 @@ internal object LocalBotAi {
                 session.players.any { !it.isHuman && it.name == message.speaker }
         } ?: return null
         val speaker = lastBotMessage.speaker
+        if (
+            mentionsName(lastBotMessage.message, bot.name) &&
+            hasAccusatoryTargetSignal(lastBotMessage.message)
+        ) {
+            return defensiveLine(session, bot, moodFor(session, bot, lastBotMessage.message))
+        }
         val target = mentionedPlayerNames(session, lastBotMessage.message)
             .firstOrNull { it != bot.name && it != speaker }
         val seed = stableNoise("${session.code}:${session.round}:${bot.name}:btb:${lastBotMessage.message}")
@@ -2552,7 +2557,7 @@ internal object LocalBotAi {
             roleKey == RoleCatalog.ALDEANO && pressure -> listOf(
                 "soy pueblo raso, si me sacan por ruido pierden un voto",
                 "no tengo carta fuerte, pero tampoco me inventen cosas",
-                "soy aldeano, preguntenme lo que quieran pero no me quemen gratis"
+                "soy aldeano, decime q hice y escuchemos antes de quemarme gratis"
             )
             else -> emptyList()
         }
@@ -2986,7 +2991,16 @@ internal object LocalBotAi {
         } else {
             emptySet()
         }
-        return sanitizeBotSpeech(text, session, allowedTerms)
+        val safe = sanitizeBotSpeech(text, session, allowedTerms)
+        return if (isSelfAccusatoryLine(safe, session, bot)) {
+            neutralSelfAccusationFallback(session, bot, context)
+        } else {
+            safe
+        }
+    }
+
+    private fun List<Pair<String, String>>.dedupeBotMessages(): List<Pair<String, String>> {
+        return distinctBy { normalizedForParsing(it.second).take(42) }
     }
 
     private fun containsLaugh(text: String): Boolean {
@@ -3227,6 +3241,49 @@ internal object LocalBotAi {
     private fun hasAnySignal(message: String, signals: List<String>): Boolean {
         val text = normalized(message)
         return signals.any { text.contains(it) }
+    }
+
+    private fun hasAccusatoryTargetSignal(message: String): Boolean {
+        val text = normalizedForParsing(message)
+        return hasAnySignal(message, accusationWords) ||
+            listOf(
+                "voto a",
+                "voy con",
+                "punta con",
+                "miro a",
+                "mirar a",
+                "mirar fuerte a",
+                "nombro a",
+                "sospecho de",
+                "tengo a",
+                "marca a",
+                "marco a",
+                "deberia contestar",
+                "deberia responder",
+                "respondele a",
+                "no respondio",
+                "no contesto",
+                "me hace ruido"
+            ).any { text.contains(it) }
+    }
+
+    private fun isSelfAccusatoryLine(message: String, session: GameSession, bot: GamePlayer): Boolean {
+        if (!mentionsName(message, bot.name)) return false
+        if (hasAnySignal(message, defenseWords)) return false
+        if (!hasAccusatoryTargetSignal(message)) return false
+        val mentioned = mentionedPlayerNames(session, message)
+        return mentioned.contains(bot.name)
+    }
+
+    private fun neutralSelfAccusationFallback(session: GameSession, bot: GamePlayer, context: String): String {
+        val options = listOf(
+            "prefiero escuchar una respuesta mas antes de cerrar",
+            "no compro cerrar tan rapido, falta una respuesta concreta",
+            "ordenemos un poco antes de votar por inercia",
+            "hay que separar dato real de ruido"
+        )
+        val line = chooseFreshLine(options, session, bot, "self-guard:$context")
+        return sanitizeBotSpeech(line, session)
     }
 
     private fun containsSecretTerm(message: String, session: GameSession): Boolean {

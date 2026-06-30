@@ -418,8 +418,8 @@ object LocalGameFactory {
             mapKey = map.key,
             mapName = map.name,
             players = players.take(MIN_PLAYERS),
-            quickTestMode = true,
-            debugBotsObeyVoteCommands = true
+            quickTestMode = false,
+            debugBotsObeyVoteCommands = false
         )
     }
 

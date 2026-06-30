@@ -1,8 +1,6 @@
 package com.traidores.juego
 
 import android.content.Context
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -21,31 +19,6 @@ enum class GameplayEffect {
 object GameplayEffects {
     fun play(context: Context, effect: GameplayEffect) {
         val prefs = AudioPreferences.preferences(context)
-        val effectsOn = AudioPreferences.areEffectsEnabled(prefs)
-        val volume = (AudioPreferences.effectsVolume(prefs) * 100).toInt()
-        if (effectsOn && volume > 0) {
-            val tone = when (effect) {
-                GameplayEffect.SELECT -> ToneGenerator.TONE_PROP_BEEP
-                GameplayEffect.CONFIRM -> ToneGenerator.TONE_PROP_ACK
-                GameplayEffect.ERROR -> ToneGenerator.TONE_PROP_NACK
-                GameplayEffect.PANEL -> ToneGenerator.TONE_PROP_PROMPT
-                GameplayEffect.REVEAL -> ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
-                GameplayEffect.CHAT -> ToneGenerator.TONE_PROP_BEEP2
-                GameplayEffect.COUNTDOWN -> ToneGenerator.TONE_CDMA_PIP
-            }
-            val duration = when (effect) {
-                GameplayEffect.CONFIRM, GameplayEffect.REVEAL -> 110
-                GameplayEffect.ERROR -> 140
-                else -> 65
-            }
-            ToneGenerator(AudioManager.STREAM_MUSIC, volume.coerceIn(1, 100)).apply {
-                startTone(tone, duration)
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    { release() },
-                    duration + 40L
-                )
-            }
-        }
         vibrate(context, effect, prefs.getBoolean("vibration_on", false))
     }
 

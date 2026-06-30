@@ -655,6 +655,7 @@ class GameplayChatController(
 
     private data class EventPresentation(
         val icon: String,
+        val label: String,
         val backgroundColor: Int,
         val strokeColor: Int,
         val iconColor: Int
@@ -665,46 +666,53 @@ class GameplayChatController(
         val gold = root.context.getColor(R.color.accent_gold)
         return when {
             "murio" in lower || "asesin" in lower -> EventPresentation(
-                "X",
-                Color.parseColor("#7A2A22"),
-                Color.parseColor("#B46A72"),
-                Color.parseColor("#F0B2A8")
+                icon = "X",
+                label = "MUERTE",
+                backgroundColor = Color.parseColor("#7A2A22"),
+                strokeColor = Color.parseColor("#B46A72"),
+                iconColor = Color.parseColor("#F0B2A8")
             )
             "expuls" in lower || "votacion" in lower || "voto" in lower -> EventPresentation(
-                "V",
-                Color.parseColor("#5F4524"),
-                gold,
-                gold
+                icon = "V",
+                label = "EXPULSION",
+                backgroundColor = Color.parseColor("#5F4524"),
+                strokeColor = gold,
+                iconColor = gold
             )
             "noche" in lower -> EventPresentation(
-                "N",
-                Color.parseColor("#25334F"),
-                Color.parseColor("#6B86B8"),
-                Color.parseColor("#B7C7E8")
+                icon = "N",
+                label = "NOCHE",
+                backgroundColor = Color.parseColor("#25334F"),
+                strokeColor = Color.parseColor("#6B86B8"),
+                iconColor = Color.parseColor("#B7C7E8")
             )
             "amanec" in lower || "dia" in lower -> EventPresentation(
-                "D",
-                Color.parseColor("#6B5525"),
-                Color.parseColor("#E3C46F"),
-                Color.parseColor("#F4D77D")
+                icon = "D",
+                label = "AMANECER",
+                backgroundColor = Color.parseColor("#6B5525"),
+                strokeColor = Color.parseColor("#E3C46F"),
+                iconColor = Color.parseColor("#F4D77D")
             )
             "silenci" in lower || "mudo" in lower -> EventPresentation(
-                "S",
-                Color.parseColor("#4F3140"),
-                Color.parseColor("#A26A88"),
-                Color.parseColor("#E6B6CE")
+                icon = "S",
+                label = "SILENCIO",
+                backgroundColor = Color.parseColor("#4F3140"),
+                strokeColor = Color.parseColor("#A26A88"),
+                iconColor = Color.parseColor("#E6B6CE")
             )
             "empate" in lower -> EventPresentation(
-                "!",
-                Color.parseColor("#4B3B22"),
-                gold,
-                gold
+                icon = "!",
+                label = "EMPATE",
+                backgroundColor = Color.parseColor("#4B3B22"),
+                strokeColor = gold,
+                iconColor = gold
             )
             else -> EventPresentation(
-                "*",
-                Color.parseColor("#4A3518"),
-                gold,
-                gold
+                icon = "*",
+                label = "SUCESO",
+                backgroundColor = Color.parseColor("#4A3518"),
+                strokeColor = gold,
+                iconColor = gold
             )
         }
     }
@@ -818,7 +826,7 @@ class GameplayChatController(
             }
         }
         banner.addView(TextView(root.context).apply {
-            text = "${event.icon} SUCESO"
+            text = event.label
             gravity = Gravity.CENTER
             setTextColor(event.iconColor)
             textSize = 8.5f * host.gameplayTextScale
@@ -1247,7 +1255,6 @@ class GameplayChatController(
 
     private fun renderChatBackgrounds() {
         val background = chatBoxBackgroundFor(host.currentSession.mapKey)
-        chatAmbientFeed.setBackgroundResource(background)
         chatPanel.setBackgroundResource(background)
     }
 

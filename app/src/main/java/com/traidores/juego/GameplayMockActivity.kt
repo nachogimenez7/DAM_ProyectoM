@@ -137,6 +137,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val voteResultAutoContinueRunnable = Runnable { handleVoteResultAutoContinue() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
+    private val deathRevealContinueTimeoutRunnable = Runnable { continueDeathReveal() }
     private val centralPublicEventDismissRunnable = Runnable { hideCentralPublicEventBanner() }
     private val onlineStartupForceRefreshRunnable = Runnable {
         if (isOnlineStartupPhase()) {
@@ -207,6 +208,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var deathRevealOverlay: FrameLayout
     private lateinit var deathRevealPlayerName: TextView
     private lateinit var deathRevealRoleName: TextView
+    private lateinit var btnContinueDeathReveal: Button
     private lateinit var eliminatedStatePanel: LinearLayout
     private lateinit var eventLogBackground: ImageView
     private lateinit var eventLogColorBar: View
@@ -231,6 +233,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var privateFeedbackPanel: FrameLayout
     private lateinit var privateFeedbackTitle: TextView
     private lateinit var privateFeedbackTone: View
+    private lateinit var btnContinuePrivateFeedback: Button
     private lateinit var rightPlayersContainer: LinearLayout
     private lateinit var rightPlayersScroll: ScrollView
     private lateinit var rightColumn: LinearLayout
@@ -301,8 +304,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var btnWinnerReturnLobby: Button
     private lateinit var voteResultOverlay: FrameLayout
     private lateinit var voteResultPanel: LinearLayout
-    private lateinit var voteResultCards: LinearLayout
-    private lateinit var voteResultScroll: HorizontalScrollView
+    private lateinit var voteResultCards: GridLayout
     private lateinit var voteResultTitle: TextView
     private lateinit var voteResultSubtitle: TextView
     private lateinit var voteResultNotice: TextView
@@ -470,6 +472,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         deathRevealOverlay = findViewById(R.id.deathRevealOverlay)
         deathRevealPlayerName = findViewById(R.id.deathRevealPlayerName)
         deathRevealRoleName = findViewById(R.id.deathRevealRoleName)
+        btnContinueDeathReveal = findViewById(R.id.btnContinueDeathReveal)
         eliminatedStatePanel = findViewById(R.id.eliminatedStatePanel)
         eventLogBackground = findViewById(R.id.eventLogBackground)
         eventLogColorBar = findViewById(R.id.eventLogColorBar)
@@ -495,6 +498,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         privateFeedbackPanel = findViewById(R.id.privateFeedbackPanel)
         privateFeedbackTitle = findViewById(R.id.privateFeedbackTitle)
         privateFeedbackTone = findViewById(R.id.privateFeedbackTone)
+        btnContinuePrivateFeedback = findViewById(R.id.btnContinuePrivateFeedback)
         rightPlayersContainer = findViewById(R.id.rightPlayersContainer)
         rightPlayersScroll = findViewById(R.id.rightPlayersScroll)
         rightColumn = findViewById(R.id.rightColumn)
@@ -569,6 +573,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             roleName = deathRevealRoleName,
             roleImageFor = ::roleImageFor,
             dp = ::dp,
+            onReadyToContinue = ::showDeathRevealContinue,
             onFinished = ::finishDeathReveal
         )
         silenceRevealAnimator = SilenceRevealAnimator(
@@ -591,7 +596,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         voteResultOverlay = findViewById(R.id.voteResultOverlay)
         voteResultPanel = findViewById(R.id.voteResultPanel)
         voteResultCards = findViewById(R.id.voteResultCards)
-        voteResultScroll = findViewById(R.id.voteResultScroll)
         voteResultTitle = findViewById(R.id.voteResultTitle)
         voteResultSubtitle = findViewById(R.id.voteResultSubtitle)
         voteResultNotice = findViewById(R.id.voteResultNotice)
@@ -603,7 +607,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             overlay = voteResultOverlay,
             panel = voteResultPanel,
             cards = voteResultCards,
-            scroll = voteResultScroll,
             title = voteResultTitle,
             subtitle = voteResultSubtitle,
             notice = voteResultNotice,
@@ -613,6 +616,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             dp = ::dp,
             onContinueReady = ::scheduleVoteResultAutoContinue
         )
+        applyRevealOverlayTheme()
         btnContinueVoteResult.setOnClickListener { handleVoteResultContinue() }
         tieVoteOverlay = findViewById(R.id.tieVoteOverlay)
         tieVotePanel = findViewById(R.id.tieVotePanel)
@@ -714,7 +718,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
+        deathRevealOverlay.setOnClickListener { continueDeathReveal() }
+        btnContinueDeathReveal.setOnClickListener { continueDeathReveal() }
         privateFeedbackOverlay.setOnClickListener { dismissCurrentFeedback() }
+        btnContinuePrivateFeedback.setOnClickListener { dismissCurrentFeedback() }
         actionFeedbackBanner.setOnClickListener { hideActionFeedbackBanner() }
         btnCloseRolePreview.setOnClickListener {
             GameplayEffects.play(this, GameplayEffect.PANEL)
@@ -787,6 +794,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
@@ -825,6 +833,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         chatController.cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
@@ -859,6 +868,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.dayEliminationTarget.isBlank()
         ) {
             dismissActionFeedbackBannerNow()
+            hideCentralPublicEventBanner(immediate = true)
             isVoteResultVisible = true
             voteResultAnimator.show(session)
             voteResultAnimator.showNoExpulsion()
@@ -2676,6 +2686,40 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         updateActionAttentionPulse(requiresAttention)
     }
 
+    private fun applyRevealOverlayTheme() {
+        val frame = revealPanelBackgroundForMap(session.mapKey)
+        // Reveals grandes: marco ornamental (xxhdpi). El contenido se insetea para caer dentro
+        // del centro oscuro del marco (los bordes decorativos ocupan ~56dp por lado).
+        deathRevealContent.setBackgroundResource(frame)
+        deathRevealContent.setPadding(dp(50), dp(66), dp(50), dp(42))
+        silenceRevealContent.setBackgroundResource(frame)
+        silenceRevealContent.setPadding(dp(50), dp(60), dp(50), dp(48))
+        voteResultPanel.setBackgroundResource(frame)
+        voteResultPanel.setPadding(dp(46), dp(60), dp(46), dp(42))
+        // Ventana de info privada: panel compacto. El marco ornamental grande desordena
+        // este caso porque avisa una decision puntual, no un reveal dramatico.
+        privateFeedbackPanel.setBackgroundResource(compactPanelBackgroundForMap(session.mapKey))
+        privateFeedbackPanel.setPadding(dp(18), dp(12), dp(18), dp(12))
+    }
+
+    private fun revealPanelBackgroundForMap(mapKey: String): Int {
+        return when (mapKey) {
+            "grecia" -> R.drawable.ui_frame_event_grecia
+            "medieval" -> R.drawable.ui_frame_event_medieval
+            "pampa" -> R.drawable.ui_frame_event_pampa
+            else -> R.drawable.bg_reveal_event_panel
+        }
+    }
+
+    private fun compactPanelBackgroundForMap(mapKey: String): Int {
+        return when (mapKey) {
+            "grecia" -> R.drawable.bg_chat_box_grecia
+            "medieval" -> R.drawable.bg_chat_box_medieval
+            "pampa" -> R.drawable.bg_chat_box_pampa
+            else -> R.drawable.bg_translucent_game_panel
+        }
+    }
+
     private fun applyPrimaryActionVisual(label: String, emphasized: Boolean) {
         val tone = if (emphasized) {
             GameplayTableUi.actionToneFor(label)
@@ -3172,16 +3216,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         )
         holder.name.alpha = if (isAlive || isOracleGuest) 1f else 0.72f
-        if (isOnlineGameplay()) {
-            holder.name.setShadowLayer(
-                if (isActionable || isSelected) 3f else 1.5f,
-                0f,
-                1f,
-                Color.BLACK
-            )
-        } else {
-            holder.name.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
-        }
+        holder.name.setShadowLayer(
+            if (isActionable || isSelected) 3f else 1.8f,
+            0f,
+            1f,
+            Color.BLACK
+        )
         holder.name.paintFlags = if (isAlive) {
             holder.name.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
         } else {
@@ -4342,12 +4382,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         privateFeedbackTitle.text = spec.title
         privateFeedbackMessage.text = spec.message
-        privateFeedbackTone.setBackgroundColor(Color.parseColor(spec.tone.colorHex))
+        btnContinuePrivateFeedback.isEnabled = true
+        btnContinuePrivateFeedback.visibility = View.VISIBLE
+        btnContinuePrivateFeedback.alpha = 1f
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         privateFeedbackOverlay.alpha = 0f
         privateFeedbackPanel.alpha = 0f
         privateFeedbackPanel.scaleX = 0.94f
         privateFeedbackPanel.scaleY = 0.94f
+        hideCentralPublicEventBanner(immediate = true)
         privateFeedbackOverlay.visibility = View.VISIBLE
         feedbackState.markPrivateVisible()
 
@@ -4364,7 +4407,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         autoAdvanceHandler.postDelayed(
             feedbackDismissRunnable,
-            spec.durationMs.coerceAtLeast(INFORMATION_FEEDBACK_DURATION_MS)
+            REVEAL_CONTINUE_TIMEOUT_MS
         )
     }
 
@@ -4391,6 +4434,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     privateFeedbackPanel.alpha = 1f
                     privateFeedbackPanel.scaleX = 1f
                     privateFeedbackPanel.scaleY = 1f
+                    btnContinuePrivateFeedback.isEnabled = false
                     renderGame()
                 }
             })
@@ -4413,6 +4457,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         privateFeedbackPanel.alpha = 1f
         privateFeedbackPanel.scaleX = 1f
         privateFeedbackPanel.scaleY = 1f
+        if (::btnContinuePrivateFeedback.isInitialized) {
+            btnContinuePrivateFeedback.isEnabled = false
+            btnContinuePrivateFeedback.visibility = View.VISIBLE
+            btnContinuePrivateFeedback.alpha = 1f
+        }
         feedbackState.cancel(keepPending)
         if (!keepPending) {
             blockingFeedbackPeriod = null
@@ -4464,6 +4513,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.dayEliminationTarget.isBlank()
         ) {
             dismissActionFeedbackBannerNow()
+            hideCentralPublicEventBanner(immediate = true)
             isVoteResultVisible = true
             voteResultAnimator.show(session)
             voteResultAnimator.showNoExpulsion()
@@ -4493,15 +4543,55 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun showDeathReveal(player: GamePlayer) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
         dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         isDeathRevealRunning = true
         GameplayAudioDirector.play(this, GameSound.ELIMINATION)
+        btnContinueDeathReveal.animate().cancel()
+        btnContinueDeathReveal.visibility = View.INVISIBLE
+        btnContinueDeathReveal.isEnabled = false
+        btnContinueDeathReveal.alpha = 0f
+        hideCentralPublicEventBanner(immediate = true)
         deathRevealAnimator.start(player, session.revealRolesOnDeath)
+    }
+
+    private fun showDeathRevealContinue() {
+        if (!isDeathRevealRunning) return
+        btnContinueDeathReveal.visibility = View.VISIBLE
+        btnContinueDeathReveal.isEnabled = true
+        btnContinueDeathReveal.alpha = 0f
+        btnContinueDeathReveal.animate()
+            .alpha(1f)
+            .setDuration(180L)
+            .start()
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
+        autoAdvanceHandler.postDelayed(
+            deathRevealContinueTimeoutRunnable,
+            REVEAL_CONTINUE_TIMEOUT_MS
+        )
+    }
+
+    private fun continueDeathReveal() {
+        if (!isDeathRevealRunning || !::btnContinueDeathReveal.isInitialized) return
+        if (!btnContinueDeathReveal.isEnabled) return
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
+        btnContinueDeathReveal.isEnabled = false
+        btnContinueDeathReveal.animate().cancel()
+        btnContinueDeathReveal.alpha = 0f
+        btnContinueDeathReveal.visibility = View.INVISIBLE
+        deathRevealAnimator.continueAndFinish()
     }
 
     private fun finishDeathReveal() {
         if (!isDeathRevealRunning) return
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
+        if (::btnContinueDeathReveal.isInitialized) {
+            btnContinueDeathReveal.animate().cancel()
+            btnContinueDeathReveal.isEnabled = false
+            btnContinueDeathReveal.visibility = View.INVISIBLE
+            btnContinueDeathReveal.alpha = 0f
+        }
         isDeathRevealRunning = false
         if (pendingDeathReveals.isEmpty() && pendingSilenceReveals.isEmpty()) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
@@ -4511,6 +4601,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun cancelDeathReveal(resumeMusic: Boolean) {
         if (!::deathRevealOverlay.isInitialized) return
+        autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
+        if (::btnContinueDeathReveal.isInitialized) {
+            btnContinueDeathReveal.animate().cancel()
+            btnContinueDeathReveal.isEnabled = false
+            btnContinueDeathReveal.visibility = View.INVISIBLE
+            btnContinueDeathReveal.alpha = 0f
+        }
         deathRevealAnimator.cancel()
         isDeathRevealRunning = false
         if (resumeMusic) {
@@ -4536,6 +4633,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         voteExpulsionComplete = false
         voteNoExpulsionPresented = false
         isVoteResultVisible = true
+        hideCentralPublicEventBanner(immediate = true)
         voteResultAnimator.show(session)
         return true
     }
@@ -4793,6 +4891,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             session = advanced
             dismissActionFeedbackBannerNow()
+            hideCentralPublicEventBanner(immediate = true)
             voteNoExpulsionPresented = true
             voteResultAnimator.showNoExpulsion()
             return
@@ -4834,6 +4933,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         MusicManager.pauseForTransition()
         isSilenceRevealRunning = true
         GameplayAudioDirector.play(this, GameSound.SILENCE)
+        hideCentralPublicEventBanner(immediate = true)
         silenceRevealAnimator.start(player)
     }
 
@@ -5461,9 +5561,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val JESTER_VICTORY_DURATION_MS = 5000L
         private const val COUNTDOWN_TICK_MS = 200L
+        private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
-        private const val PHASE_ADVICE_DURATION_MS = 6_000L
-        private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 2_800L
+        private const val PHASE_ADVICE_DURATION_MS = 8_000L
+        private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 5_200L
         private const val CENTRAL_EVENT_SAFE_HEX = "#5A8A3C"
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"

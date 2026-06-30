@@ -4,7 +4,6 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
@@ -27,16 +26,19 @@ internal class DeathRevealAnimator(
     private val roleName: TextView,
     private val roleImageFor: (GameRole?) -> Int,
     private val dp: (Int) -> Int,
+    private val onReadyToContinue: () -> Unit,
     private val onFinished: () -> Unit
 ) {
     var running: Boolean = false
         private set
 
     private var animator: AnimatorSet? = null
+    private var readyToContinue: Boolean = false
 
     fun start(player: GamePlayer, revealRole: Boolean) {
         cancel()
         running = true
+        readyToContinue = false
         playerName.text = player.name.uppercase()
         roleName.text = if (revealRole) {
             player.role?.name?.uppercase() ?: "ROL DESCONOCIDO"
@@ -81,14 +83,35 @@ internal class DeathRevealAnimator(
             interpolator = AccelerateDecelerateInterpolator()
         }
         val reveal = if (revealRole) roleRevealAnimation() else hiddenRoleAnimation()
-        val hold = ValueAnimator.ofFloat(0f, 1f).apply { duration = 2300L }
-        val exit = ObjectAnimator.ofFloat(overlay, View.ALPHA, 1f, 0f).apply {
-            duration = 320L
-            interpolator = AccelerateInterpolator()
-        }
 
         animator = AnimatorSet().apply {
-            playSequentially(entrance, impact, reveal, hold, exit)
+            playSequentially(entrance, impact, reveal)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (running) {
+                        animator = null
+                        readyToContinue = true
+                        onReadyToContinue()
+                    }
+                }
+            })
+            start()
+        }
+    }
+
+    fun continueAndFinish() {
+        if (!running || !readyToContinue) return
+        readyToContinue = false
+        animator?.removeAllListeners()
+        animator?.cancel()
+        animator = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(overlay, View.ALPHA, 1f, 0f),
+                ObjectAnimator.ofFloat(content, View.SCALE_X, 1f, 0.97f),
+                ObjectAnimator.ofFloat(content, View.SCALE_Y, 1f, 0.97f)
+            )
+            duration = 260L
+            interpolator = AccelerateInterpolator()
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     finish()
@@ -100,6 +123,7 @@ internal class DeathRevealAnimator(
 
     fun cancel() {
         running = false
+        readyToContinue = false
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
@@ -162,6 +186,7 @@ internal class DeathRevealAnimator(
     private fun finish() {
         if (!running) return
         running = false
+        readyToContinue = false
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f
