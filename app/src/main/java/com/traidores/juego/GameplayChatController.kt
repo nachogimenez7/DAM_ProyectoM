@@ -16,6 +16,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.ScrollView
@@ -48,6 +49,7 @@ class GameplayChatController(
         fun showTieVoteWindowAfterChat()
         fun renderHumanCardIfVisible()
         fun renderPersonalStatus()
+        fun chatLogDrawableRes(): Int
     }
 
     private data class OnlineChatEntry(
@@ -79,7 +81,8 @@ class GameplayChatController(
     private val btnSendChat: Button = root.findViewById(R.id.btnSendChat)
     private val btnCloseChat: ImageButton = root.findViewById(R.id.btnCloseChat)
     private val btnChatFeedFilter: Button = root.findViewById(R.id.btnChatFeedFilter)
-    private val chatAmbientFeed: LinearLayout = root.findViewById(R.id.chatAmbientFeed)
+    private val chatAmbientFeed: FrameLayout = root.findViewById(R.id.chatAmbientFeed)
+    private val chatAmbientBackground: ImageView = root.findViewById(R.id.chatAmbientBackground)
     private val chatAmbientHint: TextView = root.findViewById(R.id.chatAmbientHint)
     private val chatAmbientMessages: LinearLayout = root.findViewById(R.id.chatAmbientMessages)
     private val chatCharacterCount: TextView = root.findViewById(R.id.chatCharacterCount)
@@ -90,7 +93,9 @@ class GameplayChatController(
     private val chatMessagesContainer: LinearLayout = root.findViewById(R.id.chatMessagesContainer)
     private val chatMessagesScroll: ScrollView = root.findViewById(R.id.chatMessagesScroll)
     private val chatNewMessages: TextView = root.findViewById(R.id.chatNewMessages)
-    private val chatPanel: LinearLayout = root.findViewById(R.id.chatPanel)
+    private val chatPanel: FrameLayout = root.findViewById(R.id.chatPanel)
+    private val chatPanelBackground: ImageView = root.findViewById(R.id.chatPanelBackground)
+    private val chatPanelContent: LinearLayout = root.findViewById(R.id.chatPanelContent)
     private val chatRoleChip: TextView = root.findViewById(R.id.chatRoleChip)
     private val chatStatusRow: LinearLayout = root.findViewById(R.id.chatStatusRow)
     private val chatUnreadBadge: TextView = root.findViewById(R.id.chatUnreadBadge)
@@ -489,7 +494,7 @@ class GameplayChatController(
         params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
         params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
         chatPanel.layoutParams = params
-        chatPanel.setPadding(
+        chatPanelContent.setPadding(
             host.dp(if (isChatKeyboardCompact) 7 else 10),
             host.dp(if (isChatKeyboardCompact) 4 else 10),
             host.dp(if (isChatKeyboardCompact) 7 else 10),
@@ -530,7 +535,7 @@ class GameplayChatController(
         params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
         params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
         chatPanel.layoutParams = params
-        chatPanel.setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
+        chatPanelContent.setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
         chatHeader.layoutParams = chatHeader.layoutParams.apply {
             height = host.dp(36)
         }
@@ -598,7 +603,7 @@ class GameplayChatController(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(root.context.getColor(R.color.text_secondary))
-            textSize = 11f * host.gameplayTextScale
+            textSize = 12f * host.gameplayTextScale
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
@@ -616,7 +621,7 @@ class GameplayChatController(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(PlayerChatColor.colorFor(message.speaker, host.currentSession))
-            textSize = 10.5f * host.gameplayTextScale
+            textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
         }
         val body = TextView(root.context).apply {
@@ -624,7 +629,7 @@ class GameplayChatController(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(root.context.getColor(R.color.text_primary))
-            textSize = 11f * host.gameplayTextScale
+            textSize = 12f * host.gameplayTextScale
         }
         row.addView(
             speaker,
@@ -648,7 +653,7 @@ class GameplayChatController(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(root.context.getColor(R.color.accent_gold))
-            textSize = 10.5f * host.gameplayTextScale
+            textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
             setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2))
         }
@@ -1267,8 +1272,20 @@ class GameplayChatController(
     }
 
     private fun renderChatBackgrounds() {
-        chatPanel.setBackgroundResource(R.drawable.bg_chat_frame_thin)
-        chatAmbientFeed.setBackgroundResource(R.drawable.bg_chat_frame_thin)
+        val logDrawable = host.chatLogDrawableRes()
+        chatPanelBackground.setImageResource(logDrawable)
+        chatAmbientBackground.setImageResource(logDrawable)
+        val ambientAlpha = when (host.currentSession.mapKey) {
+            "grecia" -> 0.54f
+            "medieval" -> 0.64f
+            else -> 0.60f
+        }
+        chatAmbientBackground.alpha = ambientAlpha
+        chatPanelBackground.alpha = when (host.currentSession.mapKey) {
+            "grecia" -> 0.42f
+            "medieval" -> 0.52f
+            else -> 0.48f
+        }
     }
 
     companion object {
@@ -1290,7 +1307,7 @@ class GameplayChatController(
         private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f
         private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
-        private const val CHAT_AMBIENT_MAX_MESSAGES = 3
+        private const val CHAT_AMBIENT_MAX_MESSAGES = 4
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140

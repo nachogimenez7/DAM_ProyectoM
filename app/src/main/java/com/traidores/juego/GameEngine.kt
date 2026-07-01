@@ -9,8 +9,7 @@ object GameEngine {
 
         val prepared = clearTemporaryMutes(session)
         val message = nightStartMessage(prepared)
-        return enterUnifiedNight(
-            prepared.copy(
+        return prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
@@ -28,8 +27,7 @@ object GameEngine {
             alcaldeCorruption = false,
             alcaldeTieCandidates = emptyList(),
             phaseIndex = prepared.phaseIndex + 1
-            ).withPublicHistory(message)
-        )
+        ).withPublicHistory(message)
     }
 
     fun resolveAssassin(session: GameSession, selectedTarget: String): GameSession {
@@ -1431,8 +1429,7 @@ object GameEngine {
         val prepared = clearTemporaryMutes(session)
         val message = "$previousMessage ${nextNightMessage(prepared)}"
         // payadorUsed no se reinicia: el Contrapunto se usa una sola vez por partida.
-        return enterUnifiedNight(
-            prepared.copy(
+        return prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
             round = prepared.round + 1,
             nightKillTarget = "",
@@ -1454,8 +1451,7 @@ object GameEngine {
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
             phaseIndex = prepared.phaseIndex + 1
-            ).withPublicHistory(message)
-        )
+        ).withPublicHistory(message)
     }
 
     private fun enterUnifiedNight(session: GameSession): GameSession {

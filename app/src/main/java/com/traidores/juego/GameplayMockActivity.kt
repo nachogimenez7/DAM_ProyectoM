@@ -30,6 +30,7 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -101,7 +102,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastPresentedCentralEventKey: String? = null
     private var lastPresentedAssassinVoteLogKey: String? = null
     private var stagedBotBurstPhaseIndex = -1
+    private var lastReactionRound = -1
+    private var botReactionScheduled = false
+    private var botReactionScheduleKey = ""
     private val feedbackState = GameplayFeedbackState()
+    private val reactionLimiter = GameplayReactionLimiter()
+    private val activeReactionBubbles = mutableMapOf<String, View>()
+    private val reactionSpecs = listOf(
+        ReactionSpec("angry", R.drawable.reaction_angry, "Enojado", "#C7442E"),
+        ReactionSpec("sad", R.drawable.reaction_sad, "Triste", "#5486B7"),
+        ReactionSpec("happy", R.drawable.reaction_happy, "Contento", "#D9A53A"),
+        ReactionSpec("suspicious", R.drawable.reaction_suspicious, "Sospechoso", "#8D6B33")
+    )
     private lateinit var session: GameSession
     override var currentSession: GameSession
         get() = session
@@ -151,6 +163,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
     private val deathRevealContinueTimeoutRunnable = Runnable { continueDeathReveal() }
     private val centralPublicEventDismissRunnable = Runnable { hideCentralPublicEventBanner() }
+    private val botReactionRunnable = object : Runnable {
+        override fun run() {
+            botReactionScheduled = false
+            maybeTriggerBotReaction()
+            scheduleBotReactionIfNeeded()
+        }
+    }
     private val onlineStartupForceRefreshRunnable = Runnable {
         if (isOnlineStartupPhase()) {
             refreshOnlineStartupGateFromLastStates()
@@ -184,6 +203,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var eventLogHeightAnimator: ValueAnimator? = null
     private var centralPublicEventAnimator: AnimatorSet? = null
     private var feedbackAnimator: AnimatorSet? = null
+    private var reactionPalette: PopupWindow? = null
     private lateinit var chatController: GameplayChatController
     private lateinit var rolePreviewAnimator: RolePreviewAnimator
     private lateinit var traitorRevealAnimator: TraitorRevealAnimator
@@ -200,6 +220,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var btnContinueRolePreview: Button
     private lateinit var btnRevealCard: Button
     private lateinit var btnRevealMayorSecondary: Button
+    private lateinit var btnToggleEmotes: ImageButton
     private lateinit var btnToggleEventLog: Button
     private lateinit var centralPublicEventBanner: FrameLayout
     private lateinit var centralPublicEventIcon: TextView
@@ -356,6 +377,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         var actionBadgeAnimator: AnimatorSet? = null
     )
 
+    private data class ReactionSpec(
+        val key: String,
+        val imageRes: Int,
+        val label: String,
+        val toneHex: String
+    )
+
     private data class OnlineChatEntry(
         val id: String,
         val speaker: String,
@@ -470,6 +498,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnContinueRolePreview = findViewById(R.id.btnContinueRolePreview)
         btnRevealCard = findViewById(R.id.btnRevealCard)
         btnRevealMayorSecondary = findViewById(R.id.btnRevealMayorSecondary)
+        btnToggleEmotes = findViewById(R.id.btnToggleEmotes)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
         centralPublicEventBanner = findViewById(R.id.centralPublicEventBanner)
         centralPublicEventIcon = findViewById(R.id.centralPublicEventIcon)
@@ -741,6 +770,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnAction.setOnClickListener { handleCurrentPhase() }
         btnRevealMayorSecondary.setOnClickListener { revealMayorFromSecondaryAction() }
         btnRevealCard.setOnClickListener { toggleHumanCard() }
+        btnToggleEmotes.setOnClickListener { toggleReactionPalette() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
         eventLogHeader.setOnClickListener { toggleEventLog() }
         roleCard.setOnClickListener {
@@ -822,6 +852,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        dismissReactionPalette()
+        clearReactionBubbles()
         hideCentralPublicEventBanner(immediate = true)
         cancelFeedbackPresentation(keepPending = false)
         eventLogHeightAnimator?.cancel()
@@ -833,6 +865,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(botReactionRunnable)
+        botReactionScheduled = false
         autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
@@ -864,6 +898,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        dismissReactionPalette()
+        clearReactionBubbles()
         hideCentralPublicEventBanner(immediate = true)
         cancelFeedbackPresentation(keepPending = true)
         eventLogHeightAnimator?.cancel()
@@ -875,6 +911,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
+        autoAdvanceHandler.removeCallbacks(botReactionRunnable)
+        botReactionScheduled = false
         chatController.cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
         super.onPause()
@@ -982,6 +1020,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         when {
             isWinnerRevealVisible -> returnToLobby()
             isRolePreviewOpen -> closeRolePreview()
+            reactionPalette?.isShowing == true -> dismissReactionPalette()
             chatController.onBackPressed() -> Unit
             actionFeedbackBanner.visibility == View.VISIBLE -> hideActionFeedbackBanner()
             isEventLogExpanded -> toggleEventLog()
@@ -1296,6 +1335,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun renderGame() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        syncReactionRound()
         if (
             selectedTarget.isNotBlank() &&
             !canActOnTarget(selectedTarget)
@@ -1359,6 +1399,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderAdvanceButton()
         renderHumanCardIfVisible()
         renderPlayerColumns(newlyDeadPlayers.map { it.name }.toSet())
+        renderReactionButton()
+        scheduleBotReactionIfNeeded()
         chatController.onSessionUpdated()
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
@@ -2701,6 +2743,435 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return row
     }
 
+    private fun syncReactionRound() {
+        if (lastReactionRound == session.round) return
+        lastReactionRound = session.round
+        reactionLimiter.resetOutsideRound(session.round)
+        botReactionScheduleKey = ""
+        botReactionScheduled = false
+        autoAdvanceHandler.removeCallbacks(botReactionRunnable)
+    }
+
+    private fun renderReactionButton() {
+        if (!::btnToggleEmotes.isInitialized || !::session.isInitialized) return
+        if (isOnlineGameplay()) {
+            btnToggleEmotes.visibility = View.GONE
+            dismissReactionPalette()
+            return
+        }
+
+        btnToggleEmotes.visibility = View.VISIBLE
+        val human = GameEngine.humanPlayer(session)
+        val now = SystemClock.elapsedRealtime()
+        val check = reactionLimiter.check(human.name, session.round, now)
+        val baseMessage = reactionBaseUnavailableMessage(human)
+        val limitReached = check.reason == ReactionBlockReason.ROUND_LIMIT
+        btnToggleEmotes.isEnabled = baseMessage == null && !limitReached
+        btnToggleEmotes.alpha = when {
+            btnToggleEmotes.isEnabled && check.reason == ReactionBlockReason.COOLDOWN -> 0.78f
+            btnToggleEmotes.isEnabled -> 1f
+            else -> 0.42f
+        }
+        btnToggleEmotes.contentDescription = when {
+            baseMessage != null -> baseMessage
+            limitReached -> "Sin emotes disponibles esta ronda"
+            check.reason == ReactionBlockReason.COOLDOWN ->
+                "Emotes disponibles en ${cooldownSeconds(check.remainingCooldownMs)} segundos"
+            else -> "Abrir emotes"
+        }
+        if (!btnToggleEmotes.isEnabled) {
+            dismissReactionPalette()
+        }
+    }
+
+    private fun toggleReactionPalette() {
+        if (reactionPalette?.isShowing == true) {
+            dismissReactionPalette()
+            return
+        }
+
+        val human = GameEngine.humanPlayer(session)
+        val blockMessage = reactionBaseUnavailableMessage(human)
+        if (blockMessage != null) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, blockMessage, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val check = reactionLimiter.check(human.name, session.round, SystemClock.elapsedRealtime())
+        if (check.reason == ReactionBlockReason.ROUND_LIMIT) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, reactionBlockMessage(check), Toast.LENGTH_SHORT).show()
+            renderReactionButton()
+            return
+        }
+
+        showReactionPalette()
+    }
+
+    private fun showReactionPalette() {
+        dismissReactionPalette()
+
+        val palette = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(7), dp(7), dp(7), dp(7))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.parseColor("#E8211710"))
+                setStroke(dp(1), getColor(R.color.accent_gold))
+            }
+        }
+
+        reactionSpecs.forEachIndexed { index, spec ->
+            val option = ImageButton(this).apply {
+                setImageResource(spec.imageRes)
+                background = reactionOptionBackground(spec)
+                contentDescription = spec.label
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                setOnClickListener { trySendHumanReaction(spec) }
+            }
+            palette.addView(
+                option,
+                LinearLayout.LayoutParams(dp(45), dp(45)).apply {
+                    if (index > 0) leftMargin = dp(6)
+                }
+            )
+        }
+
+        palette.measure(
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        reactionPalette = PopupWindow(
+            palette,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            elevation = dp(10).toFloat()
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            showAsDropDown(
+                btnToggleEmotes,
+                btnToggleEmotes.width - palette.measuredWidth,
+                dp(6)
+            )
+        }
+        GameplayEffects.play(this, GameplayEffect.PANEL)
+    }
+
+    private fun reactionOptionBackground(spec: ReactionSpec): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.parseColor("#F4E4C4"))
+            setStroke(dp(2), Color.parseColor(spec.toneHex))
+        }
+    }
+
+    private fun trySendHumanReaction(spec: ReactionSpec) {
+        val human = GameEngine.humanPlayer(session)
+        val baseMessage = reactionBaseUnavailableMessage(human)
+        if (baseMessage != null) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, baseMessage, Toast.LENGTH_SHORT).show()
+            dismissReactionPalette()
+            renderReactionButton()
+            return
+        }
+
+        val check = reactionLimiter.record(
+            playerName = human.name,
+            round = session.round,
+            nowMs = SystemClock.elapsedRealtime()
+        )
+        if (!check.allowed) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, reactionBlockMessage(check), Toast.LENGTH_SHORT).show()
+            renderReactionButton()
+            return
+        }
+
+        dismissReactionPalette()
+        GameplayEffects.play(this, GameplayEffect.SELECT)
+        showReactionBubble(human.name, spec)
+        renderReactionButton()
+    }
+
+    private fun reactionBaseUnavailableMessage(player: GamePlayer): String? {
+        return when {
+            isOnlineGameplay() -> "Los emotes online todavia no estan sincronizados."
+            session.winner.isNotBlank() || session.phase == GamePhase.RESULTADO ->
+                "La partida ya termino."
+            session.phase == GamePhase.REPARTO -> "Primero empieza la partida."
+            !GameEngine.isAlive(player) -> "No puedes tirar emotes eliminado."
+            !isPublicReactionPhase(session.phase) ->
+                "Los emotes se usan durante el debate y la votacion."
+            reactionUiBlocked() -> "Espera a que termine el evento."
+            else -> null
+        }
+    }
+
+    private fun reactionBlockMessage(check: ReactionCheck): String {
+        return when (check.reason) {
+            ReactionBlockReason.COOLDOWN ->
+                "Espera ${cooldownSeconds(check.remainingCooldownMs)}s para otro emote."
+            ReactionBlockReason.ROUND_LIMIT -> "Ya usaste tus emotes de esta ronda."
+            ReactionBlockReason.NONE -> ""
+        }
+    }
+
+    private fun cooldownSeconds(remainingMs: Long): Long {
+        return ((remainingMs.coerceAtLeast(0L) + 999L) / 1000L).coerceAtLeast(1L)
+    }
+
+    private fun isPublicReactionPhase(phase: GamePhase): Boolean {
+        return phase == GamePhase.DIA_DEBATE ||
+            phase == GamePhase.CONTRAPUNTO ||
+            phase == GamePhase.VOTACION ||
+            phase == GamePhase.RECUENTO_VOTOS ||
+            phase == GamePhase.DESEMPATE_VOTACION ||
+            phase == GamePhase.ALCALDE_DESEMPATE
+    }
+
+    private fun reactionUiBlocked(): Boolean {
+        return isDayNightTransitionRunning ||
+            isDeathRevealRunning ||
+            isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
+            isOracleRevealVisible ||
+            isRolePreviewOpen ||
+            isVoteResultVisible ||
+            isTieVoteVisible ||
+            isJesterVictoryVisible ||
+            isWinnerRevealVisible ||
+            isTraitorRevealRunning ||
+            feedbackState.privateVisible ||
+            feedbackState.pending?.blocksGameplay == true ||
+            desertorDialogOpen
+    }
+
+    private fun dismissReactionPalette() {
+        reactionPalette?.dismiss()
+        reactionPalette = null
+    }
+
+    private fun clearReactionBubbles() {
+        activeReactionBubbles.values.toList().forEach { bubble ->
+            bubble.animate().cancel()
+            (bubble.parent as? ViewGroup)?.removeView(bubble)
+        }
+        activeReactionBubbles.clear()
+    }
+
+    private fun showReactionBubble(playerName: String, spec: ReactionSpec) {
+        val anchor = reactionAnchorFor(playerName) ?: return
+        if (anchor.width <= 0 || anchor.height <= 0 || gameplayRoot.width <= 0) {
+            anchor.post { showReactionBubble(playerName, spec) }
+            return
+        }
+
+        activeReactionBubbles.remove(playerName)?.let { oldBubble ->
+            oldBubble.animate().cancel()
+            (oldBubble.parent as? ViewGroup)?.removeView(oldBubble)
+        }
+
+        val humanName = GameEngine.humanPlayer(session).name
+        val isHuman = playerName == humanName
+        val bubbleSize = dp(if (isHuman) 58 else 46)
+        val tailSize = dp(if (isHuman) 12 else 9)
+        val bubbleWidth = bubbleSize
+        val bubbleHeight = bubbleSize + tailSize / 2
+
+        val bubble = FrameLayout(this).apply {
+            clipChildren = false
+            clipToPadding = false
+            alpha = 0f
+            scaleX = 0.78f
+            scaleY = 0.78f
+            translationY = dp(6).toFloat()
+        }
+
+        val shell = FrameLayout(this).apply {
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(13).toFloat()
+                setColor(Color.parseColor("#F6E6C9"))
+                setStroke(dp(2), Color.parseColor(spec.toneHex))
+            }
+            elevation = dp(8).toFloat()
+        }
+        val icon = ImageView(this).apply {
+            setImageResource(spec.imageRes)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = spec.label
+        }
+        shell.addView(
+            icon,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        bubble.addView(
+            shell,
+            FrameLayout.LayoutParams(bubbleSize, bubbleSize, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        )
+
+        val tail = View(this).apply {
+            rotation = 45f
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(2).toFloat()
+                setColor(Color.parseColor("#F6E6C9"))
+                setStroke(dp(1), Color.parseColor(spec.toneHex))
+            }
+        }
+        bubble.addView(
+            tail,
+            FrameLayout.LayoutParams(tailSize, tailSize, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        )
+
+        val rootLocation = IntArray(2)
+        val anchorLocation = IntArray(2)
+        gameplayRoot.getLocationOnScreen(rootLocation)
+        anchor.getLocationOnScreen(anchorLocation)
+        val anchorCenterX = anchorLocation[0] - rootLocation[0] + anchor.width / 2
+        val anchorTop = anchorLocation[1] - rootLocation[1]
+        val left = (anchorCenterX - bubbleWidth / 2)
+            .coerceIn(dp(4), (gameplayRoot.width - bubbleWidth - dp(4)).coerceAtLeast(dp(4)))
+        val top = (anchorTop - bubbleHeight + dp(if (isHuman) 6 else 2))
+            .coerceIn(dp(6), (gameplayRoot.height - bubbleHeight - dp(6)).coerceAtLeast(dp(6)))
+
+        gameplayRoot.addView(
+            bubble,
+            RelativeLayout.LayoutParams(bubbleWidth, bubbleHeight).apply {
+                leftMargin = left
+                topMargin = top
+            }
+        )
+        activeReactionBubbles[playerName] = bubble
+
+        bubble.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .setDuration(180L)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                bubble.animate()
+                    .alpha(0f)
+                    .translationY(-dp(10).toFloat())
+                    .setStartDelay(3_650L)
+                    .setDuration(240L)
+                    .setInterpolator(AccelerateInterpolator())
+                    .withEndAction {
+                        if (activeReactionBubbles[playerName] === bubble) {
+                            activeReactionBubbles.remove(playerName)
+                        }
+                        (bubble.parent as? ViewGroup)?.removeView(bubble)
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+    private fun reactionAnchorFor(playerName: String): View? {
+        val humanName = GameEngine.humanPlayer(session).name
+        return if (playerName == humanName) {
+            roleCard
+        } else {
+            playerCardViews[playerName]?.cardFace
+        }
+    }
+
+    private fun scheduleBotReactionIfNeeded() {
+        val key = "${session.round}:${session.phaseIndex}:${session.phase.name}"
+        if (!canBotsUseReactions()) {
+            autoAdvanceHandler.removeCallbacks(botReactionRunnable)
+            botReactionScheduled = false
+            botReactionScheduleKey = ""
+            return
+        }
+        if (botReactionScheduleKey != key) {
+            autoAdvanceHandler.removeCallbacks(botReactionRunnable)
+            botReactionScheduled = false
+            botReactionScheduleKey = key
+        }
+        if (botReactionScheduled) return
+
+        botReactionScheduled = true
+        autoAdvanceHandler.postDelayed(botReactionRunnable, nextBotReactionDelayMs())
+    }
+
+    private fun canBotsUseReactions(): Boolean {
+        return !isOnlineGameplay() &&
+            session.winner.isBlank() &&
+            isPublicReactionPhase(session.phase) &&
+            !reactionUiBlocked() &&
+            session.players.any { !it.isHuman && GameEngine.isAlive(it) }
+    }
+
+    private fun nextBotReactionDelayMs(): Long {
+        val noise = reactionNoise(
+            "${session.code}:${session.round}:${session.phaseIndex}:${SystemClock.elapsedRealtime() / 1000L}"
+        )
+        return 5_000L + (noise % 5_000)
+    }
+
+    private fun maybeTriggerBotReaction() {
+        if (!canBotsUseReactions()) return
+        val now = SystemClock.elapsedRealtime()
+        val eligible = session.players
+            .filter { !it.isHuman && GameEngine.isAlive(it) }
+            .filter { reactionLimiter.check(it.name, session.round, now).allowed }
+        if (eligible.isEmpty()) return
+
+        val seed = reactionNoise(
+            "${session.code}:${session.round}:${session.phaseIndex}:${now / 1000L}:${eligible.size}"
+        )
+        val bot = eligible[seed % eligible.size]
+        val spec = chooseBotReaction(bot, seed)
+        val check = reactionLimiter.record(bot.name, session.round, now)
+        if (check.allowed) {
+            showReactionBubble(bot.name, spec)
+        }
+    }
+
+    private fun chooseBotReaction(bot: GamePlayer, seed: Int): ReactionSpec {
+        val phasePool = when (session.phase) {
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION,
+            GamePhase.ALCALDE_DESEMPATE -> listOf("suspicious", "angry")
+            GamePhase.CONTRAPUNTO -> listOf("angry", "suspicious", "sad")
+            GamePhase.RECUENTO_VOTOS -> listOf("suspicious", "sad")
+            else -> listOf("happy", "suspicious", "angry", "sad")
+        }
+        val roleBias = when (bot.role?.key) {
+            "asesino", "mercenario" -> "suspicious"
+            "payador" -> "happy"
+            "medico", "oraculo" -> "sad"
+            else -> null
+        }
+        val keys = if (roleBias != null && seed % 3 == 0) {
+            listOf(roleBias) + phasePool
+        } else {
+            phasePool
+        }
+        val key = keys[seed % keys.size]
+        return reactionSpecs.firstOrNull { it.key == key } ?: reactionSpecs.first()
+    }
+
+    private fun reactionNoise(seed: String): Int {
+        var hash = 17
+        seed.forEach { char -> hash = 31 * hash + char.code }
+        return hash and Int.MAX_VALUE
+    }
+
     private fun renderAdvanceButton() {
         val selectedAction = confirmedTargetActionLabel()
         val validTargets = validHumanTargets()
@@ -2737,7 +3208,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             mayorDebateOnlyReveal -> "ESPERAR"
             mandatoryTargetSelection -> "ELEGIR OBJETIVO"
             session.phase == GamePhase.REPARTO -> "NOCHE"
-            canSkipNight -> "SALTAR NOCHE"
+            nightSkipReady -> "SALTAR NOCHE"
             mustWaitForPhaseTimer() -> "ESPERAR"
             session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "payador" &&
@@ -5663,6 +6134,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "griego" -> R.drawable.log_griego
             else -> R.drawable.log_gaucho
         }
+    }
+
+    override fun chatLogDrawableRes(): Int {
+        return logDrawableFor(themeKey)
     }
 
     override fun dp(value: Int): Int {

@@ -729,7 +729,7 @@ class GameEngineTest {
 
         assertFalse(GameEngine.playerByName(resolved, "Bufon")!!.alive)
         assertEquals("", resolved.winner)
-        assertEquals(GamePhase.AMANECER, resolved.phase)
+        assertEquals(GamePhase.NOCHE_ASESINO, resolved.phase)
         assertEquals(2, resolved.round)
         assertEquals("bufon_expulsado", resolved.specialVictories.single().key)
         assertTrue(resolved.publicHistory.any { it.contains("era el Bufon") })
@@ -1236,7 +1236,7 @@ class GameEngineTest {
         assertTrue(dawn.publicAnnouncement.contains("Policia no puede hablar ni votar hoy."))
         assertFalse(GameEngine.playerByName(nextRound, "Policia")!!.muted)
         assertEquals(1, GameEngine.playerByName(nextRound, "Policia")!!.lastSilencedRound)
-        assertEquals(GamePhase.NOCHE_MERCENARIO, nextRound.phase)
+        assertEquals(GamePhase.NOCHE_ASESINO, nextRound.phase)
     }
 
     @Test
@@ -1418,22 +1418,24 @@ class GameEngineTest {
     }
 
     @Test
-    fun revealPhaseCanAutoAdvanceToFirstNight() {
+    fun revealPhaseStartsVisibleFirstNight() {
         val session = baseSession().copy(phase = GamePhase.REPARTO, quickTestMode = true)
+        val night = GameEngine.startNight(session)
 
         assertTrue(GameEngine.shouldAutoAdvance(session))
-        assertEquals(GamePhase.AMANECER, GameEngine.startNight(session).phase)
+        assertEquals(GamePhase.NOCHE_ASESINO, night.phase)
+        assertEquals("", night.nightKillTarget)
     }
 
     @Test
-    fun unifiedNightSkipsBotOnlyRolePhasesUntilHumanAction() {
+    fun startNightShowsFirstNightBeforeHumanAction() {
         val session = sessionWithHumanRole("medico").copy(phase = GamePhase.REPARTO)
 
         val night = GameEngine.startNight(session)
 
-        assertEquals(GamePhase.NOCHE_MEDICO, night.phase)
-        assertTrue(night.nightKillTarget.isNotBlank())
-        assertTrue(GameEngine.requiresHumanInput(night))
+        assertEquals(GamePhase.NOCHE_ASESINO, night.phase)
+        assertEquals("", night.nightKillTarget)
+        assertFalse(GameEngine.requiresHumanInput(night))
     }
 
     @Test
@@ -2545,11 +2547,11 @@ class GameEngineTest {
         )
 
         assertEquals(2, roundTwo.round)
-        assertEquals(GamePhase.AMANECER, roundTwo.phase)
+        assertEquals(GamePhase.NOCHE_ASESINO, roundTwo.phase)
         assertEquals("", roundTwo.winner)
         assertEquals("", secondDawn.winner)
         assertEquals(3, roundThree.round)
-        assertEquals(GamePhase.AMANECER, roundThree.phase)
+        assertEquals(GamePhase.NOCHE_ASESINO, roundThree.phase)
         assertEquals("", roundThree.winner)
     }
 

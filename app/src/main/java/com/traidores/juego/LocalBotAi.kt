@@ -2996,11 +2996,41 @@ internal object LocalBotAi {
             emptySet()
         }
         val safe = sanitizeBotSpeech(text, session, allowedTerms)
-        return if (isSelfAccusatoryLine(safe, session, bot)) {
+        val guarded = if (isSelfAccusatoryLine(safe, session, bot)) {
             neutralSelfAccusationFallback(session, bot, context)
         } else {
             safe
         }
+        return withOccasionalEmoji(guarded, session, bot, context)
+    }
+
+    private fun withOccasionalEmoji(
+        line: String,
+        session: GameSession,
+        bot: GamePlayer,
+        context: String
+    ): String {
+        if (line.isBlank() || !canUseOccasionalEmoji(session.phase)) return line
+        val seed = stableNoise("${session.code}:${session.round}:${bot.name}:emoji:$context:${socialChatSize(session)}")
+        if (seed % 7 != 0) return line
+
+        val normalized = normalizedForParsing(line)
+        val emoji = when {
+            listOf("raro", "ruido", "sospech", "no cierra", "contradic").any { normalized.contains(it) } ->
+                if (seed % 2 == 0) "🤔" else "👀"
+            listOf("murio", "silenci", "miedo", "callado").any { normalized.contains(it) } -> "😰"
+            listOf("voto", "votar", "afuera", "cerrar").any { normalized.contains(it) } -> "👀"
+            seed % 3 == 0 -> "🤔"
+            else -> return line
+        }
+        return if (line.length + 1 + emoji.length <= 140) "$line $emoji" else line
+    }
+
+    private fun canUseOccasionalEmoji(phase: GamePhase): Boolean {
+        return phase == GamePhase.DIA_DEBATE ||
+            phase == GamePhase.CONTRAPUNTO ||
+            phase == GamePhase.VOTACION ||
+            phase == GamePhase.DESEMPATE_VOTACION
     }
 
     private fun List<Pair<String, String>>.dedupeBotMessages(): List<Pair<String, String>> {

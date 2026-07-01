@@ -158,6 +158,17 @@
                     </FrameLayout>
 
                     <ImageButton
+                        android:id="@+id/btnToggleEmotes"
+                        android:layout_width="34dp"
+                        android:layout_height="34dp"
+                        android:layout_marginStart="5dp"
+                        android:background="@drawable/bg_chat_fab"
+                        android:contentDescription="Abrir emotes"
+                        android:padding="6dp"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_reactions_menu" />
+
+                    <ImageButton
                         android:id="@+id/btnSettings"
                         android:layout_width="32dp"
                         android:layout_height="32dp"
@@ -299,43 +310,65 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <LinearLayout
+            <FrameLayout
                 android:id="@+id/chatAmbientFeed"
-                android:layout_width="336dp"
-                android:layout_height="wrap_content"
+                android:layout_width="420dp"
+                android:layout_height="118dp"
                 android:layout_gravity="top|end"
                 android:layout_marginTop="86dp"
-                android:layout_marginEnd="84dp"
+                android:layout_marginEnd="72dp"
                 android:layout_marginBottom="96dp"
-                android:background="@drawable/bg_chat_frame_thin"
+                android:background="@drawable/bg_reveal_text_shade"
                 android:clickable="true"
+                android:clipToOutline="true"
                 android:elevation="9dp"
                 android:focusable="true"
-                android:orientation="vertical"
-                android:paddingHorizontal="9dp"
-                android:paddingVertical="7dp"
                 android:visibility="gone">
 
-                <LinearLayout
-                    android:id="@+id/chatAmbientMessages"
+                <ImageView
+                    android:id="@+id/chatAmbientBackground"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:layout_height="match_parent"
+                    android:alpha="0.60"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/log_gaucho" />
 
-                <TextView
-                    android:id="@+id/chatAmbientHint"
+                <View
+                    android:id="@+id/chatAmbientShade"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0.94"
+                    android:background="@drawable/bg_reveal_text_shade" />
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:maxLines="1"
-                    android:paddingTop="3dp"
-                    android:text="Toca para hablar"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="9sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                    android:orientation="vertical"
+                    android:paddingHorizontal="13dp"
+                    android:paddingVertical="10dp">
+
+                    <LinearLayout
+                        android:id="@+id/chatAmbientMessages"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:id="@+id/chatAmbientHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:paddingTop="5dp"
+                        android:text="Toca para hablar"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </FrameLayout>
 
             <LinearLayout
                 android:id="@+id/bottomPlayerPanel"
@@ -557,18 +590,40 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <LinearLayout
+            <FrameLayout
                 android:id="@+id/chatPanel"
                 android:layout_width="336dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="top|end"
                 android:layout_marginTop="86dp"
                 android:layout_marginBottom="84dp"
-                android:background="@drawable/bg_chat_frame_thin"
+                android:background="@drawable/bg_reveal_text_shade"
+                android:clipToOutline="true"
                 android:elevation="10dp"
-                android:orientation="vertical"
-                android:padding="10dp"
                 android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/chatPanelBackground"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0.54"
+                    android:contentDescription="@null"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/log_gaucho" />
+
+                <View
+                    android:id="@+id/chatPanelShade"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0.98"
+                    android:background="@drawable/bg_reveal_text_shade" />
+
+                <LinearLayout
+                    android:id="@+id/chatPanelContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="10dp">
 
                 <LinearLayout
                     android:id="@+id/chatHeader"
@@ -718,7 +773,8 @@
                         android:text="ENVIAR"
                         android:textSize="10sp" />
                 </LinearLayout>
-            </LinearLayout>
+                </LinearLayout>
+            </FrameLayout>
         </FrameLayout>
 
         <LinearLayout
