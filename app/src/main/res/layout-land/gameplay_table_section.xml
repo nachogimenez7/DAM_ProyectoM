@@ -307,13 +307,13 @@
                 android:layout_marginTop="86dp"
                 android:layout_marginEnd="84dp"
                 android:layout_marginBottom="96dp"
-                android:background="@drawable/bg_chat_ambient_feed"
+                android:background="@drawable/bg_chat_frame_thin"
                 android:clickable="true"
                 android:elevation="9dp"
                 android:focusable="true"
                 android:orientation="vertical"
-                android:paddingHorizontal="11dp"
-                android:paddingVertical="9dp"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="7dp"
                 android:visibility="gone">
 
                 <LinearLayout
@@ -461,36 +461,63 @@
                     android:layout_width="206dp"
                     android:layout_height="match_parent"
                     android:gravity="center"
-                    android:orientation="horizontal">
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnRevealCard"
+                            style="@style/BtnGold"
+                            android:layout_width="72dp"
+                            android:layout_height="30dp"
+                            android:layout_marginEnd="6dp"
+                            android:layout_marginBottom="0dp"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:text="REVELAR"
+                            android:textSize="10sp"
+                            app:autoSizeMaxTextSize="10sp"
+                            app:autoSizeMinTextSize="8sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <Button
+                            android:id="@+id/btnVote"
+                            style="@style/BtnDark"
+                            android:layout_width="128dp"
+                            android:layout_height="36dp"
+                            android:layout_marginBottom="0dp"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:text="ELEGIR OBJETIVO"
+                            android:textSize="11sp"
+                            app:autoSizeMaxTextSize="11sp"
+                            app:autoSizeMinTextSize="8sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
 
                     <Button
-                        android:id="@+id/btnRevealCard"
-                        style="@style/BtnGold"
-                        android:layout_width="72dp"
-                        android:layout_height="30dp"
-                        android:layout_marginEnd="6dp"
-                        android:layout_marginBottom="0dp"
-                        android:maxLines="1"
-                        android:singleLine="true"
-                        android:text="REVELAR"
-                        android:textSize="10sp"
-                        app:autoSizeMaxTextSize="10sp"
-                        app:autoSizeMinTextSize="8sp"
-                        app:autoSizeStepGranularity="1sp"
-                        app:autoSizeTextType="uniform" />
-
-                    <Button
-                        android:id="@+id/btnVote"
+                        android:id="@+id/btnRevealMayorSecondary"
                         style="@style/BtnDark"
-                        android:layout_width="128dp"
-                        android:layout_height="36dp"
+                        android:layout_width="match_parent"
+                        android:layout_height="22dp"
                         android:layout_marginBottom="0dp"
                         android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="8dp"
                         android:singleLine="true"
-                        android:text="ELEGIR OBJETIVO"
-                        android:textSize="11sp"
-                        app:autoSizeMaxTextSize="11sp"
-                        app:autoSizeMinTextSize="8sp"
+                        android:text="REVELARME - VOTO DOBLE"
+                        android:textSize="8.5sp"
+                        android:visibility="gone"
+                        app:autoSizeMaxTextSize="8.5sp"
+                        app:autoSizeMinTextSize="6sp"
                         app:autoSizeStepGranularity="1sp"
                         app:autoSizeTextType="uniform" />
                 </LinearLayout>
@@ -537,10 +564,10 @@
                 android:layout_gravity="top|end"
                 android:layout_marginTop="86dp"
                 android:layout_marginBottom="84dp"
-                android:background="@drawable/bg_chat_panel"
+                android:background="@drawable/bg_chat_frame_thin"
                 android:elevation="10dp"
                 android:orientation="vertical"
-                android:padding="11dp"
+                android:padding="10dp"
                 android:visibility="gone">
 
                 <LinearLayout

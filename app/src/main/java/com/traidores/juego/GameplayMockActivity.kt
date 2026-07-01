@@ -64,6 +64,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isDayNightTransitionRunning = false
     private var isDeathRevealRunning = false
     private var isSilenceRevealRunning = false
+    private var isNoDeathRevealRunning = false
     private var isOracleRevealVisible = false
     private var isRolePreviewOpen = false
     private var initialRoleReadingActive = false
@@ -90,6 +91,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastCountdownSecond = -1
     private var knownDeadPlayers = emptySet<String>()
     private var knownMutedPlayers = emptySet<String>()
+    private var pendingNoDeathReveal = false
+    private var lastNoDeathRevealRound = -1
+    private var nightSkipArmPhaseIndex = -1
+    private var nightSkipEnabledAtMs = 0L
+    private var nightSkipEnableScheduled = false
     private var lastRenderedEventMessages = emptyList<String>()
     private var lastRenderedEventExpanded: Boolean? = null
     private var lastPresentedCentralEventKey: String? = null
@@ -134,6 +140,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
+    private val nightSkipEnableRunnable = Runnable {
+        nightSkipEnableScheduled = false
+        if (::btnAction.isInitialized && ::session.isInitialized) {
+            renderAdvanceButton()
+        }
+    }
     private val voteResultAutoContinueRunnable = Runnable { handleVoteResultAutoContinue() }
     private val feedbackDismissRunnable = Runnable { dismissCurrentFeedback() }
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
@@ -187,6 +199,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var btnCloseRolePreview: ImageButton
     private lateinit var btnContinueRolePreview: Button
     private lateinit var btnRevealCard: Button
+    private lateinit var btnRevealMayorSecondary: Button
     private lateinit var btnToggleEventLog: Button
     private lateinit var centralPublicEventBanner: FrameLayout
     private lateinit var centralPublicEventIcon: TextView
@@ -258,6 +271,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var silenceRevealContent: LinearLayout
     private lateinit var silenceRevealOverlay: FrameLayout
     private lateinit var silenceRevealPlayerName: TextView
+    private lateinit var noDeathRevealContent: LinearLayout
+    private lateinit var noDeathRevealOverlay: FrameLayout
+    private lateinit var noDeathSunCore: ImageView
     private lateinit var topStatus: LinearLayout
     private lateinit var dayNightTransitionOverlay: FrameLayout
     private lateinit var transitionFromBackground: ImageView
@@ -269,6 +285,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var dayNightTransitionAnimator: DayNightTransitionAnimator
     private lateinit var deathRevealAnimator: DeathRevealAnimator
     private lateinit var silenceRevealAnimator: SilenceRevealAnimator
+    private lateinit var noDeathRevealAnimator: NoDeathRevealAnimator
     private lateinit var oracleRevealOverlay: FrameLayout
     private lateinit var oracleRevealPanel: FrameLayout
     private lateinit var oracleRevealPlayer: TextView
@@ -421,6 +438,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
+        lastNoDeathRevealRound =
+            savedInstanceState?.getInt(STATE_LAST_NO_DEATH_REVEAL_ROUND, -1) ?: -1
         isEventLogExpanded = false
         voteNoExpulsionPresented =
             savedInstanceState?.getBoolean(STATE_VOTE_NO_EXPULSION_PRESENTED) ?: false
@@ -450,6 +469,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnCloseRolePreview = findViewById(R.id.btnCloseRolePreview)
         btnContinueRolePreview = findViewById(R.id.btnContinueRolePreview)
         btnRevealCard = findViewById(R.id.btnRevealCard)
+        btnRevealMayorSecondary = findViewById(R.id.btnRevealMayorSecondary)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
         centralPublicEventBanner = findViewById(R.id.centralPublicEventBanner)
         centralPublicEventIcon = findViewById(R.id.centralPublicEventIcon)
@@ -534,6 +554,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         silenceRevealContent = findViewById(R.id.silenceRevealContent)
         silenceRevealOverlay = findViewById(R.id.silenceRevealOverlay)
         silenceRevealPlayerName = findViewById(R.id.silenceRevealPlayerName)
+        noDeathRevealContent = findViewById(R.id.noDeathRevealContent)
+        noDeathRevealOverlay = findViewById(R.id.noDeathRevealOverlay)
+        noDeathSunCore = findViewById(R.id.noDeathSunCore)
         topStatus = findViewById(R.id.topStatus)
         transitionFromBackground = findViewById(R.id.transitionFromBackground)
         transitionMoon = findViewById(R.id.transitionMoon)
@@ -590,6 +613,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             playerName = silenceRevealPlayerName,
             dp = ::dp,
             onFinished = ::finishSilenceReveal
+        )
+        noDeathRevealAnimator = NoDeathRevealAnimator(
+            overlay = noDeathRevealOverlay,
+            content = noDeathRevealContent,
+            sunCore = noDeathSunCore,
+            dp = ::dp,
+            onFinished = ::finishNoDeathReveal
         )
         oracleRevealOverlay = findViewById(R.id.oracleRevealOverlay)
         oracleRevealPanel = findViewById(R.id.oracleRevealPanel)
@@ -709,6 +739,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             startActivity(Intent(this, OpcionesActivity::class.java))
         }
         btnAction.setOnClickListener { handleCurrentPhase() }
+        btnRevealMayorSecondary.setOnClickListener { revealMayorFromSecondaryAction() }
         btnRevealCard.setOnClickListener { toggleHumanCard() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
         eventLogHeader.setOnClickListener { toggleEventLog() }
@@ -783,6 +814,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
+        cancelNoDeathReveal(resumeMusic = false)
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = false)
@@ -795,6 +827,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(nightSkipEnableRunnable)
+        nightSkipEnableScheduled = false
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
@@ -822,6 +856,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         settleDayNightTransition(resumeMusic = false)
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
+        cancelNoDeathReveal(resumeMusic = false)
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = true)
@@ -834,6 +869,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(nightSkipEnableRunnable)
+        nightSkipEnableScheduled = false
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
         autoAdvanceHandler.removeCallbacks(feedbackBannerDismissRunnable)
         autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
@@ -881,7 +918,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ::session.isInitialized &&
             !isDayNightTransitionRunning &&
             !isDeathRevealRunning &&
-            !isSilenceRevealRunning
+            !isSilenceRevealRunning &&
+            !isNoDeathRevealRunning
         ) {
             MusicManager.playGamePhase(this, session)
             resumeGameFlowAfterBlockingUi()
@@ -896,6 +934,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
         outState.putInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT, presentedSpecialVictoryCount)
+        outState.putInt(STATE_LAST_NO_DEATH_REVEAL_ROUND, lastNoDeathRevealRound)
         chatController.onSaveInstanceState(outState)
         outState.putBoolean(STATE_EVENT_LOG_EXPANDED, isEventLogExpanded)
         outState.putString(STATE_ONLINE_PARTIDA_ID, onlinePartidaId)
@@ -930,6 +969,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -1008,33 +1048,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             renderGame()
             return
         }
-        if (
-            (session.phase == GamePhase.DIA_DEBATE ||
-                session.phase == GamePhase.VOTACION ||
-                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
-            human.role?.key == "alcalde" &&
-            !session.alcaldeRevealed
-        ) {
-            if (
-                blockUnsupportedOnlineLocalDecision(
-                    decision = "alcalde_reveal",
-                    message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable."
-                )
-            ) {
-                return
-            }
-            val before = session
-            session = GameEngine.revealAlcalde(session)
-            val feedback = GameplayTableUi.feedbackForMayorReveal(before, session)
-            renderGame()
-            feedback?.let { showActionFeedbackBanner(it) }
-            return
-        }
-
         if (requiresHumanInput()) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, targetActionMessage(), Toast.LENGTH_SHORT).show()
             renderGame()
+            return
+        }
+
+        if (canSkipRemainingNight()) {
+            if (!isNightSkipButtonReady(canSkipNight = true)) {
+                renderGame()
+                return
+            }
+            skipRemainingNight()
             return
         }
 
@@ -1050,6 +1076,47 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
 
         advanceCurrentPhase()
+    }
+
+    private fun isUnrevealedHumanMayor(): Boolean {
+        val human = GameEngine.humanPlayer(session)
+        return human.alive &&
+            human.role?.key == RoleCatalog.ALCALDE &&
+            !session.alcaldeRevealed
+    }
+
+    private fun canOfferMayorReveal(): Boolean {
+        return isUnrevealedHumanMayor() &&
+            selectedTarget.isBlank() &&
+            (
+                session.phase == GamePhase.DIA_DEBATE ||
+                    session.phase == GamePhase.VOTACION ||
+                    session.phase == GamePhase.ALCALDE_DESEMPATE
+            )
+    }
+
+    private fun revealMayorFromSecondaryAction() {
+        if (!canOfferMayorReveal()) return
+        if (countdown.isTransitionLocked(session.phaseIndex)) {
+            GameplayEffects.play(this, GameplayEffect.ERROR)
+            Toast.makeText(this, "Espera a que comience la fase.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (
+            blockUnsupportedOnlineLocalDecision(
+                decision = "alcalde_reveal",
+                message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable."
+            )
+        ) {
+            return
+        }
+        val before = session
+        session = GameEngine.revealAlcalde(session)
+        if (before == session) return
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        val feedback = GameplayTableUi.feedbackForMayorReveal(before, session)
+        renderGame()
+        feedback?.let { showActionFeedbackBanner(it) }
     }
 
     private fun blockOnlineGuestLocalPhaseAdvance(reason: String): Boolean {
@@ -1236,6 +1303,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             clearSelection()
         }
         val newlyDeadPlayers = collectNewlyDeadPlayers()
+        collectNoDeathEvent()
         collectNewlyMutedPlayers()
         val transitionSpec = GameplayTableUi.transitionSpec(session)
         val blockingFeedbackPending = feedbackState.blocksGameplay()
@@ -2239,6 +2307,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
     }
 
+    private fun collectNoDeathEvent() {
+        if (
+            GameplayTableUi.wasNoDeathAtDawn(session) &&
+            lastNoDeathRevealRound != session.round
+        ) {
+            pendingNoDeathReveal = true
+            lastNoDeathRevealRound = session.round
+        }
+    }
+
     private fun renderNarrator(phaseText: PhaseText, publicMessage: String, eventChanged: Boolean) {
         phaseTitle.text = phaseText.title
         phaseSubtitle.text = publicMessage
@@ -2630,15 +2708,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val canSelfProtect = selectedTarget.isBlank() &&
             canHumanMedicSelfProtect()
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
+        val canSkipNight = canSkipRemainingNight()
+        val nightSkipReady = isNightSkipButtonReady(canSkipNight)
+        val mayorRevealAvailable = canOfferMayorReveal()
+        val mayorDebateOnlyReveal = mayorRevealAvailable && session.phase == GamePhase.DIA_DEBATE
+        val mayorVotingWithoutSelection = mayorRevealAvailable &&
+            (session.phase == GamePhase.VOTACION || session.phase == GamePhase.ALCALDE_DESEMPATE) &&
+            selectedAction == null
+        val mayorNeedsRevealBeforeDecision = mayorRevealAvailable &&
+            session.phase == GamePhase.ALCALDE_DESEMPATE &&
+            selectedAction == null
         val specialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
             (actionSession().phase == GamePhase.NOCHE_ORACULO &&
-                isHumanRoleTurn(RoleCatalog.ORACULO)) ||
-            ((session.phase == GamePhase.DIA_DEBATE ||
-                session.phase == GamePhase.VOTACION ||
-                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
-                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
-                !session.alcaldeRevealed)
+                isHumanRoleTurn(RoleCatalog.ORACULO))
         val label = when {
             session.winner.isNotBlank() -> "FINAL"
             isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
@@ -2650,13 +2733,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
             actionSession().phase == GamePhase.NOCHE_ORACULO &&
                 isHumanRoleTurn(RoleCatalog.ORACULO) -> "GUARDAR PODER"
-            (session.phase == GamePhase.DIA_DEBATE ||
-                session.phase == GamePhase.VOTACION ||
-                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
-                GameEngine.humanPlayer(session).role?.key == "alcalde" &&
-                !session.alcaldeRevealed -> "REVELARME"
+            mayorVotingWithoutSelection -> "VOTAR"
+            mayorDebateOnlyReveal -> "ESPERAR"
             mandatoryTargetSelection -> "ELEGIR OBJETIVO"
             session.phase == GamePhase.REPARTO -> "NOCHE"
+            canSkipNight -> "SALTAR NOCHE"
             mustWaitForPhaseTimer() -> "ESPERAR"
             session.phase == GamePhase.DIA_DEBATE &&
                 GameEngine.humanPlayer(session).role?.key == "payador" &&
@@ -2671,9 +2752,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.winner.isBlank() &&
             (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
             !onlineAwaitingHostAdvance &&
-            (!mustWaitForPhaseTimer() || actionReadyDuringTimer) &&
+            (!mustWaitForPhaseTimer() || actionReadyDuringTimer || nightSkipReady) &&
+            !mayorDebateOnlyReveal &&
+            !mayorNeedsRevealBeforeDecision &&
             (!mandatoryTargetSelection || selectedAction != null || canSelfProtect || specialDecision)
         applyPrimaryActionVisual(label, requiresAttention)
+        renderMayorRevealSecondaryButton(mayorRevealAvailable)
         btnAction.alpha = when {
             btnAction.isEnabled -> 1f
             requiresAttention -> 0.92f
@@ -2692,6 +2776,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         deathRevealContent.setPadding(dp(56), dp(50), dp(56), dp(48))
         silenceRevealContent.setBackgroundResource(frame)
         silenceRevealContent.setPadding(dp(50), dp(60), dp(50), dp(48))
+        noDeathRevealContent.setBackgroundResource(frame)
+        noDeathRevealContent.setPadding(dp(42), dp(66), dp(42), dp(42))
         voteResultPanel.setBackgroundResource(frame)
         voteResultPanel.setPadding(dp(46), dp(60), dp(46), dp(42))
         // Ventana de info privada: usa el mismo marco ornamental por mapa que los reveals.
@@ -2727,6 +2813,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnAction.setTextColor(
             getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
         )
+    }
+
+    private fun renderMayorRevealSecondaryButton(visible: Boolean) {
+        if (!::btnRevealMayorSecondary.isInitialized) return
+        btnRevealMayorSecondary.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) return
+
+        val accent = getColor(R.color.accent_red)
+        btnRevealMayorSecondary.isEnabled = !countdown.isTransitionLocked(session.phaseIndex)
+        btnRevealMayorSecondary.alpha = if (btnRevealMayorSecondary.isEnabled) 0.96f else 0.52f
+        btnRevealMayorSecondary.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(getColor(R.color.btn_dark))
+            setStroke(dp(1), accent)
+            cornerRadius = dp(6).toFloat()
+        }
+        btnRevealMayorSecondary.setTextColor(accent)
     }
 
     private fun updateActionAttentionPulse(requiresAttention: Boolean) {
@@ -3422,6 +3525,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isJesterVictoryVisible ||
@@ -3618,28 +3722,53 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderGame()
     }
 
+    private fun skipRemainingNight() {
+        if (!canSkipRemainingNight()) return
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        clearCountdown()
+        resetNightSkipArm()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        chatController.cancelPendingBotChat()
+
+        var advanced = session
+        var guard = 0
+        while (
+            isNightPhase(advanced.phase) &&
+            !GameEngine.requiresHumanInput(advanced) &&
+            guard < MAX_NIGHT_SKIP_STEPS
+        ) {
+            val before = advanced
+            advanced = advanceNightSessionWithoutRendering(advanced)
+            if (advanced == before) break
+            guard += 1
+        }
+
+        session = advanced
+        clearSelection()
+        renderGame()
+    }
+
     private fun advanceSessionWithoutRendering(): GameSession {
-        return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(session, "")
-            GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(session, "")
-            GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(session, "")
-            GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
-            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(session, "")
-            else -> session
+        return advanceNightSessionWithoutRendering(session)
+    }
+
+    private fun advanceNightSessionWithoutRendering(source: GameSession): GameSession {
+        return when (source.phase) {
+            GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(source, "")
+            GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(source, "")
+            GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(source, "")
+            GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(source, "")
+            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(source, "")
+            else -> source
         }
     }
 
     private fun resolveOnlineNightWindow(): GameSession {
         var resolved = session
         while (isNightPhase(resolved.phase)) {
-            resolved = when (resolved.phase) {
-                GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(resolved, "")
-                GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(resolved, "")
-                GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(resolved, "")
-                GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(resolved, "")
-                GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(resolved, "")
-                else -> resolved
-            }
+            val before = resolved
+            resolved = advanceNightSessionWithoutRendering(resolved)
+            if (resolved == before) break
         }
         return resolved
     }
@@ -4015,6 +4144,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -4244,22 +4374,71 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun mustWaitForPhaseTimer(): Boolean {
-        val human = GameEngine.humanPlayer(session)
         val hasSpecialDecision = GameEngine.needsInitialDesertorChoice(session) ||
             GameEngine.canDesertorReconsider(session) ||
             (actionSession().phase == GamePhase.NOCHE_ORACULO &&
-                isHumanRoleTurn(RoleCatalog.ORACULO)) ||
-            ((session.phase == GamePhase.DIA_DEBATE ||
-                session.phase == GamePhase.VOTACION ||
-                session.phase == GamePhase.ALCALDE_DESEMPATE) &&
-                human.role?.key == "alcalde" &&
-                !session.alcaldeRevealed)
+                isHumanRoleTurn(RoleCatalog.ORACULO))
         return !session.quickTestMode &&
             session.winner.isBlank() &&
             session.phase != GamePhase.REPARTO &&
             !requiresHumanInput() &&
             !hasSpecialDecision &&
             activePhaseSeconds() != null
+    }
+
+    private fun canSkipRemainingNight(): Boolean {
+        return !isOnlineGameplay() &&
+            session.winner.isBlank() &&
+            isNightPhase(session.phase) &&
+            !GameEngine.requiresHumanInput(session) &&
+            !countdown.isTransitionLocked(session.phaseIndex) &&
+            !isBlockingGameplayUiActive()
+    }
+
+    private fun isNightSkipButtonReady(canSkipNight: Boolean = canSkipRemainingNight()): Boolean {
+        if (!canSkipNight) {
+            resetNightSkipArm()
+            return false
+        }
+
+        if (nightSkipArmPhaseIndex != session.phaseIndex) {
+            nightSkipArmPhaseIndex = session.phaseIndex
+            nightSkipEnabledAtMs = SystemClock.elapsedRealtime() + NIGHT_SKIP_ARM_DELAY_MS
+            nightSkipEnableScheduled = false
+        }
+
+        val remainingMs = nightSkipEnabledAtMs - SystemClock.elapsedRealtime()
+        if (remainingMs <= 0L) return true
+
+        if (!nightSkipEnableScheduled) {
+            nightSkipEnableScheduled = true
+            autoAdvanceHandler.postDelayed(nightSkipEnableRunnable, remainingMs)
+        }
+        return false
+    }
+
+    private fun resetNightSkipArm() {
+        nightSkipArmPhaseIndex = -1
+        nightSkipEnabledAtMs = 0L
+        nightSkipEnableScheduled = false
+        autoAdvanceHandler.removeCallbacks(nightSkipEnableRunnable)
+    }
+
+    private fun isBlockingGameplayUiActive(): Boolean {
+        return isDayNightTransitionRunning ||
+            isDeathRevealRunning ||
+            isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
+            isOracleRevealVisible ||
+            isVoteResultVisible ||
+            isTieVoteVisible ||
+            isJesterVictoryVisible ||
+            isWinnerRevealVisible ||
+            isRolePreviewOpen ||
+            isTraitorRevealRunning ||
+            feedbackState.privateVisible ||
+            feedbackState.pending?.blocksGameplay == true ||
+            desertorDialogOpen
     }
 
     private fun isNightPhase(phase: GamePhase): Boolean {
@@ -4284,6 +4463,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val status = GameplayTableUi.personalStatus(session)
         val eliminated = !GameEngine.humanPlayer(session).alive
         actionControls.visibility = if (eliminated) View.GONE else View.VISIBLE
+        if (eliminated && ::btnRevealMayorSecondary.isInitialized) {
+            btnRevealMayorSecondary.visibility = View.GONE
+        }
         eliminatedStatePanel.visibility = if (eliminated) View.VISIBLE else View.GONE
         currentPlayerHint.maxLines = if (eliminated) 1 else 2
         if (eliminated) {
@@ -4482,6 +4664,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDayNightTransitionRunning ||
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
+            isNoDeathRevealRunning ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -4509,6 +4692,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         if (maybeShowNextDeathReveal()) return
+        if (maybeShowNoDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
         if (maybeShowOracleReveal()) return
         if (maybeShowTieVote()) return
@@ -4582,7 +4766,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             btnContinueDeathReveal.alpha = 0f
         }
         isDeathRevealRunning = false
-        if (pendingDeathReveals.isEmpty() && pendingSilenceReveals.isEmpty()) {
+        if (!hasPendingDawnRevealSequence()) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
         resumeGameFlowAfterBlockingUi()
@@ -4602,6 +4786,48 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (resumeMusic) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
+    }
+
+    private fun maybeShowNoDeathReveal(): Boolean {
+        if (isNoDeathRevealRunning) return true
+        if (!pendingNoDeathReveal) return false
+        showNoDeathReveal()
+        return true
+    }
+
+    private fun showNoDeathReveal() {
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        dismissActionFeedbackBannerNow()
+        MusicManager.pauseForTransition()
+        pendingNoDeathReveal = false
+        isNoDeathRevealRunning = true
+        hideCentralPublicEventBanner(immediate = true)
+        noDeathRevealAnimator.start()
+    }
+
+    private fun finishNoDeathReveal() {
+        if (!isNoDeathRevealRunning) return
+        isNoDeathRevealRunning = false
+        if (!hasPendingDawnRevealSequence()) {
+            MusicManager.resumeGamePhaseAfterTransition(this, session)
+        }
+        resumeGameFlowAfterBlockingUi()
+    }
+
+    private fun cancelNoDeathReveal(resumeMusic: Boolean) {
+        if (!::noDeathRevealOverlay.isInitialized) return
+        noDeathRevealAnimator.cancel()
+        isNoDeathRevealRunning = false
+        if (resumeMusic) {
+            MusicManager.resumeGamePhaseAfterTransition(this, session)
+        }
+    }
+
+    private fun hasPendingDawnRevealSequence(): Boolean {
+        return pendingDeathReveals.isNotEmpty() ||
+            pendingNoDeathReveal ||
+            pendingSilenceReveals.isNotEmpty()
     }
 
     private fun maybeShowNextSilenceReveal(): Boolean {
@@ -4680,8 +4906,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
 
         val human = GameEngine.humanPlayer(session)
-        val hiddenHumanMayor =
-            human.alive && human.role?.key == "alcalde" && !session.alcaldeRevealed
+        val hiddenHumanMayor = isUnrevealedHumanMayor()
         btnTieRevealMayor.visibility = if (hiddenHumanMayor) View.VISIBLE else View.GONE
         btnTieVoteChat.isEnabled = GameEngine.canHumanChat(session)
         btnTieVoteChat.alpha = if (btnTieVoteChat.isEnabled) 1f else 0.45f
@@ -4929,7 +5154,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun finishSilenceReveal() {
         if (!isSilenceRevealRunning) return
         isSilenceRevealRunning = false
-        if (pendingSilenceReveals.isEmpty()) {
+        if (!hasPendingDawnRevealSequence()) {
             MusicManager.resumeGamePhaseAfterTransition(this, session)
         }
         resumeGameFlowAfterBlockingUi()
@@ -5550,6 +5775,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
         private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
+        private const val STATE_LAST_NO_DEATH_REVEAL_ROUND = "last_no_death_reveal_round"
         private const val STATE_PRESENTED_SPECIAL_VICTORY_COUNT =
             "presented_special_victory_count"
         private const val STATE_ONLINE_PARTIDA_ID = "online_partida_id"
@@ -5563,6 +5789,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 8_000L
         private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 5_200L
+        private const val NIGHT_SKIP_ARM_DELAY_MS = 3_500L
+        private const val MAX_NIGHT_SKIP_STEPS = 8
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"

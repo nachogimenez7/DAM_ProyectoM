@@ -841,6 +841,16 @@ class GameEngineTest {
     }
 
     @Test
+    fun quickTestModeBotAssassinTargetsHumanWhenValid() {
+        val session = baseSession().copy(quickTestMode = true)
+        val assassin = session.players.first { it.role?.key == "asesino" }
+
+        val target = LocalBotAi.chooseAssassinTarget(session, assassin)
+
+        assertEquals("Humano", target)
+    }
+
+    @Test
     fun multipleAssassinsVoteForOneNightVictim() {
         val session = GameSession(
             code = "MULTI-KILL",
@@ -1110,6 +1120,7 @@ class GameEngineTest {
         assertEquals(GamePhase.CONTRAPUNTO, active.phase)
         assertTrue(active.payadorUsed)
         assertTrue(GameEngine.canHumanChat(active))
+        assertFalse(active.publicAnnouncement.contains("Payador"))
 
         val outsiderSession = active.copy(
             players = active.players.map {
@@ -1131,6 +1142,8 @@ class GameEngineTest {
 
         assertEquals(GamePhase.VOTACION, voting.phase)
         assertEquals("Asesino", voting.contrapuntoSuspicion)
+        assertTrue(voting.publicAnnouncement.contains("Asesino quedo senalado"))
+        assertFalse(voting.publicAnnouncement.contains("Payador"))
     }
 
     @Test
@@ -1146,6 +1159,7 @@ class GameEngineTest {
 
         assertFalse(victim!!.alive)
         assertFalse(victim.muted)
+        assertFalse(dawn.nightHadNoVictim)
         assertEquals("Amanecer: murio Policia.", dawn.publicAnnouncement)
     }
 
@@ -1162,6 +1176,8 @@ class GameEngineTest {
 
         assertTrue(protected!!.alive)
         assertFalse(protected.muted)
+        assertTrue(dawn.nightHadNoVictim)
+        assertTrue(GameplayTableUi.wasNoDeathAtDawn(dawn))
         assertEquals("Amanecer: no murio nadie.", dawn.publicAnnouncement)
         assertFalse(dawn.publicAnnouncement.contains("medico", ignoreCase = true))
         assertFalse(dawn.publicAnnouncement.contains("salv", ignoreCase = true))
@@ -2616,6 +2632,218 @@ class GameEngineTest {
         )
 
         assertEquals("", GameRules.winnerFor(session))
+    }
+
+    @Test
+    fun spyResolvesKillWhenNoAssassinIsAlive() {
+        val base = sessionWithHumanAdvancedRole("espia").copy(phase = GamePhase.NOCHE_ASESINO)
+        val session = base.copy(
+            players = base.players.map {
+                if (it.role?.key == "asesino") it.copy(alive = false, muted = true) else it
+            }
+        )
+
+        val resolved = GameEngine.resolveAssassin(session, "Policia")
+        val dawn = GameEngine.resolveDawn(
+            resolved.copy(
+                phase = GamePhase.AMANECER,
+                protectedPlayer = ""
+            )
+        )
+
+        assertEquals("Policia", resolved.nightKillTarget)
+        assertTrue(resolved.actionHistory.any {
+            it.type == GameActionType.KILL && it.actor == "Humano" && it.target == "Policia"
+        })
+        assertFalse(GameEngine.playerByName(dawn, "Policia")!!.alive)
+    }
+
+    @Test
+    fun payadorSuspicionAffectsTheRecordedVoteTally() {
+        val session = sessionWithHumanAdvancedRole("payador").copy(
+            phase = GamePhase.VOTACION,
+            contrapuntoSuspicion = "Asesino"
+        )
+
+        val resolved = GameEngine.resolveVotingWithRecordedVotes(
+            session,
+            mapOf(
+                "Humano" to "Policia",
+                "Mercenario" to "Asesino",
+                "Espia" to "Asesino",
+                "Policia" to "Asesino",
+                "Medico" to "Policia",
+                "Alcalde" to "Policia"
+            )
+        )
+
+        assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
+        assertEquals("Asesino", resolved.dayEliminationTarget)
+        assertTrue(resolved.tieVoteCandidates.isEmpty())
+    }
+
+    @Test
+    fun deadMayorCannotResolveARepeatedTie() {
+        val base = sessionWithHumanAdvancedRole("alcalde")
+        val recount = base.copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            voteRound = 2,
+            tieVoteCandidates = listOf("Asesino", "Policia"),
+            dayEliminationTarget = "",
+            players = base.players.map {
+                if (it.role?.key == "alcalde") it.copy(alive = false, muted = true) else it
+            }
+        )
+
+        val resolved = GameEngine.continueAfterVoteRecount(recount)
+
+        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals("", resolved.dayEliminationTarget)
+        assertTrue(resolved.alcaldeTieCandidates.isEmpty())
+    }
+
+    @Test
+    fun oracleInvitedDeadPlayerDoesNotCountAsAliveForVictory() {
+        val invoked = GameEngine.resolveOracle(oracleSession(), "Fallecido")
+
+        val dawn = GameEngine.resolveDawn(
+            invoked.copy(
+                nightKillTarget = "Ciudadana",
+                protectedPlayer = ""
+            )
+        )
+
+        assertFalse(GameEngine.playerByName(dawn, "Fallecido")!!.alive)
+        assertEquals(GameRules.TRAITOR_WINNER, dawn.winner)
+    }
+
+    @Test
+    fun allPlayersDeadDoesNotProduceAVacuousTownWin() {
+        val allDead = basePlayers().map { it.copy(alive = false, muted = true) }
+
+        assertEquals("", GameRules.winnerFor(allDead))
+    }
+
+    @Test
+    fun desertorWithoutChosenTeamDelaysParityVictory() {
+        val session = GameSession(
+            code = "DESERTOR-OPEN",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                GamePlayer("Humano", "H", role = role("desertor", "Desertor", "Neutral"), isHuman = true),
+                GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Policia", "P", role = role("policia", "Comisario", "Pueblo"))
+            )
+        )
+
+        assertEquals("", GameRules.winnerFor(session))
+    }
+
+    @Test
+    fun revealedMayorVoteAndPayadorSuspicionCanCombineIntoATie() {
+        val session = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.VOTACION,
+            alcaldeRevealed = true,
+            contrapuntoSuspicion = "Policia"
+        )
+
+        val resolved = GameEngine.resolveVotingWithRecordedVotes(
+            session,
+            mapOf(
+                "Humano" to "Asesino",
+                "Policia" to "Medico",
+                "Medico" to "Policia"
+            )
+        )
+
+        assertEquals("", resolved.dayEliminationTarget)
+        assertEquals(setOf("Asesino", "Policia"), resolved.tieVoteCandidates.toSet())
+    }
+
+    @Test
+    fun mercenarySilenceDoesNotMuteAPlayerKilledTheSameNight() {
+        val session = sessionWithHumanAdvancedRole("mercenario").copy(
+            phase = GamePhase.NOCHE_MERCENARIO,
+            nightKillTarget = "Policia"
+        )
+
+        val silenced = GameEngine.resolveMercenary(session, "Policia")
+        val dawn = GameEngine.resolveDawn(
+            silenced.copy(
+                phase = GamePhase.AMANECER,
+                protectedPlayer = ""
+            )
+        )
+        val victim = GameEngine.playerByName(dawn, "Policia")
+
+        assertFalse(victim!!.alive)
+        assertFalse(victim.muted)
+        assertFalse(dawn.publicAnnouncement.contains("no puede hablar"))
+    }
+
+    @Test
+    fun oracleCannotRecordASecondUse() {
+        val firstUse = GameEngine.resolveOracle(oracleSession(), "Fallecido")
+        val repeated = GameEngine.resolveOracle(firstUse.copy(phase = GamePhase.NOCHE_ORACULO), "Fallecido")
+
+        assertTrue(repeated.oracleUsed)
+        assertEquals(GamePhase.AMANECER, repeated.phase)
+        assertEquals(1, repeated.actionHistory.count { it.type == GameActionType.INVITE_DEAD })
+    }
+
+    @Test
+    fun bufonExpelledByMayorTieDecisionGetsSpecialVictory() {
+        val recount = GameSession(
+            code = "JESTER-MAYOR",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = listOf(
+                GamePlayer("Alcalde", "L", role = role("alcalde", "Alcalde", "Pueblo"), isHuman = true),
+                GamePlayer("Bufon", "B", role = role("bufon", "Bufon", "Neutral")),
+                GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+                GamePlayer("Medico", "M", role = role("medico", "Medico", "Pueblo"))
+            ),
+            phase = GamePhase.RECUENTO_VOTOS,
+            voteRound = 2,
+            tieVoteCandidates = listOf("Bufon", "Asesino"),
+            initialPlayerCount = 4
+        )
+
+        val mayorDecision = GameEngine.continueAfterVoteRecount(recount)
+        val revealed = GameEngine.revealAlcalde(mayorDecision)
+        val chosen = GameEngine.chooseAlcaldeTie(revealed, "Bufon")
+        val resultPhase = GameEngine.continueAfterVoteRecount(chosen)
+        val resolved = GameEngine.resolveResult(resultPhase)
+
+        assertEquals(GamePhase.ALCALDE_DESEMPATE, mayorDecision.phase)
+        assertEquals("bufon_expulsado", resolved.specialVictories.single().key)
+        assertEquals("Bufon", resolved.specialVictories.single().playerName)
+        assertFalse(GameEngine.playerByName(resolved, "Bufon")!!.alive)
+    }
+
+    @Test
+    fun medicCanProtectThemself() {
+        val session = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            nightKillTarget = "Humano"
+        )
+
+        val protected = GameEngine.resolveMedic(session, "Humano")
+        val dawn = GameEngine.resolveDawn(protected)
+
+        assertEquals("Humano", protected.protectedPlayer)
+        assertTrue(GameEngine.playerByName(dawn, "Humano")!!.alive)
+        assertEquals("Amanecer: no murio nadie.", dawn.publicAnnouncement)
+    }
+
+    @Test
+    fun explicitSelfVoteIsRejected() {
+        val session = baseSession().copy(phase = GamePhase.VOTACION)
+
+        val resolved = GameEngine.resolveVoting(session, "Humano")
+
+        assertEquals(session, resolved)
     }
 
     private fun sessionWithHumanRole(roleKey: String): GameSession {

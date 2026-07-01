@@ -17,6 +17,7 @@ object GameEngine {
             nightKillTarget = "",
             assassinVotes = emptyMap(),
             protectedPlayer = "",
+            nightHadNoVictim = false,
             nightSilenceTarget = "",
             investigatedPlayer = "",
             investigatedResult = "",
@@ -356,7 +357,8 @@ object GameEngine {
 
         val victim = session.nightKillTarget
         var updatedPlayers = session.players
-        val killMessage = if (victim.isBlank() || victim == session.protectedPlayer) {
+        val noVictim = victim.isBlank() || victim == session.protectedPlayer
+        val killMessage = if (noVictim) {
             "Amanecer: no murio nadie."
         } else {
             updatedPlayers = updatedPlayers.map { player ->
@@ -390,6 +392,7 @@ object GameEngine {
         val dawn = session.copy(
             players = updatedPlayers,
             phase = GamePhase.DIA_DEBATE,
+            nightHadNoVictim = noVictim,
             publicAnnouncement = publicMessage,
             privateHint = privateRoleHint(session.copy(players = updatedPlayers)),
             oracleRevealPending = oracleMessage.isNotBlank(),
@@ -514,7 +517,8 @@ object GameEngine {
             )
         }
 
-        val message = "El Payador inicia un Contrapunto entre ${selected[0]} y ${selected[1]}. Solo ellos y el Payador pueden hablar."
+        val message =
+            "Se abre un Contrapunto entre ${selected[0]} y ${selected[1]}. La conversacion queda restringida hasta que termine."
         return session.copy(
             phase = GamePhase.CONTRAPUNTO,
             payadorUsed = true,
@@ -540,7 +544,7 @@ object GameEngine {
         }
         if (selected.isBlank()) return session
 
-        val message = "El Contrapunto termino. El Payador senalo a $selected como mas sospechoso."
+        val message = "El Contrapunto termino. $selected quedo senalado como mas sospechoso."
         return session.copy(
             contrapuntoSuspicion = selected
         ).transitionTo(GamePhase.VOTACION, message, privateRoleHint(session))

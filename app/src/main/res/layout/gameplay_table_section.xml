@@ -308,13 +308,13 @@
                 android:layout_marginHorizontal="8dp"
                 android:layout_marginTop="86dp"
                 android:layout_marginBottom="126dp"
-                android:background="@drawable/bg_chat_ambient_feed"
+                android:background="@drawable/bg_chat_frame_thin"
                 android:clickable="true"
                 android:elevation="9dp"
                 android:focusable="true"
                 android:orientation="vertical"
-                android:paddingHorizontal="11dp"
-                android:paddingVertical="9dp"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="7dp"
                 android:visibility="gone">
 
                 <LinearLayout
@@ -507,6 +507,26 @@
                         app:autoSizeTextType="uniform" />
                 </LinearLayout>
 
+                <Button
+                    android:id="@+id/btnRevealMayorSecondary"
+                    style="@style/BtnDark"
+                    android:layout_width="match_parent"
+                    android:layout_height="24dp"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="0dp"
+                    android:maxLines="1"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="8dp"
+                    android:singleLine="true"
+                    android:text="REVELARME - VOTO DOBLE"
+                    android:textSize="9sp"
+                    android:visibility="gone"
+                    app:autoSizeMaxTextSize="9sp"
+                    app:autoSizeMinTextSize="7sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+
                 <LinearLayout
                     android:id="@+id/eliminatedStatePanel"
                     android:layout_width="match_parent"
@@ -587,10 +607,10 @@
         android:layout_marginStart="6dp"
         android:layout_marginEnd="6dp"
         android:layout_marginBottom="10dp"
-        android:background="@drawable/bg_chat_panel"
+        android:background="@drawable/bg_chat_frame_thin"
         android:elevation="14dp"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="10dp"
         android:visibility="gone">
 
                 <LinearLayout

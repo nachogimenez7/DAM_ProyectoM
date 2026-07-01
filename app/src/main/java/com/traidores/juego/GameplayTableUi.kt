@@ -466,6 +466,10 @@ object GameplayTableUi {
         }
     }
 
+    fun wasNoDeathAtDawn(session: GameSession): Boolean {
+        return session.phase == GamePhase.DIA_DEBATE && session.nightHadNoVictim
+    }
+
     fun winnerPresentation(session: GameSession): GameWinnerPresentation {
         if (session.winner.isBlank()) {
             return GameWinnerPresentation(

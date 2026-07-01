@@ -458,6 +458,9 @@ class GameplayChatController(
             return
         }
         val containerWidth = centerColumn.width.takeIf { it > 0 } ?: root.width
+        val containerHeight = centerColumn.height.takeIf { it > 0 }
+            ?: root.height.takeIf { it > 0 }
+            ?: host.dp(CHAT_PANEL_MAX_HEIGHT_DP)
         val params = chatPanel.layoutParams as RelativeLayout.LayoutParams
         val widthRatio = if (isChatKeyboardCompact) {
             CHAT_PANEL_COMPACT_WIDTH_RATIO
@@ -470,17 +473,27 @@ class GameplayChatController(
                 host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_WIDTH_DP else CHAT_PANEL_MIN_WIDTH_DP),
                 host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_WIDTH_DP else CHAT_PANEL_MAX_WIDTH_DP)
             )
-        params.height = host.dp(if (isChatKeyboardCompact) 230 else 300)
+        val heightRatio = if (isChatKeyboardCompact) {
+            CHAT_PANEL_COMPACT_HEIGHT_RATIO
+        } else {
+            CHAT_PANEL_HEIGHT_RATIO
+        }
+        params.height = (containerHeight * heightRatio)
+            .toInt()
+            .coerceIn(
+                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_HEIGHT_DP else CHAT_PANEL_MIN_HEIGHT_DP),
+                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_HEIGHT_DP else CHAT_PANEL_MAX_HEIGHT_DP)
+            )
         params.topMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
         params.bottomMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
         params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
         params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
         chatPanel.layoutParams = params
         chatPanel.setPadding(
-            host.dp(if (isChatKeyboardCompact) 7 else 11),
-            host.dp(if (isChatKeyboardCompact) 4 else 11),
-            host.dp(if (isChatKeyboardCompact) 7 else 11),
-            host.dp(if (isChatKeyboardCompact) 5 else 11)
+            host.dp(if (isChatKeyboardCompact) 7 else 10),
+            host.dp(if (isChatKeyboardCompact) 4 else 10),
+            host.dp(if (isChatKeyboardCompact) 7 else 10),
+            host.dp(if (isChatKeyboardCompact) 5 else 10)
         )
         chatHeader.layoutParams = chatHeader.layoutParams.apply {
             height = host.dp(if (isChatKeyboardCompact) 24 else 34)
@@ -746,8 +759,8 @@ class GameplayChatController(
         }
 
         val humanName = GameEngine.humanPlayer(host.currentSession).name
-        val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: host.dp(320)) - host.dp(56))
-            .coerceIn(host.dp(190), host.dp(300))
+        val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: host.dp(360)) - host.dp(56))
+            .coerceIn(host.dp(190), host.dp(420))
         if (messages.isNotEmpty()) {
             chatMessagesContainer.addView(createDayDivider())
         }
@@ -1254,27 +1267,24 @@ class GameplayChatController(
     }
 
     private fun renderChatBackgrounds() {
-        val background = chatBoxBackgroundFor(host.currentSession.mapKey)
-        chatPanel.setBackgroundResource(background)
-    }
-
-    private fun chatBoxBackgroundFor(mapKey: String): Int {
-        return when (mapKey.lowercase()) {
-            "grecia" -> R.drawable.bg_chat_box_grecia
-            "medieval" -> R.drawable.bg_chat_box_medieval
-            "pampa" -> R.drawable.bg_chat_box_pampa
-            else -> R.drawable.bg_chat_ambient_feed
-        }
+        chatPanel.setBackgroundResource(R.drawable.bg_chat_frame_thin)
+        chatAmbientFeed.setBackgroundResource(R.drawable.bg_chat_frame_thin)
     }
 
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
-        private const val CHAT_PANEL_WIDTH_RATIO = 0.46f
-        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.72f
-        private const val CHAT_PANEL_MIN_WIDTH_DP = 320
-        private const val CHAT_PANEL_MAX_WIDTH_DP = 420
+        private const val CHAT_PANEL_WIDTH_RATIO = 0.58f
+        private const val CHAT_PANEL_HEIGHT_RATIO = 0.68f
+        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.78f
+        private const val CHAT_PANEL_COMPACT_HEIGHT_RATIO = 0.58f
+        private const val CHAT_PANEL_MIN_WIDTH_DP = 340
+        private const val CHAT_PANEL_MAX_WIDTH_DP = 560
+        private const val CHAT_PANEL_MIN_HEIGHT_DP = 340
+        private const val CHAT_PANEL_MAX_HEIGHT_DP = 520
         private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 300
-        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 520
+        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 620
+        private const val CHAT_PANEL_COMPACT_MIN_HEIGHT_DP = 230
+        private const val CHAT_PANEL_COMPACT_MAX_HEIGHT_DP = 380
         private const val CHAT_PANEL_COMPACT_MARGIN_DP = 5
         private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
         private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f

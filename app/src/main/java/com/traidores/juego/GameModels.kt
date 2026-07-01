@@ -21,6 +21,7 @@ data class GameSession(
     val nightKillTarget: String = "",
     val assassinVotes: Map<String, String> = emptyMap(),
     val protectedPlayer: String = "",
+    val nightHadNoVictim: Boolean = false,
     val nightSilenceTarget: String = "",
     val investigatedPlayer: String = "",
     val investigatedResult: String = "",
@@ -342,9 +343,11 @@ object GameRules {
 
     fun winnerFor(session: GameSession): String {
         val alive = session.players.filter { it.alive }
+        if (alive.isEmpty()) return ""
         if (alive.none { it.role?.key in killerRoleKeys }) return TOWN_WINNER
 
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
+        if (desertor != null && session.desertorTeam.isBlank()) return ""
         val desertorSupportsTown = desertor != null && session.desertorTeam == TOWN_WINNER
         val traitors = alive.count { isTraitorRole(it.role) }
         val town = alive.count { it.role?.team == TOWN_WINNER } + if (desertorSupportsTown) 1 else 0

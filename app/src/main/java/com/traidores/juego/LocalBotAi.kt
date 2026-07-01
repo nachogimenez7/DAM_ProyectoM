@@ -229,6 +229,10 @@ internal object LocalBotAi {
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
+        if (session.quickTestMode) {
+            val humanName = GameEngine.humanPlayer(session).name
+            if (candidates.any { it.name == humanName }) return humanName
+        }
         return candidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
