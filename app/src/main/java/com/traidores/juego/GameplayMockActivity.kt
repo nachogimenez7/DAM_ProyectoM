@@ -5782,9 +5782,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         eventLogHeightAnimator?.cancel()
         isJesterVictoryVisible = true
         presentedSpecialVictoryCount += 1
-        jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÃ“N"
+        jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÓN"
         jesterVictoryMessage.text =
-            "ConsiguiÃ³ que el pueblo lo expulsara durante la votaciÃ³n."
+            "Consiguió que el pueblo lo expulsara durante la votación."
         val player = session.players.firstOrNull { it.name == victory.playerName }
         jesterVictoryImage.setImageResource(roleImageFor(player?.role))
         MusicManager.playVictoryMusic(this)
