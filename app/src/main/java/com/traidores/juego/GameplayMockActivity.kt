@@ -2249,7 +2249,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun actionSession(): GameSession {
-        if (!isOnlineGameplay() || !isNightPhase(session.phase)) return session
+        if (!isNightPhase(session.phase)) return session
+        if (!isOnlineGameplay()) {
+            return localPendingNightActionSession()
+        }
         val human = GameEngine.humanPlayer(session)
         if (!GameEngine.isAlive(human)) return session
         val actionPhase = when (human.role?.key) {
@@ -2261,6 +2264,24 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else -> null
         } ?: return session
         return session.copy(phase = actionPhase)
+    }
+
+    private fun localPendingNightActionSession(): GameSession {
+        if (GameEngine.requiresHumanInput(session)) return session
+
+        var preview = session
+        var guard = 0
+        while (
+            isNightPhase(preview.phase) &&
+            !GameEngine.requiresHumanInput(preview) &&
+            guard < MAX_NIGHT_SKIP_STEPS
+        ) {
+            val advanced = advanceNightSessionWithoutRendering(preview)
+            if (advanced == preview) break
+            preview = advanced
+            guard += 1
+        }
+        return preview
     }
 
     private fun isOnlineNightActionWindow(): Boolean {
@@ -4885,10 +4906,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun canSkipRemainingNight(): Boolean {
+        val currentActionSession = actionSession()
         return !isOnlineGameplay() &&
             session.winner.isBlank() &&
             isNightPhase(session.phase) &&
-            !GameEngine.requiresHumanInput(session) &&
+            !GameEngine.requiresHumanInput(currentActionSession) &&
             !countdown.isTransitionLocked(session.phaseIndex) &&
             !isBlockingGameplayUiActive()
     }

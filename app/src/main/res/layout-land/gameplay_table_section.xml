@@ -312,11 +312,11 @@
 
             <FrameLayout
                 android:id="@+id/chatAmbientFeed"
-                android:layout_width="420dp"
-                android:layout_height="118dp"
+                android:layout_width="456dp"
+                android:layout_height="136dp"
                 android:layout_gravity="top|end"
                 android:layout_marginTop="86dp"
-                android:layout_marginEnd="72dp"
+                android:layout_marginEnd="56dp"
                 android:layout_marginBottom="96dp"
                 android:background="@drawable/bg_reveal_text_shade"
                 android:clickable="true"
@@ -346,7 +346,8 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:paddingHorizontal="13dp"
-                    android:paddingVertical="10dp">
+                    android:paddingTop="11dp"
+                    android:paddingBottom="14dp">
 
                     <LinearLayout
                         android:id="@+id/chatAmbientMessages"
@@ -362,10 +363,10 @@
                         android:gravity="center"
                         android:includeFontPadding="false"
                         android:maxLines="1"
-                        android:paddingTop="5dp"
+                        android:paddingTop="6dp"
                         android:text="Toca para hablar"
                         android:textColor="@color/text_secondary"
-                        android:textSize="10sp"
+                        android:textSize="9sp"
                         android:textStyle="bold" />
                 </LinearLayout>
             </FrameLayout>

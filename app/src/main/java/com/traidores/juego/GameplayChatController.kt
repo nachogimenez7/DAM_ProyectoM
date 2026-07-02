@@ -660,11 +660,7 @@ class GameplayChatController(
     }
 
     private fun renderChatTitle() {
-        chatFeedTitle.text = when (host.currentSession.mapKey) {
-            "grecia" -> "EL CRONISTA DE LA POLIS"
-            "medieval" -> "EL CRONISTA DEL FEUDO"
-            else -> "EL CRONISTA DEL PUEBLO"
-        }
+        chatFeedTitle.text = "QUE SE DICE EN EL PUEBLO..."
     }
 
     private fun cronistaTypeface(): Typeface {
