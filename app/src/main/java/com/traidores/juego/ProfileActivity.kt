@@ -10,9 +10,12 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputFilter
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -30,7 +33,8 @@ class ProfileActivity : BaseActivity() {
         var avatarKey: String,
         var bannerKey: String,
         var favoriteRoleKey: String,
-        var achievements: List<String>
+        var achievements: List<String>,
+        var emoteLoadout: List<String>
     )
 
     private data class AchievementVisualStyle(
@@ -60,6 +64,7 @@ class ProfileActivity : BaseActivity() {
     private lateinit var editProfileButton: Button
     private lateinit var editPublicIdIcon: View
     private lateinit var achievementViews: List<TextView>
+    private lateinit var emoteViews: List<ImageView>
     private lateinit var editIcons: List<View>
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,6 +118,9 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editAchievements).setOnClickListener {
             showAchievementsSelector()
         }
+        findViewById<View>(R.id.editEmotes).setOnClickListener {
+            showEmoteSelector()
+        }
         findViewById<View>(R.id.editAvatar).contentDescription = "Editar foto de perfil"
         findViewById<View>(R.id.editBanner).contentDescription = "Editar banner del perfil"
         findViewById<View>(R.id.editName).contentDescription = "Editar nombre visible"
@@ -120,10 +128,14 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editBio).contentDescription = "Editar frase del perfil"
         findViewById<View>(R.id.editFavoriteRole).contentDescription = "Editar rol favorito"
         findViewById<View>(R.id.editAchievements).contentDescription = "Editar logros destacados"
+        findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
         profilePublicId.setOnClickListener { showFixedPublicIdMessage() }
         profileBio.setOnClickListener { if (isEditing) showBioEditor() }
+        emoteViews.forEach { view ->
+            view.setOnClickListener { if (isEditing) showEmoteSelector() }
+        }
         achievementViews.forEach { view ->
             view.setOnClickListener {
                 (view.tag as? String)?.let(::showAchievementDetail)
@@ -151,17 +163,25 @@ class ProfileActivity : BaseActivity() {
             findViewById(R.id.achievementTwo),
             findViewById(R.id.achievementThree)
         )
+        emoteViews = listOf(
+            findViewById(R.id.emoteOne),
+            findViewById(R.id.emoteTwo),
+            findViewById(R.id.emoteThree),
+            findViewById(R.id.emoteFour)
+        )
         editIcons = listOf(
             findViewById(R.id.editAvatar),
             findViewById(R.id.editBanner),
             findViewById(R.id.editName),
             findViewById(R.id.editBio),
             findViewById(R.id.editFavoriteRole),
-            findViewById(R.id.editAchievements)
+            findViewById(R.id.editAchievements),
+            findViewById(R.id.editEmotes)
         )
     }
 
     private fun loadProfile(): ProfileDraft {
+        AchievementTracker.ensureProfileOpened(this)
         val fallbackName = preferences
             .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
             .orEmpty()
@@ -189,7 +209,8 @@ class ProfileActivity : BaseActivity() {
             favoriteRoleKey = preferences.getString(PREF_FAVORITE_ROLE, DEFAULT_ROLE_KEY)
                 .orEmpty()
                 .ifBlank { DEFAULT_ROLE_KEY },
-            achievements = achievements
+            achievements = achievements,
+            emoteLoadout = EmoteLoadout.selectedIds(this)
         )
     }
 
@@ -217,10 +238,13 @@ class ProfileActivity : BaseActivity() {
         favoriteRoleName.text = favoriteRole.name
         setRoleImage(favoriteRoleImage, favoriteRole)
         updateInteractiveContentDescriptions(favoriteRole.name)
+        renderEmoteLoadout()
 
         achievementViews.forEachIndexed { index, view ->
             val achievementName = draftProfile.achievements.getOrNull(index)
-            val achievement = achievementName?.let(ProfileCustomizationCatalog::achievement)
+            val achievement = achievementName
+                ?.let(ProfileCustomizationCatalog::achievement)
+                ?.let { AchievementTracker.achievementWithProgress(this, it) }
             view.text = achievement?.shortName ?: achievementName.orEmpty()
             view.tag = achievement?.name
             view.contentDescription = achievement?.let { "Ver logro ${it.name}" }
@@ -248,7 +272,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun validFeaturedAchievements(names: List<String>): List<String> {
-        val unlocked = ProfileCustomizationCatalog.unlockedAchievements()
+        val unlocked = AchievementTracker.unlockedAchievements(this)
         val validNames = unlocked.map { it.name }.toSet()
         val selected = names
             .filter { it in validNames }
@@ -256,6 +280,20 @@ class ProfileActivity : BaseActivity() {
             .take(MAX_FEATURED_ACHIEVEMENTS)
         return selected.ifEmpty {
             unlocked.map { it.name }.take(MAX_FEATURED_ACHIEVEMENTS)
+        }
+    }
+
+    private fun renderEmoteLoadout() {
+        val ids = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
+        if (draftProfile.emoteLoadout != ids) {
+            draftProfile.emoteLoadout = ids
+        }
+        emoteViews.forEachIndexed { index, image ->
+            val spec = EmoteCatalog.byId(ids[index]) ?: return@forEachIndexed
+            image.setImageResource(spec.imageRes)
+            image.contentDescription = "${spec.label} - ${spec.themeLabel}"
+            image.isClickable = isEditing
+            image.isFocusable = isEditing
         }
     }
 
@@ -273,6 +311,10 @@ class ProfileActivity : BaseActivity() {
     private fun setEditing(editing: Boolean) {
         isEditing = editing
         editIcons.forEach { it.visibility = if (editing) View.VISIBLE else View.GONE }
+        emoteViews.forEach {
+            it.isClickable = editing
+            it.isFocusable = editing
+        }
         editPublicIdIcon.visibility = View.GONE
         editProfileButton.text = if (editing) "GUARDAR CAMBIOS" else "EDITAR PERFIL"
         editProfileButton.contentDescription = if (editing) {
@@ -284,6 +326,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun saveChanges() {
+        draftProfile.emoteLoadout = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
         preferences.edit()
             .putString(PREF_NAME, draftProfile.name)
             .putString(OpcionesActivity.PREF_PLAYER_NAME, draftProfile.name)
@@ -296,8 +339,9 @@ class ProfileActivity : BaseActivity() {
                 draftProfile.achievements.joinToString(ACHIEVEMENT_SEPARATOR)
             )
             .apply()
+        EmoteLoadout.save(this, draftProfile.emoteLoadout)
 
-        savedProfile = draftProfile.copy(achievements = draftProfile.achievements.toList())
+        savedProfile = copyProfile(draftProfile)
         setEditing(false)
         Toast.makeText(this, "Perfil actualizado.", Toast.LENGTH_SHORT).show()
     }
@@ -313,7 +357,7 @@ class ProfileActivity : BaseActivity() {
             .setMessage("Los cambios del perfil todavia no fueron guardados.")
             .setNegativeButton("Seguir editando", null)
             .setPositiveButton("Descartar") { _, _ ->
-                draftProfile = savedProfile.copy(achievements = savedProfile.achievements.toList())
+                draftProfile = copyProfile(savedProfile)
                 setEditing(false)
                 renderProfile()
                 finish()
@@ -333,6 +377,10 @@ class ProfileActivity : BaseActivity() {
             outState.putStringArrayList(
                 STATE_DRAFT_ACHIEVEMENTS,
                 ArrayList(draftProfile.achievements)
+            )
+            outState.putStringArrayList(
+                STATE_DRAFT_EMOTES,
+                ArrayList(draftProfile.emoteLoadout)
             )
         }
         super.onSaveInstanceState(outState)
@@ -455,6 +503,140 @@ class ProfileActivity : BaseActivity() {
         dialog.show()
     }
 
+    private fun showEmoteSelector() {
+        val content = layoutInflater.inflate(R.layout.dialog_emote_selector, null)
+        val counter: TextView = content.findViewById(R.id.emoteSelectorCounter)
+        val themeContainer: LinearLayout = content.findViewById(R.id.emoteThemeContainer)
+        val selectedIds = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout).toMutableList()
+        val optionViews = mutableMapOf<String, FrameLayout>()
+        val orderBadges = mutableMapOf<String, TextView>()
+
+        fun refreshSelectionState() {
+            counter.text = "${selectedIds.size}/${EmoteCatalog.LOADOUT_SIZE}"
+            EmoteCatalog.all.forEach { spec ->
+                val order = selectedIds.indexOf(spec.id)
+                val selected = order >= 0
+                optionViews[spec.id]?.background = emoteOptionBackground(selected, spec.toneHex)
+                orderBadges[spec.id]?.apply {
+                    text = if (selected) (order + 1).toString() else ""
+                    visibility = if (selected) View.VISIBLE else View.GONE
+                }
+            }
+        }
+
+        EmoteCatalog.byTheme().values.forEachIndexed { themeIndex, emotes ->
+            val title = TextView(this).apply {
+                text = emotes.firstOrNull()?.themeLabel.orEmpty().uppercase()
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER_VERTICAL
+                if (themeIndex > 0) {
+                    setPadding(0, dp(12), 0, dp(4))
+                } else {
+                    setPadding(0, 0, 0, dp(4))
+                }
+            }
+            themeContainer.addView(
+                title,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            emotes.forEachIndexed { index, spec ->
+                val option = FrameLayout(this).apply {
+                    isClickable = true
+                    isFocusable = true
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    contentDescription = "${spec.label} - ${spec.themeLabel}"
+                    setOnClickListener {
+                        val currentIndex = selectedIds.indexOf(spec.id)
+                        if (currentIndex >= 0) {
+                            selectedIds.removeAt(currentIndex)
+                        } else if (selectedIds.size >= EmoteCatalog.LOADOUT_SIZE) {
+                            Toast.makeText(this@ProfileActivity, "Ya elegiste 4 emotes.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            selectedIds += spec.id
+                        }
+                        refreshSelectionState()
+                    }
+                }
+                val icon = ImageView(this).apply {
+                    setImageResource(spec.imageRes)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = null
+                }
+                option.addView(
+                    icon,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+                val orderBadge = TextView(this).apply {
+                    background = getDrawable(R.drawable.bg_emote_order_badge)
+                    gravity = Gravity.CENTER
+                    includeFontPadding = false
+                    setTextColor(getColor(R.color.bg_dark))
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    visibility = View.GONE
+                }
+                option.addView(
+                    orderBadge,
+                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.TOP or Gravity.END)
+                )
+                optionViews[spec.id] = option
+                orderBadges[spec.id] = orderBadge
+                row.addView(
+                    option,
+                    LinearLayout.LayoutParams(0, dp(72), 1f).apply {
+                        if (index > 0) leftMargin = dp(4)
+                        if (index < emotes.lastIndex) rightMargin = dp(4)
+                    }
+                )
+            }
+            themeContainer.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
+            .create()
+        content.findViewById<Button>(R.id.btnCancelEmoteSelection).setOnClickListener {
+            dialog.dismiss()
+        }
+        content.findViewById<Button>(R.id.btnApplyEmoteSelection).setOnClickListener {
+            if (selectedIds.size != EmoteCatalog.LOADOUT_SIZE) {
+                Toast.makeText(this, "Elegi 4 emotes.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            draftProfile.emoteLoadout = selectedIds.toList()
+            renderProfile()
+            dialog.dismiss()
+        }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                val maxWidth = resources.displayMetrics.widthPixels - dp(24)
+                setLayout(dp(380).coerceAtMost(maxWidth), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        refreshSelectionState()
+        dialog.show()
+    }
+
     private fun showFavoriteRoleSelector() {
         startActivityForResult(
             ProfileSelectionActivity.intent(
@@ -485,43 +667,190 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showAchievementsSelector() {
-        val achievements = ProfileCustomizationCatalog.unlockedAchievements()
-        val selected = achievements
-            .map { it.name in draftProfile.achievements }
-            .toBooleanArray()
-        val labels = achievements.map { "${it.name} (${it.rarity.label})" }.toTypedArray()
+        val achievements = AchievementTracker.achievementsWithProgress(this)
+        val unlockedNames = AchievementTracker.unlockedAchievements(this)
+            .map { it.name }
+            .toSet()
+        val content = layoutInflater.inflate(R.layout.dialog_achievement_selector, null)
+        val counter: TextView = content.findViewById(R.id.achievementSelectorCounter)
+        val listContainer: LinearLayout = content.findViewById(R.id.achievementListContainer)
+        val selectedNames = validFeaturedAchievements(draftProfile.achievements).toMutableList()
+        val rowViews = mutableMapOf<String, LinearLayout>()
+        val orderBadges = mutableMapOf<String, TextView>()
 
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Logros destacados")
-            .setMultiChoiceItems(labels, selected) { _, index, checked ->
-                selected[index] = checked
-            }
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Aplicar", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val chosen = achievements
-                    .filterIndexed { index, _ -> selected[index] }
-                    .map { it.name }
-                if (chosen.isEmpty()) {
-                    Toast.makeText(
-                        this,
-                        "Selecciona al menos un logro.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else {
-                    draftProfile.achievements = chosen.take(MAX_FEATURED_ACHIEVEMENTS)
-                    renderProfile()
-                    dialog.dismiss()
+        fun refreshSelectionState() {
+            counter.text = "${selectedNames.size}/${MAX_FEATURED_ACHIEVEMENTS}"
+            achievements.forEach { achievement ->
+                val order = selectedNames.indexOf(achievement.name)
+                val selected = order >= 0
+                rowViews[achievement.name]?.background =
+                    achievementSelectionBackground(selected, achievement.rarity)
+                orderBadges[achievement.name]?.apply {
+                    text = if (selected) (order + 1).toString() else ""
+                    visibility = if (selected) View.VISIBLE else View.GONE
                 }
             }
         }
+
+        achievements.forEach { achievement ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                alpha = if (achievement.name in unlockedNames) 1f else 0.58f
+                contentDescription = if (achievement.name in unlockedNames) {
+                    "Logro ${achievement.name}"
+                } else {
+                    "Logro pendiente ${achievement.name}"
+                }
+                setOnClickListener {
+                    if (achievement.name !in unlockedNames) {
+                        Toast.makeText(
+                            this@ProfileActivity,
+                            "Todavia no desbloqueaste este logro.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@setOnClickListener
+                    }
+                    val currentIndex = selectedNames.indexOf(achievement.name)
+                    if (currentIndex >= 0) {
+                        selectedNames.removeAt(currentIndex)
+                    } else if (selectedNames.size >= MAX_FEATURED_ACHIEVEMENTS) {
+                        Toast.makeText(
+                            this@ProfileActivity,
+                            "Ya elegiste 3 logros destacados.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        selectedNames += achievement.name
+                    }
+                    refreshSelectionState()
+                }
+            }
+
+            val medalFrame = FrameLayout(this).apply {
+                background = achievementMedalFrameBackground(achievement.rarity)
+            }
+            val medal = ImageView(this).apply {
+                setImageResource(achievement.rarity.medalRes)
+                contentDescription = null
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            medalFrame.addView(
+                medal,
+                FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER)
+            )
+            val orderBadge = TextView(this).apply {
+                background = getDrawable(R.drawable.bg_emote_order_badge)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTextColor(getColor(R.color.bg_dark))
+                textSize = 11f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                visibility = View.GONE
+            }
+            medalFrame.addView(
+                orderBadge,
+                FrameLayout.LayoutParams(dp(20), dp(20), Gravity.TOP or Gravity.END)
+            )
+            row.addView(
+                medalFrame,
+                LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                    rightMargin = dp(10)
+                }
+            )
+
+            val texts = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            texts.addView(
+                TextView(this).apply {
+                    text = "${achievement.name} (${achievement.rarity.label})"
+                    setTextColor(getColor(R.color.text_primary))
+                    textSize = 15f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    maxLines = 2
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            texts.addView(
+                TextView(this).apply {
+                    text = "Como obtenerlo: ${achievement.description}"
+                    setTextColor(getColor(R.color.text_secondary))
+                    textSize = 12f
+                    setPadding(0, dp(4), 0, 0)
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            texts.addView(
+                TextView(this).apply {
+                    text = "Fecha: ${achievement.obtainedDate}"
+                    setTextColor(Color.parseColor(achievement.rarity.borderColorHex))
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setPadding(0, dp(5), 0, 0)
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            row.addView(
+                texts,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            )
+
+            rowViews[achievement.name] = row
+            orderBadges[achievement.name] = orderBadge
+            listContainer.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
+            .create()
+        content.findViewById<Button>(R.id.btnCancelAchievementSelection).setOnClickListener {
+            dialog.dismiss()
+        }
+        content.findViewById<Button>(R.id.btnApplyAchievementSelection).setOnClickListener {
+            if (selectedNames.isEmpty()) {
+                Toast.makeText(this, "Selecciona al menos un logro.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            draftProfile.achievements = selectedNames.take(MAX_FEATURED_ACHIEVEMENTS)
+            renderProfile()
+            dialog.dismiss()
+        }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                val maxWidth = resources.displayMetrics.widthPixels - dp(24)
+                setLayout(dp(390).coerceAtMost(maxWidth), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        refreshSelectionState()
         dialog.show()
     }
 
     private fun showAchievementDetail(name: String) {
-        val achievement = ProfileCustomizationCatalog.achievement(name) ?: return
+        val achievement = ProfileCustomizationCatalog.achievement(name)
+            ?.let { AchievementTracker.achievementWithProgress(this, it) }
+            ?: return
         val content = layoutInflater.inflate(R.layout.dialog_achievement_detail, null)
         val visualStyle = achievementVisualStyle(achievement.rarity)
         content.findViewById<View>(R.id.achievementDetailPanel).background =
@@ -667,12 +996,22 @@ class ProfileActivity : BaseActivity() {
                 .getStringArrayList(STATE_DRAFT_ACHIEVEMENTS)
                 ?.toList()
                 ?.ifEmpty { savedProfile.achievements }
-                ?: savedProfile.achievements
+                ?: savedProfile.achievements,
+            emoteLoadout = EmoteLoadout.normalizeIds(
+                savedInstanceState
+                    .getStringArrayList(STATE_DRAFT_EMOTES)
+                    ?.toList()
+                    ?.ifEmpty { savedProfile.emoteLoadout }
+                    ?: savedProfile.emoteLoadout
+            )
         )
     }
 
     private fun copyProfile(source: ProfileDraft): ProfileDraft {
-        return source.copy(achievements = source.achievements.toList())
+        return source.copy(
+            achievements = source.achievements.toList(),
+            emoteLoadout = source.emoteLoadout.toList()
+        )
     }
 
     private fun updateInteractiveContentDescriptions(favoriteRole: String) {
@@ -690,6 +1029,34 @@ class ProfileActivity : BaseActivity() {
             "Elegir rol favorito"
         } else {
             "Ver informacion del rol $favoriteRole"
+        }
+    }
+
+    private fun emoteOptionBackground(selected: Boolean, toneHex: String): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.parseColor(if (selected) "#332719" else "#1F1711"))
+            setStroke(
+                dp(if (selected) 2 else 1),
+                Color.parseColor(if (selected) toneHex else "#6B4F2A")
+            )
+        }
+    }
+
+    private fun achievementSelectionBackground(
+        selected: Boolean,
+        rarity: AchievementRarity
+    ): GradientDrawable {
+        val visualStyle = achievementVisualStyle(rarity)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.parseColor(if (selected) "#332719" else "#CC2A2318"))
+            setStroke(
+                dp(if (selected) 2 else 1),
+                Color.parseColor(if (selected) visualStyle.borderHex else "#6B4F2A")
+            )
         }
     }
 
@@ -727,5 +1094,6 @@ class ProfileActivity : BaseActivity() {
         const val STATE_DRAFT_BANNER = "profile_state_draft_banner"
         const val STATE_DRAFT_FAVORITE_ROLE = "profile_state_draft_favorite_role"
         const val STATE_DRAFT_ACHIEVEMENTS = "profile_state_draft_achievements"
+        const val STATE_DRAFT_EMOTES = "profile_state_draft_emotes"
     }
 }

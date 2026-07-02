@@ -108,24 +108,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val feedbackState = GameplayFeedbackState()
     private val reactionLimiter = GameplayReactionLimiter()
     private val activeReactionBubbles = mutableMapOf<String, View>()
-    private val defaultReactionSpecs = listOf(
-        ReactionSpec("angry", R.drawable.reaction_angry, "Enojado", "#C7442E"),
-        ReactionSpec("sad", R.drawable.reaction_sad, "Triste", "#5486B7"),
-        ReactionSpec("happy", R.drawable.reaction_happy, "Contento", "#D9A53A"),
-        ReactionSpec("suspicious", R.drawable.reaction_suspicious, "Sospechoso", "#8D6B33")
-    )
-    private val medievalAssassinReactionSpecs = listOf(
-        ReactionSpec("angry", R.drawable.reaction_assassin_medieval_angry, "Enojado", "#C7442E"),
-        ReactionSpec("sad", R.drawable.reaction_assassin_medieval_sad, "Triste", "#5486B7"),
-        ReactionSpec("happy", R.drawable.reaction_assassin_medieval_happy, "Contento", "#D9A53A"),
-        ReactionSpec("suspicious", R.drawable.reaction_assassin_medieval_suspicious, "Sospechoso", "#8D6B33")
-    )
-    private val gauchoDetectiveReactionSpecs = listOf(
-        ReactionSpec("angry", R.drawable.reaction_detective_gaucho_angry, "Enojado", "#C7442E"),
-        ReactionSpec("sad", R.drawable.reaction_detective_gaucho_sad, "Triste", "#5486B7"),
-        ReactionSpec("happy", R.drawable.reaction_detective_gaucho_happy, "Contento", "#D9A53A"),
-        ReactionSpec("suspicious", R.drawable.reaction_detective_gaucho_suspicious, "Sospechoso", "#8D6B33")
-    )
+    private val defaultReactionSpecs = reactionSpecsForTheme(EmoteCatalog.THEME_GREEK)
+    private val medievalAssassinReactionSpecs =
+        reactionSpecsForTheme(EmoteCatalog.THEME_MEDIEVAL_ASSASSIN)
+    private val gauchoDetectiveReactionSpecs =
+        reactionSpecsForTheme(EmoteCatalog.THEME_GAUCHO_DETECTIVE)
     private lateinit var session: GameSession
     override var currentSession: GameSession
         get() = session
@@ -390,6 +377,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     )
 
     private data class ReactionSpec(
+        val id: String,
         val key: String,
         val imageRes: Int,
         val label: String,
@@ -1414,6 +1402,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderReactionButton()
         scheduleBotReactionIfNeeded()
         chatController.onSessionUpdated()
+        if (!isOnlineGameplay()) {
+            AchievementTracker.recordMatchIfNeeded(this, session)
+        }
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
@@ -2900,7 +2891,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(10).toFloat()
-            setColor(Color.parseColor("#F4E4C4"))
+            setColor(Color.parseColor("#2A2318"))
             setStroke(dp(2), Color.parseColor(spec.toneHex))
         }
     }
@@ -3033,7 +3024,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(13).toFloat()
-                setColor(Color.parseColor("#F6E6C9"))
+                setColor(Color.parseColor("#2A2318"))
                 setStroke(dp(2), Color.parseColor(spec.toneHex))
             }
             elevation = dp(8).toFloat()
@@ -3060,7 +3051,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#F6E6C9"))
+                setColor(Color.parseColor("#2A2318"))
                 setStroke(dp(1), Color.parseColor(spec.toneHex))
             }
         }
@@ -3205,6 +3196,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun reactionSpecsFor(player: GamePlayer): List<ReactionSpec> {
         return when {
+            player.isHuman ->
+                EmoteLoadout.selectedSpecs(this).map { it.toReactionSpec() }
             session.mapKey == "medieval" && player.role?.key == RoleCatalog.ASESINO ->
                 medievalAssassinReactionSpecs
             session.mapKey == "pampa" && player.role?.key == RoleCatalog.POLICIA ->
@@ -3212,6 +3205,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else ->
                 defaultReactionSpecs
         }
+    }
+
+    private fun reactionSpecsForTheme(themeKey: String): List<ReactionSpec> {
+        return EmoteCatalog.byTheme()[themeKey]
+            ?.map { it.toReactionSpec() }
+            .orEmpty()
+    }
+
+    private fun EmoteSpec.toReactionSpec(): ReactionSpec {
+        return ReactionSpec(
+            id = id,
+            key = emotionKey,
+            imageRes = imageRes,
+            label = label,
+            toneHex = toneHex
+        )
     }
 
     private fun reactionNoise(seed: String): Int {

@@ -383,6 +383,86 @@
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif"
                     android:gravity="center_vertical"
+                    android:text="EMOTES"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/editEmotes"
+                    style="@style/ProfileEditIcon"
+                    android:layout_gravity="center_vertical|end" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:id="@+id/emoteLoadoutContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_profile_stat"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="8dp">
+
+                <ImageView
+                    android:id="@+id/emoteOne"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_emote_slot"
+                    android:contentDescription="Emote 1"
+                    android:padding="4dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/reaction_angry" />
+
+                <ImageView
+                    android:id="@+id/emoteTwo"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginHorizontal="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_emote_slot"
+                    android:contentDescription="Emote 2"
+                    android:padding="4dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/reaction_sad" />
+
+                <ImageView
+                    android:id="@+id/emoteThree"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginHorizontal="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_emote_slot"
+                    android:contentDescription="Emote 3"
+                    android:padding="4dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/reaction_happy" />
+
+                <ImageView
+                    android:id="@+id/emoteFour"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_emote_slot"
+                    android:contentDescription="Emote 4"
+                    android:padding="4dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/reaction_suspicious" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center_vertical"
                     android:text="LOGROS DESTACADOS"
                     android:textColor="@color/accent_gold"
                     android:textSize="19sp"

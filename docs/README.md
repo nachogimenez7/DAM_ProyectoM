@@ -16,7 +16,8 @@ docs/
 │   ├── 04-tecnologias.md
 │   ├── 05-estructura-proyecto.md
 │   ├── 06-convenciones-codigo.md
-│   └── 07-flujo-funcionamiento.md
+│   ├── 07-flujo-funcionamiento.md
+│   └── 08-logros-y-progreso.md
 ├── desarrollo/                Documentación para desarrolladores
 │   ├── guia-nuevos-desarrolladores.md
 │   ├── backlog.md
@@ -43,6 +44,7 @@ docs/
 
 - ¿Sos nuevo en el código? → [desarrollo/guia-nuevos-desarrolladores.md](desarrollo/guia-nuevos-desarrolladores.md)
 - ¿Querés entender el juego? → [general/02-mecanicas.md](general/02-mecanicas.md)
+- ¿Querés entender los logros? → [general/08-logros-y-progreso.md](general/08-logros-y-progreso.md)
 - ¿Querés saber qué falta? → [desarrollo/backlog.md](desarrollo/backlog.md)
 
 > La documentación para la facultad (Análisis de Sistemas / Bases de Datos: casos de uso, modelo de dominio, DER/relacional, diccionario de datos) se movió fuera del repo a `Facultad/Objetos/App Traidores - Analisis y BD/`.
