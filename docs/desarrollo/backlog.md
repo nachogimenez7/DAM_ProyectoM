@@ -8,7 +8,7 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 
 | # | Ítem | Estado | Detalle |
 |---|---|---|---|
-| F1 | **Espía** | Parcial | Modelado como traidor/"killer" y aparece inocente ante investigación, pero **no tiene fase ni acción propia**; comparte el asesinato. Falta diferenciar su jugabilidad. |
+| F1 | **Espía** | Completo | Traidor que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino) y aparece **inocente** ante la investigación. Si caen todos los Asesinos sigue matando (sucesión automática). Estilo "Padrino". |
 | F2 | **Bufón** | Parcial | Tiene victoria especial por expulsión, pero **sin acción nocturna propia**. Su rol depende del comportamiento social. |
 | F3 | **Modo online** | Parcial / Experimental | Crear/buscar sala, presencia, reconstrucción y sync por fases funcionan, pero sin Auth, App Check, Cloud Functions ni limpieza automática. Ver `firebase-online-schema.md` → "Límites actuales". |
 | F4 | **Selector de idioma** | Parcial | Persiste `language` en preferencias pero **no cambia los textos** (no hay i18n real). |
@@ -51,5 +51,5 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 1. Estabilización visual/navegación de gameplay/lobby/perfil/chat (objetivo del ciclo actual).
 2. Corrección de documentación desactualizada (D6, este backlog).
 3. Extracción incremental de responsabilidades en `GameplayMockActivity` (D1) con tests.
-4. Completar jugabilidad de Espía y Bufón (F1, F2) si vuelve al alcance.
+4. Completar jugabilidad de Bufón (F2) si vuelve al alcance. (Espía F1 resuelto: co-ejecutor + inocente, estilo "Padrino".)
 5. Endurecer online (N1–N4) cuando se priorice multijugador real.

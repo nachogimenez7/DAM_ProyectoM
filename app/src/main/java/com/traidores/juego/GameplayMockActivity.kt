@@ -108,11 +108,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val feedbackState = GameplayFeedbackState()
     private val reactionLimiter = GameplayReactionLimiter()
     private val activeReactionBubbles = mutableMapOf<String, View>()
-    private val reactionSpecs = listOf(
+    private val defaultReactionSpecs = listOf(
         ReactionSpec("angry", R.drawable.reaction_angry, "Enojado", "#C7442E"),
         ReactionSpec("sad", R.drawable.reaction_sad, "Triste", "#5486B7"),
         ReactionSpec("happy", R.drawable.reaction_happy, "Contento", "#D9A53A"),
         ReactionSpec("suspicious", R.drawable.reaction_suspicious, "Sospechoso", "#8D6B33")
+    )
+    private val medievalAssassinReactionSpecs = listOf(
+        ReactionSpec("angry", R.drawable.reaction_assassin_medieval_angry, "Enojado", "#C7442E"),
+        ReactionSpec("sad", R.drawable.reaction_assassin_medieval_sad, "Triste", "#5486B7"),
+        ReactionSpec("happy", R.drawable.reaction_assassin_medieval_happy, "Contento", "#D9A53A"),
+        ReactionSpec("suspicious", R.drawable.reaction_assassin_medieval_suspicious, "Sospechoso", "#8D6B33")
+    )
+    private val gauchoDetectiveReactionSpecs = listOf(
+        ReactionSpec("angry", R.drawable.reaction_detective_gaucho_angry, "Enojado", "#C7442E"),
+        ReactionSpec("sad", R.drawable.reaction_detective_gaucho_sad, "Triste", "#5486B7"),
+        ReactionSpec("happy", R.drawable.reaction_detective_gaucho_happy, "Contento", "#D9A53A"),
+        ReactionSpec("suspicious", R.drawable.reaction_detective_gaucho_suspicious, "Sospechoso", "#8D6B33")
     )
     private lateinit var session: GameSession
     override var currentSession: GameSession
@@ -2810,6 +2822,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun showReactionPalette() {
         dismissReactionPalette()
+        val specs = reactionSpecsFor(GameEngine.humanPlayer(session))
 
         val palette = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2823,7 +2836,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         }
 
-        reactionSpecs.forEachIndexed { index, spec ->
+        specs.forEachIndexed { index, spec ->
             val option = ImageButton(this).apply {
                 setImageResource(spec.imageRes)
                 background = reactionOptionBackground(spec)
@@ -3143,6 +3156,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun chooseBotReaction(bot: GamePlayer, seed: Int): ReactionSpec {
+        val specs = reactionSpecsFor(bot)
         val phasePool = when (session.phase) {
             GamePhase.VOTACION,
             GamePhase.DESEMPATE_VOTACION,
@@ -3163,7 +3177,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             phasePool
         }
         val key = keys[seed % keys.size]
-        return reactionSpecs.firstOrNull { it.key == key } ?: reactionSpecs.first()
+        return specs.firstOrNull { it.key == key }
+            ?: defaultReactionSpecs.firstOrNull { it.key == key }
+            ?: defaultReactionSpecs.first()
+    }
+
+    private fun reactionSpecsFor(player: GamePlayer): List<ReactionSpec> {
+        return when {
+            session.mapKey == "medieval" && player.role?.key == RoleCatalog.ASESINO ->
+                medievalAssassinReactionSpecs
+            session.mapKey == "pampa" && player.role?.key == RoleCatalog.POLICIA ->
+                gauchoDetectiveReactionSpecs
+            else ->
+                defaultReactionSpecs
+        }
     }
 
     private fun reactionNoise(seed: String): Int {
@@ -4728,7 +4755,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         "alcalde" -> "Puedes revelar tu identidad durante el debate. Desde entonces tu voto vale doble y decides ciertos empates."
         "payador" -> "Una vez por partida inicias un Contrapunto entre dos jugadores y agregas un voto al mas sospechoso."
         "desertor" -> "Eliges un bando al comenzar y ganas con ese equipo si sobrevives. Mas adelante puedes cambiarlo una sola vez."
-        "espia" -> "Formas parte de los Traidores, pero cuando te investiga el Detective apareces como inocente."
+        "espia" -> "Eliges la victima cada noche junto a los Traidores, pero cuando te investiga el Detective apareces como inocente."
         "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votacion. Esa es tu unica condicion de victoria."
         "oraculo" -> "Una vez por partida puedes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
         else -> "No tienes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."

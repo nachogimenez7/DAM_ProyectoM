@@ -41,7 +41,7 @@ Definidos en `RoleCatalog.kt`. La columna "mínimo" es la cantidad de jugadores 
 | Médico | `medico` | Pueblo | 5 | Todos | Completo |
 | Alcalde | `alcalde` | Pueblo | 8 | Todos | Completo |
 | Asesino | `asesino` | Traidores | 5 | Todos | Completo |
-| Espía | `espia` | Traidores | 10 | Todos | **Parcial** (sin fase propia) |
+| Espía | `espia` | Traidores | 10 | Todos | Completo (co-ejecutor, comparte la fase del Asesino) |
 | Mercenario | `mercenario` | Traidores | 7 | Todos | Completo |
 | Desertor | `desertor` | Neutral | 9 | Todos | Completo |
 | Payador | `payador` | Pueblo (Rol de Mapa) | 8 | Pampa | Completo |
@@ -55,7 +55,7 @@ Definidos en `RoleCatalog.kt`. La columna "mínimo" es la cantidad de jugadores 
 - **Médico:** cada noche protege a un jugador; si iba a morir, se cancela la eliminación.
 - **Alcalde:** puede revelarse en el debate; desde entonces su voto vale doble y decide empates entre los dos más votados.
 - **Asesino:** los asesinos eligen en conjunto una víctima por noche; si queda uno, decide solo.
-- **Espía:** es traidor pero aparece **inocente** ante la investigación del Policía. Comparte el asesinato (no tiene acción independiente).
+- **Espía:** traidor que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino, sin fase propia) y aparece **inocente** ante la investigación del Policía. Si caen todos los Asesinos, sigue matando por sí mismo (la sucesión es automática al ser un ejecutor más).
 - **Mercenario:** traidor; puede **silenciar** a una víctima para que no hable ni vote al día siguiente.
 - **Desertor:** elige bando al comenzar; puede reconsiderar **una sola vez** cuando quedan ~2/3 de los jugadores iniciales (`ceil(initial*2/3)`); debe sobrevivir para ganar con su bando final.
 - **Payador (Pampa):** una vez por partida abre un **Contrapunto** entre dos jugadores; al terminar señala a uno, que recibe un voto adicional.

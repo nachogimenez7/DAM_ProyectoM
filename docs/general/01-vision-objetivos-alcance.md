@@ -49,7 +49,7 @@ Según [`CLAUDE.md`](../../CLAUDE.md), el ciclo actual se concentra en **estabil
 ### Funcionalidades parcialmente implementadas (en desarrollo)
 
 - **Modo online (Firestore):** crear/buscar sala, presencia, reconstrucción de partida y sincronización por fases existen, pero sin autenticación, sin validación de frecuencia y sin limpieza automática de salas. Marcado explícitamente como experimental en el código y en la documentación.
-- **Espía:** modelado y considerado traidor/"killer" (aparece inocente ante la investigación), pero **no tiene fase ni acción propia**; comparte el asesinato con el Asesino.
+- **Espía:** traidor/"killer" que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino, sin fase propia) y **aparece inocente** ante la investigación del Detective. Si caen todos los Asesinos, sigue matando por sí mismo.
 - **Bufón:** tiene victoria especial por expulsión, pero **no tiene acción nocturna propia**.
 - **Selector de idioma:** persiste la preferencia pero no cambia los textos de la app.
 

@@ -72,7 +72,7 @@ object RoleCatalog {
         RoleDefinition(
             ESPIA,
             GameRules.TRAITOR_WINNER,
-            "Forma parte del bando traidor, pero ante la investigacion del Detective aparece como inocente.",
+            "Elige la victima cada noche junto a los asesinos, pero ante la investigacion del Detective aparece como inocente.",
             10
         ),
         RoleDefinition(

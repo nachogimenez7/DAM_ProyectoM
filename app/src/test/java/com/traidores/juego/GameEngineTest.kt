@@ -801,7 +801,11 @@ class GameEngineTest {
         val session = sessionWithHumanAdvancedRole("asesino").copy(
             phase = GamePhase.NOCHE_ASESINO,
             players = sessionWithHumanAdvancedRole("asesino").players.map {
-                if (it.isHuman) it.copy(muted = true, lastSilencedRound = 3) else it
+                when {
+                    it.isHuman -> it.copy(muted = true, lastSilencedRound = 3)
+                    it.role?.key == "espia" -> it.copy(alive = false, muted = true)
+                    else -> it
+                }
             }
         )
 
@@ -872,17 +876,18 @@ class GameEngineTest {
         val resolved = GameEngine.resolveAssassin(session, "Pueblo1")
 
         assertEquals(GamePhase.NOCHE_MERCENARIO, resolved.phase)
-        assertEquals(3, resolved.assassinVotes.size)
+        assertEquals(4, resolved.assassinVotes.size)
         assertEquals("Pueblo1", resolved.assassinVotes["Asesino1"])
+        assertTrue(resolved.assassinVotes.containsKey("Espia"))
         assertTrue(resolved.nightKillTarget in resolved.assassinVotes.values)
         assertEquals(
-            3,
+            4,
             resolved.actionHistory.count { it.type == GameActionType.KILL && it.round == 1 }
         )
     }
 
     @Test
-    fun spyObservesAssassinVoteWhenAssassinsAreAlive() {
+    fun spyVotesWithAssassinsWhenAssassinsAreAlive() {
         val session = GameSession(
             code = "SPY-WATCH",
             mapKey = "pampa",
@@ -898,12 +903,13 @@ class GameEngineTest {
             )
         )
 
-        val resolved = GameEngine.resolveAssassin(session, "")
+        val resolved = GameEngine.resolveAssassin(session, "Pueblo1")
 
-        assertEquals(2, resolved.assassinVotes.size)
-        assertTrue(resolved.privateHint.contains("Observaste la votacion asesina."))
+        assertEquals(3, resolved.assassinVotes.size)
+        assertEquals("Pueblo1", resolved.assassinVotes["Espia"])
+        assertTrue(resolved.privateHint.contains("Tu voto fue registrado."))
         assertTrue(resolved.privateHint.contains("Victima elegida:"))
-        assertFalse(GameEngine.requiresHumanInput(session))
+        assertTrue(GameEngine.requiresHumanInput(session))
     }
 
     @Test
@@ -2658,6 +2664,19 @@ class GameEngineTest {
             it.type == GameActionType.KILL && it.actor == "Humano" && it.target == "Policia"
         })
         assertFalse(GameEngine.playerByName(dawn, "Policia")!!.alive)
+    }
+
+    @Test
+    fun spyChoosesVictimAlongsideLivingAssassins() {
+        val session = sessionWithHumanAdvancedRole("espia").copy(phase = GamePhase.NOCHE_ASESINO)
+        // Con al menos un asesino vivo, el Espia igual participa eligiendo la victima.
+        assertTrue(session.players.any { it.role?.key == "asesino" && it.alive })
+
+        val resolved = GameEngine.resolveAssassin(session, "Policia")
+
+        assertTrue(resolved.actionHistory.any {
+            it.type == GameActionType.KILL && it.actor == "Humano" && it.target == "Policia"
+        })
     }
 
     @Test

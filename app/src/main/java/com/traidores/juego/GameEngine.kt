@@ -142,9 +142,8 @@ object GameEngine {
     }
 
     private fun activeKillers(session: GameSession): List<GamePlayer> {
-        val assassins = alivePlayers(session).filter { it.role?.key == "asesino" }
-        if (assassins.isNotEmpty()) return assassins
-        return alivePlayers(session).filter { it.role?.key == "espia" }
+        // Asesinos y Espia eligen juntos la victima cada noche (killerRoleKeys).
+        return alivePlayers(session).filter { it.role?.key in GameRules.killerRoleKeys }
     }
 
     private fun assassinVoteWinner(session: GameSession, assassinVotes: Map<String, String>): String? {
@@ -941,12 +940,8 @@ object GameEngine {
     fun privateRoleHint(session: GameSession): String {
         val human = humanPlayer(session)
         val role = human.role ?: return "Tu rol todavia no esta asignado."
-        val espiaKillerHint = if (
-            role.key == "espia" &&
-            session.phase == GamePhase.NOCHE_ASESINO &&
-            alivePlayers(session).none { it.role?.key == "asesino" }
-        ) {
-            " El Asesino cayo: ahora sos el ejecutor de los Traidores."
+        val espiaKillerHint = if (role.key == "espia") {
+            " Eliges la victima junto a los Traidores y el Detective te ve como inocente."
         } else {
             ""
         }
@@ -1792,8 +1787,9 @@ object GameEngine {
     private fun canActAs(session: GameSession, player: GamePlayer, roleKey: String): Boolean {
         if (!isAlive(player)) return false
         return when (roleKey) {
-            "asesino" -> player.role?.key == "asesino" ||
-                (player.role?.key == "espia" && alivePlayers(session).none { it.role?.key == "asesino" })
+            // El Espia es un ejecutor mas: elige la victima junto a los asesinos cada noche
+            // (y ante la investigacion del Detective aparece como inocente).
+            "asesino" -> player.role?.key == "asesino" || player.role?.key == "espia"
             else -> player.role?.key == roleKey
         }
     }
