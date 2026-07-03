@@ -348,8 +348,9 @@ class GameplayTableUiTest {
 
         val presentation = GameplayTableUi.winnerPresentation(session)
 
-        assertEquals(listOf("Pueblo", "Bufon"), presentation.winningPlayers.map { it.name })
+        assertEquals(listOf("Pueblo"), presentation.winningPlayers.map { it.name })
         assertEquals("Bufon", presentation.specialVictories.single().playerName)
+        assertEquals(listOf("Bufon"), presentation.specialWinningPlayers.map { it.name })
         assertTrue(presentation.humanWon)
     }
 

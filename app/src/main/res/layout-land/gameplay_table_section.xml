@@ -374,7 +374,7 @@
             <LinearLayout
                 android:id="@+id/bottomPlayerPanel"
                 android:layout_width="match_parent"
-                android:layout_height="94dp"
+                android:layout_height="108dp"
                 android:layout_gravity="bottom"
                 android:background="@drawable/bg_hud_parchment"
                 android:gravity="center_vertical"

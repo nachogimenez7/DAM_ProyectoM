@@ -723,9 +723,16 @@ object GameEngine {
                     } else {
                         LocalBotAi.chooseVoteTarget(session, voter)
                     }
+                    val fallbackCandidates = if (!voter.isHuman && session.debugBotsNeverTargetHuman) {
+                        candidates.filterNot { candidate ->
+                            playerByName(session, candidate)?.isHuman == true
+                        }.ifEmpty { candidates }
+                    } else {
+                        candidates
+                    }
                     val target = preferred.takeIf {
                         isValidTieVoteTarget(session, it, voter)
-                    } ?: candidates.firstOrNull { it != voter.name }.orEmpty()
+                    } ?: fallbackCandidates.firstOrNull { it != voter.name }.orEmpty()
                     if (isValidTieVoteTarget(session, target, voter)) {
                         this[voter.name] = target
                     }
@@ -899,7 +906,12 @@ object GameEngine {
 
         val targetPlayer = playerByName(session, target)
         if (targetPlayer == null || !targetPlayer.alive) {
-            return startNextRound(session, "Dia ${session.round}: nadie fue expulsado.")
+            val message = "Dia ${session.round}: nadie fue expulsado."
+            val checked = session.copy(
+                publicAnnouncement = message,
+                privateHint = privateRoleHint(session)
+            ).withPublicHistory(message)
+            return startNextRound(checked, message)
         }
 
         val updatedPlayers = session.players.map { player ->
@@ -1422,7 +1434,8 @@ object GameEngine {
 
     private fun startNextRound(session: GameSession, previousMessage: String): GameSession {
         val prepared = clearTemporaryMutes(session)
-        val message = "$previousMessage ${nextNightMessage(prepared)}"
+        val nightMessage = nextNightMessage(prepared)
+        val message = "$previousMessage $nightMessage"
         // payadorUsed no se reinicia: el Contrapunto se usa una sola vez por partida.
         return prepared.copy(
             phase = GamePhase.NOCHE_ASESINO,
@@ -1446,7 +1459,7 @@ object GameEngine {
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
             phaseIndex = prepared.phaseIndex + 1
-        ).withPublicHistory(message)
+        ).withPublicHistory(nightMessage)
     }
 
     private fun enterUnifiedNight(session: GameSession): GameSession {
@@ -1659,8 +1672,15 @@ object GameEngine {
         availableCandidates: List<String>
     ): Map<String, String>? {
         if (!session.debugForceVoteTies) return null
-        val candidates = availableCandidates.distinct().filter { candidate ->
+        val rawCandidates = availableCandidates.distinct().filter { candidate ->
             playerByName(session, candidate)?.alive == true
+        }
+        val candidates = if (session.debugBotsNeverTargetHuman) {
+            rawCandidates.filterNot { candidate ->
+                playerByName(session, candidate)?.isHuman == true
+            }.ifEmpty { rawCandidates }
+        } else {
+            rawCandidates
         }
         for (firstIndex in 0 until candidates.lastIndex) {
             for (secondIndex in firstIndex + 1 until candidates.size) {

@@ -855,6 +855,38 @@ class GameEngineTest {
     }
 
     @Test
+    fun debugBotsNeverTargetHumanOverridesQuickTestAssassinTarget() {
+        val session = baseSession().copy(
+            quickTestMode = true,
+            debugBotsNeverTargetHuman = true
+        )
+        val assassin = session.players.first { it.role?.key == "asesino" }
+
+        val target = LocalBotAi.chooseAssassinTarget(session, assassin)
+
+        assertNotEquals("Humano", target)
+        assertTrue(target.isNotBlank())
+    }
+
+    @Test
+    fun debugBotsNeverTargetHumanRejectsBotVoteCommandAgainstHuman() {
+        val session = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            debugBotsObeyVoteCommands = true,
+            debugBotsNeverTargetHuman = true,
+            chatHistory = listOf(
+                GameChatMessage("Humano", "voten a Humano")
+            )
+        )
+        val voter = session.players.first { it.name == "Policia" }
+
+        val target = LocalBotAi.chooseVoteTarget(session, voter)
+
+        assertNotEquals("Humano", target)
+        assertTrue(target.isNotBlank())
+    }
+
+    @Test
     fun multipleAssassinsVoteForOneNightVictim() {
         val session = GameSession(
             code = "MULTI-KILL",
@@ -2559,6 +2591,28 @@ class GameEngineTest {
         assertEquals(3, roundThree.round)
         assertEquals(GamePhase.NOCHE_ASESINO, roundThree.phase)
         assertEquals("", roundThree.winner)
+    }
+
+    @Test
+    fun nextRoundHistoryDoesNotRepeatExpulsionMessage() {
+        val nextRound = GameEngine.resolveResult(
+            baseSession().copy(
+                phase = GamePhase.RESULTADO,
+                dayEliminationTarget = "Aldeano1",
+                round = 1
+            )
+        )
+
+        assertEquals(GamePhase.NOCHE_ASESINO, nextRound.phase)
+        assertEquals(1, nextRound.publicHistory.count { it.contains("Aldeano1 fue expulsado") })
+        assertTrue(nextRound.publicHistory.any { it.startsWith("La oscuridad vuelve") })
+        assertFalse(
+            nextRound.publicHistory.any {
+                it.contains("Aldeano1 fue expulsado") && it.contains("La oscuridad vuelve")
+            }
+        )
+        assertTrue(nextRound.publicAnnouncement.contains("Aldeano1 fue expulsado"))
+        assertTrue(nextRound.publicAnnouncement.contains("La oscuridad vuelve"))
     }
 
     @Test

@@ -16,6 +16,7 @@ data class GameSession(
     val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
+    val debugBotsNeverTargetHuman: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",
@@ -422,7 +423,8 @@ object LocalGameFactory {
             mapName = map.name,
             players = players.take(MIN_PLAYERS),
             quickTestMode = false,
-            debugBotsObeyVoteCommands = false
+            debugBotsObeyVoteCommands = false,
+            debugBotsNeverTargetHuman = false
         )
     }
 
@@ -446,7 +448,8 @@ object LocalGameFactory {
         return session.copy(
             code = "ONLINE-MOCK",
             quickTestMode = false,
-            debugBotsObeyVoteCommands = false
+            debugBotsObeyVoteCommands = false,
+            debugBotsNeverTargetHuman = false
         )
     }
 

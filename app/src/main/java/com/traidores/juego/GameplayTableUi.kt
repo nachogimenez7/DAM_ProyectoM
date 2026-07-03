@@ -47,7 +47,8 @@ data class GameWinnerPresentation(
     val winningPlayers: List<GamePlayer>,
     val humanWon: Boolean,
     val summary: GameSummaryPresentation,
-    val specialVictories: List<GameSpecialVictory> = emptyList()
+    val specialVictories: List<GameSpecialVictory> = emptyList(),
+    val specialWinningPlayers: List<GamePlayer> = emptyList()
 )
 
 data class GameSummaryPresentation(
@@ -492,11 +493,11 @@ object GameplayTableUi {
         }
         val specialWinnerNames = session.specialVictories.map { it.playerName }.toSet()
         val specialWinningPlayers = session.players.filter { it.name in specialWinnerNames }
-        val winningPlayers = (factionWinningPlayers + specialWinningPlayers).distinctBy { it.name }
         return GameWinnerPresentation(
-            winningPlayers = winningPlayers,
-            humanWon = winningPlayers.any { it.isHuman },
+            winningPlayers = factionWinningPlayers,
+            humanWon = factionWinningPlayers.any { it.isHuman } || specialWinningPlayers.any { it.isHuman },
             specialVictories = session.specialVictories,
+            specialWinningPlayers = specialWinningPlayers,
             summary = gameSummary(session)
         )
     }

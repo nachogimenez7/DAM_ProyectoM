@@ -1304,7 +1304,7 @@ class GameplayChatController(
         private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
         private const val CHAT_AMBIENT_MAX_MESSAGES = 4
-        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
+        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120

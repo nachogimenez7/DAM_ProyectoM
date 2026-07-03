@@ -15,5 +15,9 @@
     <color name="accent_blue">#4a7fb5</color>
     <color name="accent_green">#5a8a3c</color>
     <color name="accent_purple">#8a5fbf</color>
+    <color name="winner_town_accent">#8FCB91</color>
+    <color name="special_victory_accent">#B79AE0</color>
+    <color name="special_victory_border">#8A6FC0</color>
+    <color name="special_victory_bg">#1C1630</color>
     <color name="divider">#3d2e1e</color>
 </resources>

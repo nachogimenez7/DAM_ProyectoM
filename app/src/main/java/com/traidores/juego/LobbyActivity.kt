@@ -1675,6 +1675,7 @@ class LobbyActivity : BaseActivity() {
         var quickTestMode = session.quickTestMode
         var debugBotsObeyVoteCommands = session.debugBotsObeyVoteCommands
         var debugForceVoteTies = session.debugForceVoteTies
+        var debugBotsNeverTargetHuman = session.debugBotsNeverTargetHuman
         val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         var roleReadingSeconds = preferences
             .getInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
@@ -1833,6 +1834,24 @@ class LobbyActivity : BaseActivity() {
             })
             content.addView(TextView(this).apply {
                 text = "Fuerza un empate en la votacion inicial y vuelve a empatar el desempate."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), 0, dp(4), dp(8))
+            })
+            content.addView(SwitchCompat(this).apply {
+                applyTraidoresSwitchStyle()
+                text = "LOS BOTS NO ME ATACAN"
+                isChecked = debugBotsNeverTargetHuman
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 14f
+                setPadding(dp(4), dp(2), dp(4), dp(4))
+                setOnCheckedChangeListener { _, checked ->
+                    debugBotsNeverTargetHuman = checked
+                }
+            })
+            content.addView(TextView(this).apply {
+                text = "Debug local: los bots evitan matarte de noche y votarte de dia si hay otro objetivo valido."
                 gravity = Gravity.CENTER
                 setTextColor(getColor(R.color.text_secondary))
                 textSize = 11f
@@ -2067,7 +2086,8 @@ class LobbyActivity : BaseActivity() {
                     showIndividualVotes = showIndividualVotes,
                     quickTestMode = quickTestMode,
                     debugBotsObeyVoteCommands = debugBotsObeyVoteCommands,
-                    debugForceVoteTies = debugForceVoteTies
+                    debugForceVoteTies = debugForceVoteTies,
+                    debugBotsNeverTargetHuman = debugBotsNeverTargetHuman
                 )
             }
             .create()

@@ -53,6 +53,21 @@ import android.view.animation.DecelerateInterpolator
 import java.util.ArrayDeque
 import kotlin.math.ceil
 
+private data class RevealInset(
+    val left: Int,
+    val top: Int,
+    val right: Int,
+    val bottom: Int
+)
+
+private data class RevealPanelInsets(
+    val death: RevealInset = RevealInset(56, 50, 56, 48),
+    val silence: RevealInset = RevealInset(50, 60, 50, 48),
+    val noDeath: RevealInset = RevealInset(42, 66, 42, 42),
+    val voteResult: RevealInset = RevealInset(46, 60, 46, 42),
+    val privateFeedback: RevealInset = RevealInset(52, 56, 52, 50)
+)
+
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private var isCardRevealed = false
@@ -3296,22 +3311,51 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun applyRevealOverlayTheme() {
         val frame = revealPanelBackgroundForMap(session.mapKey)
+        val insets = revealInsetsForMap(session.mapKey)
         // Reveals grandes: marco ornamental (xxhdpi). El contenido se insetea para caer dentro
-        // del centro oscuro del marco (los bordes decorativos ocupan ~56dp por lado).
-        // Reveal de muerte: layout horizontal (carta a la izquierda, texto a la derecha),
-        // por eso el marco va mas ancho y mas bajo que los reveals verticales.
+        // del centro oscuro de cada marco. Grecia necesita mas aire por columnas/laurel.
         deathRevealContent.setBackgroundResource(frame)
-        deathRevealContent.setPadding(dp(56), dp(50), dp(56), dp(48))
+        deathRevealContent.applyRevealPadding(insets.death)
         silenceRevealContent.setBackgroundResource(frame)
-        silenceRevealContent.setPadding(dp(50), dp(60), dp(50), dp(48))
+        silenceRevealContent.applyRevealPadding(insets.silence)
         noDeathRevealContent.setBackgroundResource(frame)
-        noDeathRevealContent.setPadding(dp(42), dp(66), dp(42), dp(42))
+        noDeathRevealContent.applyRevealPadding(insets.noDeath)
         voteResultPanel.setBackgroundResource(frame)
-        voteResultPanel.setPadding(dp(46), dp(60), dp(46), dp(42))
+        voteResultPanel.applyRevealPadding(insets.voteResult)
         // Ventana de info privada: usa el mismo marco ornamental por mapa que los reveals.
-        // El contenido se insetea para caer dentro del centro oscuro (bordes ~56dp por lado).
         privateFeedbackPanel.setBackgroundResource(frame)
-        privateFeedbackPanel.setPadding(dp(52), dp(56), dp(52), dp(50))
+        privateFeedbackPanel.applyRevealPadding(insets.privateFeedback)
+    }
+
+    private fun View.applyRevealPadding(inset: RevealInset) {
+        setPadding(dp(inset.left), dp(inset.top), dp(inset.right), dp(inset.bottom))
+    }
+
+    private fun revealInsetsForMap(mapKey: String): RevealPanelInsets {
+        return when (mapKey) {
+            "grecia" -> RevealPanelInsets(
+                death = RevealInset(72, 74, 72, 58),
+                silence = RevealInset(70, 82, 70, 58),
+                noDeath = RevealInset(66, 88, 66, 56),
+                voteResult = RevealInset(70, 88, 70, 56),
+                privateFeedback = RevealInset(70, 78, 70, 58)
+            )
+            "medieval" -> RevealPanelInsets(
+                death = RevealInset(66, 64, 66, 54),
+                silence = RevealInset(62, 74, 62, 54),
+                noDeath = RevealInset(58, 80, 58, 50),
+                voteResult = RevealInset(60, 76, 60, 50),
+                privateFeedback = RevealInset(62, 70, 62, 56)
+            )
+            "pampa" -> RevealPanelInsets(
+                death = RevealInset(64, 60, 64, 52),
+                silence = RevealInset(58, 70, 58, 52),
+                noDeath = RevealInset(54, 76, 54, 48),
+                voteResult = RevealInset(56, 72, 56, 48),
+                privateFeedback = RevealInset(60, 66, 60, 54)
+            )
+            else -> RevealPanelInsets()
+        }
     }
 
     private fun revealPanelBackgroundForMap(mapKey: String): Int {
@@ -4212,7 +4256,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 } else if (GameEngine.requiresHumanInput(session)) {
                     GameEngine.resolveHumanTimeout(session)
                 } else {
-                    advanceSessionWithoutRendering()
+                    resolveLocalNightWithoutHumanInput()
                 }
             }
             GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
@@ -4258,6 +4302,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         chatController.cancelPendingBotChat()
 
+        session = resolveLocalNightWithoutHumanInput()
+        clearSelection()
+        renderGame()
+    }
+
+    private fun resolveLocalNightWithoutHumanInput(): GameSession {
         var advanced = session
         var guard = 0
         while (
@@ -4271,9 +4321,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             guard += 1
         }
 
-        session = advanced
-        clearSelection()
-        renderGame()
+        return advanced
     }
 
     private fun advanceSessionWithoutRendering(): GameSession {
@@ -4568,16 +4616,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO,
             GamePhase.NOCHE_ORACULO -> {
-                val skipBotOnlyNight = session.quickTestMode &&
-                    !isOnlineGameplay() &&
-                    !GameEngine.requiresHumanInput(session)
-                timing.nightSeconds.takeUnless { skipBotOnlyNight }
+                if (!isOnlineGameplay() && !GameEngine.requiresHumanInput(actionSession())) {
+                    LOCAL_NO_INPUT_NIGHT_SECONDS
+                } else {
+                    timing.nightSeconds
+                }
             }
             GamePhase.DIA_DEBATE,
             GamePhase.CONTRAPUNTO -> timing.discussionSeconds
             GamePhase.VOTACION,
             GamePhase.ALCALDE_DESEMPATE -> timing.votingSeconds
-            GamePhase.DESEMPATE_VOTACION -> (timing.votingSeconds / 2).coerceAtLeast(10)
+            GamePhase.DESEMPATE_VOTACION -> (timing.votingSeconds / 2).coerceAtLeast(20)
             GamePhase.REPARTO,
             GamePhase.AMANECER,
             GamePhase.RECUENTO_VOTOS,
@@ -4889,16 +4938,36 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             return null
         }
-        val messages = listOf(
-            "Cerras los ojos. Alguien pisa una rama y todos fingen no haber escuchado.",
-            "El pueblo duerme. Una sombra parece saber demasiado, pero no declara.",
-            "Se escuchan susurros, pasos y una puerta que nadie va a admitir haber abierto.",
-            "La noche hace su trabajo. Sobrevives mirando el techo.",
-            "Alguien se mueve en secreto. El mate queda frio y las sospechas calientes."
-        )
+        val messages = passiveNightMessagesForMap(session.mapKey)
         val index = (session.round * 31 + session.phaseIndex * 7 + session.phase.ordinal)
             .let { kotlin.math.abs(it) % messages.size }
         return messages[index]
+    }
+
+    private fun passiveNightMessagesForMap(mapKey: String): List<String> {
+        return when (mapKey) {
+            "grecia" -> listOf(
+                "La polis guarda silencio. En el agora, hasta las estatuas parecen escuchar.",
+                "El aceite de las lamparas tiembla. Alguien cruza el patio sin mirar al cielo.",
+                "Los dioses callan. Una sandalia roza la piedra y nadie pregunta de quien fue.",
+                "La noche cae sobre las columnas. Sobrevives contando sombras entre los olivos.",
+                "Un rumor sube desde el puerto. Nadie lo confirma, pero todos lo sienten."
+            )
+            "medieval" -> listOf(
+                "El castillo duerme. Una antorcha chispea donde nadie deberia estar despierto.",
+                "Se apagan voces en la taberna. Una puerta cruje y el patio queda inmovil.",
+                "La guardia mira hacia otro lado. En las murallas, una sombra cambia de rumbo.",
+                "La noche hace su trabajo. Sobrevives oyendo pasos detras de la piedra.",
+                "Un juglar calla a mitad de verso. Nadie rie, nadie pregunta."
+            )
+            else -> listOf(
+                "Cerras los ojos. Alguien pisa una rama y todos fingen no haber escuchado.",
+                "El pueblo duerme. Una sombra parece saber demasiado, pero no declara.",
+                "Se escuchan susurros, pasos y una puerta que nadie va a admitir haber abierto.",
+                "La noche hace su trabajo. Sobrevives mirando el techo.",
+                "Alguien se mueve en secreto. El mate queda frio y las sospechas calientes."
+            )
+        }
     }
 
     private fun mustWaitForPhaseTimer(): Boolean {
@@ -5210,6 +5279,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         if (
             voteNoExpulsionPresented &&
+            session.winner.isBlank() &&
             session.phase == GamePhase.RESULTADO &&
             session.dayEliminationTarget.isBlank()
         ) {
@@ -5221,6 +5291,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         if (maybeShowNextDeathReveal()) return
+        if (session.winner.isNotBlank()) {
+            if (maybeShowWinnerReveal()) return
+        }
         if (maybeShowNoDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
         if (maybeShowOracleReveal()) return
@@ -5397,6 +5470,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun showTieVoteWindow() {
         if (session.phase != GamePhase.DESEMPATE_VOTACION) return
         dismissActionFeedbackBannerNow()
+        selectedTarget = selectedTarget.takeIf { canActOnTarget(it) }.orEmpty()
         isTieVoteVisible = true
         GameplayAudioDirector.play(this, GameSound.TIE_BREAK)
         tieVoteOverlay.visibility = View.VISIBLE
@@ -5787,7 +5861,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "Consiguió que el pueblo lo expulsara durante la votación."
         val player = session.players.firstOrNull { it.name == victory.playerName }
         jesterVictoryImage.setImageResource(roleImageFor(player?.role))
-        MusicManager.playVictoryMusic(this)
         GameplayAudioDirector.play(this, GameSound.JESTER)
         jesterVictoryAnimator.show(JESTER_VICTORY_DURATION_MS)
     }
@@ -5813,7 +5886,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         jesterVictoryAnimator.hide()
         isJesterVictoryVisible = false
-        MusicManager.stopVictoryMusic()
         renderGame()
     }
 
@@ -5824,13 +5896,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (requeue) {
             presentedSpecialVictoryCount = (presentedSpecialVictoryCount - 1).coerceAtLeast(0)
         }
-        MusicManager.stopVictoryMusic()
     }
 
     private fun showWinnerReveal(animate: Boolean) {
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
+        chatController.onBackPressed()
+        hideTieVoteWindow(clearSelection = false)
+        hideCentralPublicEventBanner(immediate = true)
         eventLogHeightAnimator?.cancel()
 
         val presentation = GameplayTableUi.winnerPresentation(session)
@@ -5840,20 +5914,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else -> "${session.winner.uppercase()} HA GANADO"
         }
         val personalResult = if (presentation.humanWon) "VICTORIA" else "DERROTA"
-        if (isPortrait()) {
-            winnerRevealTitle.text = personalResult
-            winnerRevealPersonalResult.text = winnerTitle
-        } else {
-            winnerRevealTitle.text = winnerTitle
-            winnerRevealPersonalResult.text = personalResult
-        }
-        applyWinnerRevealLayout()
-        winnerRevealBackground.setImageResource(logDrawableFor(themeKey))
+        winnerRevealTitle.text = personalResult
+        winnerRevealPersonalResult.text = winnerTitle
+        applyWinnerRevealLayout(session.winner)
+        winnerRevealBackground.setImageDrawable(null)
         val cardViews = winnerResultsRenderer.render(
             players = presentation.winningPlayers,
             summary = presentation.summary,
             specialVictories = presentation.specialVictories,
-            themeKey = themeKey
+            specialWinners = presentation.specialWinningPlayers,
+            themeKey = themeKey,
+            winnerKey = session.winner
         )
         winnerRevealScroll.scrollTo(0, 0)
 
@@ -5869,7 +5940,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealAnimator.show(cardViews, animate = true) {}
     }
 
-    private fun applyWinnerRevealLayout() {
+    private fun applyWinnerRevealLayout(winnerKey: String) {
         val portrait = isPortrait()
         winnerRevealPanel.layoutParams = (winnerRevealPanel.layoutParams as FrameLayout.LayoutParams).apply {
             width = FrameLayout.LayoutParams.MATCH_PARENT
@@ -5881,71 +5952,63 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             gravity = Gravity.CENTER
         }
-        winnerRevealPanel.setBackgroundResource(
-            if (portrait) R.drawable.bg_winner_premium_panel else 0
-        )
-        winnerRevealBackground.alpha = if (portrait) 0f else 1f
-        winnerRevealTitle.setBackgroundResource(
-            if (portrait) R.drawable.bg_winner_premium_header else R.drawable.bg_winner_title_badge
-        )
-        winnerRevealTitle.setTextColor(
-            Color.parseColor(if (portrait) "#F4C45F" else "#3A2413")
-        )
+        val factionColor = winnerAccentColor(winnerKey)
+        winnerRevealPanel.setBackgroundResource(R.drawable.bg_winner_premium_panel)
+        winnerRevealBackground.alpha = 0f
+        winnerRevealTitle.setBackgroundResource(R.drawable.bg_winner_premium_header)
+        winnerRevealTitle.setTextColor(Color.parseColor("#F3D488"))
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealTitle,
-            if (portrait) 26 else 18,
-            if (portrait) 34 else 27,
+            if (portrait) 26 else 22,
+            if (portrait) 34 else 30,
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
-        winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 34f else 27f)
-        winnerRevealPersonalResult.setBackgroundResource(
-            if (portrait) android.R.color.transparent else R.drawable.bg_winner_title_badge
-        )
-        winnerRevealPersonalResult.setTextColor(
-            Color.parseColor(
-                when {
-                    portrait -> "#FFF0C7"
-                    winnerRevealPersonalResult.text == "VICTORIA" -> "#765019"
-                    else -> "#7C2F2A"
-                }
-            )
-        )
+        winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 34f else 30f)
+        winnerRevealPersonalResult.setBackgroundResource(android.R.color.transparent)
+        winnerRevealPersonalResult.setTextColor(factionColor)
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealPersonalResult,
-            if (portrait) 12 else 18,
-            if (portrait) 17 else 26,
+            if (portrait) 12 else 14,
+            if (portrait) 17 else 19,
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
-        winnerRevealPersonalResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 14.5f else 26f)
-        winnerSummaryPanel.setBackgroundResource(
-            if (portrait) R.drawable.bg_winner_premium_summary else 0
-        )
+        winnerRevealPersonalResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 14.5f else 18f)
+        winnerSummaryPanel.setBackgroundResource(R.drawable.bg_winner_premium_summary)
         winnerSummaryStatsRow.layoutParams = winnerSummaryStatsRow.layoutParams.apply {
             height = dp(if (portrait) 52 else 32)
         }
         listOf(winnerSummaryRounds, winnerSummaryDuration, winnerSummaryPlayers).forEach { stat ->
-            stat.setBackgroundResource(if (portrait) R.drawable.bg_winner_stat_chip else 0)
-            stat.setTextColor(Color.parseColor(if (portrait) "#FFF0C7" else "#3A2413"))
+            stat.setBackgroundResource(R.drawable.bg_winner_stat_chip)
             stat.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 13.5f)
             stat.maxLines = if (portrait) 2 else 1
             stat.setSingleLine(!portrait)
         }
-        winnerSummaryHighlight.setTextColor(Color.parseColor(if (portrait) "#E9D19A" else "#3A2413"))
+        listOf(winnerSummaryHighlight, winnerSummaryTimeline).forEach { summaryText ->
+            summaryText.setBackgroundResource(R.drawable.bg_winner_summary_text)
+            summaryText.setPadding(dp(12), dp(7), dp(9), dp(7))
+        }
+        winnerSummaryHighlight.setTextColor(Color.parseColor("#B9AD92"))
         winnerSummaryHighlight.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13.5f else 13f)
-        winnerSummaryTimeline.setTextColor(Color.parseColor(if (portrait) "#CDBD91" else "#4F321A"))
+        winnerSummaryTimeline.setTextColor(Color.parseColor("#B9AD92"))
         winnerSummaryTimeline.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 12.5f else 12.5f)
-        btnWinnerReturnLobby.setBackgroundResource(
-            if (portrait) R.drawable.bg_winner_premium_button else R.drawable.bg_btn_dark
-        )
-        btnWinnerReturnLobby.setTextColor(Color.parseColor(if (portrait) "#211407" else "#F0E6D2"))
+        btnWinnerReturnLobby.setBackgroundResource(R.drawable.bg_winner_premium_button)
+        btnWinnerReturnLobby.setTextColor(Color.parseColor("#211407"))
         btnWinnerReturnLobby.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 12f)
         btnWinnerReturnLobby.layoutParams = (btnWinnerReturnLobby.layoutParams as LinearLayout.LayoutParams).apply {
             width = dp(if (portrait) 208 else 190)
             height = dp(if (portrait) 46 else 36)
             topMargin = dp(if (portrait) 12 else 10)
             bottomMargin = dp(if (portrait) 8 else 10)
+        }
+    }
+
+    private fun winnerAccentColor(winnerKey: String): Int {
+        return when (winnerKey) {
+            GameRules.TOWN_WINNER -> getColor(R.color.winner_town_accent)
+            GameRules.TRAITOR_WINNER -> getColor(R.color.accent_red)
+            else -> getColor(R.color.accent_gold)
         }
     }
 
@@ -6289,7 +6352,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     companion object {
         private const val PLAYER_STATE_CONNECTED = "conectado"
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
-        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 118
+        private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
@@ -6322,6 +6385,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 8_000L
         private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 5_200L
+        private const val LOCAL_NO_INPUT_NIGHT_SECONDS = 10
         private const val NIGHT_SKIP_ARM_DELAY_MS = 3_500L
         private const val MAX_NIGHT_SKIP_STEPS = 8
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"

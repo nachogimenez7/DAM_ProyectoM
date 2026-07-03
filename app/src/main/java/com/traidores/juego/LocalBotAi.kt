@@ -229,11 +229,12 @@ internal object LocalBotAi {
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
-        if (session.quickTestMode) {
+        if (session.quickTestMode && !session.debugBotsNeverTargetHuman) {
             val humanName = GameEngine.humanPlayer(session).name
             if (candidates.any { it.name == humanName }) return humanName
         }
-        return candidates
+        val preferredCandidates = withoutProtectedHumanIfPossible(session, candidates)
+        return preferredCandidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
                     .thenBy { stableNoise("${session.code}:${session.round}:${assassin.name}:${it.name}:kill") }
@@ -301,7 +302,9 @@ internal object LocalBotAi {
     }
 
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {
-        debugVoteCommandTarget(session, voter)?.let { return it }
+        debugVoteCommandTarget(session, voter)
+            ?.takeIf { canUseBotVoteTarget(session, voter, it) }
+            ?.let { return it }
         conversationVotePlan(session, voter)?.let { return it.target }
         val ranked = rankedPublicSuspects(session, voter)
         val declaredTarget = declaredSuspicionTarget(session, voter)
@@ -340,7 +343,7 @@ internal object LocalBotAi {
     }
 
     private fun conversationVotePlan(session: GameSession, voter: GamePlayer): VotePlan? {
-        val aliveNames = GameEngine.alivePlayers(session)
+        val aliveNames = voteCandidatesFor(session, voter)
             .filter { it.name != voter.name }
             .map { it.name }
             .toSet()
@@ -3051,7 +3054,7 @@ internal object LocalBotAi {
         voter: GamePlayer,
         focusNames: Set<String> = emptySet()
     ): List<SuspectRead> {
-        return GameEngine.alivePlayers(session)
+        return voteCandidatesFor(session, voter)
             .filter { it.name != voter.name }
             .map { candidate -> scoreCandidate(session, voter, candidate, focusNames) }
             .sortedWith(
@@ -3157,7 +3160,7 @@ internal object LocalBotAi {
 
         val spokeCount = recent.count { it.speaker == candidate.name }
         when {
-            spokeCount == 0 && session.round > 1 -> {
+            spokeCount == 0 && session.round > 1 && !candidate.isHuman -> {
                 score += 1
                 reasons += "esta hablando poco"
             }
@@ -3185,8 +3188,7 @@ internal object LocalBotAi {
         val accusedCount = recent.count {
             mentionsName(it.message, candidate.name) && hasAnySignal(it.message, accusationWords)
         }
-        return (if (candidate.isHuman && session.round > 1) 2 else 0) +
-            spokeCount * 3 +
+        return spokeCount * 3 +
             namedCount -
             accusedCount * 2 +
             stableNoise("${session.code}:${session.round}:${candidate.name}:night") % 2
@@ -3254,10 +3256,34 @@ internal object LocalBotAi {
     }
 
     private fun fallbackTarget(session: GameSession, actor: GamePlayer): String {
-        return GameEngine.alivePlayers(session)
+        return voteCandidatesFor(session, actor)
             .firstOrNull { it.name != actor.name }
             ?.name
             .orEmpty()
+    }
+
+    private fun canUseBotVoteTarget(session: GameSession, voter: GamePlayer, targetName: String): Boolean {
+        val target = GameEngine.playerByName(session, targetName) ?: return false
+        if (!target.alive || target.name == voter.name) return false
+        return !session.debugBotsNeverTargetHuman ||
+            !target.isHuman ||
+            GameEngine.alivePlayers(session).none { it.name != voter.name && !it.isHuman }
+    }
+
+    private fun voteCandidatesFor(session: GameSession, voter: GamePlayer): List<GamePlayer> {
+        return withoutProtectedHumanIfPossible(
+            session,
+            GameEngine.alivePlayers(session).filter { it.name != voter.name }
+        )
+    }
+
+    private fun withoutProtectedHumanIfPossible(
+        session: GameSession,
+        candidates: List<GamePlayer>
+    ): List<GamePlayer> {
+        if (!session.debugBotsNeverTargetHuman) return candidates
+        val filtered = candidates.filterNot { it.isHuman }
+        return filtered.ifEmpty { candidates }
     }
 
     private fun isTraitor(player: GamePlayer): Boolean {
