@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mockup Cronista Feed - Traidores</title>
+  <style>
+    :root {
+      --gold: #d4a24e;
+      --gold-soft: #f1d48b;
+      --text: #f0e6d2;
+      --muted: #c4b69c;
+      --panel: rgba(18, 12, 7, .88);
+      --shade: rgba(5, 4, 3, .62);
+      --death: #8f2633;
+      --silence: #8a6fc0;
+      --vote: #b8923f;
+      --night: #5f78b5;
+      --dawn: #e0b85b;
+      --special: #b79ae0;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #110d08;
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      padding: 22px 18px 8px;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      color: var(--gold-soft);
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      max-width: 860px;
+    }
+
+    .grid {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 16px 18px 28px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      gap: 18px;
+    }
+
+    .map {
+      min-height: 760px;
+      border: 1px solid rgba(212, 162, 78, .32);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, .38);
+    }
+
+    .map::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.62));
+    }
+
+    .pampa {
+      background:
+        radial-gradient(circle at 50% 16%, rgba(255,240,170,.7), transparent 19%),
+        linear-gradient(180deg, #9dc6d2 0%, #d9b870 38%, #615337 59%, #2a2418 100%);
+    }
+
+    .grecia {
+      background:
+        radial-gradient(circle at 8% 8%, rgba(255,255,255,.68), transparent 17%),
+        linear-gradient(180deg, #4d8cb4 0%, #b8d1d9 32%, #d2c39f 48%, #625744 100%);
+    }
+
+    .medieval {
+      background:
+        radial-gradient(circle at 72% 14%, rgba(230,220,170,.42), transparent 16%),
+        linear-gradient(180deg, #34495d 0%, #596647 34%, #423123 62%, #18110b 100%);
+    }
+
+    .map-title {
+      position: relative;
+      z-index: 1;
+      height: 58px;
+      padding: 12px 14px;
+      background: rgba(15, 11, 7, .78);
+      border-bottom: 2px solid rgba(212,162,78,.55);
+    }
+
+    .map-title strong {
+      display: block;
+      color: var(--gold-soft);
+      font-size: 16px;
+    }
+
+    .map-title span {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .table {
+      position: relative;
+      z-index: 1;
+      height: calc(100% - 58px);
+      padding: 18px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+    }
+
+    .compact {
+      width: min(96%, 390px);
+      border: 2px solid rgba(212,162,78,.54);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 10px 28px rgba(0,0,0,.42);
+      overflow: hidden;
+    }
+
+    .compact-head,
+    .expanded-head {
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      background: linear-gradient(90deg, rgba(54,34,14,.95), rgba(14,10,7,.92));
+      border-bottom: 1px solid rgba(212,162,78,.36);
+    }
+
+    .compact-title,
+    .expanded-title {
+      color: var(--gold-soft);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .filter {
+      min-width: 56px;
+      height: 22px;
+      border: 1px solid rgba(212,162,78,.7);
+      border-radius: 999px;
+      color: var(--gold-soft);
+      font-size: 10px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+      background: rgba(0,0,0,.34);
+    }
+
+    .compact-body {
+      padding: 8px 12px 6px;
+      background: var(--shade);
+    }
+
+    .line {
+      display: flex;
+      gap: 5px;
+      align-items: baseline;
+      min-height: 20px;
+      color: var(--text);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .line strong {
+      flex: 0 0 auto;
+      color: #cc8fdc;
+      font-size: 11px;
+    }
+
+    .line span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-line {
+      color: var(--gold-soft);
+      font-weight: 800;
+    }
+
+    .hint {
+      padding: 4px 10px 8px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 10px;
+      font-weight: 800;
+      background: var(--shade);
+    }
+
+    .expanded {
+      width: min(96%, 430px);
+      border: 2px solid rgba(212,162,78,.72);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 16px 42px rgba(0,0,0,.54);
+      overflow: hidden;
+    }
+
+    .expanded-body {
+      padding: 12px;
+      background: rgba(7, 5, 4, .65);
+      display: grid;
+      gap: 8px;
+      max-height: 360px;
+    }
+
+    .day {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gold-soft);
+      font-size: 10px;
+      font-weight: 900;
+      text-align: center;
+      text-transform: uppercase;
+      padding: 3px 0;
+    }
+
+    .day::before,
+    .day::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: rgba(212,162,78,.45);
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(212,162,78,.34);
+      background: rgba(22, 14, 9, .88);
+    }
+
+    .event.death { border-color: rgba(143,38,51,.8); background: rgba(55,15,19,.82); }
+    .event.silence { border-color: rgba(183,154,224,.72); background: rgba(28,22,48,.82); }
+    .event.vote { border-color: rgba(184,146,63,.78); background: rgba(48,35,16,.86); }
+    .event.night { border-color: rgba(95,120,181,.72); background: rgba(18,24,44,.86); }
+    .event.dawn { border-color: rgba(224,184,91,.72); background: rgba(55,42,18,.86); }
+    .event.special { border-color: rgba(183,154,224,.86); background: rgba(31,20,50,.9); }
+
+    .icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 12px;
+      color: #100b06;
+      background: var(--gold-soft);
+    }
+
+    .death .icon { background: #e49ba1; }
+    .silence .icon, .special .icon { background: var(--special); }
+    .night .icon { background: #aebfe7; }
+    .dawn .icon { background: #f4d77d; }
+
+    .event small {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--gold-soft);
+      font-size: 9px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .event p,
+    .bubble p {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.28;
+    }
+
+    .bubble {
+      width: 82%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(212,162,78,.18);
+      background: rgba(27, 19, 12, .9);
+    }
+
+    .bubble.own {
+      justify-self: end;
+      background: linear-gradient(180deg, #d8ad4f, #a87924);
+    }
+
+    .bubble.own strong,
+    .bubble.own p {
+      color: #140d06;
+    }
+
+    .bubble strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #7ec7dc;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: 1fr 46px;
+      gap: 8px;
+      padding: 10px;
+      background: rgba(7,5,4,.78);
+      border-top: 1px solid rgba(212,162,78,.28);
+    }
+
+    .input {
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid rgba(212,162,78,.25);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 11px;
+      background: rgba(0,0,0,.32);
+    }
+
+    .send {
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #130d06;
+      font-weight: 900;
+      font-size: 11px;
+      background: linear-gradient(180deg, #f1d48b, #b8882d);
+    }
+
+    .legend {
+      max-width: 1180px;
+      margin: 0 auto 26px;
+      padding: 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; }
+      .map { min-height: 720px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mockup - Cronista / Feed Central</h1>
+    <p>Objetivo visual: que el feed compacto invite a entrar y que el expandido se lea como una bitacora teatral. Los mensajes de Dios tienen mas peso, los jugadores quedan como chat social, y cada mapa conserva identidad propia sin cambiar reglas.</p>
+  </header>
+
+  <main class="grid">
+    <section class="map pampa">
+      <div class="map-title">
+        <strong>Pampa</strong>
+        <span>Cronista del pueblo</span>
+      </div>
+      <div class="table">
+        <div class="compact">
+          <div class="compact-head">
+            <div class="compact-title">Que se dice en el pueblo...</div>
+            <div class="filter">TODO</div>
+          </div>
+          <div class="compact-body">
+            <div class="line event-line">* Amanecer: murio Lautaro.</div>
+            <div class="line"><strong>Mora:</strong><span>nacho necesito algo tuyo para ordenar la ronda</span></div>
+            <div class="line"><strong>Thiago:</strong><span>valen no me cierra desde anoche</span></div>
+            <div class="line"><strong>Valen:</strong><span>no murio nadie y no nos durmamos</span></div>
+          </div>
+          <div class="hint">Toca para hablar</div>
+        </div>
+
+        <div class="expanded">
+          <div class="expanded-head">
+            <div class="expanded-title">Cronista del pueblo</div>
+            <div class="filter">SUCESOS</div>
+          </div>
+          <div class="expanded-body">
+            <div class="day">Dia 1</div>
+            <div class="event dawn"><div class="icon">A</div><div><small>Amanecer</small><p>Nadie murio esta noche. El pueblo respira.</p></div></div>
+            <div class="bubble"><strong>Mora</strong><p>nacho necesito algo tuyo para ordenar la ronda</p></div>
+            <div class="event vote"><div class="icon">V</div><div><small>Votacion</small><p>Lautaro fue expulsado por el pueblo.</p></div></div>
+            <div class="day">Noche 2</div>
+            <div class="event night"><div class="icon">N</div><div><small>Noche</small><p>La oscuridad vuelve a caer y el pueblo cierra sus puertas.</p></div></div>
+          </div>
+          <div class="composer"><div class="input">Acusar, defender o pedir una lectura...</div><div class="send">ENVIAR</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="map grecia">
+      <div class="map-title">
+        <strong>Grecia</strong>
+        <span>Cronista de la polis</span>
+      </div>
+      <div class="table">
+        <div class="compact">
+          <div class="compact-head">
+            <div class="compact-title">Que se dice en la polis...</div>
+            <div class="filter">TODO</div>
+          </div>
+          <div class="compact-body">
+            <div class="line event-line">* Voz: Juli vuelve al debate.</div>
+            <div class="line"><strong>Agus:</strong><span>si el oraculo lo trajo, escuchemos primero</span></div>
+            <div class="line"><strong>Lola:</strong><span>no cierren el voto sin comparar versiones</span></div>
+            <div class="line"><strong>Fede:</strong><span>la polis esta mirando demasiado a uno solo</span></div>
+          </div>
+          <div class="hint">Toca para hablar</div>
+        </div>
+
+        <div class="expanded">
+          <div class="expanded-head">
+            <div class="expanded-title">Cronista de la polis</div>
+            <div class="filter">TODO</div>
+          </div>
+          <div class="expanded-body">
+            <div class="day">Dia 2</div>
+            <div class="event silence"><div class="icon">S</div><div><small>Silencio</small><p>Una voz fue silenciada. No podra hablar ni votar durante el dia.</p></div></div>
+            <div class="bubble"><strong>Agus</strong><p>si el oraculo lo trajo, escuchemos primero</p></div>
+            <div class="event special"><div class="icon">E</div><div><small>Especial</small><p>El Bufon consiguio una victoria especial al ser expulsado.</p></div></div>
+            <div class="bubble own"><strong>Vos</strong><p>miren quien empujo ese voto al final</p></div>
+          </div>
+          <div class="composer"><div class="input">Responder en la polis...</div><div class="send">ENVIAR</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="map medieval">
+      <div class="map-title">
+        <strong>Medieval</strong>
+        <span>Cronista del feudo</span>
+      </div>
+      <div class="table">
+        <div class="compact">
+          <div class="compact-head">
+            <div class="compact-title">Que se dice en el feudo...</div>
+            <div class="filter">TODO</div>
+          </div>
+          <div class="compact-body">
+            <div class="line event-line">* Empate: se abre desempate.</div>
+            <div class="line"><strong>Rami:</strong><span>no voten solo por ruido, falta una prueba</span></div>
+            <div class="line"><strong>Cata:</strong><span>el alcalde puede ordenar esto si se revela</span></div>
+            <div class="line"><strong>Juli:</strong><span>ese silencio cambio toda la mesa</span></div>
+          </div>
+          <div class="hint">Toca para hablar</div>
+        </div>
+
+        <div class="expanded">
+          <div class="expanded-head">
+            <div class="expanded-title">Cronista del feudo</div>
+            <div class="filter">TODO</div>
+          </div>
+          <div class="expanded-body">
+            <div class="day">Dia 3</div>
+            <div class="event death"><div class="icon">X</div><div><small>Muerte</small><p>Al amanecer, Cata aparecio muerta.</p></div></div>
+            <div class="bubble"><strong>Rami</strong><p>no voten solo por ruido, falta una prueba</p></div>
+            <div class="event tie"><div class="icon">!</div><div><small>Empate</small><p>El voto quedo empatado. El feudo exige una decision.</p></div></div>
+            <div class="event vote"><div class="icon">V</div><div><small>Expulsion</small><p>Juli fue expulsada tras el desempate.</p></div></div>
+          </div>
+          <div class="composer"><div class="input">Escribir al feudo...</div><div class="send">ENVIAR</div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <section class="legend">
+    <strong>Decision de diseno propuesta:</strong> compacto muestra 3-4 lineas y funciona como invitacion. Expandido muestra bitacora con separadores, eventos con peso visual y chat normal. Si este camino gusta, la implementacion real deberia usar la capa interna `ChronicleFeedPresenter` para clasificar entradas y `GameplayChatController` solo para renderizar.
+  </section>
+</body>
+</html>

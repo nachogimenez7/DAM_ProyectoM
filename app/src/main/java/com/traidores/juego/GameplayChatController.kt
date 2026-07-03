@@ -85,6 +85,7 @@ class GameplayChatController(
     private val chatAmbientBackground: ImageView = root.findViewById(R.id.chatAmbientBackground)
     private val chatAmbientHint: TextView = root.findViewById(R.id.chatAmbientHint)
     private val chatAmbientMessages: LinearLayout = root.findViewById(R.id.chatAmbientMessages)
+    private val chatAmbientTitle: TextView = root.findViewById(R.id.chatAmbientTitle)
     private val chatCharacterCount: TextView = root.findViewById(R.id.chatCharacterCount)
     private val chatComposer: LinearLayout = root.findViewById(R.id.chatComposer)
     private val chatFeedTitle: TextView = root.findViewById(R.id.chatFeedTitle)
@@ -336,8 +337,7 @@ class GameplayChatController(
         renderAmbientChatFeed()
         if (!isChatOpen) return
 
-        val messages = visibleFeedMessages(host.currentSession.chatHistory).takeLast(16)
-        renderChatMessages(messages)
+        renderChatMessages(host.currentSession.chatHistory)
 
         val canChat = GameEngine.canHumanChat(host.currentSession)
         chatInput.isEnabled = canChat
@@ -559,10 +559,11 @@ class GameplayChatController(
             return
         }
 
-        val messages = host.currentSession.chatHistory
+        val entries = ChronicleFeedPresenter.entries(host.currentSession.chatHistory)
+            .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
             .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
         val canChat = GameEngine.canHumanChat(host.currentSession)
-        if (messages.isEmpty() && !canChat) {
+        if (entries.isEmpty() && !canChat) {
             chatAmbientFeed.visibility = View.GONE
             return
         }
@@ -570,11 +571,11 @@ class GameplayChatController(
         renderChatBackgrounds()
         renderChatTitle()
         chatAmbientMessages.removeAllViews()
-        if (messages.isEmpty()) {
+        if (entries.isEmpty()) {
             chatAmbientMessages.addView(createAmbientPlaceholderRow())
         } else {
-            messages.forEach { message ->
-                chatAmbientMessages.addView(createAmbientFeedRow(message))
+            entries.forEach { entry ->
+                chatAmbientMessages.addView(createAmbientFeedRow(entry))
             }
         }
         chatAmbientHint.text = if (canChat) {
@@ -609,23 +610,24 @@ class GameplayChatController(
         }
     }
 
-    private fun createAmbientFeedRow(message: GameChatMessage): View {
-        if (message.isGod) return createAmbientGodRow(message)
+    private fun createAmbientFeedRow(entry: ChronicleEntry): View {
+        if (entry.kind != ChronicleEntryKind.PLAYER) return createAmbientEventRow(entry)
         val row = LinearLayout(root.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
+        val speakerName = entry.speaker.orEmpty()
         val speaker = TextView(root.context).apply {
-            text = "${message.speaker}:"
+            text = "$speakerName:"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setTextColor(PlayerChatColor.colorFor(message.speaker, host.currentSession))
+            setTextColor(PlayerChatColor.colorFor(speakerName, host.currentSession))
             textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
         }
         val body = TextView(root.context).apply {
-            text = message.message
+            text = entry.text
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(root.context.getColor(R.color.text_primary))
@@ -659,8 +661,47 @@ class GameplayChatController(
         }
     }
 
+    private fun createAmbientEventRow(entry: ChronicleEntry): View {
+        val event = eventPresentationFor(entry)
+        val row = LinearLayout(root.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, host.dp(2), 0, host.dp(2))
+        }
+        row.addView(TextView(root.context).apply {
+            text = event.icon
+            gravity = Gravity.CENTER
+            setTextColor(event.iconColor)
+            textSize = 8.5f * host.gameplayTextScale
+            typeface = Typeface.DEFAULT_BOLD
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = host.dp(5).toFloat()
+                setColor(event.backgroundColor)
+                setStroke(host.dp(1), event.strokeColor)
+            }
+        }, LinearLayout.LayoutParams(host.dp(18), host.dp(18)).apply {
+            marginEnd = host.dp(6)
+        })
+        row.addView(TextView(root.context).apply {
+            text = entry.text
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(event.iconColor)
+            textSize = 11.5f * host.gameplayTextScale
+            typeface = Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        return row
+    }
+
     private fun renderChatTitle() {
-        chatFeedTitle.text = "QUE SE DICE EN EL PUEBLO..."
+        val (compactTitle, expandedTitle) = when (host.currentSession.mapKey) {
+            "grecia" -> "QUE SE DICE EN LA POLIS..." to "CRONISTA DE LA POLIS"
+            "medieval" -> "QUE SE DICE EN EL FEUDO..." to "CRONISTA DEL FEUDO"
+            else -> "QUE SE DICE EN EL PUEBLO..." to "CRONISTA DEL PUEBLO"
+        }
+        chatAmbientTitle.text = compactTitle
+        chatFeedTitle.text = expandedTitle
     }
 
     private fun cronistaTypeface(): Typeface {
@@ -675,51 +716,64 @@ class GameplayChatController(
         val iconColor: Int
     )
 
-    private fun eventPresentationFor(message: String): EventPresentation {
-        val lower = message.lowercase()
+    private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
         val gold = root.context.getColor(R.color.accent_gold)
-        return when {
-            "murio" in lower || "asesin" in lower -> EventPresentation(
+        return when (entry.kind) {
+            ChronicleEntryKind.DEATH -> EventPresentation(
                 icon = "X",
                 label = "MUERTE",
                 backgroundColor = Color.parseColor("#7A2A22"),
                 strokeColor = Color.parseColor("#B46A72"),
                 iconColor = Color.parseColor("#F0B2A8")
             )
-            "expuls" in lower || "votacion" in lower || "voto" in lower -> EventPresentation(
+            ChronicleEntryKind.EXPULSION -> EventPresentation(
                 icon = "V",
                 label = "EXPULSION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
                 iconColor = gold
             )
-            "noche" in lower -> EventPresentation(
+            ChronicleEntryKind.VOTE -> EventPresentation(
+                icon = "V",
+                label = "VOTACION",
+                backgroundColor = Color.parseColor("#5F4524"),
+                strokeColor = gold,
+                iconColor = gold
+            )
+            ChronicleEntryKind.NIGHT -> EventPresentation(
                 icon = "N",
                 label = "NOCHE",
                 backgroundColor = Color.parseColor("#25334F"),
                 strokeColor = Color.parseColor("#6B86B8"),
                 iconColor = Color.parseColor("#B7C7E8")
             )
-            "amanec" in lower || "dia" in lower -> EventPresentation(
-                icon = "D",
+            ChronicleEntryKind.DAWN -> EventPresentation(
+                icon = "A",
                 label = "AMANECER",
                 backgroundColor = Color.parseColor("#6B5525"),
                 strokeColor = Color.parseColor("#E3C46F"),
                 iconColor = Color.parseColor("#F4D77D")
             )
-            "silenci" in lower || "mudo" in lower -> EventPresentation(
+            ChronicleEntryKind.SILENCE -> EventPresentation(
                 icon = "S",
                 label = "SILENCIO",
                 backgroundColor = Color.parseColor("#4F3140"),
                 strokeColor = Color.parseColor("#A26A88"),
                 iconColor = Color.parseColor("#E6B6CE")
             )
-            "empate" in lower -> EventPresentation(
+            ChronicleEntryKind.TIE -> EventPresentation(
                 icon = "!",
                 label = "EMPATE",
                 backgroundColor = Color.parseColor("#4B3B22"),
                 strokeColor = gold,
                 iconColor = gold
+            )
+            ChronicleEntryKind.SPECIAL_VICTORY -> EventPresentation(
+                icon = "E",
+                label = "ESPECIAL",
+                backgroundColor = Color.parseColor("#493058"),
+                strokeColor = Color.parseColor("#C392E6"),
+                iconColor = Color.parseColor("#E2C8F8")
             )
             else -> EventPresentation(
                 icon = "*",
@@ -731,9 +785,9 @@ class GameplayChatController(
         }
     }
 
-    private fun createDayDivider(): View {
+    private fun createDayDivider(entry: ChronicleEntry): View {
         return TextView(root.context).apply {
-            text = "DIA ${host.currentSession.round.coerceAtLeast(1)}"
+            text = entry.text
             gravity = Gravity.CENTER
             setTextColor(root.context.getColor(R.color.accent_gold))
             textSize = 9f * host.gameplayTextScale
@@ -744,7 +798,8 @@ class GameplayChatController(
 
     private fun renderChatMessages(messages: List<GameChatMessage>) {
         chatMessagesContainer.removeAllViews()
-        if (messages.isEmpty() && typingBotSpeakers.isEmpty()) {
+        val entries = ChronicleFeedPresenter.entries(messages, showOnlyEvents).takeLast(24)
+        if (entries.isEmpty() && typingBotSpeakers.isEmpty()) {
             chatMessagesContainer.addView(TextView(root.context).apply {
                 text = if (showOnlyEvents) {
                     "Todavia no hay sucesos."
@@ -762,22 +817,27 @@ class GameplayChatController(
         val humanName = GameEngine.humanPlayer(host.currentSession).name
         val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: host.dp(360)) - host.dp(56))
             .coerceIn(host.dp(190), host.dp(420))
-        if (messages.isNotEmpty()) {
-            chatMessagesContainer.addView(createDayDivider())
-        }
-        messages.forEach { message ->
-            if (message.isGod) {
-                addGodEventBanner(message.message)
-                return@forEach
+        entries.forEach { entry ->
+            when (entry.kind) {
+                ChronicleEntryKind.DAY_DIVIDER -> {
+                    chatMessagesContainer.addView(createDayDivider(entry))
+                    return@forEach
+                }
+                ChronicleEntryKind.PLAYER -> Unit
+                else -> {
+                    addGodEventBanner(entry)
+                    return@forEach
+                }
             }
-            val ownMessage = message.speaker == humanName
+            val speakerName = entry.speaker.orEmpty()
+            val ownMessage = speakerName == humanName
             addChatBubble(
-                speaker = if (ownMessage) "VOS" else message.speaker.uppercase(),
-                body = message.message,
+                speaker = if (ownMessage) "VOS" else speakerName.uppercase(),
+                body = entry.text,
                 speakerColor = if (ownMessage) {
                     root.context.getColor(R.color.bg_dark)
                 } else {
-                    PlayerChatColor.colorFor(message.speaker, host.currentSession)
+                    PlayerChatColor.colorFor(speakerName, host.currentSession)
                 },
                 ownMessage = ownMessage,
                 bubbleMaxWidth = bubbleMaxWidth,
@@ -793,14 +853,6 @@ class GameplayChatController(
                 bubbleMaxWidth = bubbleMaxWidth,
                 muted = true
             )
-        }
-    }
-
-    private fun visibleFeedMessages(messages: List<GameChatMessage>): List<GameChatMessage> {
-        return if (showOnlyEvents) {
-            messages.filter { it.isGod }
-        } else {
-            messages
         }
     }
 
@@ -821,8 +873,8 @@ class GameplayChatController(
         btnChatFeedFilter.alpha = if (showOnlyEvents) 1f else 0.82f
     }
 
-    private fun addGodEventBanner(message: String) {
-        val event = eventPresentationFor(message)
+    private fun addGodEventBanner(entry: ChronicleEntry) {
+        val event = eventPresentationFor(entry)
         val row = LinearLayout(root.context).apply {
             gravity = Gravity.CENTER
             orientation = LinearLayout.HORIZONTAL
@@ -847,7 +899,7 @@ class GameplayChatController(
             typeface = cronistaTypeface()
         })
         banner.addView(TextView(root.context).apply {
-            text = message
+            text = entry.text
             gravity = Gravity.CENTER
             maxWidth = (chatPanel.width.takeIf { it > 0 } ?: host.dp(320)) - host.dp(48)
             setTextColor(root.context.getColor(R.color.text_primary))

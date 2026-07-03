@@ -314,7 +314,7 @@
             <FrameLayout
                 android:id="@+id/chatAmbientFeed"
                 android:layout_width="match_parent"
-                android:layout_height="144dp"
+                android:layout_height="156dp"
                 android:layout_gravity="center"
                 android:layout_marginHorizontal="4dp"
                 android:layout_marginTop="86dp"
@@ -349,6 +349,20 @@
                     android:paddingHorizontal="13dp"
                     android:paddingTop="11dp"
                     android:paddingBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/chatAmbientTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="18dp"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif"
+                        android:gravity="center_vertical"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:text="QUE SE DICE EN EL PUEBLO..."
+                        android:textColor="@color/accent_gold"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
 
                     <LinearLayout
                         android:id="@+id/chatAmbientMessages"
