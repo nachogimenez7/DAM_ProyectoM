@@ -221,7 +221,7 @@ object GameEngine {
         }
 
         val privateHint = if (mercenary.isHuman) {
-            "Silencio registrado. Ese jugador no podra hablar ni votar durante el dia."
+            "Silenciaste a $target. Durante el dia no podra hablar ni votar."
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -254,7 +254,7 @@ object GameEngine {
 
         val result = playerByName(session, target)?.let { investigationResult(it) } ?: "inocente"
         val privateHint = if (police.isHuman) {
-            "Respuesta privada de Dios: $target parece $result."
+            "Investigaste a $target. Resultado privado: parece $result."
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -287,7 +287,11 @@ object GameEngine {
         }
 
         val privateHint = if (medic.isHuman) {
-            "Proteccion registrada. Dios solo anunciara si hubo muerte."
+            if (target == medic.name) {
+                "Te protegiste esta noche. Al amanecer solo se anunciara si hubo muerte."
+            } else {
+                "Protegiste a $target esta noche. Al amanecer solo se anunciara si hubo muerte."
+            }
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -333,7 +337,7 @@ object GameEngine {
         }
 
         val privateHint = if (oracle.isHuman) {
-            "Invocacion registrada. La identidad del Oraculo permanecera oculta."
+            "Invocaste a $target. Volvera a hablar en el proximo debate, sin votar ni usar habilidades."
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -975,9 +979,9 @@ object GameEngine {
         val statusHint = when {
             session.phase == GamePhase.DIA_DEBATE &&
                 session.oracleInvitedPlayer == human.name ->
-                " El Oraculo te devolvio la voz durante este debate. No podes votar."
-            !human.alive -> " Estás eliminado."
-            human.muted -> " Estás silenciado durante el dia."
+                " El Oraculo te devolvio la voz durante este debate. Podes hablar, pero no votar."
+            !human.alive -> " Estas eliminado. Observa la partida y usa el chat si el rol lo permite."
+            human.muted -> " Estas silenciado durante el dia. No podes hablar ni votar."
             else -> ""
         }
         return "${role.name} - ${role.team}.$statusHint$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
@@ -1640,7 +1644,7 @@ object GameEngine {
         return session.transitionTo(
             GamePhase.AMANECER,
             dawnApproachesMessage(),
-            "Guardaste tu poder para otra noche."
+            "Guardaste tu poder. Podras invocar a un muerto en otra noche."
         )
     }
 

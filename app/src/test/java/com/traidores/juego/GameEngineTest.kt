@@ -1230,7 +1230,8 @@ class GameEngineTest {
         assertEquals(GamePhase.NOCHE_MEDICO, resolved.phase)
         assertEquals("Asesino", resolved.investigatedPlayer)
         assertEquals("sospechoso", resolved.investigatedResult)
-        assertTrue(resolved.privateHint.contains("Asesino parece sospechoso"))
+        assertTrue(resolved.privateHint.contains("Investigaste a Asesino"))
+        assertTrue(resolved.privateHint.contains("parece sospechoso"))
         assertFalse(resolved.publicAnnouncement.contains("Asesino"))
     }
 
@@ -1242,7 +1243,8 @@ class GameEngineTest {
 
         assertEquals("Espia", resolved.investigatedPlayer)
         assertEquals("inocente", resolved.investigatedResult)
-        assertTrue(resolved.privateHint.contains("Espia parece inocente"))
+        assertTrue(resolved.privateHint.contains("Investigaste a Espia"))
+        assertTrue(resolved.privateHint.contains("parece inocente"))
     }
 
     @Test
@@ -1795,6 +1797,16 @@ class GameEngineTest {
             assertTrue("${sound.name}: ${sound.relativeVolume}", sound.relativeVolume > 0f)
             assertTrue("${sound.name}: ${sound.relativeVolume}", sound.relativeVolume <= 1f)
         }
+    }
+
+    @Test
+    fun importantSoundsAndFeedbackHaveHapticCues() {
+        assertEquals(HapticLevel.LIGHT, GameSound.VOTE_CAST.haptic)
+        assertEquals(HapticLevel.LIGHT, GameSound.CARD_DEAL.haptic)
+        assertEquals(HapticLevel.MEDIUM, GameSound.ORACLE.haptic)
+        assertEquals(HapticLevel.MEDIUM, GameSound.PAYADOR.haptic)
+        assertEquals(GameplayFeedbackCue.EMOTE, GameplayEffects.cueFor(GameplayEffect.EMOTE))
+        assertEquals(GameplayFeedbackCue.ERROR, GameplayEffects.cueFor(GameplayEffect.ERROR))
     }
 
     @Test

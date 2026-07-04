@@ -71,9 +71,16 @@ class WinnerResultsRenderer(
             eliminatedLabel,
             specialVictoriesLabel
         ).joinToString("\n")
-        timeline.text = summary.daySummaries
+        val keyMoments = summary.keyMoments
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\n") { "- $it" }
+        val dayLog = summary.daySummaries
             .joinToString("\n")
             .ifBlank { "Dia 1: no murio nadie y nadie fue silenciado." }
+        timeline.text = listOfNotNull(
+            keyMoments?.let { "MOMENTOS CLAVE\n$it" },
+            "BITACORA\n$dayLog"
+        ).joinToString("\n\n")
         return cardViews + specialCardViews
     }
 

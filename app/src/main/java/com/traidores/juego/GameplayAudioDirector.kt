@@ -23,12 +23,23 @@ enum class GameSound(
     ELIMINATION(R.raw.sfx_elimination, HapticLevel.STRONG, 0.78f),
     EXPULSION(R.raw.sfx_expulsion, HapticLevel.STRONG, 0.82f),
     SILENCE(R.raw.sfx_silence, HapticLevel.MEDIUM, 0.9f),
-    VOTE_CAST(R.raw.sfx_vote_cast, HapticLevel.NONE, 0.72f),
+    VOTE_CAST(R.raw.sfx_vote_cast, HapticLevel.LIGHT, 0.72f),
     TIE_BREAK(R.raw.sfx_tie_break, HapticLevel.MEDIUM, 0.82f),
-    CARD_DEAL(R.raw.sfx_card_deal, HapticLevel.NONE),
-    ORACLE(R.raw.oracle_ability, HapticLevel.NONE, 0.86f),
-    PAYADOR(R.raw.payador_ability, HapticLevel.NONE, 0.86f),
+    CARD_DEAL(R.raw.sfx_card_deal, HapticLevel.LIGHT),
+    ORACLE(R.raw.oracle_ability, HapticLevel.MEDIUM, 0.86f),
+    PAYADOR(R.raw.payador_ability, HapticLevel.MEDIUM, 0.86f),
     JESTER(R.raw.jester_victory, HapticLevel.MEDIUM, 0.85f)
+}
+
+enum class GameplayFeedbackCue(val haptic: HapticLevel) {
+    SELECT(HapticLevel.LIGHT),
+    CONFIRM(HapticLevel.MEDIUM),
+    ERROR(HapticLevel.STRONG),
+    PANEL(HapticLevel.LIGHT),
+    REVEAL(HapticLevel.MEDIUM),
+    CHAT(HapticLevel.LIGHT),
+    COUNTDOWN(HapticLevel.MEDIUM),
+    EMOTE(HapticLevel.LIGHT)
 }
 
 object GameplayAudioDirector {
@@ -37,6 +48,10 @@ object GameplayAudioDirector {
     fun play(context: Context, sound: GameSound) {
         GameplaySoundEffects.play(context, sound.res, sound.relativeVolume)
         vibrate(context, sound.haptic)
+    }
+
+    fun feedback(context: Context, cue: GameplayFeedbackCue) {
+        vibrate(context, cue.haptic)
     }
 
     private fun vibrate(context: Context, level: HapticLevel) {

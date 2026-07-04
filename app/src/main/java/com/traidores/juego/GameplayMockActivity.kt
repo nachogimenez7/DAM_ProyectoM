@@ -2935,7 +2935,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
 
         dismissReactionPalette()
-        GameplayEffects.play(this, GameplayEffect.SELECT)
+        GameplayEffects.play(this, GameplayEffect.EMOTE)
         showReactionBubble(human.name, spec)
         renderReactionButton()
     }
@@ -3270,8 +3270,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
             isOnlineStartupPhase() -> "ESPERANDO"
             onlineAwaitingHostAdvance -> "SINCRONIZANDO"
-            selectedAction != null -> selectedAction
-            canSelfProtect -> "SALVARME"
+            selectedAction != null -> primaryTargetActionLabel(selectedAction, selectedTarget)
+            canSelfProtect -> "PROTEGERME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
             actionSession().phase == GamePhase.NOCHE_ORACULO &&
@@ -3307,6 +3307,36 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else -> 0.55f
         }
         updateActionAttentionPulse(requiresAttention)
+    }
+
+    private fun primaryTargetActionLabel(actionLabel: String, targetName: String): String {
+        val target = targetName.uppercase()
+        return when (actionLabel) {
+            "MATAR" -> "MATAR A $target"
+            "SILENCIAR" -> "SILENCIAR A $target"
+            "INVESTIGAR" -> "INVESTIGAR A $target"
+            "SALVAR" -> "PROTEGER A $target"
+            "INVOCAR" -> "INVOCAR A $target"
+            "SENALAR" -> "SENALAR A $target"
+            "DECIDIR" -> "EXPULSAR A $target"
+            "VOTAR" -> "VOTAR A $target"
+            else -> actionLabel
+        }
+    }
+
+    private fun compactTargetActionLabel(actionLabel: String): String {
+        return when (actionLabel) {
+            "MATAR" -> "VICTIMA"
+            "SILENCIAR" -> "CALLAR"
+            "INVESTIGAR" -> "PISTA"
+            "SALVAR" -> "PROTEGER"
+            "INVOCAR" -> "INVOCAR"
+            "CONTRAPUNTO" -> "CONTRAPUNTO"
+            "SENALAR" -> "SENALAR"
+            "DECIDIR" -> "EXPULSAR"
+            "VOTAR" -> "VOTAR"
+            else -> actionLabel
+        }
     }
 
     private fun applyRevealOverlayTheme() {
@@ -3416,7 +3446,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         lastActionAttentionKey = attentionKey
         if (attentionKey == null) return
 
-        val isKillAction = btnAction.text.toString().equals("MATAR", ignoreCase = true)
+        val isKillAction = btnAction.text.toString().startsWith("MATAR", ignoreCase = true)
         val lift = dp(1).toFloat()
         val floatY = ObjectAnimator.ofFloat(btnAction, View.TRANSLATION_Y, 0f, -lift, 0f).apply {
             duration = if (isKillAction) 1150L else 1250L
@@ -3839,7 +3869,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         holder.actionBadge.visibility = if (isActionable) View.VISIBLE else View.GONE
         if (isActionable) {
             val tone = GameplayTableUi.actionToneFor(actionLabel)
-            holder.actionBadge.text = actionLabel
+            holder.actionBadge.text = compactTargetActionLabel(actionLabel)
             holder.actionBadge.background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(3).toFloat()
@@ -4045,7 +4075,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GamePhase.NOCHE_MEDICO -> PhaseText(
                 "NOCHE ${session.round}",
                 nightSubtitle(),
-                if (isHumanRoleTurn("medico")) "SALVAR" else "ESPERAR"
+                if (isHumanRoleTurn("medico")) "PROTEGER" else "ESPERAR"
             )
             GamePhase.NOCHE_ORACULO -> PhaseText(
                 "NOCHE ${session.round}",
@@ -4784,7 +4814,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             btnContinueRolePreview.text = "CERRAR"
         }
         isRolePreviewOpen = true
-        GameplayEffects.play(this, GameplayEffect.REVEAL)
+        if (initialReveal) {
+            GameplayAudioDirector.play(this, GameSound.CARD_DEAL)
+        } else {
+            GameplayEffects.play(this, GameplayEffect.REVEAL)
+        }
         rolePreviewAnimator.show(initialReveal)
     }
 
@@ -4836,7 +4870,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         "desertor" -> "Eliges un bando al comenzar y ganas con ese equipo si sobrevives. Mas adelante puedes cambiarlo una sola vez."
         "espia" -> "Eliges la victima cada noche junto a los Traidores, pero cuando te investiga el Detective apareces como inocente."
         "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votacion. Esa es tu unica condicion de victoria."
-        "oraculo" -> "Una vez por partida puedes invocar a cualquier jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
+        "oraculo" -> "Durante la noche, una vez por partida, puedes invocar a un jugador muerto para el debate del dia siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
         else -> "No tienes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
     }
 
@@ -4851,7 +4885,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         advicePhaseIndex = session.phaseIndex
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
-        activePhaseAdvice = phaseAdvice()?.let { "Consejo: $it" }
+        activePhaseAdvice = phaseAdvice()?.let { "Objetivo: $it" }
         if (activePhaseAdvice != null && activePhaseAdvice != publicMessage) {
             autoAdvanceHandler.postDelayed(clearPhaseAdviceRunnable, PHASE_ADVICE_DURATION_MS)
         }
@@ -4867,60 +4901,81 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             .joinToString(", ") { it.name }
 
-        return when (roleKey) {
-            "asesino" -> if (allies.isNotBlank()) {
-                "$allies tambien juega con los Traidores. No los defiendas de forma demasiado evidente."
+        if (!human.alive) return "Estas eliminado. Observa la partida y lee el cronista."
+        if (human.muted && session.phase == GamePhase.DIA_DEBATE) {
+            return "Estas silenciado. Lee el debate y prepara tu voto."
+        }
+
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO -> if (roleKey in GameRules.killerRoleKeys) {
+                val allyHint = if (allies.isNotBlank()) " Aliados: $allies." else ""
+                "Elegi una victima y confirma MATAR.$allyHint"
             } else {
-                "Desvia las sospechas sin parecer desesperado por controlar la votacion."
+                "No actuas en esta fase. Podes mirar la noche o saltarla."
             }
-            "mercenario" -> if (allies.isNotBlank()) {
-                "$allies tambien juega con los Traidores. Silencia a quien pueda unir al pueblo contra ustedes."
+            GamePhase.NOCHE_MERCENARIO -> if (roleKey == RoleCatalog.MERCENARIO) {
+                "Elegi a quien silenciar y confirma SILENCIAR."
             } else {
-                "Silencia a quien guie bien la discusion, pero no repitas siempre el mismo objetivo."
+                "No actuas en esta fase. Podes mirar la noche o saltarla."
             }
-            "espia" -> if (allies.isNotBlank()) {
-                "$allies tambien juega con los Traidores. Tu apariencia inocente puede ayudar a protegerlos."
+            GamePhase.NOCHE_POLICIA -> if (roleKey == RoleCatalog.POLICIA) {
+                "Elegi a quien investigar y confirma INVESTIGAR."
             } else {
-                "El Policia te vera como inocente. Aprovecha esa ventaja sin confiarte demasiado."
+                "No actuas en esta fase. Podes mirar la noche o saltarla."
             }
-            "medico" -> when {
-                session.round == 1 && session.phase == GamePhase.NOCHE_MEDICO ->
-                    "No confies demasiado pronto. Protegerte puede darte tiempo para reconocer aliados."
-                session.protectedPlayer == human.name ->
-                    "Ya te protegiste antes. Cambiar el objetivo puede volver tus decisiones menos predecibles."
+            GamePhase.NOCHE_MEDICO -> if (roleKey == RoleCatalog.MEDICO) {
+                "Elegi a quien proteger y confirma PROTEGER."
+            } else {
+                "No actuas en esta fase. Podes mirar la noche o saltarla."
+            }
+            GamePhase.NOCHE_ORACULO -> when {
+                roleKey != RoleCatalog.ORACULO ->
+                    "No actuas en esta fase. Podes mirar la noche o saltarla."
+                session.oracleUsed ->
+                    "Ya usaste la invocacion. Espera el amanecer."
+                GameEngine.oracleCandidates(session).isEmpty() ->
+                    "Todavia no hay muertos para invocar. Guarda el poder."
                 else ->
-                    "Una buena alianza con el Policia puede sostener la informacion del pueblo."
+                    "Elegi un muerto para invocar o guarda el poder para otra noche."
             }
-            "policia" -> when {
-                session.investigatedPlayer.isNotBlank() ->
-                    "Recorda tu pista sobre ${session.investigatedPlayer}; revelarla demasiado pronto puede exponerte."
+            GamePhase.DIA_DEBATE -> when (roleKey) {
+                RoleCatalog.PAYADOR -> if (session.payadorUsed) {
+                    "El Contrapunto ya fue usado. Debate y prepara tu voto."
+                } else {
+                    "Podes iniciar Contrapunto con dos jugadores o seguir al voto."
+                }
+                RoleCatalog.ALCALDE -> if (session.alcaldeRevealed) {
+                    "Tu voto vale doble. Ordena el debate antes de votar."
+                } else {
+                    "Podes revelarte como Alcalde o guardar tu autoridad."
+                }
+                RoleCatalog.ORACULO -> if (session.oracleInvitedPlayer.isNotBlank()) {
+                    "Escucha al invocado y decide si conviene creerle."
+                } else {
+                    "Debati con el pueblo y guarda tu invocacion para una muerte clave."
+                }
+                RoleCatalog.BUFON ->
+                    "Tu objetivo es que el pueblo te expulse durante la votacion."
                 else ->
-                    "No reveles todas tus investigaciones enseguida. Una verdad sin proteccion puede costarte la vida."
+                    "Debati, compara versiones y prepara tu voto."
             }
-            "alcalde" -> if (session.alcaldeRevealed) {
-                "Tu voto pesa mas. Usa esa autoridad para ordenar el debate, no solo para imponerlo."
+            GamePhase.CONTRAPUNTO ->
+                "Elegi al participante que queda mas sospechoso y confirma SENALAR."
+            GamePhase.VOTACION ->
+                "Elegi a quien expulsar y confirma VOTAR."
+            GamePhase.DESEMPATE_VOTACION ->
+                "Vota solo entre los empatados."
+            GamePhase.ALCALDE_DESEMPATE -> if (roleKey == RoleCatalog.ALCALDE) {
+                "Elegi quien sera expulsado entre los empatados."
             } else {
-                "Puedes revelarte para dirigir al pueblo o guardar tu autoridad para un empate decisivo."
+                "El Alcalde debe resolver el empate."
             }
-            "payador" -> if (session.payadorUsed) {
-                "El Contrapunto ya fue usado. Observa si sus respuestas cambiaron las sospechas del pueblo."
-            } else {
-                "Reserva el Contrapunto para dos jugadores cuyas versiones realmente se contradigan."
-            }
-            "desertor" -> if (session.desertorTeam.isBlank()) {
-                "Observa que bando parece mejor preparado antes de comprometerte."
-            } else {
-                "Elegiste apoyar a ${session.desertorTeam}. Haz todo lo posible para que ese bando gane."
-            }
-            "bufon" ->
-                "Contradicete, interrumpe y provoca, pero evita parecer demasiado desesperado por recibir votos."
-            "oraculo" -> if (session.oracleUsed) {
-                "Tu invocacion termino. Escucha como cambia el debate despues de devolver una voz."
-            } else {
-                "Elige libremente: una voz experimentada puede orientar al pueblo y un acusado puede defenderse."
-            }
-            else ->
-                "No tener una habilidad no te quita influencia. Compara versiones y recorda quien defendio a quien."
+            GamePhase.AMANECER ->
+                "Lee el resultado de la noche antes de debatir."
+            GamePhase.RESULTADO ->
+                "Revisa el resultado y continua cuando estes listo."
+            GamePhase.REPARTO,
+            GamePhase.RECUENTO_VOTOS -> null
         }
     }
 
@@ -5243,16 +5298,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun targetActionMessage(): String {
         return when (actionSession().phase) {
-            GamePhase.NOCHE_ASESINO -> "Selecciona una victima y confirma MATAR."
-            GamePhase.NOCHE_MERCENARIO -> "Selecciona un jugador y confirma SILENCIAR."
-            GamePhase.NOCHE_POLICIA -> "Selecciona un jugador y confirma INVESTIGAR."
-            GamePhase.NOCHE_MEDICO -> "Selecciona un jugador y confirma SALVAR."
-            GamePhase.NOCHE_ORACULO -> "Selecciona un jugador muerto para INVOCAR o guarda el poder."
-            GamePhase.DIA_DEBATE -> "Puedes usar tu habilidad o continuar a la votacion."
-            GamePhase.CONTRAPUNTO -> "Selecciona un participante y confirma SENALAR."
-            GamePhase.VOTACION -> "Selecciona un jugador y confirma VOTAR."
-            GamePhase.DESEMPATE_VOTACION -> "Selecciona un jugador empatado y confirma VOTAR."
-            GamePhase.ALCALDE_DESEMPATE -> "Selecciona un jugador empatado y confirma DECIDIR."
+            GamePhase.NOCHE_ASESINO -> "Elegi una victima y confirma MATAR."
+            GamePhase.NOCHE_MERCENARIO -> "Elegi a quien silenciar y confirma SILENCIAR."
+            GamePhase.NOCHE_POLICIA -> "Elegi a quien investigar y confirma INVESTIGAR."
+            GamePhase.NOCHE_MEDICO -> "Elegi a quien proteger y confirma PROTEGER."
+            GamePhase.NOCHE_ORACULO -> "Elegi un jugador muerto para INVOCAR o guarda el poder."
+            GamePhase.DIA_DEBATE -> "Podes usar tu habilidad o seguir a la votacion."
+            GamePhase.CONTRAPUNTO -> "Elegi un participante y confirma SENALAR."
+            GamePhase.VOTACION -> "Elegi a quien expulsar y confirma VOTAR."
+            GamePhase.DESEMPATE_VOTACION -> "Elegi un jugador empatado y confirma VOTAR."
+            GamePhase.ALCALDE_DESEMPATE -> "Elegi un jugador empatado y confirma EXPULSAR."
             else -> "Toca una carta valida."
         }
     }
@@ -5405,6 +5460,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         pendingNoDeathReveal = false
         isNoDeathRevealRunning = true
         hideCentralPublicEventBanner(immediate = true)
+        GameplayAudioDirector.play(this, GameSound.DAWN)
         noDeathRevealAnimator.start()
     }
 
@@ -5784,7 +5840,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
-        GameplaySoundEffects.play(this, R.raw.oracle_ability)
+        GameplayAudioDirector.play(this, GameSound.ORACLE)
         isOracleRevealVisible = true
         oracleRevealPlayer.text = session.oracleInvitedPlayer.uppercase()
         oracleRevealOverlay.visibility = View.VISIBLE

@@ -140,27 +140,27 @@ object RoleCatalog {
 
     private val adviceByKey = mapOf(
         ALDEANO to
-            "Pregunta, escucha y compara versiones. No tener una habilidad no te quita influencia: recorda quien acuso, defendio o cambio su historia.",
+            "No tenes accion nocturna. Usa el debate: pregunta, compara versiones y recorda quien acuso, defendio o cambio su historia.",
         POLICIA to
-            "No reveles todos tus resultados enseguida. Orienta al pueblo sin exponerte demasiado pronto y busca una forma segura de transmitir tus pistas.",
+            "Cada noche investiga a un jugador. Guarda tus pistas hasta que puedas usarlas sin exponerte demasiado pronto.",
         MEDICO to
-            "No confies en nadie durante la primera noche. Protegerte puede darte tiempo; mas adelante, aliarte con el Detective puede sostener la informacion del pueblo.",
+            "Cada noche protege a un jugador. Puedes protegerte si necesitas sobrevivir, o cuidar a quien tenga informacion clave.",
         ALCALDE to
-            "Puedes revelarte para ordenar el debate o guardar tu autoridad para un empate decisivo. Una revelacion temprana tambien te convierte en objetivo.",
+            "Puedes revelarte durante el debate. Desde entonces tu voto vale doble y puedes decidir empates.",
         ASESINO to
-            "Actua con calma. Acusar demasiado o defender siempre a tus aliados puede delatarte. Mentir con seguridad suele funcionar mejor que controlar cada conversacion.",
+            "Cada noche elige una victima con los Traidores. De dia, desvia sospechas sin defender siempre a tus aliados.",
         ESPIA to
-            "El Detective te vera como inocente. Aprovecha esa ventaja para proteger al bando traidor sin confiarte ni defender a tus aliados de forma demasiado evidente.",
+            "El Detective te vera como inocente. Participa en la eleccion de victima y usa esa apariencia para proteger a los Traidores.",
         MERCENARIO to
-            "Silencia a quien pueda convencer al pueblo o compartir informacion importante. De dia, evita que tus defensas revelen quienes son tus compañeros.",
+            "Cada noche silencia a un jugador. Elige a quien pueda convencer al pueblo o compartir informacion importante.",
         DESERTOR to
-            "Observa la ventaja de cada bando antes de elegir. Una vez comprometido, debes ayudar a ese equipo y sobrevivir hasta su victoria.",
+            "Elige un bando y ayuda a que gane. Sobrevivir importa: no te comprometas sin mirar quien tiene ventaja.",
         PAYADOR to
-            "Reserva el Contrapunto para dos jugadores cuyas versiones realmente se contradigan. Escucha bien: tu senal agrega peso a la votacion.",
+            "No actuas de noche. De dia puedes iniciar Contrapunto entre dos jugadores cuyas versiones se contradigan.",
         BUFON to
-            "Contradicete, interrumpe y provoca, pero evita parecer desesperado por recibir votos. Solo ganas si el pueblo te expulsa durante la votacion.",
+            "No actuas de noche. Tu objetivo es que el pueblo te expulse durante la votacion, no morir de noche.",
         ORACULO to
-            "Elige bien cuando devolver una voz. Un jugador experimentado puede ordenar el debate, mientras que un acusado puede usar esa oportunidad para defenderse o enganar."
+            "Actuas de noche. Una vez por partida puedes invocar a un muerto para que hable en el proximo debate."
     )
 
     fun definition(key: String): RoleDefinition {

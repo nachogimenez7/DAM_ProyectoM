@@ -407,12 +407,53 @@ class GameplayTableUiTest {
         assertEquals("2 protecciones", summary.humanHighlight)
         assertEquals(
             listOf(
-                "Día 1: murió Objetivo y se silenció a Rival.",
-                "Día 2: no murió nadie y nadie fue silenciado.",
-                "Día 3: no murió nadie y nadie fue silenciado.",
-                "Día 4: no murió nadie y nadie fue silenciado."
+                "Dia 1: murio Objetivo; se silencio a Rival.",
+                "Dia 2: no murio nadie; nadie fue silenciado.",
+                "Dia 3: no murio nadie; nadie fue silenciado.",
+                "Dia 4: no murio nadie; nadie fue silenciado."
             ),
             summary.daySummaries
+        )
+        assertEquals(
+            listOf(
+                "Dia 1: murio Objetivo.",
+                "Dia 1: Rival fue silenciado.",
+                "Dia 2: no murio nadie."
+            ),
+            summary.keyMoments
+        )
+    }
+
+    @Test
+    fun gameSummaryTracksPublicExpulsionsTiesAndSpecialVictories() {
+        val session = actionSession("bufon", GamePhase.RESULTADO).copy(
+            round = 2,
+            publicHistory = listOf(
+                "Dia 1: nadie fue expulsado.",
+                "Empate entre Mora y Thiago. Si el empate se repite, nadie sera expulsado.",
+                "Dia 2: Valen fue expulsado. Valen era el Bufon y gano al ser expulsado por el pueblo."
+            ),
+            specialVictories = listOf(
+                GameSpecialVictory("bufon_expulsado", "Valen", RoleCatalog.BUFON, 2)
+            )
+        )
+
+        val summary = GameplayTableUi.gameSummary(session, nowEpochMs = session.startedAtEpochMs)
+
+        assertEquals(
+            listOf(
+                "Dia 1: no murio nadie; nadie fue silenciado; nadie fue expulsado; hubo empate.",
+                "Dia 2: no murio nadie; nadie fue silenciado; se expulso a Valen; victoria especial del Bufon."
+            ),
+            summary.daySummaries
+        )
+        assertEquals(
+            listOf(
+                "Dia 1: hubo empate en la votacion.",
+                "Dia 2: Valen fue expulsado.",
+                "Dia 2: victoria especial del Bufon."
+            ),
+            summary.keyMoments
         )
     }
 
@@ -621,11 +662,17 @@ class GameplayTableUiTest {
         assertEquals(listOf("Objetivo"), GameplayTableUi.validHumanTargets(assassin).map { it.name })
 
         assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR"))
+        assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR A MORA"))
+        assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("VICTIMA"))
         assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("SALVARME"))
+        assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("PROTEGER A NACHO"))
         assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVESTIGAR"))
         assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVOCAR"))
+        assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVOCAR A VALEN"))
         assertEquals(GameplayActionTone.SILENCE, GameplayTableUi.actionToneFor("SILENCIAR"))
+        assertEquals(GameplayActionTone.SILENCE, GameplayTableUi.actionToneFor("CALLAR"))
         assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("VOTAR"))
+        assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("EXPULSAR A THIAGO"))
         assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("REVELARME"))
         assertEquals(GameplayActionTone.DECIDE, GameplayTableUi.actionToneFor("ELEGIR BANDO"))
         assertEquals(GameplayActionTone.DEFAULT, GameplayTableUi.actionToneFor("ACELERAR"))
