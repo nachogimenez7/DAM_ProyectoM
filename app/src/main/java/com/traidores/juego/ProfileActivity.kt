@@ -963,10 +963,13 @@ class ProfileActivity : BaseActivity() {
             val drawableHeight = drawable.intrinsicHeight.toFloat()
             if (drawableWidth <= 0f || drawableHeight <= 0f) return@post
 
+            // Encuadre tipo retrato: llenar por ancho con un leve zoom y anclar cerca del borde
+            // superior (saltando el aire sobre la cabeza) para mostrar cabeza y hombros, no el
+            // cuerpo entero. Los valores son ajustables si algun rol queda muy alto/bajo.
             val scale = maxOf(
                 image.width / drawableWidth,
                 image.height / drawableHeight
-            )
+            ) * 1.12f
             val scaledWidth = drawableWidth * scale
             val scaledHeight = drawableHeight * scale
             val horizontalOffset = (image.width - scaledWidth) / 2f

@@ -37,6 +37,7 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 | N4 | Reglas Firestore por rol/host/estado | Faltante | Hoy validan forma/tamaño, no autoría real ni frecuencia. |
 | N5 | Tests de UI / instrumentación / accesibilidad | Faltante | Sólo hay tests JVM de reglas y online. |
 | N6 | Soporte tablets | Faltante | Excluido del alcance actual. |
+| N7 | **Avatar por foto de galería** | Faltante (diferido post-cierre local) | El jugador podrá elegir foto propia **o** ilustración temática (avatar híbrido). Requiere pipeline: Photo Picker → recortar → redimensionar/comprimir → guardar local ("convertidor") → mostrar. Para online: subir a Firebase Storage (Firestore no aguanta imágenes). Decisión jul 2026: se hace **después** de cerrar el modo local; por ahora solo se corrigió el encuadre (retrato) del avatar de ilustración. |
 
 ## Riesgos a vigilar (de la auditoría)
 
