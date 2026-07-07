@@ -20,9 +20,10 @@ enum class GameSound(
 ) {
     NIGHT_FALL(R.raw.sfx_night_fall, HapticLevel.LIGHT, 0.85f),
     DAWN(R.raw.sfx_dawn, HapticLevel.LIGHT, 0.9f),
-    ELIMINATION(R.raw.sfx_elimination, HapticLevel.STRONG, 0.78f),
+    ELIMINATION(R.raw.sfx_death_elevenlabs, HapticLevel.STRONG, 0.78f),
     EXPULSION(R.raw.sfx_expulsion, HapticLevel.STRONG, 0.82f),
-    SILENCE(R.raw.sfx_silence, HapticLevel.MEDIUM, 0.9f),
+    SILENCE(R.raw.sfx_elimination, HapticLevel.MEDIUM, 0.9f),
+    NO_DEATH(R.raw.sfx_no_death, HapticLevel.LIGHT, 0.9f),
     VOTE_CAST(R.raw.sfx_vote_cast, HapticLevel.LIGHT, 0.72f),
     TIE_BREAK(R.raw.sfx_tie_break, HapticLevel.MEDIUM, 0.82f),
     CARD_DEAL(R.raw.sfx_card_deal, HapticLevel.LIGHT),

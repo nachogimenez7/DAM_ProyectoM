@@ -96,6 +96,37 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
+    fun staleConnectedHostCanBeReplacedByFreshCandidate() {
+        val now = 100_000L
+        val players = listOf(
+            participant(
+                "host",
+                connected = true,
+                ready = true,
+                active = true,
+                order = 0,
+                lastSeenLocalMs = now - OnlineLobbyRules.HOST_STALE_AFTER_MS - 1
+            ),
+            participant(
+                "candidate",
+                connected = true,
+                ready = true,
+                active = true,
+                order = 1,
+                lastSeenLocalMs = now
+            )
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(
+            players = players,
+            activeHostId = "host",
+            nowMs = now
+        )
+
+        assertEquals("candidate", candidate?.id)
+    }
+
+    @Test
     fun releasedHostDoesNotBecomeHandoffCandidate() {
         val players = listOf(
             participant("host", connected = false, ready = false, active = true, order = 0),
@@ -113,14 +144,16 @@ class OnlineLobbyRulesTest {
         connected: Boolean,
         ready: Boolean,
         active: Boolean,
-        order: Int
+        order: Int,
+        lastSeenLocalMs: Long = 0L
     ): OnlineLobbyParticipant {
         return OnlineLobbyParticipant(
             id = id,
             connected = connected,
             ready = ready,
             activeInMatch = active,
-            order = order
+            order = order,
+            lastSeenLocalMs = lastSeenLocalMs
         )
     }
 }

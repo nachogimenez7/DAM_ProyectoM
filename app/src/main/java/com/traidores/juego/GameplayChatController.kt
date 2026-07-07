@@ -220,7 +220,10 @@ class GameplayChatController(
             chatHistory = session.chatHistory.dropLast(trailingBotMessages.size) + visibleNow
         )
         stagedBotBurstPhaseIndex = host.currentSession.phaseIndex
-        staged.forEachIndexed { index, message ->
+        staged.filter { message ->
+            val speaker = GameEngine.playerByName(host.currentSession, message.speaker)
+            speaker != null && GameEngine.canParticipateInChat(host.currentSession, speaker)
+        }.forEachIndexed { index, message ->
             scheduleBotChatMessage(
                 speaker = message.speaker,
                 message = message.message,
@@ -1226,7 +1229,8 @@ class GameplayChatController(
                 if (
                     session.phaseIndex != phaseIndex ||
                     session.phase != phase ||
-                    session.winner.isNotBlank()
+                    session.winner.isNotBlank() ||
+                    !canScheduledBotSpeak(session, speaker)
                 ) {
                     return
                 }
@@ -1243,7 +1247,8 @@ class GameplayChatController(
                 if (
                     session.phaseIndex != phaseIndex ||
                     session.phase != phase ||
-                    session.winner.isNotBlank()
+                    session.winner.isNotBlank() ||
+                    !canScheduledBotSpeak(session, speaker)
                 ) {
                     return
                 }
@@ -1264,6 +1269,11 @@ class GameplayChatController(
             (delayMs - BOT_TYPING_LEAD_DELAY_MS).coerceAtLeast(250L)
         )
         handler.postDelayed(runnable, delayMs)
+    }
+
+    private fun canScheduledBotSpeak(session: GameSession, speaker: String): Boolean {
+        val player = GameEngine.playerByName(session, speaker) ?: return false
+        return !player.isHuman && GameEngine.canParticipateInChat(session, player)
     }
 
     private fun botReactionDelayMs(index: Int, message: String): Long {
@@ -1311,11 +1321,11 @@ class GameplayChatController(
     private fun blockedChatMessage(session: GameSession): String {
         val human = GameEngine.humanPlayer(session)
         return when {
-            !human.alive -> "Estas eliminado. Puedes mirar el chat, pero no escribir."
-            human.muted -> "Estas silenciado. Puedes mirar el chat, pero no escribir."
+            !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
+            human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
             GameplayTableUi.isNightPhase(session.phase) ->
                 "El pueblo duerme. Las voces deben esperar al amanecer."
-            else -> "No podes escribir durante esta fase."
+            else -> "No puedes escribir durante esta fase."
         }
     }
 

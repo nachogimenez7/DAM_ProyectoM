@@ -72,28 +72,16 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="end"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/headerLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp" />
-
-            <TextView
-                android:id="@+id/mapName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-        </LinearLayout>
+        <ImageButton
+            android:id="@+id/btnLobbySettings"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginHorizontal="8dp"
+            android:background="@drawable/bg_btn_dark_ripple"
+            android:contentDescription="Opciones"
+            android:padding="11dp"
+            android:src="@drawable/ic_settings_gear"
+            app:tint="@color/accent_gold" />
     </LinearLayout>
 
     <ScrollView
@@ -139,12 +127,12 @@
                     android:id="@+id/lobbyModeHint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="6dp"
+                    android:layout_marginBottom="8dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:text="MAPA"
+                    android:text="Modo normal: elige mapa, tiempos y participantes antes de iniciar."
                     android:textColor="@color/accent_gold"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
                 <Button
                     android:id="@+id/btnReleaseDisconnected"
@@ -244,9 +232,64 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <FrameLayout
+                    android:id="@+id/selectedMapCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="126dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_btn_dark"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:padding="2dp">
+
+                    <ImageView
+                        android:id="@+id/selectedMapImage"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@null"
+                        android:scaleType="centerCrop" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="#7A000000" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="13dp"
+                        android:paddingVertical="10dp">
+
+                        <TextView
+                            android:id="@+id/selectedMapName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/bree_serif"
+                            android:maxLines="1"
+                            android:text="PAMPA"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="23sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/selectedMapRole"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:fontFamily="sans-serif"
+                            android:maxLines="1"
+                            android:text="Rol exclusivo: Payador"
+                            android:textColor="@color/text_primary"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+                </FrameLayout>
+
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="58dp"
+                    android:layout_height="54dp"
                     android:layout_marginBottom="8dp"
                     android:gravity="center"
                     android:orientation="horizontal">

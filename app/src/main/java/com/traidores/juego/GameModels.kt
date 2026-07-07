@@ -16,7 +16,8 @@ data class GameSession(
     val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
-    val debugBotsNeverTargetHuman: Boolean = false,
+    val debugBotsNeverKillHuman: Boolean = false,
+    val debugBotsNeverVoteHuman: Boolean = false,
     val phase: GamePhase = GamePhase.REPARTO,
     val round: Int = 1,
     val nightKillTarget: String = "",
@@ -92,7 +93,7 @@ enum class RoleCompositionPreset(
     ),
     CLASSIC(
         "CLASICO",
-        "Partida simple: Asesino, Detective, Medico y Aldeanos."
+        "Partida simple: Asesino, Detective, Médico y Aldeanos."
     ),
     CHAOTIC(
         "CAOTICO",
@@ -424,7 +425,8 @@ object LocalGameFactory {
             players = players.take(MIN_PLAYERS),
             quickTestMode = false,
             debugBotsObeyVoteCommands = false,
-            debugBotsNeverTargetHuman = false
+            debugBotsNeverKillHuman = false,
+            debugBotsNeverVoteHuman = false
         )
     }
 
@@ -449,7 +451,8 @@ object LocalGameFactory {
             code = "ONLINE-MOCK",
             quickTestMode = false,
             debugBotsObeyVoteCommands = false,
-            debugBotsNeverTargetHuman = false
+            debugBotsNeverKillHuman = false,
+            debugBotsNeverVoteHuman = false
         )
     }
 
@@ -575,6 +578,7 @@ object LocalGameFactory {
         )
         when (preset) {
             RoleCompositionPreset.RECOMMENDED -> {
+                if (count >= 8) counts[RoleCatalog.ASESINO] = 2
                 if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
                 if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
                 if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
@@ -706,7 +710,7 @@ object LocalGameFactory {
     private fun maxAssassinsFor(playerCount: Int): Int {
         return when {
             playerCount >= 13 -> 3
-            playerCount >= 9 -> 2
+            playerCount >= 8 -> 2
             else -> 1
         }
     }

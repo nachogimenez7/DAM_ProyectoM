@@ -170,11 +170,11 @@ object GameplayTableUi {
         if (selectedTarget.isBlank() || !GameEngine.canActOnTarget(session, selectedTarget)) return null
         return GameEngine.targetActionLabel(session, selectedTarget)
             .takeIf { it.isNotBlank() }
-            ?.let { if (it == "CONTRAPUNTO") "SENALAR" else it }
+            ?.let { if (it == "CONTRAPUNTO") "SEÑALAR" else it }
     }
 
     fun actionToneFor(label: String): GameplayActionTone {
-        val normalized = label.uppercase()
+        val normalized = GameplayTextMarkers.normalize(label).uppercase()
         return when {
             normalized == "MATAR" || normalized.startsWith("MATAR A ") ||
                 normalized == "VICTIMA" -> GameplayActionTone.KILL
@@ -206,14 +206,14 @@ object GameplayTableUi {
         if (target.isBlank() || before == after) return null
         return when (before.phase) {
             GamePhase.NOCHE_ASESINO -> privateFeedback(
-                title = "VICTIMA ELEGIDA",
-                message = "Elegiste a $target. El resultado se anunciara al amanecer.",
+                title = "VÍCTIMA ELEGIDA",
+                message = "Elegiste a $target. El resultado se anunciará al amanecer.",
                 target = target,
                 tone = GameplayActionTone.KILL
             )
             GamePhase.NOCHE_MERCENARIO -> privateFeedback(
                 title = "SILENCIO REGISTRADO",
-                message = "$target no podra hablar ni votar durante el dia.",
+                message = "$target no podrá hablar ni votar durante el día.",
                 target = target,
                 tone = GameplayActionTone.SILENCE
             )
@@ -227,7 +227,7 @@ object GameplayTableUi {
                 )
             }
             GamePhase.NOCHE_MEDICO -> privateFeedback(
-                title = "PROTECCION REGISTRADA",
+                title = "PROTECCIÓN REGISTRADA",
                 message = if (target == GameEngine.humanPlayer(before).name) {
                     "Te protegiste durante esta noche."
                 } else {
@@ -237,8 +237,8 @@ object GameplayTableUi {
                 tone = GameplayActionTone.SAVE
             )
             GamePhase.NOCHE_ORACULO -> privateFeedback(
-                title = "INVOCACION REGISTRADA",
-                message = "$target regresara para discutir durante el proximo dia.",
+                title = "INVOCACIÓN REGISTRADA",
+                message = "$target regresará para discutir durante el próximo día.",
                 target = target,
                 tone = GameplayActionTone.INVESTIGATE
             )
@@ -366,18 +366,21 @@ object GameplayTableUi {
     }
 
     private fun isImportantPublicEvent(message: String): Boolean {
-        return message.contains("murio", ignoreCase = true) ||
-            message.contains("no puede hablar ni votar", ignoreCase = true) ||
-            message.contains("muteados:", ignoreCase = true) ||
-            message.contains("oraculo", ignoreCase = true) ||
-            message.contains("regrese para discutir", ignoreCase = true) ||
-            message.contains("expuls", ignoreCase = true) ||
-            message.contains("empate", ignoreCase = true) ||
-            message.contains("alcalde", ignoreCase = true) ||
-            message.contains("contrapunto", ignoreCase = true) ||
-            message.contains("votacion", ignoreCase = true) ||
-            message.contains("victoria especial", ignoreCase = true) ||
-            message.contains("bufon", ignoreCase = true)
+        val text = GameplayTextMarkers.normalize(message)
+        return text.contains("murio") ||
+            text.contains("no puede hablar ni votar") ||
+            text.contains("silenciados:") ||
+            text.contains("muteados:") ||
+            text.contains("oraculo") ||
+            text.contains("regrese para discutir") ||
+            text.contains("regresa para hablar") ||
+            text.contains("expuls") ||
+            text.contains("empate") ||
+            text.contains("alcalde") ||
+            text.contains("contrapunto") ||
+            text.contains("votacion") ||
+            text.contains("victoria especial") ||
+            text.contains("bufon")
     }
 
     fun historicalPublicEvents(history: List<String>, current: String, fallback: String): List<String> {
@@ -394,46 +397,46 @@ object GameplayTableUi {
 
     fun centralPhaseMessage(session: GameSession, fallback: String): String {
         if (session.winner.isNotBlank()) {
-            return "Fin de partida. Gano ${session.winner}."
+            return "Fin de partida. Ganó ${session.winner}."
         }
         return when (session.phase) {
             GamePhase.REPARTO -> fallback
             GamePhase.NOCHE_ASESINO -> if (isHumanTurn(session, RoleCatalog.ASESINO)) {
                 "Elige a quien eliminar esta noche."
             } else {
-                "Los Traidores eligen a su victima."
+                "Los Traidores eligen a su víctima."
             }
             GamePhase.NOCHE_MERCENARIO -> if (isHumanTurn(session, RoleCatalog.MERCENARIO)) {
-                "Elige a quien silenciar durante el proximo dia."
+                "Elige a quién silenciar durante el próximo día."
             } else {
-                "El Mercenario decide que voz callar."
+                "El Mercenario decide qué voz callar."
             }
             GamePhase.NOCHE_POLICIA -> if (isHumanTurn(session, RoleCatalog.POLICIA)) {
                 "Elige a quien investigar esta noche."
             } else {
-                "El Detective busca una pista en secreto."
+                "El investigador busca una pista en secreto."
             }
             GamePhase.NOCHE_MEDICO -> if (isHumanTurn(session, RoleCatalog.MEDICO)) {
                 "Elige a quien proteger esta noche."
             } else {
-                "El Medico decide a quien proteger."
+                "El Médico decide a quién proteger."
             }
             GamePhase.NOCHE_ORACULO -> if (isHumanTurn(session, RoleCatalog.ORACULO)) {
                 "Elige una voz para el debate o guarda tu poder."
             } else {
-                "El Oraculo decide si devuelve una voz al pueblo."
+                "El Oráculo decide si devuelve una voz al pueblo."
             }
             GamePhase.AMANECER -> session.publicAnnouncement.ifBlank { fallback }
             GamePhase.DIA_DEBATE -> {
                 val muted = session.players.filter { it.alive && it.muted }.joinToString(", ") { it.name }
                 if (muted.isBlank()) {
-                    "Debatan, comparen versiones y preparen la votacion."
+                    "Debatan, comparen versiones y preparen la votación."
                 } else {
                     "Debatan antes de votar. $muted no puede hablar ni votar hoy."
                 }
             }
             GamePhase.CONTRAPUNTO ->
-                "Escucha a los participantes y senala al mas sospechoso."
+                "Escucha a los participantes y señala al más sospechoso."
             GamePhase.VOTACION ->
                 "Elige a un jugador y confirma tu voto."
             GamePhase.RECUENTO_VOTOS ->
@@ -454,11 +457,12 @@ object GameplayTableUi {
         session: GameSession,
         knownDeadPlayers: Set<String>
     ): List<GamePlayer> {
-        val announcement = session.publicAnnouncement.lowercase()
+        val announcement = GameplayTextMarkers.normalize(session.publicAnnouncement)
         return session.players.filter { player ->
+            val playerName = GameplayTextMarkers.normalize(player.name)
             !player.alive &&
                 player.name !in knownDeadPlayers &&
-                announcement.contains("amanecer: murio ${player.name.lowercase()}")
+                announcement.contains("amanecer: murio $playerName")
         }
     }
 
@@ -466,13 +470,14 @@ object GameplayTableUi {
         session: GameSession,
         knownMutedPlayers: Set<String>
     ): List<GamePlayer> {
-        val announcement = session.publicAnnouncement.lowercase()
+        val announcement = GameplayTextMarkers.normalize(session.publicAnnouncement)
         return session.players.filter { player ->
+            val playerName = GameplayTextMarkers.normalize(player.name)
             player.alive &&
                 player.muted &&
                 player.name !in knownMutedPlayers &&
                 announcement.contains(
-                    "${player.name.lowercase()} no puede hablar ni votar hoy"
+                    "$playerName no puede hablar ni votar hoy"
                 )
         }
     }
@@ -537,9 +542,9 @@ object GameplayTableUi {
                 "No fue expulsado por votación"
             }
             "oraculo" -> if (session.oracleUsed) {
-                "Invocacion utilizada"
+                "Invocación utilizada"
             } else {
-                "Invocacion conservada"
+                "Invocación conservada"
             }
             else -> "${humanActions.count { it.type == GameActionType.VOTE }} votos emitidos"
         }
@@ -573,48 +578,48 @@ object GameplayTableUi {
             val outcome = outcomes[round]
             val parts = mutableListOf<String>()
             parts += if (outcome?.killed?.isNotEmpty() == true) {
-                "murio ${outcome.killed.joinToString(", ")}"
+                "murió ${outcome.killed.joinToString(", ")}"
             } else {
-                "no murio nadie"
+                "no murió nadie"
             }
             parts += if (outcome?.silenced?.isNotEmpty() == true) {
-                "se silencio a ${outcome.silenced.joinToString(", ")}"
+                "se silenció a ${outcome.silenced.joinToString(", ")}"
             } else {
                 "nadie fue silenciado"
             }
             if (outcome?.expelled?.isNotEmpty() == true) {
-                parts += "se expulso a ${outcome.expelled.joinToString(", ")}"
+                parts += "se expulsó a ${outcome.expelled.joinToString(", ")}"
             } else if (outcome?.noExpulsion == true) {
                 parts += "nadie fue expulsado"
             }
             if (outcome?.tie == true) parts += "hubo empate"
             outcome?.specialVictories?.forEach { parts += it }
-            "Dia $round: ${parts.joinToString("; ")}."
+            "Día $round: ${parts.joinToString("; ")}."
         }
     }
 
     fun keyMoments(session: GameSession): List<String> {
         val moments = mutableListOf<String>()
         roundOutcomes(session).forEach { (round, outcome) ->
-            outcome.killed.forEach { moments += "Dia $round: murio $it." }
+            outcome.killed.forEach { moments += "Día $round: murió $it." }
             if (outcome.noDeath && outcome.killed.isEmpty()) {
-                moments += "Dia $round: no murio nadie."
+                moments += "Día $round: no murió nadie."
             }
-            outcome.silenced.forEach { moments += "Dia $round: $it fue silenciado." }
-            if (outcome.tie) moments += "Dia $round: hubo empate en la votacion."
-            outcome.expelled.forEach { moments += "Dia $round: $it fue expulsado." }
-            outcome.specialVictories.forEach { moments += "Dia $round: $it." }
+            outcome.silenced.forEach { moments += "Día $round: $it fue silenciado." }
+            if (outcome.tie) moments += "Día $round: hubo empate en la votación."
+            outcome.expelled.forEach { moments += "Día $round: $it fue expulsado." }
+            outcome.specialVictories.forEach { moments += "Día $round: $it." }
         }
         return moments.distinct().takeLast(7).ifEmpty {
-            listOf("Dia 1: no hubo eventos publicos decisivos.")
+            listOf("Día 1: no hubo eventos públicos decisivos.")
         }
     }
 
     private fun roundOutcomes(session: GameSession): Map<Int, RoundOutcome> {
         val outcomes = linkedMapOf<Int, RoundOutcome>()
         var currentRound = 1
-        val nightPattern = Regex("""Noche\s+(\d+)""", RegexOption.IGNORE_CASE)
-        val dayPattern = Regex("""D[ií]a\s+(\d+)""", RegexOption.IGNORE_CASE)
+        val nightPattern = Regex("""noche\s+(\d+)""", RegexOption.IGNORE_CASE)
+        val dayPattern = Regex("""dia\s+(\d+)""", RegexOption.IGNORE_CASE)
         val killedPattern = Regex("""murio\s+([^.\s]+)""", RegexOption.IGNORE_CASE)
         val silencedPattern = Regex(
             """([^.]+?)\s+no puede hablar ni votar hoy""",
@@ -626,32 +631,33 @@ object GameplayTableUi {
         )
 
         publicSummaryMessages(session).forEach { message ->
-            nightPattern.find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
+            val normalizedMessage = GameplayTextMarkers.normalize(message)
+            nightPattern.find(normalizedMessage)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
                 currentRound = it
             }
-            val explicitDay = dayPattern.find(message)
+            val explicitDay = dayPattern.find(normalizedMessage)
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.toIntOrNull()
             val round = explicitDay ?: currentRound
             publicEventLines(message).forEach { sentence ->
-                val lower = sentence.lowercase()
+                val lower = GameplayTextMarkers.normalize(sentence)
                 val outcome = outcomes.getOrPut(round) { RoundOutcome() }
                 if ("no murio nadie" in lower || "nadie murio" in lower) {
                     outcome.noDeath = true
                 } else {
-                    killedPattern.find(sentence)?.groupValues?.getOrNull(1)?.let {
-                        outcome.killed.addUnique(cleanEventTarget(it))
+                    killedPattern.find(lower)?.groupValues?.getOrNull(1)?.let {
+                        outcome.killed.addUnique(canonicalEventTarget(session, it))
                     }
                 }
                 silencedPattern.find(sentence)?.groupValues?.getOrNull(1)?.let {
-                    outcome.silenced.addUnique(cleanEventTarget(it))
+                    outcome.silenced.addUnique(canonicalEventTarget(session, it))
                 }
                 if ("nadie fue expulsado" in lower || "nadie sera expulsado" in lower) {
                     outcome.noExpulsion = true
                 }
                 expelledPattern.find(sentence)?.groupValues?.getOrNull(1)?.let {
-                    val target = cleanEventTarget(it)
+                    val target = canonicalEventTarget(session, it)
                     if (!target.equals("nadie", ignoreCase = true)) {
                         outcome.expelled.addUnique(target)
                     }
@@ -694,10 +700,19 @@ object GameplayTableUi {
             .trim()
     }
 
+    private fun canonicalEventTarget(session: GameSession, raw: String): String {
+        val clean = cleanEventTarget(raw)
+        val normalized = GameplayTextMarkers.normalize(clean)
+        return session.players
+            .firstOrNull { GameplayTextMarkers.normalize(it.name) == normalized }
+            ?.name
+            ?: clean
+    }
+
     private fun specialVictorySummary(sentence: String): String {
         val clean = sentence.trim().removeSuffix(".")
         return if ("bufon" in clean.lowercase()) {
-            "victoria especial del Bufon"
+            "victoria especial del Bufón"
         } else {
             clean
         }
@@ -878,7 +893,7 @@ object GameplayTableUi {
     }
 
     fun eventTypeFor(message: String, phase: GamePhase): PublicEventType {
-        val text = message.lowercase()
+        val text = GameplayTextMarkers.normalize(message)
         return when {
             (text.contains("murio") || text.contains("muerte")) && !text.contains("no murio") ->
                 PublicEventType.DEATH

@@ -29,6 +29,15 @@ internal class DeathRevealAnimator(
     private val onReadyToContinue: () -> Unit,
     private val onFinished: () -> Unit
 ) {
+    private companion object {
+        const val DEATH_REVEAL_AUDIO_MS = 2_900L
+        const val ENTRANCE_MS = 280L
+        const val IMPACT_MS = 420L
+        const val HIDDEN_ROLE_MS = 420L
+        const val ROLE_FLIP_OUT_MS = 230L
+        const val ROLE_FLIP_IN_MS = 260L
+    }
+
     var running: Boolean = false
         private set
 
@@ -56,7 +65,7 @@ internal class DeathRevealAnimator(
                 ObjectAnimator.ofFloat(content, View.SCALE_X, 0.94f, 1f),
                 ObjectAnimator.ofFloat(content, View.SCALE_Y, 0.94f, 1f)
             )
-            duration = 280L
+            duration = ENTRANCE_MS
             interpolator = DecelerateInterpolator()
         }
         val impact = AnimatorSet().apply {
@@ -79,13 +88,14 @@ internal class DeathRevealAnimator(
                 ObjectAnimator.ofFloat(bloodRight, View.SCALE_X, 0.5f, 1f),
                 ObjectAnimator.ofFloat(bloodRight, View.SCALE_Y, 0.5f, 1f)
             )
-            duration = 420L
+            duration = IMPACT_MS
             interpolator = AccelerateDecelerateInterpolator()
         }
         val reveal = if (revealRole) roleRevealAnimation() else hiddenRoleAnimation()
+        val hold = readHoldAnimation(revealRole)
 
         animator = AnimatorSet().apply {
-            playSequentially(entrance, impact, reveal)
+            playSequentially(entrance, impact, reveal, hold)
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     if (running) {
@@ -133,7 +143,7 @@ internal class DeathRevealAnimator(
 
     private fun roleRevealAnimation(): Animator {
         val flipOut = ObjectAnimator.ofFloat(card, View.ROTATION_Y, 0f, 90f).apply {
-            duration = 230L
+            duration = ROLE_FLIP_OUT_MS
             interpolator = AccelerateInterpolator()
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
@@ -148,7 +158,7 @@ internal class DeathRevealAnimator(
                 ObjectAnimator.ofFloat(card, View.ROTATION_Y, -90f, 0f),
                 ObjectAnimator.ofFloat(roleName, View.ALPHA, 0f, 1f)
             )
-            duration = 260L
+            duration = ROLE_FLIP_IN_MS
             interpolator = DecelerateInterpolator()
         }
         return AnimatorSet().apply { playSequentially(flipOut, flipIn) }
@@ -160,8 +170,19 @@ internal class DeathRevealAnimator(
                 ObjectAnimator.ofFloat(card, View.SCALE_X, 1f, 1.05f, 1f),
                 ObjectAnimator.ofFloat(card, View.SCALE_Y, 1f, 1.05f, 1f)
             )
-            duration = 420L
+            duration = HIDDEN_ROLE_MS
             interpolator = DecelerateInterpolator()
+        }
+    }
+
+    private fun readHoldAnimation(revealRole: Boolean): Animator {
+        val elapsedBeforeHold = ENTRANCE_MS + IMPACT_MS + if (revealRole) {
+            ROLE_FLIP_OUT_MS + ROLE_FLIP_IN_MS
+        } else {
+            HIDDEN_ROLE_MS
+        }
+        return ObjectAnimator.ofFloat(content, View.ALPHA, 1f, 1f).apply {
+            duration = (DEATH_REVEAL_AUDIO_MS - elapsedBeforeHold).coerceAtLeast(0L)
         }
     }
 

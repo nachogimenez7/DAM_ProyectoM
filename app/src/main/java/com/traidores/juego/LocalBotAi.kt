@@ -1,6 +1,8 @@
 package com.traidores.juego
 
 internal object LocalBotAi {
+    private const val HUMAN_BASELINE_SUSPICION_NORMAL = 3
+
     enum class BotEventType {
         MUERTE_NOCTURNA,
         EXPULSION,
@@ -229,11 +231,11 @@ internal object LocalBotAi {
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
-        if (session.quickTestMode && !session.debugBotsNeverTargetHuman) {
+        if (session.quickTestMode && !session.debugBotsNeverKillHuman) {
             val humanName = GameEngine.humanPlayer(session).name
             if (candidates.any { it.name == humanName }) return humanName
         }
-        val preferredCandidates = withoutProtectedHumanIfPossible(session, candidates)
+        val preferredCandidates = withoutHumanIfDebug(session.debugBotsNeverKillHuman, candidates)
         return preferredCandidates
             .sortedWith(
                 compareByDescending<GamePlayer> { nightPressureScore(session, it) }
@@ -377,7 +379,7 @@ internal object LocalBotAi {
             ?.takeIf { it in aliveNames }
             ?.let { target ->
                 if (hasUsefulPublicRead(session, target)) {
-                    rawPlans += VotePlan(target, "respondio a medias pero dejo una pista", 5)
+                    rawPlans += VotePlan(target, "respondió a medias pero dejó una pista", 5)
                 } else {
                     rawPlans += VotePlan(target, "dejo una pregunta colgada", 12)
                 }
@@ -505,7 +507,7 @@ internal object LocalBotAi {
             playerMemory?.pendingQuestionFrom?.let {
                 if (hasUsefulPublicRead(session, name)) {
                     confidence += if (session.botDifficulty == BotDifficulty.HARD) 5 else 3
-                    reasons += "respondio a medias pero dejo una pista"
+                    reasons += "respondió a medias pero dejó una pista"
                 } else {
                     confidence += if (session.botDifficulty == BotDifficulty.HARD) 13 else 10
                     reasons += "dejo una pregunta colgada"
@@ -916,17 +918,21 @@ internal object LocalBotAi {
 
     fun publicEventFromAnnouncement(session: GameSession): BotEvent? {
         val announcement = session.publicAnnouncement.takeIf { it.isNotBlank() } ?: return null
-        eventTarget(session, announcement, "expulso a")?.let { target ->
-            return BotEvent(BotEventType.EXPULSION, target)
+        val expelledTarget = eventTarget(session, announcement, "fue expulsado")
+            ?: eventTarget(session, announcement, "expulsar a")
+            ?: eventTarget(session, announcement, "expulsó a")
+        if (expelledTarget != null) {
+            return BotEvent(BotEventType.EXPULSION, expelledTarget)
         }
-        if (!announcement.contains("no murio nadie", ignoreCase = true)) {
-            eventTarget(session, announcement, "murio")?.let { target ->
+        val normalizedAnnouncement = GameplayTextMarkers.normalize(announcement)
+        if (!normalizedAnnouncement.contains("no murio nadie")) {
+            eventTarget(session, announcement, "murió")?.let { target ->
                 return BotEvent(BotEventType.MUERTE_NOCTURNA, target)
             }
         }
         if (
-            announcement.contains("no puede hablar ni votar", ignoreCase = true) ||
-            announcement.contains("silenciado", ignoreCase = true)
+            normalizedAnnouncement.contains("no puede hablar ni votar") ||
+            normalizedAnnouncement.contains("silenciado")
         ) {
             eventTarget(session, announcement, "no puede hablar")?.let { target ->
                 return BotEvent(BotEventType.SILENCIO, target)
@@ -961,8 +967,8 @@ internal object LocalBotAi {
 
     fun openingDebateMessages(session: GameSession, limit: Int = 5): List<Pair<String, String>> {
         val mutedNames = session.players.filter { it.alive && it.muted }.map { safeName(it, session) }
-        val noDeath = session.publicAnnouncement.contains("no murio nadie", ignoreCase = true)
-        val dawnVictim = eventTarget(session, session.publicAnnouncement, "murio")
+        val noDeath = GameplayTextMarkers.contains(session.publicAnnouncement, "no murió nadie")
+        val dawnVictim = eventTarget(session, session.publicAnnouncement, "murió")
         val expelled = latestExpelledTarget(session)
         return messageBots(session, limit).mapIndexed { index, bot ->
             val read = rankedPublicSuspects(session, bot).getOrNull(index)
@@ -1013,7 +1019,7 @@ internal object LocalBotAi {
                 dawnVictim != null && index == 0 ->
                     "lo de $dawnVictim anoche cambia todo, $target explica bien pq $reason"
                 noDeath && index == 0 ->
-                    "no murio nadie pero no nos durmamos, $target vos q hiciste ayer?"
+                    "no murió nadie pero no nos durmamos, $target vos q hiciste ayer?"
                 social.failedPush != null ->
                     "ayer me pude haber equivocado con ${social.failedPush}, hoy quiero escuchar mas antes de mandar fruta"
                 social.ignoredBy != null ->
@@ -1061,7 +1067,7 @@ internal object LocalBotAi {
             } else if (role == ConversationRole.CALMER) {
                 listOf(
                     "si votan a $target que sea por $reason, no por manada",
-                    "yo todavia quiero una respuesta mas antes de cerrar con $target",
+                    "yo todavía quiero una respuesta más antes de cerrar con $target",
                     "ojo con apurarnos, $target tiene que explicar $reason"
                 )
             } else if (role == ConversationRole.SKEPTIC && votePlan != null) {
@@ -1072,7 +1078,7 @@ internal object LocalBotAi {
                 )
             } else if (role == ConversationRole.FOLLOWER && votePlan != null) {
                 listOf(
-                    "acompanio lo de $target por ahora, $reason",
+                    "acompaño lo de $target por ahora, $reason",
                     "si el voto va por $target, para mi el motivo es $reason",
                     "me suma el voto a $target, pero que quede claro por que"
                 )
@@ -1104,12 +1110,12 @@ internal object LocalBotAi {
                 listOf(
                     "lo voto a $target porque le pregunte y nunca termino de cerrar",
                     "voy con $target, vengo marcando eso hace rato",
-                    "si sale mal me hago cargo, pero $target no respondio bien"
+                    "si sale mal me hago cargo, pero $target no respondió bien"
                 )
             } else if (social.failedPush != null) {
                 listOf(
                     "ayer le erre con ${social.failedPush}, hoy no quiero votar apurado",
-                    "si votamos mal de nuevo maniana revisen quien empujo esto",
+                    "si votamos mal de nuevo mañana revisen quien empujo esto",
                     "voto a $target pero no estoy tan cerrado, $reason"
                 )
             } else {
@@ -1281,7 +1287,7 @@ internal object LocalBotAi {
                 else -> null
             }
             StatementType.INVESTIGATED -> when (index) {
-                0 -> "ok detective, miraste a $shownTarget. falta decir si te cerro o no"
+                0 -> "ok detective, miraste a $shownTarget. falta decir si te cerró o no"
                 1 -> "$shownTarget queda en el hilo entonces, no saltemos de tema"
                 else -> null
             }
@@ -1401,19 +1407,21 @@ internal object LocalBotAi {
         val options = when (event.type) {
             BotEventType.MUERTE_NOCTURNA -> when (personality) {
                 Personality.TRANQUI -> listOf(
-                    "bueno, murio $target. bajemos un cambio y ordenemos quien lo venia mirando",
+                    "bueno, murió $target. bajemos un cambio y ordenemos quien lo venía mirando",
                     "lo de $target duele, pero ahora importan las versiones",
-                    "no regalemos otro voto por panico, revisemos quien gana con $target fuera"
+                    "no regalemos otro voto por pánico, revisemos quien gana con $target fuera"
                 )
                 Personality.PICANTE -> listOf(
                     "mataron a $target y alguno aca esta actuando demasiado tranquilo",
                     "$target cae justo cuando $fallbackTarget venia flojo, mira vos",
-                    "esto no fue al azar, alguien queria sacar a $target del medio"
+                    "esto no fue al azar, alguien queria sacar a $target del medio",
+                    "a $target lo callaron de noche, de día nadie se anima"
                 )
                 Personality.JODON -> listOf(
                     "bueno $target se fue a mirar la partida desde platea, pero dejo ruido",
                     "chau $target, igual esto huele peor que excusa de aldeano",
-                    "$target no habla mas, asi que ahora hablan los que quedaron raros"
+                    "$target no habla mas, asi que ahora hablan los que quedaron raros",
+                    "$target ya esta criando malvas, los raros siguen aca"
                 )
                 Personality.DESCONFIADO -> listOf(
                     "si mataron a $target, revisen a quien le convenia ese silencio",
@@ -1423,11 +1431,11 @@ internal object LocalBotAi {
                 Personality.IMPULSIVO -> listOf(
                     "nah listo, con $target muerto hay que apurar a alguien ya",
                     "esto me calienta, $fallbackTarget explica antes de que votemos cualquiera",
-                    "no durmamos, $target murio y alguno se esta escondiendo"
+                    "no durmamos, $target murió y alguno se está escondiendo"
                 )
                 Personality.ANALITICO -> listOf(
-                    "$target murio; miren quien lo nombro ayer y quien evito hablar de el",
-                    "si $target era una voz comoda para el pueblo, el ataque tiene sentido",
+                    "$target murió; miren quién lo nombró ayer y quién evitó hablar de él",
+                    "si $target era una voz cómoda para el pueblo, el ataque tiene sentido",
                     "dato: $target fuera beneficia a quien estaba quedando bajo presion"
                 )
             }
@@ -1438,12 +1446,12 @@ internal object LocalBotAi {
                     "bien o mal, lo de $target nos deja votos para revisar"
                 )
                 Personality.PICANTE -> listOf(
-                    "si lo de $target salio mal, miren quienes lo empujaron primeros",
-                    "$target afuera, pero yo no me olvido de quien lo vendio como seguro",
-                    "el voto a $target tuvo dueños, despues no se hagan los perdidos"
+                    "si lo de $target salió mal, miren quienes lo empujaron primeros",
+                    "$target afuera, pero yo no me olvido de quién lo vendió como seguro",
+                    "el voto a $target tuvo dueños, después no se hagan los perdidos"
                 )
                 Personality.JODON -> listOf(
-                    "$target salio por la puerta grande, ahora falta ver si nos mandamos cualquiera",
+                    "$target salió por la puerta grande, ahora falta ver si nos mandamos cualquiera",
                     "bueno $target fue el elegido del pueblo, premio raro",
                     "chau $target, la mesa queda mas picante ahora"
                 )
@@ -1455,18 +1463,18 @@ internal object LocalBotAi {
                 Personality.IMPULSIVO -> listOf(
                     "listo, $target afuera. ahora que nadie cambie la historia",
                     "si $target era mala salida, voy directo contra los que empujaron",
-                    "no me gusta como se cerro lo de $target, ojo"
+                    "no me gusta cómo se cerró lo de $target, ojo"
                 )
                 Personality.ANALITICO -> listOf(
                     "$target expulsado: comparen el primer voto con los que se sumaron al final",
                     "lo importante no es solo $target, es quien necesito cerrar ese voto",
-                    "la votacion a $target deja informacion, no la desperdicien"
+                    "la votación a $target deja información, no la desperdicien"
                 )
             }
             BotEventType.SILENCIO -> when (personality) {
                 Personality.TRANQUI -> listOf(
                     "$target no puede hablar, no lo usemos como excusa facil",
-                    "si $target esta silenciado, preguntemos a quienes si pueden responder",
+                    "si $target está silenciado, preguntemos a quienes sí pueden responder",
                     "ojo con armar todo sobre $target si hoy no puede defenderse"
                 )
                 Personality.PICANTE -> listOf(
@@ -1475,8 +1483,8 @@ internal object LocalBotAi {
                     "si silencian a $target, miren quien queda comodo hablando"
                 )
                 Personality.JODON -> listOf(
-                    "$target modo estatua hoy, igual los demas no safan",
-                    "a $target le apagaron el microfono, pero al resto no",
+                    "$target modo estatua hoy, igual los demás no zafan",
+                    "a $target le taparon la boca, pero al resto no",
                     "$target no habla, perfecto, ahora no griten todos a la vez"
                 )
                 Personality.DESCONFIADO -> listOf(
@@ -1491,7 +1499,7 @@ internal object LocalBotAi {
                 )
                 Personality.ANALITICO -> listOf(
                     "$target silenciado: revisen sus mensajes anteriores, no su silencio de hoy",
-                    "el silencio de $target es informacion sobre quien queria cortar esa linea",
+                    "el silencio de $target es información sobre quien quería cortar esa línea",
                     "si $target molestaba a alguien, ese alguien acaba de ganar tiempo"
                 )
             }
@@ -1539,21 +1547,21 @@ internal object LocalBotAi {
             } else {
                 listOf(
                     "yo apuraria a $target, $reason",
-                    "$target tiene que contestar ahora, despues no hay tiempo",
-                    "si $target no cierra esto, para mi va por ahi"
+                    "$target tiene que contestar ahora, después no hay tiempo",
+                    "si $target no cierra esto, para mí va por ahí"
                 )
             }
             BotAgenda.DEFEND_WEAK -> if (weakRead) {
                 listOf(
-                    "no maten a alguien solo por intuicion, falta evidencia",
-                    "esto todavia esta flojo, no compremos una acusacion gratis",
-                    "si van a marcar a alguien, que sea con algo mas que silencio"
+                    "no maten a alguien solo por intuición, falta evidencia",
+                    "esto todavía está flojo, no compremos una acusación gratis",
+                    "si van a marcar a alguien, que sea con algo más que silencio"
                 )
             } else {
                 listOf(
                     "puede ser $target, pero dejemos que responda primero",
-                    "no cierro a $target todavia, aunque $reason",
-                    "yo escucharia a $target antes de mandar el voto"
+                    "no cierro a $target todavía, aunque $reason",
+                    "yo escucharía a $target antes de mandar el voto"
                 )
             }
             BotAgenda.FOLLOW_THREAD -> listOf(
@@ -1598,8 +1606,8 @@ internal object LocalBotAi {
                 "$target necesito algo tuyo para ordenar la ronda"
             )
             RoundObjectiveType.DEFEND_PLAYER -> listOf(
-                "yo no mataria a $target por ahora, falta algo mas fuerte",
-                "$target no me parece el voto mas limpio todavia",
+                "yo no mataría a $target por ahora, falta algo más fuerte",
+                "$target no me parece el voto más limpio todavía",
                 "si van contra $target, que sea con algo mejor que ruido"
             )
             RoundObjectiveType.PUSH_VOTE -> listOf(
@@ -1640,8 +1648,8 @@ internal object LocalBotAi {
         val name = safeName(human, session)
         val options = when {
             !GameEngine.canSpeak(session, human) -> listOf(
-                "$name no puede hablar, asi que no armemos todo sobre el",
-                "ojo que $name esta silenciado, busquemos otro hilo",
+                "$name no puede hablar, así que no armemos todo sobre él",
+                "ojo que $name está silenciado, busquemos otro hilo",
                 "como $name no puede contestar, no lo usemos de excusa"
             )
             mentionsName(target, human.name) && !weakRead -> listOf(
@@ -1667,18 +1675,18 @@ internal object LocalBotAi {
         val target = statement.target ?: "eso"
         return when (statement.type) {
             StatementType.PROTECTED -> when (index) {
-                0 -> "ok, queda anotado lo de $target. si despues no cierra te lo vamos a cobrar"
+                0 -> "ok, queda anotado lo de $target. si después no cierra te lo vamos a cobrar"
                 1 -> "$target confirma algo de eso o nada que ver?"
                 else -> null
             }
             StatementType.INVESTIGATED -> when (index) {
-                0 -> "bien, pero deci que te dio esa investigacion sin vender humo"
-                1 -> "ojo con tirar info a medias, eso despues confunde todo"
+                0 -> "bien, pero decí qué te dio esa investigación sin vender humo"
+                1 -> "ojo con tirar info a medias, eso después confunde todo"
                 else -> null
             }
             StatementType.REFUSED_ROLE -> when (index) {
                 0 -> "ok no digas rol, pero aporta algo entonces"
-                1 -> "si esquivas todo despues no te quejes si te miran raro"
+                1 -> "si esquivás todo después no te quejes si te miran raro"
                 else -> null
             }
             StatementType.TRUST -> when (index) {
@@ -1826,7 +1834,7 @@ internal object LocalBotAi {
         val options = when (role) {
             ConversationRole.CALMER -> listOf(
                 "paren un toque, no votemos solo porque todos repiten $target",
-                "bajen un cambio, primero escuchemos a $target y despues vemos",
+                "bajen un cambio, primero escuchemos a $target y después vemos",
                 "ordenemos: una pregunta para $target y una respuesta clara"
             )
             ConversationRole.CLOSER -> if (hasThread) {
@@ -1837,8 +1845,8 @@ internal object LocalBotAi {
                 )
             } else {
                 listOf(
-                    "por ahora no cerraria voto, falta una punta mas",
-                    "no veo una acusacion limpia todavia",
+                    "por ahora no cerraría voto, falta una punta más",
+                    "no veo una acusación limpia todavía",
                     "si nadie suma algo concreto esto queda medio al aire"
                 )
             }
@@ -1944,7 +1952,7 @@ internal object LocalBotAi {
         }
         val options = when {
             pending != null && pending.speaker == bot.name && priorStatement?.type == StatementType.TRUST && priorTarget != null -> listOf(
-                "ah ok, me lo decias a mi. entonces $priorTarget queda mas limpio por ahora",
+                "ah ok, me lo decías a mi. entonces $priorTarget queda más limpio por ahora",
                 "listo, entendi. si tu dato es $priorTarget limpio, no lo voto hoy",
                 "ok, tomo esa lectura sobre $priorTarget. ahora busquemos quien queda peor"
             )
@@ -1955,8 +1963,8 @@ internal object LocalBotAi {
             )
             claim != null -> listOf(
                 "ok, dijiste ${claim.label}. ahora falta ver si alguien te cruza",
-                "bien, queda ese rol anotado. no lo cambiemos despues eh",
-                "listo, claim de ${claim.label}. ahora explica la jugada sin regalar de mas"
+                "bien, queda ese rol anotado. no lo cambiemos después eh",
+                "listo, claim de ${claim.label}. ahora explica la jugada sin regalar de más"
             )
             statement?.type in setOf(StatementType.ACCUSE, StatementType.VOTE) && statementTarget != null -> listOf(
                 "ok, entonces estas mirando a $statementTarget. que responda eso",
@@ -2055,7 +2063,7 @@ internal object LocalBotAi {
                 )
             } else {
                 listOf(
-                    "todavia no votaria apurado, falta escuchar mas",
+                    "todavía no votaría apurado, falta escuchar más",
                     "por ahora no tengo voto claro, preguntemos primero",
                     "si votamos ahora es medio al aire, esperaria una respuesta mas"
                 )
@@ -2074,8 +2082,8 @@ internal object LocalBotAi {
                 )
             } else {
                 listOf(
-                    "todavia nadie me cierra como culpable fuerte",
-                    "por ahora no hay sospecha limpia, hay que hablar mas",
+                    "todavía nadie me cierra como culpable fuerte",
+                    "por ahora no hay sospecha limpia, hay que hablar más",
                     "no tengo nombre firme, ojo con votar por costumbre"
                 )
             }
@@ -2195,9 +2203,9 @@ internal object LocalBotAi {
                 "no no, para $spokenTarget, responde eso primero",
                 "$spokenTarget estas esquivando la pregunta hace rato",
                 "dale $spokenTarget contesta bien, pq $reason?",
-                "$spokenTarget no saltes a otra cosa, cerra lo anterior",
-                "me falta la respuesta de $spokenTarget todavia",
-                "$spokenTarget estas pateando la pelota, responde",
+                "$spokenTarget no saltes a otra cosa, cerrá lo anterior",
+                "me falta la respuesta de $spokenTarget todavía",
+                "$spokenTarget estás pateando la pelota, respondé",
                 "eso de $spokenTarget quedo colgado"
             )
             Intent.ACCUSE -> listOf(
@@ -2208,17 +2216,20 @@ internal object LocalBotAi {
                 "$spokenTarget viene flojisimo con eso",
                 "no me gusta nada lo de $spokenTarget",
                 "para mi hay que mirar fuerte a $spokenTarget",
-                "$spokenTarget cada vez me cierra menos"
+                "$spokenTarget cada vez me cierra menos",
+                "yo a $spokenTarget no le fío ni una moneda, $reason",
+                "$spokenTarget jura mucho y explica poco"
             )
             Intent.DEFEND -> listOf(
                 "nah tampoco para matarlo por eso",
-                "yo a $spokenTarget no lo veo tan raro todavia",
+                "yo a $spokenTarget no lo veo tan raro todavía",
                 "banco un toque a $spokenTarget, dejenlo explicar",
                 "capaz estamos flasheando cualquiera con $spokenTarget",
                 "no compremos tan rapido contra $spokenTarget",
-                "$spokenTarget todavia puede explicar, aflojen",
+                "$spokenTarget todavía puede explicar, aflojen",
                 "a mi $spokenTarget no me parece el peor ahora",
-                "si vamos contra $spokenTarget que sea con algo mas"
+                "si vamos contra $spokenTarget que sea con algo mas",
+                "no quememos a $spokenTarget en la plaza sin escucharlo"
             )
             Intent.TEASE -> listOf(
                 "jajaja $spokenTarget esa explicacion fue malisima",
@@ -2227,8 +2238,10 @@ internal object LocalBotAi {
                 "no puede ser $spokenTarget, cada vez te hundis mas jajaj",
                 "$spokenTarget esa no te la compra nadie",
                 "amigo $spokenTarget, ayudate un poco",
-                "$spokenTarget estas jugando para el clip",
-                "na $spokenTarget, eso sono muy armado"
+                "$spokenTarget estas actuando para la tribuna",
+                "na $spokenTarget, eso sono muy armado",
+                "$spokenTarget esa mentira no sobrevive ni al primer gallo",
+                "jajaja $spokenTarget vendehumo de feria"
             )
             Intent.CALM_DOWN -> listOf(
                 "para un toque, dejen hablar a $spokenTarget",
@@ -2236,9 +2249,10 @@ internal object LocalBotAi {
                 "igual no votemos por votar, escuchemos a $spokenTarget",
                 "tranqui, primero veamos pq $reason",
                 "no se apuren, falta escuchar a $spokenTarget",
-                "paren un poco, todavia hay tiempo",
+                "paren un poco, todavía hay tiempo",
                 "si lo van a marcar a $spokenTarget que sea con calma",
-                "ordenemos esto, porque sino votamos cualquier cosa"
+                "ordenemos esto, porque sino votamos cualquier cosa",
+                "no armemos la horca antes del juicio, escuchemos a $spokenTarget"
             )
             Intent.ADMIT_DOUBT -> listOf(
                 "igual nose, capaz estoy flasheando",
@@ -2247,7 +2261,8 @@ internal object LocalBotAi {
                 "mmm no se, lo quiero pensar un toque",
                 "no estoy cerrado igual",
                 "me hace ruido pero puedo estar viendo fantasmas",
-                "si me equivoco despues me hago cargo",
+                "capaz estoy viendo brujas donde no hay",
+                "si me equivoco después me hago cargo",
                 "lo tengo en duda, no como sentencia"
             )
         }
@@ -2521,7 +2536,7 @@ internal object LocalBotAi {
                 val options = listOf(
                     "$speaker banca a $target pero yo quiero una razon concreta",
                     "ok $speaker, pero defender a $target sin explicar no alcanza",
-                    "$target igual habla vos, no te escondas atras de $speaker"
+                    "$target igual habla vos, no te escondas atrás de $speaker"
                 )
                 options[seed % options.size]
             }
@@ -2599,7 +2614,7 @@ internal object LocalBotAi {
         } else if (session.botDifficulty == BotDifficulty.HARD) {
             listOf(
                 "yo por ahora no quiero quemar rol, pero $target tiene que hablar",
-                "si necesitan claim despues lo doy, ahora me importa $target",
+                "si necesitan claim después lo doy, ahora me importa $target",
                 "no regalen roles gratis, primero que $target cierre lo suyo"
             )
         } else {
@@ -2626,7 +2641,7 @@ internal object LocalBotAi {
             protected != null -> listOf(
                 "yo tengo una jugada de noche anotada con $protected, no la ignoren",
                 "no quiero regalar todo, pero $protected entra en mi lectura de anoche",
-                "si hace falta despues explico lo de $protected, ahora escuchemos"
+                "si hace falta después explico lo de $protected, ahora escuchemos"
             )
             pressure -> listOf(
                 "soy medico, no me sirve morir por una corazonada",
@@ -2634,7 +2649,7 @@ internal object LocalBotAi {
                 "me estan apurando y soy medico, aflojen un toque"
             )
             seed % 5 == 0 -> listOf(
-                "si no murio nadie, no asumamos cualquiera, ordenemos primero",
+                "si no murió nadie, no asumamos cualquiera, ordenemos primero",
                 "ojo con leer la noche como prueba total, falta hablar",
                 "la noche dio algo de aire, pero no alcanza para votar ciego"
             )
@@ -2686,8 +2701,8 @@ internal object LocalBotAi {
                 "mi carta es rara, pero $target tiene mas para explicar ahora"
             )
             seed % 4 == 0 -> listOf(
-                "yo no me caso con ningun bando todavia, quiero ver quien se pisa",
-                "me sirve escuchar mas, no votar por costumbre",
+                "yo no me caso con ningún bando todavía, quiero ver quién se pisa",
+                "me sirve escuchar más, no votar por costumbre",
                 "$target me interesa mas por como viene respondiendo"
             )
             else -> emptyList()
@@ -2809,7 +2824,7 @@ internal object LocalBotAi {
         val firstRole = contradiction.first.roleKey
         val latestRole = contradiction.latest.roleKey
         return if (firstRole != null && latestRole != null) {
-            "$playerName espera, el dia ${contradiction.first.round} dijiste ${roleLabel(firstRole)} y ahora ${roleLabel(latestRole)}? eso no cierra"
+            "$playerName espera, el día ${contradiction.first.round} dijiste ${roleLabel(firstRole)} y ahora ${roleLabel(latestRole)}? eso no cierra"
         } else if (
             contradiction.first.statementType in setOf(StatementType.TRUST, StatementType.ACCUSE) &&
             contradiction.latest.statementType in setOf(StatementType.TRUST, StatementType.ACCUSE)
@@ -2868,9 +2883,16 @@ internal object LocalBotAi {
     private fun latestExpelledTarget(session: GameSession): String? {
         val announcement = session.publicHistory
             .asReversed()
-            .firstOrNull { it.contains("expulso a", ignoreCase = true) }
+            .firstOrNull {
+                val normalized = GameplayTextMarkers.normalize(it)
+                normalized.contains("fue expulsado") ||
+                    normalized.contains("expulsar a") ||
+                    normalized.contains("expulso a")
+            }
             ?: return null
-        return eventTarget(session, announcement, "expulso a")
+        return eventTarget(session, announcement, "fue expulsado")
+            ?: eventTarget(session, announcement, "expulsar a")
+            ?: eventTarget(session, announcement, "expulsó a")
     }
 
     private fun eventTarget(
@@ -2878,7 +2900,7 @@ internal object LocalBotAi {
         announcement: String,
         marker: String
     ): String? {
-        if (!announcement.contains(marker, ignoreCase = true)) return null
+        if (!GameplayTextMarkers.contains(announcement, marker)) return null
         return session.players
             .sortedByDescending { it.name.length }
             .firstOrNull { mentionsName(announcement, it.name) }
@@ -3169,6 +3191,18 @@ internal object LocalBotAi {
                 reasons += "esta ocupando mucho espacio"
             }
         }
+        if (
+            session.botDifficulty == BotDifficulty.NORMAL &&
+            candidate.isHuman &&
+            !hasUsefulPublicRead(session, candidate.name)
+        ) {
+            score += HUMAN_BASELINE_SUSPICION_NORMAL
+            reasons += if (spokeCount == 0) {
+                "esta poco leido"
+            } else {
+                "falta cerrar su version"
+            }
+        }
 
         val voterPressedCandidate = recent.any {
             it.speaker == voter.name && mentionsName(it.message, candidate.name)
@@ -3202,7 +3236,7 @@ internal object LocalBotAi {
         if (limit <= 0) return emptyList()
         val recentSpeakers = recentBotSpeakers(session, amount = 2)
         return session.players
-            .filter { !it.isHuman && GameEngine.canSpeak(session, it) }
+            .filter { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
             .sortedWith(
                 compareBy<GamePlayer> { if (it.name == preferredFirst) 0 else 1 }
                     .thenBy { if (it.name in recentSpeakers && it.name != preferredFirst) 1 else 0 }
@@ -3265,23 +3299,23 @@ internal object LocalBotAi {
     private fun canUseBotVoteTarget(session: GameSession, voter: GamePlayer, targetName: String): Boolean {
         val target = GameEngine.playerByName(session, targetName) ?: return false
         if (!target.alive || target.name == voter.name) return false
-        return !session.debugBotsNeverTargetHuman ||
+        return !session.debugBotsNeverVoteHuman ||
             !target.isHuman ||
             GameEngine.alivePlayers(session).none { it.name != voter.name && !it.isHuman }
     }
 
     private fun voteCandidatesFor(session: GameSession, voter: GamePlayer): List<GamePlayer> {
-        return withoutProtectedHumanIfPossible(
-            session,
+        return withoutHumanIfDebug(
+            session.debugBotsNeverVoteHuman,
             GameEngine.alivePlayers(session).filter { it.name != voter.name }
         )
     }
 
-    private fun withoutProtectedHumanIfPossible(
-        session: GameSession,
+    private fun withoutHumanIfDebug(
+        enabled: Boolean,
         candidates: List<GamePlayer>
     ): List<GamePlayer> {
-        if (!session.debugBotsNeverTargetHuman) return candidates
+        if (!enabled) return candidates
         val filtered = candidates.filterNot { it.isHuman }
         return filtered.ifEmpty { candidates }
     }
@@ -3580,6 +3614,6 @@ internal object LocalBotAi {
         val score: Int,
         val reasons: List<String>
     ) {
-        fun reason(): String = reasons.firstOrNull() ?: "su postura todavia no cierra"
+        fun reason(): String = reasons.firstOrNull() ?: "su postura todavía no cierra"
     }
 }

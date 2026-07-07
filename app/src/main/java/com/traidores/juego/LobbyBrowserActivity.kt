@@ -14,6 +14,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 
 class LobbyBrowserActivity : BaseActivity() {
 
@@ -51,6 +52,8 @@ class LobbyBrowserActivity : BaseActivity() {
         OnlineDebugLog.i("lobby_browser_listen_start")
         lobbyListener = firestore.collection(ONLINE_ROOMS_COLLECTION)
             .whereEqualTo(FIELD_STATE, ONLINE_ROOM_STATE_WAITING)
+            .orderBy(FIELD_UPDATED_AT, Query.Direction.DESCENDING)
+            .limit(BROWSER_ROOM_LIMIT)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     OnlineDebugLog.e("lobby_browser_listen_failure", error)
@@ -155,6 +158,21 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     private fun enterLobby(lobby: OnlineLobby) {
+        OnlineTempIdentity.ensureAuthenticated(this)
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("auth_browser_join_failure roomId=${lobby.id}", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo preparar el ingreso online", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            .addOnSuccessListener {
+                enterAuthenticatedLobby(lobby)
+            }
+    }
+
+    private fun enterAuthenticatedLobby(lobby: OnlineLobby) {
         val existingPublicId = PlayerPublicIdentity.currentPublicId(this)
         if (existingPublicId.isBlank()) {
             PlayerPublicIdentity.ensurePublicId(
@@ -303,9 +321,11 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val FIELD_MAP_KEY = "mapa"
         private const val FIELD_MAP_NAME = "mapaNombre"
         private const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
+        private const val FIELD_UPDATED_AT = "actualizadaEn"
         private const val FIELD_EXPECTED_PLAYERS = "jugadoresEsperados"
         private const val FIELD_MAX_PLAYERS = "maxJugadores"
         private const val DEFAULT_MAP_KEY = "pampa"
         private const val DEFAULT_MAX_PLAYERS = 10
+        private const val BROWSER_ROOM_LIMIT = 30L
     }
 }

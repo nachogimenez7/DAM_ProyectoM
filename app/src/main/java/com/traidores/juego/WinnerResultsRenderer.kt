@@ -76,7 +76,7 @@ class WinnerResultsRenderer(
             ?.joinToString("\n") { "- $it" }
         val dayLog = summary.daySummaries
             .joinToString("\n")
-            .ifBlank { "Dia 1: no murio nadie y nadie fue silenciado." }
+            .ifBlank { "Día 1: no murió nadie y nadie fue silenciado." }
         timeline.text = listOfNotNull(
             keyMoments?.let { "MOMENTOS CLAVE\n$it" },
             "BITACORA\n$dayLog"

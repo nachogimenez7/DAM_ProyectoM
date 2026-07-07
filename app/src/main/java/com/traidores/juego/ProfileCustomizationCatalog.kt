@@ -67,7 +67,7 @@ object ProfileCustomizationCatalog {
             id = ACH_JESTER_WINS_5,
             name = "Y me gusta el rol, el maldito rol!",
             shortName = "Maldito rol",
-            description = "Ganaste 5 partidas como Bufon. Te votaron, te festejaron y encima te salio bien.",
+            description = "Ganaste 5 partidas como Bufón. Te votaron, te festejaron y encima te salió bien.",
             obtainedDate = "Pendiente",
             rarity = AchievementRarity.BRONZE
         ),

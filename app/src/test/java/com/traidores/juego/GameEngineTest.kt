@@ -12,21 +12,21 @@ class GameEngineTest {
     @Test
     fun gameRoleNamesMatchEachMapPresentation() {
         assertEquals("Aldeana", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.MEDIEVAL).name)
-        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.MEDIEVAL).name)
+        assertEquals("Espía", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.MEDIEVAL).name)
         assertEquals("Desertora", RoleCatalog.gameRole(RoleCatalog.DESERTOR, RoleMap.MEDIEVAL).name)
-        assertEquals("Medico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.MEDIEVAL).name)
+        assertEquals("Médico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.MEDIEVAL).name)
 
         assertEquals("Aldeano", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.PAMPA).name)
-        assertEquals("Medica", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.PAMPA).name)
+        assertEquals("Médica", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.PAMPA).name)
         assertEquals("Alcaldesa", RoleCatalog.gameRole(RoleCatalog.ALCALDE, RoleMap.PAMPA).name)
-        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.PAMPA).name)
+        assertEquals("Espía", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.PAMPA).name)
         assertEquals("Comisario", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.PAMPA).name)
 
         assertEquals("Aldeano", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.GREECE).name)
         assertEquals("Asesina", RoleCatalog.gameRole(RoleCatalog.ASESINO, RoleMap.GREECE).name)
-        assertEquals("Espia", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.GREECE).name)
-        assertEquals("Oraculo", RoleCatalog.gameRole(RoleCatalog.ORACULO, RoleMap.GREECE).name)
-        assertEquals("Medico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.GREECE).name)
+        assertEquals("Espía", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.GREECE).name)
+        assertEquals("Oráculo", RoleCatalog.gameRole(RoleCatalog.ORACULO, RoleMap.GREECE).name)
+        assertEquals("Médico", RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.GREECE).name)
 
         assertEquals("Detective", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.GREECE).name)
         assertEquals("Detective", RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.MEDIEVAL).name)
@@ -185,7 +185,7 @@ class GameEngineTest {
         assertEquals(GamePhase.AMANECER, firstMiss.phase)
         assertTrue(human.alive)
         assertEquals(1, human.consecutiveNightAfk)
-        assertTrue(firstMiss.privateHint.contains("proxima noche"))
+        assertTrue(firstMiss.privateHint.contains("próxima noche"))
         assertFalse(firstMiss.publicHistory.any { it.contains("expulsado por inactividad") })
     }
 
@@ -251,7 +251,7 @@ class GameEngineTest {
         assertEquals(GamePhase.RECUENTO_VOTOS, firstMiss.phase)
         assertTrue(warnedHuman.alive)
         assertEquals(1, warnedHuman.consecutiveVoteAfk)
-        assertTrue(firstMiss.privateHint.contains("proxima votacion"))
+        assertTrue(firstMiss.privateHint.contains("próxima votación"))
 
         val secondMiss = GameEngine.resolveHumanTimeout(
             firstMiss.copy(
@@ -370,6 +370,23 @@ class GameEngineTest {
     }
 
     @Test
+    fun recommendedRoleCompositionUsesTwoAssassinsFromEightPlayers() {
+        var setup = LocalGameFactory.createSession()
+        repeat(3) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+
+        val session = LocalGameFactory.assignRoles(setup)
+        val roleCounts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+
+        assertEquals(8, session.players.size)
+        assertEquals(2, roleCounts[RoleCatalog.ASESINO])
+    }
+
+    @Test
     fun assignRolesAddsAdvancedRolesAsTableGrows() {
         var setup = LocalGameFactory.createSession()
         repeat(5) {
@@ -382,7 +399,7 @@ class GameEngineTest {
             .groupingBy { it }
             .eachCount()
 
-        assertEquals(1, roleCounts["asesino"])
+        assertEquals(2, roleCounts["asesino"])
         assertEquals(1, roleCounts["policia"])
         assertEquals(1, roleCounts["medico"])
         assertEquals(1, roleCounts["mercenario"])
@@ -390,7 +407,7 @@ class GameEngineTest {
         assertEquals(1, roleCounts["payador"])
         assertEquals(1, roleCounts["desertor"])
         assertEquals(1, roleCounts["espia"])
-        assertEquals(session.players.size - 8, roleCounts["aldeano"])
+        assertEquals(session.players.size - 9, roleCounts["aldeano"])
     }
 
     @Test
@@ -504,7 +521,7 @@ class GameEngineTest {
             RoleCompositionPreset.CHAOTIC
         )
 
-        assertEquals(1, recommended.counts[RoleCatalog.ASESINO])
+        assertEquals(2, recommended.counts[RoleCatalog.ASESINO])
         assertEquals(1, recommended.counts[RoleCatalog.PAYADOR])
         assertEquals(0, classic.counts[RoleCatalog.PAYADOR] ?: 0)
         assertEquals(7, classic.counts[RoleCatalog.ALDEANO])
@@ -732,7 +749,7 @@ class GameEngineTest {
         assertEquals(GamePhase.NOCHE_ASESINO, resolved.phase)
         assertEquals(2, resolved.round)
         assertEquals("bufon_expulsado", resolved.specialVictories.single().key)
-        assertTrue(resolved.publicHistory.any { it.contains("era el Bufon") })
+        assertTrue(resolved.publicHistory.any { it.contains("era el Bufón") })
     }
 
     @Test
@@ -855,10 +872,10 @@ class GameEngineTest {
     }
 
     @Test
-    fun debugBotsNeverTargetHumanOverridesQuickTestAssassinTarget() {
+    fun debugBotsNeverKillHumanOverridesQuickTestAssassinTarget() {
         val session = baseSession().copy(
             quickTestMode = true,
-            debugBotsNeverTargetHuman = true
+            debugBotsNeverKillHuman = true
         )
         val assassin = session.players.first { it.role?.key == "asesino" }
 
@@ -869,11 +886,11 @@ class GameEngineTest {
     }
 
     @Test
-    fun debugBotsNeverTargetHumanRejectsBotVoteCommandAgainstHuman() {
+    fun debugBotsNeverVoteHumanRejectsBotVoteCommandAgainstHuman() {
         val session = baseSession().copy(
             phase = GamePhase.VOTACION,
             debugBotsObeyVoteCommands = true,
-            debugBotsNeverTargetHuman = true,
+            debugBotsNeverVoteHuman = true,
             chatHistory = listOf(
                 GameChatMessage("Humano", "voten a Humano")
             )
@@ -884,6 +901,20 @@ class GameEngineTest {
 
         assertNotEquals("Humano", target)
         assertTrue(target.isNotBlank())
+    }
+
+    @Test
+    fun contrapuntoRejectsBotChatFromNonParticipants() {
+        val session = sessionWithHumanAdvancedRole("payador").copy(
+            phase = GamePhase.CONTRAPUNTO,
+            contrapuntoPlayers = listOf("Policia", "Medico")
+        )
+
+        val rejected = GameEngine.addBotChatMessage(session, "Aldeano1", "yo tambien opino")
+        val accepted = GameEngine.addBotChatMessage(rejected, "Policia", "yo participe")
+
+        assertEquals(session.chatHistory, rejected.chatHistory)
+        assertEquals("Policia", accepted.chatHistory.last().speaker)
     }
 
     @Test
@@ -1013,7 +1044,7 @@ class GameEngineTest {
 
         assertEquals(GamePhase.RESULTADO, result.phase)
         assertEquals("", result.dayEliminationTarget)
-        assertTrue(result.publicAnnouncement.contains("Nadie sera expulsado"))
+        assertTrue(result.publicAnnouncement.contains("Nadie será expulsado"))
     }
 
     @Test
@@ -1071,7 +1102,7 @@ class GameEngineTest {
         assertTrue(corruption.alcaldeCorruption)
         assertEquals(4, corruption.voteRound)
         assertEquals("Asesino", corruption.dayEliminationTarget)
-        assertTrue(corruption.publicAnnouncement.contains("Corrupcion"))
+        assertTrue(corruption.publicAnnouncement.contains("Corrupción"))
     }
 
     @Test
@@ -1180,7 +1211,7 @@ class GameEngineTest {
 
         assertEquals(GamePhase.VOTACION, voting.phase)
         assertEquals("Asesino", voting.contrapuntoSuspicion)
-        assertTrue(voting.publicAnnouncement.contains("Asesino quedo senalado"))
+        assertTrue(voting.publicAnnouncement.contains("Asesino quedó señalado"))
         assertFalse(voting.publicAnnouncement.contains("Payador"))
     }
 
@@ -1198,7 +1229,10 @@ class GameEngineTest {
         assertFalse(victim!!.alive)
         assertFalse(victim.muted)
         assertFalse(dawn.nightHadNoVictim)
-        assertEquals("Amanecer: murio Policia.", dawn.publicAnnouncement)
+        assertEquals(
+            "Amanecer: murió Policia. Lo encontraron al alba; nadie vio nada, como siempre.",
+            dawn.publicAnnouncement
+        )
     }
 
     @Test
@@ -1216,7 +1250,10 @@ class GameEngineTest {
         assertFalse(protected.muted)
         assertTrue(dawn.nightHadNoVictim)
         assertTrue(GameplayTableUi.wasNoDeathAtDawn(dawn))
-        assertEquals("Amanecer: no murio nadie.", dawn.publicAnnouncement)
+        assertEquals(
+            "Amanecer: no murió nadie. El pueblo despierta entero, pero nadie durmió tranquilo.",
+            dawn.publicAnnouncement
+        )
         assertFalse(dawn.publicAnnouncement.contains("medico", ignoreCase = true))
         assertFalse(dawn.publicAnnouncement.contains("salv", ignoreCase = true))
     }
@@ -1803,6 +1840,7 @@ class GameEngineTest {
     fun importantSoundsAndFeedbackHaveHapticCues() {
         assertEquals(HapticLevel.LIGHT, GameSound.VOTE_CAST.haptic)
         assertEquals(HapticLevel.LIGHT, GameSound.CARD_DEAL.haptic)
+        assertEquals(HapticLevel.LIGHT, GameSound.NO_DEATH.haptic)
         assertEquals(HapticLevel.MEDIUM, GameSound.ORACLE.haptic)
         assertEquals(HapticLevel.MEDIUM, GameSound.PAYADOR.haptic)
         assertEquals(GameplayFeedbackCue.EMOTE, GameplayEffects.cueFor(GameplayEffect.EMOTE))
@@ -2617,14 +2655,14 @@ class GameEngineTest {
 
         assertEquals(GamePhase.NOCHE_ASESINO, nextRound.phase)
         assertEquals(1, nextRound.publicHistory.count { it.contains("Aldeano1 fue expulsado") })
-        assertTrue(nextRound.publicHistory.any { it.startsWith("La oscuridad vuelve") })
+        assertTrue(nextRound.publicHistory.any { it.startsWith("Noche 2:") })
         assertFalse(
             nextRound.publicHistory.any {
-                it.contains("Aldeano1 fue expulsado") && it.contains("La oscuridad vuelve")
+                it.contains("Aldeano1 fue expulsado") && it.contains("Noche 2:")
             }
         )
         assertTrue(nextRound.publicAnnouncement.contains("Aldeano1 fue expulsado"))
-        assertTrue(nextRound.publicAnnouncement.contains("La oscuridad vuelve"))
+        assertTrue(nextRound.publicAnnouncement.contains("Noche 2:"))
     }
 
     @Test
@@ -2921,7 +2959,10 @@ class GameEngineTest {
 
         assertEquals("Humano", protected.protectedPlayer)
         assertTrue(GameEngine.playerByName(dawn, "Humano")!!.alive)
-        assertEquals("Amanecer: no murio nadie.", dawn.publicAnnouncement)
+        assertEquals(
+            "Amanecer: no murió nadie. El pueblo despierta entero, pero nadie durmió tranquilo.",
+            dawn.publicAnnouncement
+        )
     }
 
     @Test

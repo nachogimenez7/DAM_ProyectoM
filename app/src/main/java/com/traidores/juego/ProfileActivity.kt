@@ -226,9 +226,9 @@ class ProfileActivity : BaseActivity() {
         }
         profileBio.setTextColor(getColor(R.color.text_primary))
 
-        val avatar = ProfileRoleCatalog.find(draftProfile.avatarKey).role
-        setRoleImage(profileAvatar, avatar)
-        alignAvatarToTop(profileAvatar)
+        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+        setRoleImage(profileAvatar, avatarEntry.role)
+        alignAvatarToFocus(profileAvatar, avatarEntry.verticalFocus)
 
         profileBanner.setBackgroundResource(
             ProfileCustomizationCatalog.banner(draftProfile.bannerKey).drawableRes
@@ -354,7 +354,7 @@ class ProfileActivity : BaseActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Descartar cambios")
-            .setMessage("Los cambios del perfil todavia no fueron guardados.")
+            .setMessage("Los cambios del perfil todavía no fueron guardados.")
             .setNegativeButton("Seguir editando", null)
             .setPositiveButton("Descartar") { _, _ ->
                 draftProfile = copyProfile(savedProfile)
@@ -956,7 +956,7 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun alignAvatarToTop(image: ImageView) {
+    private fun alignAvatarToFocus(image: ImageView, verticalFocus: Float) {
         image.post {
             val drawable = image.drawable ?: return@post
             val drawableWidth = drawable.intrinsicWidth.toFloat()
@@ -967,10 +967,15 @@ class ProfileActivity : BaseActivity() {
                 image.width / drawableWidth,
                 image.height / drawableHeight
             )
-            val horizontalOffset = (image.width - drawableWidth * scale) / 2f
+            val scaledWidth = drawableWidth * scale
+            val scaledHeight = drawableHeight * scale
+            val horizontalOffset = (image.width - scaledWidth) / 2f
+            val focusedY = scaledHeight * verticalFocus.coerceIn(0f, 1f)
+            val verticalOffset = (image.height / 2f - focusedY)
+                .coerceIn(image.height - scaledHeight, 0f)
             image.imageMatrix = Matrix().apply {
                 setScale(scale, scale)
-                postTranslate(horizontalOffset, -dp(8).toFloat())
+                postTranslate(horizontalOffset, verticalOffset)
             }
         }
     }

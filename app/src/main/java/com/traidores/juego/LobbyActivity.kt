@@ -3,6 +3,7 @@ package com.traidores.juego
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -14,6 +15,7 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.view.View
@@ -38,8 +40,10 @@ class LobbyActivity : BaseActivity() {
     private lateinit var playersContainer: LinearLayout
     private lateinit var playerCount: TextView
     private lateinit var startButton: Button
-    private lateinit var mapName: TextView
     private lateinit var mapCards: List<ImageView>
+    private lateinit var selectedMapImage: ImageView
+    private lateinit var selectedMapName: TextView
+    private lateinit var selectedMapRole: TextView
     private lateinit var debugRoleButton: Button
     private lateinit var timingOptionsButton: Button
     private lateinit var lobbyTitle: TextView
@@ -113,7 +117,7 @@ class LobbyActivity : BaseActivity() {
         }
 
         val btnBack: ImageButton = findViewById(R.id.btnBack)
-        val headerLabel: TextView = findViewById(R.id.headerLabel)
+        val btnLobbySettings: ImageButton = findViewById(R.id.btnLobbySettings)
         btnAddPlayer = findViewById(R.id.btnAddPlayer)
         btnRemovePlayer = findViewById(R.id.btnRemovePlayer)
         btnAdvancedOptions = findViewById(R.id.btnAdvancedOptions)
@@ -129,7 +133,9 @@ class LobbyActivity : BaseActivity() {
         btnReleaseDisconnected = findViewById(R.id.btnReleaseDisconnected)
         mapDescription = findViewById(R.id.mapDescription)
         lobbyMapBackground = findViewById(R.id.lobbyMapBackground)
-        mapName = findViewById(R.id.mapName)
+        selectedMapImage = findViewById(R.id.selectedMapImage)
+        selectedMapName = findViewById(R.id.selectedMapName)
+        selectedMapRole = findViewById(R.id.selectedMapRole)
         startButton = findViewById(R.id.btnStartGame)
         playersContainer = findViewById(R.id.playersContainer)
         playerCount = findViewById(R.id.playerCount)
@@ -140,12 +146,12 @@ class LobbyActivity : BaseActivity() {
         )
 
         btnBack.setOnClickListener { requestLobbyExit() }
+        btnLobbySettings.setOnClickListener { showLobbyOptionsDialog() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 requestLobbyExit()
             }
         })
-        headerLabel.text = "MAPA"
         setupMapSelector()
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         debugRoleSection.visibility = if (isDebugBuild && lobbyMode == MODE_LOCAL) {
@@ -284,8 +290,11 @@ class LobbyActivity : BaseActivity() {
         renderReleaseDisconnectedButton()
         mapDescription.text = mapDescriptionFor(session.mapKey)
         renderStartButtonState()
-        mapName.text = session.mapName.uppercase()
-        lobbyMapBackground.setImageResource(currentMap().imageRes)
+        val currentMap = currentMap()
+        selectedMapName.text = currentMap.name.uppercase()
+        selectedMapRole.text = selectedMapRoleLabel(session.mapKey)
+        selectedMapImage.setImageResource(currentMap.imageRes)
+        lobbyMapBackground.setImageResource(currentMap.imageRes)
         mapCards.forEachIndexed { index, imageView ->
             val selected = LocalGameFactory.maps[index].key == session.mapKey
             imageView.alpha = if (selected) 1f else 0.55f
@@ -328,7 +337,7 @@ class LobbyActivity : BaseActivity() {
                 alpha = if (isEnabled) 1f else 0.28f
                 contentDescription = when {
                     isFirestoreOnlineLobby() && onlinePlayer?.id == onlineTempUid ->
-                        "No podes expulsarte de la sala"
+                        "No puedes expulsarte de la sala"
                     isFirestoreOnlineLobby() && !currentUserIsOnlineHost() ->
                         "Solo el anfitrion puede expulsar jugadores online"
                     isFirestoreOnlineLobby() && onlinePlayer != null ->
@@ -786,6 +795,7 @@ class LobbyActivity : BaseActivity() {
             ready = document.getBoolean(FIELD_PLAYER_READY) == true,
             order = document.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
             activeInMatch = document.getBoolean(FIELD_ACTIVE_IN_MATCH) != false,
+            lastSeenLocalMs = document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L,
             publicId = document.getString(PlayerPublicIdentity.FIELD_PUBLIC_ID).orEmpty()
         )
     }
@@ -797,7 +807,8 @@ class LobbyActivity : BaseActivity() {
                 connected = player.status == PLAYER_STATE_CONNECTED,
                 ready = player.ready,
                 activeInMatch = player.activeInMatch,
-                order = player.order
+                order = player.order,
+                lastSeenLocalMs = player.lastSeenLocalMs
             )
         }
     }
@@ -876,7 +887,8 @@ class LobbyActivity : BaseActivity() {
         }
         val candidateId = OnlineLobbyRules.hostHandoffCandidate(
             players = onlineParticipants(),
-            activeHostId = onlineActiveHostId.ifBlank { onlineHostId }
+            activeHostId = onlineActiveHostId.ifBlank { onlineHostId },
+            nowMs = System.currentTimeMillis()
         )?.id ?: return null
         return onlinePlayers.firstOrNull { it.id == candidateId }
     }
@@ -925,7 +937,15 @@ class LobbyActivity : BaseActivity() {
             }
             val previousHost = transaction.get(previousHostReference)
             val candidate = transaction.get(candidateReference)
-            if (previousHost.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED) {
+            val previousHostParticipant = OnlineLobbyParticipant(
+                id = previousHostId,
+                connected = previousHost.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED,
+                ready = previousHost.getBoolean(FIELD_PLAYER_READY) == true,
+                activeInMatch = previousHost.getBoolean(FIELD_ACTIVE_IN_MATCH) != false,
+                order = previousHost.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
+                lastSeenLocalMs = previousHost.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L
+            )
+            if (OnlineLobbyRules.isRecentlyConnected(previousHostParticipant, System.currentTimeMillis())) {
                 return@runTransaction false
             }
             if (candidate.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
@@ -1310,7 +1330,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun onlineStartPreflightMessage(): String? {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) {
-            return "La sala online todavia no esta lista."
+            return "La sala online todavía no está lista."
         }
         if (onlineRoomState != ONLINE_ROOM_STATE_WAITING) {
             return "La sala ya no esta esperando jugadores."
@@ -1675,7 +1695,8 @@ class LobbyActivity : BaseActivity() {
         var quickTestMode = session.quickTestMode
         var debugBotsObeyVoteCommands = session.debugBotsObeyVoteCommands
         var debugForceVoteTies = session.debugForceVoteTies
-        var debugBotsNeverTargetHuman = session.debugBotsNeverTargetHuman
+        var debugBotsNeverKillHuman = session.debugBotsNeverKillHuman
+        var debugBotsNeverVoteHuman = session.debugBotsNeverVoteHuman
         val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         var roleReadingSeconds = preferences
             .getInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
@@ -1740,7 +1761,7 @@ class LobbyActivity : BaseActivity() {
         }
         content.addView(quickTestSwitch)
         content.addView(TextView(this).apply {
-            text = "Activado: permite saltear fases sin accion humana y acelera votaciones. " +
+            text = "Activado: permite saltear fases sin acción humana y acelera votaciones. " +
                 "Desactivado: respeta los tiempos del lobby para mostrar una partida real."
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.text_secondary))
@@ -1833,7 +1854,7 @@ class LobbyActivity : BaseActivity() {
                 }
             })
             content.addView(TextView(this).apply {
-                text = "Fuerza un empate en la votacion inicial y vuelve a empatar el desempate."
+                text = "Fuerza un empate en la votación inicial y vuelve a empatar el desempate."
                 gravity = Gravity.CENTER
                 setTextColor(getColor(R.color.text_secondary))
                 textSize = 11f
@@ -1841,17 +1862,35 @@ class LobbyActivity : BaseActivity() {
             })
             content.addView(SwitchCompat(this).apply {
                 applyTraidoresSwitchStyle()
-                text = "LOS BOTS NO ME ATACAN"
-                isChecked = debugBotsNeverTargetHuman
+                text = "LOS BOTS NO ME MATAN"
+                isChecked = debugBotsNeverKillHuman
                 setTextColor(getColor(R.color.text_primary))
                 textSize = 14f
                 setPadding(dp(4), dp(2), dp(4), dp(4))
                 setOnCheckedChangeListener { _, checked ->
-                    debugBotsNeverTargetHuman = checked
+                    debugBotsNeverKillHuman = checked
                 }
             })
             content.addView(TextView(this).apply {
-                text = "Debug local: los bots evitan matarte de noche y votarte de dia si hay otro objetivo valido."
+                text = "Debug local: los asesinos evitan matarte de noche si hay otro objetivo valido."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), 0, dp(4), dp(8))
+            })
+            content.addView(SwitchCompat(this).apply {
+                applyTraidoresSwitchStyle()
+                text = "LOS BOTS NO ME VOTAN"
+                isChecked = debugBotsNeverVoteHuman
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 14f
+                setPadding(dp(4), dp(2), dp(4), dp(4))
+                setOnCheckedChangeListener { _, checked ->
+                    debugBotsNeverVoteHuman = checked
+                }
+            })
+            content.addView(TextView(this).apply {
+                text = "Debug local: los votos bot evitan al humano si queda otro candidato valido."
                 gravity = Gravity.CENTER
                 setTextColor(getColor(R.color.text_secondary))
                 textSize = 11f
@@ -2087,11 +2126,197 @@ class LobbyActivity : BaseActivity() {
                     quickTestMode = quickTestMode,
                     debugBotsObeyVoteCommands = debugBotsObeyVoteCommands,
                     debugForceVoteTies = debugForceVoteTies,
-                    debugBotsNeverTargetHuman = debugBotsNeverTargetHuman
+                    debugBotsNeverKillHuman = debugBotsNeverKillHuman,
+                    debugBotsNeverVoteHuman = debugBotsNeverVoteHuman
                 )
             }
             .create()
         showLandscapeDialog(dialog, widthDp = 640)
+    }
+
+    private fun showLobbyOptionsDialog() {
+        val preferences = AudioPreferences.preferences(this)
+        val content = dialogColumn()
+        content.addView(dialogTitle("OPCIONES"))
+
+        val musicSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Música"
+            isChecked = AudioPreferences.isMusicEnabled(preferences)
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(2), dp(4), dp(4))
+        }
+        val musicLabel = TextView(this).apply {
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 12f
+            setPadding(dp(4), 0, dp(4), dp(2))
+        }
+        val musicSeek = SeekBar(this).apply {
+            max = 100
+            progress = preferences.getInt(AudioPreferences.MUSIC_VOLUME, 80).coerceIn(0, 100)
+        }
+
+        val effectsSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Efectos"
+            isChecked = AudioPreferences.areEffectsEnabled(preferences)
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(10), dp(4), dp(4))
+        }
+        val effectsLabel = TextView(this).apply {
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 12f
+            setPadding(dp(4), 0, dp(4), dp(2))
+        }
+        val effectsSeek = SeekBar(this).apply {
+            max = 100
+            progress = preferences.getInt(AudioPreferences.EFFECTS_VOLUME, 80).coerceIn(0, 100)
+        }
+
+        val vibrationSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Vibración al interactuar"
+            isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(10), dp(4), dp(4))
+        }
+
+        val portraitSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Modo retrato"
+            isChecked = preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(10), dp(4), dp(4))
+        }
+
+        val textSizeLabel = TextView(this).apply {
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 12f
+            setPadding(dp(4), dp(12), dp(4), dp(5))
+        }
+        var textSize = preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_GAMEPLAY_TEXT_SIZE).coerceIn(0, 2)
+        val textSizeButtons = mutableListOf<Button>()
+
+        fun refreshAudioRows() {
+            musicLabel.text = "Música: ${musicSeek.progress}%"
+            effectsLabel.text = "Efectos: ${effectsSeek.progress}%"
+            val musicAlpha = if (musicSwitch.isChecked) 1f else 0.42f
+            val effectsAlpha = if (effectsSwitch.isChecked) 1f else 0.42f
+            musicLabel.alpha = musicAlpha
+            musicSeek.alpha = musicAlpha
+            musicSeek.isEnabled = musicSwitch.isChecked
+            effectsLabel.alpha = effectsAlpha
+            effectsSeek.alpha = effectsAlpha
+            effectsSeek.isEnabled = effectsSwitch.isChecked
+            textSizeLabel.text = "Tamaño de texto: ${gameplayTextSizeLabel(textSize)}"
+            textSizeButtons.forEachIndexed { index, button ->
+                val selected = index == textSize
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+                button.alpha = if (selected) 1f else 0.82f
+            }
+        }
+
+        musicSwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.edit().putBoolean(AudioPreferences.MUSIC_ENABLED, enabled).apply()
+            refreshAudioRows()
+            MusicManager.refresh(this)
+        }
+        effectsSwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.edit().putBoolean(AudioPreferences.EFFECTS_ENABLED, enabled).apply()
+            refreshAudioRows()
+            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        }
+        vibrationSwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.edit().putBoolean(PREF_VIBRATION_ON, enabled).apply()
+            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        }
+        portraitSwitch.setOnCheckedChangeListener { _, enabled ->
+            preferences.edit().putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, enabled).apply()
+            requestedOrientation = if (enabled) {
+                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+            GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        }
+        musicSeek.setOnSeekBarChangeListener(lobbyVolumeListener(AudioPreferences.MUSIC_VOLUME) {
+            refreshAudioRows()
+            MusicManager.refresh(this)
+        })
+        effectsSeek.setOnSeekBarChangeListener(lobbyVolumeListener(AudioPreferences.EFFECTS_VOLUME) {
+            refreshAudioRows()
+        })
+
+        content.addView(musicSwitch)
+        content.addView(musicLabel)
+        content.addView(musicSeek)
+        content.addView(effectsSwitch)
+        content.addView(effectsLabel)
+        content.addView(effectsSeek)
+        content.addView(vibrationSwitch)
+        content.addView(portraitSwitch)
+        content.addView(textSizeLabel)
+        val textSizeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        gameplayTextSizeOptions().forEachIndexed { index, label ->
+            val button = compactDialogButton(label).apply {
+                this.textSize = 12f
+                setOnClickListener {
+                    textSize = index
+                    preferences.edit().putInt(PREF_GAMEPLAY_TEXT_SIZE, textSize).apply()
+                    GameplayEffects.play(this@LobbyActivity, GameplayEffect.CONFIRM)
+                    refreshAudioRows()
+                }
+            }
+            textSizeButtons += button
+            textSizeRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                    if (index > 0) marginStart = dp(7)
+                }
+            )
+        }
+        content.addView(textSizeRow)
+        refreshAudioRows()
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(ScrollView(this).apply { addView(content) })
+            .setPositiveButton("CERRAR", null)
+            .create()
+        showLandscapeDialog(dialog, widthDp = 500)
+    }
+
+    private fun gameplayTextSizeOptions(): List<String> = listOf("Compacto", "Normal", "Grande")
+
+    private fun gameplayTextSizeLabel(index: Int): String {
+        return gameplayTextSizeOptions()[index.coerceIn(0, 2)]
+    }
+
+    private fun lobbyVolumeListener(
+        key: String,
+        onChanged: () -> Unit
+    ): SeekBar.OnSeekBarChangeListener {
+        return object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                AudioPreferences.preferences(this@LobbyActivity)
+                    .edit()
+                    .putInt(key, progress.coerceIn(0, 100))
+                    .apply()
+                onChanged()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        }
     }
 
     private fun roleLabel(roleKey: String): String {
@@ -2298,11 +2523,19 @@ class LobbyActivity : BaseActivity() {
     private fun mapDescriptionFor(mapKey: String): String {
         return when (mapKey) {
             "grecia" ->
-                "Intriga entre templos y plazas. Rol exclusivo: Oraculo."
+                "Intriga entre templos, plazas y discursos que esconden traiciones."
             "medieval" ->
-                "Secretos entre murallas y castillos. Rol exclusivo: Bufon."
+                "Secretos entre murallas, castillos y un feudo que desconfía de todos."
             else ->
-                "Sospechas en la pampa y el pueblo. Rol exclusivo: Payador."
+                "Sospechas en la pampa, el polvo del pueblo y la estación abandonada."
+        }
+    }
+
+    private fun selectedMapRoleLabel(mapKey: String): String {
+        return when (mapKey) {
+            "grecia" -> "Rol exclusivo: Oráculo"
+            "medieval" -> "Rol exclusivo: Bufón"
+            else -> "Rol exclusivo: Payador"
         }
     }
 
@@ -2359,6 +2592,9 @@ class LobbyActivity : BaseActivity() {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 6
+        private const val PREF_VIBRATION_ON = "vibration_on"
+        private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
+        private const val DEFAULT_GAMEPLAY_TEXT_SIZE = 1
     }
 
     private data class OnlineLobbyPlayer(
@@ -2370,7 +2606,8 @@ class LobbyActivity : BaseActivity() {
         val ready: Boolean,
         val order: Int,
         val activeInMatch: Boolean,
-        val publicId: String
+        val publicId: String,
+        val lastSeenLocalMs: Long
     ) {
         fun statusLabel(): String {
             val baseStatus = if (isHost) {

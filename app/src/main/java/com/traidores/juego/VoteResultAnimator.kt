@@ -35,10 +35,11 @@ class VoteResultAnimator(
         const val RECOUNT_INITIAL_DELAY_MS = 420L
         const val RECOUNT_TOKEN_STEP_MS = 420L
         const val RECOUNT_FINAL_READ_MS = 700L
-        const val EXPULSION_NAME_READ_MS = 2_500L
-        const val REVEALED_CARD_READ_MS = 3_500L
+        const val EXPULSION_NAME_READ_MS = 3_200L
+        const val REVEALED_CARD_READ_MS = 4_000L
+        const val EXPULSION_KICK_WINDUP_MS = 280L
         const val BOOT_IMPACT_PAUSE_MS = 120L
-        const val EXPULSION_AFTER_KICK_READ_MS = 1_800L
+        const val EXPULSION_AFTER_KICK_READ_MS = 2_600L
         const val PANEL_MARGIN_HORIZONTAL_DP = 18
     }
 
@@ -168,9 +169,9 @@ class VoteResultAnimator(
 
     fun showNoExpulsion() {
         cancelScheduled()
-        title.text = "EL PUEBLO NO LLEGO A UN ACUERDO"
-        subtitle.text = "Nadie sera expulsado esta jornada."
-        setNotice("La noche volvera a caer sobre el pueblo.")
+        title.text = "EL PUEBLO NO LLEGÓ A UN ACUERDO"
+        subtitle.text = "Nadie será expulsado esta jornada."
+        setNotice("La noche volverá a caer sobre el pueblo.")
         setContinueReady("CONTINUAR")
     }
 
@@ -184,7 +185,7 @@ class VoteResultAnimator(
         val targetPlayer = session.players.firstOrNull { it.name == targetName }
         if (targetPlayer == null) {
             title.text = "$targetName FUE EXPULSADO"
-            setNotice("El pueblo dicto su sentencia.")
+            setNotice("El pueblo dictó su sentencia.")
             setContinueReady("CONTINUAR")
             onFinished()
             return
@@ -195,21 +196,21 @@ class VoteResultAnimator(
         continueButton.isEnabled = false
         continueButton.alpha = 0f
         title.text = if (session.alcaldeCorruption) {
-            "CORRUPCION EN EL PUEBLO"
+            "CORRUPCIÓN EN EL PUEBLO"
         } else {
-            "EXPULSION"
+            "EXPULSIÓN"
         }
         subtitle.text = if (session.alcaldeCorruption) {
-            "El poder ha torcido la decision del pueblo."
+            "El poder ha torcido la decisión del pueblo."
         } else {
-            "El pueblo ha tomado su decision."
+            "El pueblo ha tomado su decisión."
         }
         setNotice(if (session.alcaldeCorruption) {
-            "$targetName sera expulsado en lugar del Alcalde."
+            "$targetName será expulsado en lugar del Alcalde."
         } else if (session.revealRolesOnDeath) {
-            "$targetName sera expulsado. Su carta se revelara primero."
+            "$targetName será expulsado. Su carta se revelará primero."
         } else {
-            "$targetName sera expulsado del pueblo."
+            "$targetName será expulsado del pueblo."
         })
         boot.visibility = View.INVISIBLE
         cards.columnCount = 1
@@ -231,17 +232,21 @@ class VoteResultAnimator(
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(260L)
+            .setDuration(340L)
             .withEndAction {
                 if (session.revealRolesOnDeath) {
                     revealExpelledRoleBeforeKick(session, holder) {
                         schedule(REVEALED_CARD_READ_MS) {
-                            kickExpulsionCard(session, holder, onFinished)
+                            schedule(EXPULSION_KICK_WINDUP_MS) {
+                                kickExpulsionCard(session, holder, onFinished)
+                            }
                         }
                     }
                 } else {
                     schedule(EXPULSION_NAME_READ_MS) {
-                        kickExpulsionCard(session, holder, onFinished)
+                        schedule(EXPULSION_KICK_WINDUP_MS) {
+                            kickExpulsionCard(session, holder, onFinished)
+                        }
                     }
                 }
             }
@@ -414,12 +419,12 @@ class VoteResultAnimator(
         when {
             tied && session.voteRound == 1 -> {
                 title.text = "EMPATE"
-                setNotice("SI EL EMPATE SE REPITE, NADIE SERA EXPULSADO.")
+                setNotice("SI EL EMPATE SE REPITE, NADIE SERÁ EXPULSADO.")
                 setContinueReady("IR AL DESEMPATE")
             }
             tied -> {
-                title.text = "EL EMPATE SE REPITIO"
-                setNotice("El Alcalde podra intervenir. Sin su decision, nadie sera expulsado.")
+                title.text = "EL EMPATE SE REPITIÓ"
+                setNotice("El Alcalde podrá intervenir. Sin su decisión, nadie será expulsado.")
                 setContinueReady("RESOLVER EMPATE")
             }
             session.dayEliminationTarget.isNotBlank() -> {

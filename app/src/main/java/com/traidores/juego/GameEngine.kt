@@ -176,7 +176,7 @@ object GameEngine {
         val opening = if (humanVoted) {
             "Tu voto fue registrado."
         } else {
-            "Observaste la votacion asesina."
+            "Observaste la votación asesina."
         }
         return "$opening $voteSummary. Victima elegida: ${session.nightKillTarget}."
     }
@@ -221,7 +221,7 @@ object GameEngine {
         }
 
         val privateHint = if (mercenary.isHuman) {
-            "Silenciaste a $target. Durante el dia no podra hablar ni votar."
+            "Silenciaste a $target. Durante el día no podrá hablar ni votar."
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -288,9 +288,9 @@ object GameEngine {
 
         val privateHint = if (medic.isHuman) {
             if (target == medic.name) {
-                "Te protegiste esta noche. Al amanecer solo se anunciara si hubo muerte."
+                "Te protegiste esta noche. Al amanecer solo se anunciará si hubo muerte."
             } else {
-                "Protegiste a $target esta noche. Al amanecer solo se anunciara si hubo muerte."
+                "Protegiste a $target esta noche. Al amanecer solo se anunciará si hubo muerte."
             }
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
@@ -304,7 +304,7 @@ object GameEngine {
         return updated.transitionTo(
             nextPhase,
             if (nextPhase == GamePhase.AMANECER) {
-                dawnApproachesMessage()
+                dawnApproachesMessage(updated)
             } else {
                 nightContinuesMessage(updated)
             },
@@ -315,9 +315,9 @@ object GameEngine {
     fun resolveOracle(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ORACULO)) return session
         val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
-            ?: return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
+            ?: return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
         if (session.oracleUsed || oracleCandidates(session).isEmpty()) {
-            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
+            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
         }
 
         val target = if (oracle.isHuman) {
@@ -326,18 +326,18 @@ object GameEngine {
             LocalBotAi.chooseOracleTarget(session, oracle)
         }
         if (target.isBlank()) {
-            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
+            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
         }
         if (!isValidOracleTarget(session, target, oracle)) {
             return if (oracle.isHuman) {
                 session
             } else {
-                advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage())
+                advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
             }
         }
 
         val privateHint = if (oracle.isHuman) {
-            "Invocaste a $target. Volvera a hablar en el proximo debate, sin votar ni usar habilidades."
+            "Invocaste a $target. Volverá a hablar en el próximo debate, sin votar ni usar habilidades."
         } else {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
@@ -348,7 +348,7 @@ object GameEngine {
         )
         return updated.transitionTo(
             GamePhase.AMANECER,
-            dawnApproachesMessage(),
+            dawnApproachesMessage(updated),
             privateHint
         )
     }
@@ -360,12 +360,12 @@ object GameEngine {
         var updatedPlayers = session.players
         val noVictim = victim.isBlank() || victim == session.protectedPlayer
         val killMessage = if (noVictim) {
-            "Amanecer: no murio nadie."
+            dawnNoDeathMessage(session)
         } else {
             updatedPlayers = updatedPlayers.map { player ->
                 if (player.name == victim) player.copy(alive = false, muted = false) else player
             }
-            "Amanecer: murio $victim."
+            dawnDeathMessage(session, victim)
         }
 
         var silenceApplied = false
@@ -384,7 +384,7 @@ object GameEngine {
             ""
         }
         val oracleMessage = session.oracleInvitedPlayer.takeIf { it.isNotBlank() }?.let { invited ->
-            "El Oraculo ha permitido que $invited regrese para discutir durante este dia."
+            "El Oráculo abre la puerta de las sombras: $invited regresa para hablar durante este día."
         }.orEmpty()
         val publicMessage = listOf(killMessage, silenceMessage, oracleMessage)
             .filter { it.isNotBlank() }
@@ -450,7 +450,7 @@ object GameEngine {
         return session.copy(
             alcaldeRevealed = true,
             publicAnnouncement = message,
-            privateHint = "Alcalde revelado. Tu voto vale doble y decides empates entre los mas votados."
+            privateHint = "Alcalde revelado. Tu voto vale doble y decides empates entre los más votados."
         ).withPublicHistory(message)
     }
 
@@ -526,7 +526,7 @@ object GameEngine {
             contrapuntoPlayers = selected,
             publicAnnouncement = message,
             privateHint = if (payador.isHuman) {
-                "Escucha el Contrapunto y senala al participante que te parezca mas sospechoso."
+                "Escucha el Contrapunto y señala al participante que te parezca más sospechoso."
             } else {
                 privateRoleHint(session)
             },
@@ -545,7 +545,7 @@ object GameEngine {
         }
         if (selected.isBlank()) return session
 
-        val message = "El Contrapunto termino. $selected quedo senalado como mas sospechoso."
+        val message = "El Contrapunto terminó. $selected quedó señalado como más sospechoso."
         return session.copy(
             contrapuntoSuspicion = selected
         ).transitionTo(GamePhase.VOTACION, message, privateRoleHint(session))
@@ -578,7 +578,7 @@ object GameEngine {
 
         val leaders = weightedVoteLeaders(votingSession, votes)
         val eliminated = leaders.singleOrNull().orEmpty()
-        val message = "La votacion termino. Comienza el recuento."
+        val message = votingEndedMessage(votingSession)
         return votingSession.copy(
             votes = votes,
             voteRound = 1,
@@ -602,7 +602,7 @@ object GameEngine {
                 voteRound = 2
             ).transitionTo(
                 GamePhase.RECUENTO_VOTOS,
-                "El desempate termino. Comienza el recuento final.",
+                tieEndedMessage(session),
                 privateRoleHint(session)
             )
         }
@@ -621,7 +621,7 @@ object GameEngine {
 
         val leaders = weightedVoteLeaders(session, votes)
         val eliminated = leaders.singleOrNull().orEmpty()
-        val message = "El desempate termino. Comienza el recuento final."
+        val message = tieEndedMessage(session)
         return session.copy(
             votes = votes,
             voteRound = 2,
@@ -670,7 +670,7 @@ object GameEngine {
 
         val leaders = weightedVoteLeaders(votingSession, votes)
         val eliminated = leaders.singleOrNull().orEmpty()
-        val votingMessage = "La votacion termino. Comienza el recuento."
+        val votingMessage = votingEndedMessage(votingSession)
         val message = listOf(leadingAnnouncement, votingMessage)
             .filter { it.isNotBlank() }
             .joinToString(" ")
@@ -703,7 +703,7 @@ object GameEngine {
                 voteRound = 2
             ).transitionTo(
                 GamePhase.RECUENTO_VOTOS,
-                "El desempate termino. Comienza el recuento final.",
+                tieEndedMessage(session),
                 privateRoleHint(session)
             )
         }
@@ -727,7 +727,7 @@ object GameEngine {
                     } else {
                         LocalBotAi.chooseVoteTarget(session, voter)
                     }
-                    val fallbackCandidates = if (!voter.isHuman && session.debugBotsNeverTargetHuman) {
+                    val fallbackCandidates = if (!voter.isHuman && session.debugBotsNeverVoteHuman) {
                         candidates.filterNot { candidate ->
                             playerByName(session, candidate)?.isHuman == true
                         }.ifEmpty { candidates }
@@ -747,7 +747,7 @@ object GameEngine {
         val eliminated = leaders.singleOrNull().orEmpty()
         val message = listOf(
             leadingAnnouncement,
-            "El desempate termino. Comienza el recuento final."
+            tieEndedMessage(session)
         ).filter { it.isNotBlank() }.joinToString(" ")
         return session.copy(
             votes = votes,
@@ -764,7 +764,7 @@ object GameEngine {
         if (!canResolve(session, GamePhase.RECUENTO_VOTOS)) return session
         if (session.voteRound == 1 && session.tieVoteCandidates.size > 1) {
             val candidates = session.tieVoteCandidates.joinToString(", ")
-            val message = "Empate entre $candidates. Si el empate se repite, nadie sera expulsado."
+            val message = "Empate entre $candidates. Si el empate se repite, nadie será expulsado."
             return session.copy(
                 votes = emptyMap(),
                 dayEliminationTarget = ""
@@ -781,7 +781,7 @@ object GameEngine {
         }
 
         val message = if (session.dayEliminationTarget.isBlank()) {
-            "El pueblo no llego a un acuerdo. Nadie sera expulsado esta jornada."
+            "El pueblo no llegó a un acuerdo. Nadie será expulsado esta jornada."
         } else {
             "${session.dayEliminationTarget} recibio la mayoria. Se resolvera su expulsion."
         }
@@ -796,7 +796,7 @@ object GameEngine {
         val candidates = session.tieVoteCandidates
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" }
         if (alcalde == null) {
-            val message = "El empate se repitio. Nadie sera expulsado esta jornada."
+            val message = "El empate se repitió. Nadie será expulsado esta jornada."
             return session.copy(
                 dayEliminationTarget = "",
                 tieVoteCandidates = emptyList(),
@@ -810,14 +810,14 @@ object GameEngine {
                 session
             } else {
                 val revealMessage =
-                    "${alcalde.name} revelo su cargo cuando la votacion amenazo con expulsarlo."
+                    "${alcalde.name} reveló su cargo cuando la votación amenazó con expulsarlo."
                 session.copy(alcaldeRevealed = true).withPublicHistory(revealMessage)
             }
             val opponents = candidates.filter { it != alcalde.name }
             if (opponents.size == 1) {
                 val expelled = opponents.single()
                 val message =
-                    "Corrupcion en el pueblo: el Alcalde impuso su autoridad y $expelled sera expulsado."
+                    "Corrupción en el pueblo: el Alcalde impuso su autoridad y $expelled será expulsado."
                 return revealedSession.copy(
                     dayEliminationTarget = expelled,
                     votes = emptyMap(),
@@ -851,14 +851,14 @@ object GameEngine {
                 alcaldeTieCandidates = opponents
             ).transitionTo(
                 GamePhase.ALCALDE_DESEMPATE,
-                "Corrupcion en el pueblo: el Alcalde quedo protegido y decidira quien sera expulsado.",
+                "Corrupción en el pueblo: el Alcalde quedó protegido y decidirá quién será expulsado.",
                 "Tu cargo te protege. Elige a quien expulsar entre ${opponents.joinToString(" o ")}."
             )
         }
 
         if (alcalde.isHuman) {
             val privateMessage = if (session.alcaldeRevealed) {
-                "Elige quien sera expulsado entre ${candidates.joinToString(" o ")}."
+                "Elige quién será expulsado entre ${candidates.joinToString(" o ")}."
             } else {
                 "Puedes revelarte como Alcalde y decidir el empate."
             }
@@ -899,7 +899,7 @@ object GameEngine {
 
         val target = session.dayEliminationTarget
         if (target.isBlank()) {
-            val message = "Dia ${session.round}: nadie fue expulsado."
+            val message = "Día ${session.round}: nadie fue expulsado."
             val checked = session.copy(
                 publicAnnouncement = message,
                 privateHint = privateRoleHint(session)
@@ -910,7 +910,7 @@ object GameEngine {
 
         val targetPlayer = playerByName(session, target)
         if (targetPlayer == null || !targetPlayer.alive) {
-            val message = "Dia ${session.round}: nadie fue expulsado."
+            val message = "Día ${session.round}: nadie fue expulsado."
             val checked = session.copy(
                 publicAnnouncement = message,
                 privateHint = privateRoleHint(session)
@@ -927,10 +927,10 @@ object GameEngine {
                 it.key == JESTER_VICTORY_KEY && it.playerName == target
             }
         val message = if (jesterVictory) {
-            "Dia ${session.round}: $target fue expulsado. " +
-                "$target era el Bufon y gano al ser expulsado por el pueblo."
+            "${expulsionMessage(session, target)} " +
+                "$target era el Bufón y ganó al ser expulsado por el pueblo."
         } else {
-            "Dia ${session.round}: $target fue expulsado."
+            expulsionMessage(session, target)
         }
         val specialVictories = if (jesterVictory) {
             session.specialVictories + GameSpecialVictory(
@@ -955,14 +955,14 @@ object GameEngine {
 
     fun privateRoleHint(session: GameSession): String {
         val human = humanPlayer(session)
-        val role = human.role ?: return "Tu rol todavia no esta asignado."
+        val role = human.role ?: return "Tu rol todavía no está asignado."
         val espiaKillerHint = if (role.key == "espia") {
-            " Eliges la victima junto a los Traidores y el Detective te ve como inocente."
+            " Eliges la víctima junto a los Traidores y el investigador te ve como inocente."
         } else {
             ""
         }
         val alcaldeHint = if (role.key == "alcalde" && session.alcaldeRevealed) {
-            " Estas revelado: tu voto vale doble y decides empates."
+            " Estás revelado: tu voto vale doble y decides empates."
         } else {
             ""
         }
@@ -972,16 +972,16 @@ object GameEngine {
             ""
         }
         val policeHint = if (role.key == "policia" && session.investigatedPlayer.isNotBlank()) {
-            " Ultima pista: ${session.investigatedPlayer} parece ${session.investigatedResult}."
+            " Última pista: ${session.investigatedPlayer} parece ${session.investigatedResult}."
         } else {
             ""
         }
         val statusHint = when {
             session.phase == GamePhase.DIA_DEBATE &&
                 session.oracleInvitedPlayer == human.name ->
-                " El Oraculo te devolvio la voz durante este debate. Podes hablar, pero no votar."
-            !human.alive -> " Estas eliminado. Observa la partida y usa el chat si el rol lo permite."
-            human.muted -> " Estas silenciado durante el dia. No podes hablar ni votar."
+                " El Oráculo te devolvió la voz durante este debate. Puedes hablar, pero no votar."
+            !human.alive -> " Estás eliminado. Observa la partida y usa el chat si el rol lo permite."
+            human.muted -> " Estás silenciado durante el día. No puedes hablar ni votar."
             else -> ""
         }
         return "${role.name} - ${role.team}.$statusHint$espiaKillerHint$alcaldeHint$desertorHint$policeHint"
@@ -1061,7 +1061,7 @@ object GameEngine {
             GamePhase.NOCHE_MEDICO -> "SALVAR"
             GamePhase.NOCHE_ORACULO -> "INVOCAR"
             GamePhase.DIA_DEBATE -> "CONTRAPUNTO"
-            GamePhase.CONTRAPUNTO -> "SENALAR"
+            GamePhase.CONTRAPUNTO -> "SEÑALAR"
             GamePhase.ALCALDE_DESEMPATE -> "DECIDIR"
             GamePhase.VOTACION -> "VOTAR"
             GamePhase.DESEMPATE_VOTACION -> "VOTAR"
@@ -1115,7 +1115,7 @@ object GameEngine {
 
     fun resolveContrapuntoTimeout(session: GameSession): GameSession {
         if (!canResolve(session, GamePhase.CONTRAPUNTO)) return session
-        val message = "El Contrapunto termino sin un senalamiento."
+        val message = "El Contrapunto terminó sin un señalamiento."
         return session.copy(contrapuntoSuspicion = "")
             .transitionTo(GamePhase.VOTACION, message, privateRoleHint(session))
             .withPublicHistory(message)
@@ -1124,7 +1124,7 @@ object GameEngine {
 
     fun resolveAlcaldeTieTimeout(session: GameSession): GameSession {
         if (!canResolve(session, GamePhase.ALCALDE_DESEMPATE)) return session
-        val message = "El Alcalde no decidio el empate. Nadie sera expulsado."
+        val message = "El Alcalde no decidió el empate. Nadie será expulsado."
         return session.copy(
             dayEliminationTarget = "",
             alcaldeTieCandidates = emptyList()
@@ -1153,7 +1153,7 @@ object GameEngine {
 
     fun canHumanChat(session: GameSession): Boolean {
         val human = humanPlayer(session)
-        if (!canSpeak(session, human) || session.winner.isNotBlank()) return false
+        if (session.winner.isNotBlank() || !canParticipateInChat(session, human)) return false
 
         return when (session.phase) {
             GamePhase.DIA_DEBATE,
@@ -1168,6 +1168,15 @@ object GameEngine {
             GamePhase.NOCHE_MEDICO -> false
             GamePhase.NOCHE_ORACULO -> false
             else -> false
+        }
+    }
+
+    fun canParticipateInChat(session: GameSession, player: GamePlayer): Boolean {
+        if (!canSpeak(session, player)) return false
+        return when (session.phase) {
+            GamePhase.CONTRAPUNTO ->
+                player.role?.key == RoleCatalog.PAYADOR || player.name in session.contrapuntoPlayers
+            else -> true
         }
     }
 
@@ -1202,7 +1211,7 @@ object GameEngine {
     fun addBotChatMessage(session: GameSession, speaker: String, rawMessage: String): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         val bot = playerByName(session, speaker)
-        if (message.isBlank() || bot == null || bot.isHuman || !canSpeak(session, bot)) return session
+        if (message.isBlank() || bot == null || bot.isHuman || !canParticipateInChat(session, bot)) return session
         if (
             session.winner.isNotBlank() ||
             session.phase !in botChatPhases
@@ -1293,12 +1302,12 @@ object GameEngine {
                 if (missed.expelled) {
                     "${missed.humanName} fue expulsado por inactividad. " +
                         if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
-                            dawnApproachesMessage()
+                            dawnApproachesMessage(missed.session)
                         } else {
                             nightContinuesMessage(missed.session)
                         }
                 } else if (nextPhaseAfterMedic(missed.session) == GamePhase.AMANECER) {
-                    dawnApproachesMessage()
+                    dawnApproachesMessage(missed.session)
                 } else {
                     nightContinuesMessage(missed.session)
                 },
@@ -1307,9 +1316,9 @@ object GameEngine {
             GamePhase.NOCHE_ORACULO -> missed.session.transitionTo(
                 GamePhase.AMANECER,
                 if (missed.expelled) {
-                    "${missed.humanName} fue expulsado por inactividad. ${dawnApproachesMessage()}"
+                    "${missed.humanName} fue expulsado por inactividad. ${dawnApproachesMessage(missed.session)}"
                 } else {
-                    dawnApproachesMessage()
+                    dawnApproachesMessage(missed.session)
                 },
                 missed.session.privateHint
             )
@@ -1396,12 +1405,12 @@ object GameEngine {
         }
 
         if (!expelled) {
-            val nextOpportunity = if (night) "proxima noche" else "proxima votacion"
+        val nextOpportunity = if (night) "próxima noche" else "próxima votación"
             val action = if (night) "accion" else "voto"
             return AfkMissResult(
                 session = session.copy(
                     players = updatedPlayers,
-                    privateHint = "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, seras expulsado por AFK."
+                    privateHint = "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, serás expulsado por AFK."
                 ),
                 expelled = false,
                 humanName = human.name
@@ -1505,7 +1514,7 @@ object GameEngine {
     private fun advanceAfterMedic(session: GameSession): GameSession {
         val nextPhase = nextPhaseAfterMedic(session)
         val message = if (nextPhase == GamePhase.AMANECER) {
-            dawnApproachesMessage()
+            dawnApproachesMessage(session)
         } else {
             nightContinuesMessage(session)
         }
@@ -1531,26 +1540,81 @@ object GameEngine {
         }
     }
 
-    private fun dawnApproachesMessage(): String = "El amanecer se acerca."
+    private fun dawnApproachesMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" -> "El amanecer se acerca. El feudo contiene la respiración."
+            "grecia" -> "El amanecer se acerca. La primera luz toca las columnas."
+            else -> "El amanecer se acerca. Ya clarea detrás de los ranchos."
+        }
+    }
+
+    private fun dawnNoDeathMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" ->
+                "Amanecer: no murió nadie. Las puertas se abren despacio, entre el alivio y la desconfianza."
+            "grecia" ->
+                "Amanecer: no murió nadie. Los dioses concedieron una noche de tregua."
+            else ->
+                "Amanecer: no murió nadie. El pueblo despierta entero, pero nadie durmió tranquilo."
+        }
+    }
+
+    private fun dawnDeathMessage(session: GameSession, victim: String): String {
+        return when (session.mapKey) {
+            "medieval" ->
+                "Amanecer: murió $victim. El pueblo se reúne en silencio alrededor del cuerpo."
+            "grecia" ->
+                "Amanecer: murió $victim. La plaza amanece de luto y de sospechas."
+            else ->
+                "Amanecer: murió $victim. Lo encontraron al alba; nadie vio nada, como siempre."
+        }
+    }
+
+    private fun votingEndedMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" -> "La votación terminó. El pregonero cuenta los votos ante todo el feudo."
+            "grecia" -> "La votación terminó. Se cuentan las piedras en el ágora."
+            else -> "La votación terminó. Se cuentan las manos alzadas en la plaza."
+        }
+    }
+
+    private fun tieEndedMessage(session: GameSession): String {
+        return when (session.mapKey) {
+            "medieval" -> "El desempate terminó. El pregonero vuelve a contar los votos ante el feudo."
+            "grecia" -> "El desempate terminó. El ágora espera el recuento final."
+            else -> "El desempate terminó. La plaza vuelve a contar las manos."
+        }
+    }
+
+    private fun expulsionMessage(session: GameSession, target: String): String {
+        return when (session.mapKey) {
+            "medieval" ->
+                "Día ${session.round}: $target fue expulsado. Cruza las puertas del feudo para no volver."
+            "grecia" ->
+                "Día ${session.round}: $target fue expulsado. El ostracismo queda sellado ante la polis."
+            else ->
+                "Día ${session.round}: $target fue expulsado. Se va del pueblo con lo puesto y sin despedidas."
+        }
+    }
 
     private fun dayDebateMessage(session: GameSession, muted: String): String {
         val opening = when (session.mapKey) {
             "medieval" -> "El pueblo despierta con miedo. Cada palabra puede condenar a alguien."
-            "grecia" -> "El pueblo despierta. Que la razon separe la verdad del engaño."
+            "grecia" -> "El pueblo despierta. Que la razón separe la verdad del engaño."
             else -> "El pueblo despierta y se junta a discutir antes de votar."
         }
         return if (muted.isBlank()) {
-            "Dia ${session.round}: $opening"
+            "Día ${session.round}: $opening"
         } else {
-            "Dia ${session.round}: $opening Muteados: $muted."
+            "Día ${session.round}: $opening Silenciados: $muted."
         }
     }
 
     private fun nextNightMessage(session: GameSession): String {
         return when (session.mapKey) {
-            "medieval" -> "La oscuridad vuelve a caer y el pueblo cierra sus puertas."
-            "grecia" -> "La oscuridad vuelve a caer sobre el pueblo y sus dudas."
-            else -> "La oscuridad vuelve a caer sobre el pueblo."
+            "medieval" -> "Noche ${session.round + 1}: la oscuridad vuelve a caer y el feudo atranca sus puertas."
+            "grecia" -> "Noche ${session.round + 1}: la oscuridad vuelve a caer sobre la polis y sus dudas."
+            else -> "Noche ${session.round + 1}: se apagan los faroles y el pueblo vuelve a quedar a oscuras."
         }
     }
 
@@ -1643,8 +1707,8 @@ object GameEngine {
         }
         return session.transitionTo(
             GamePhase.AMANECER,
-            dawnApproachesMessage(),
-            "Guardaste tu poder. Podras invocar a un muerto en otra noche."
+            dawnApproachesMessage(session),
+            "Guardaste tu poder. Podrás invocar a un muerto en otra noche."
         )
     }
 
@@ -1679,7 +1743,7 @@ object GameEngine {
         val rawCandidates = availableCandidates.distinct().filter { candidate ->
             playerByName(session, candidate)?.alive == true
         }
-        val candidates = if (session.debugBotsNeverTargetHuman) {
+        val candidates = if (session.debugBotsNeverVoteHuman) {
             rawCandidates.filterNot { candidate ->
                 playerByName(session, candidate)?.isHuman == true
             }.ifEmpty { rawCandidates }

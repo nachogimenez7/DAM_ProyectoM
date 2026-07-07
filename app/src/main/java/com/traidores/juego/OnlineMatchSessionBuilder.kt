@@ -9,7 +9,7 @@ enum class OnlineMatchSessionError(val userMessage: String) {
     MISSING_INITIAL_MATCH("La sala perdio datos de partida. Creen una sala nueva."),
     MISSING_MATCH_STATE("La sala perdio el estado de partida. Creen una sala nueva."),
     MISSING_PLAYERS("La sala no tiene jugadores suficientes para reconstruir la partida."),
-    INCOMPLETE_PLAYERS("La sala todavia esta sincronizando jugadores."),
+    INCOMPLETE_PLAYERS("La sala todavía está sincronizando jugadores."),
     MISSING_HUMAN_PLAYER("No encontramos tu jugador en esta sala. Entren de nuevo con el codigo."),
     INVALID_PHASE("La sala tiene una fase invalida. Creen una sala nueva.")
 }

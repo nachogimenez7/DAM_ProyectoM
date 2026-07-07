@@ -55,7 +55,18 @@ class OnlineModeActivity : BaseActivity() {
         }
 
         btnSearch.setOnClickListener {
-            startActivity(Intent(this, LobbyBrowserActivity::class.java))
+            OnlineTempIdentity.ensureAuthenticated(this)
+                .addOnSuccessListener {
+                    startActivity(Intent(this, LobbyBrowserActivity::class.java))
+                }
+                .addOnFailureListener { error ->
+                    OnlineDebugLog.e("auth_lobby_browser_failure", error)
+                    Toast.makeText(
+                        this,
+                        OnlineErrorMessages.forAction("No se pudo preparar el online", error),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
         }
 
         btnJoinCode.setOnClickListener {
@@ -181,16 +192,29 @@ class OnlineModeActivity : BaseActivity() {
     private fun createOnlineRoom(expectedPlayers: Int) {
         btnCreate.isEnabled = false
         btnCreate.text = "PREPARANDO..."
-        PlayerPublicIdentity.ensurePublicId(
-            context = this,
-            firestore = firestore,
-            onReady = { publicId ->
-                createOnlineRoomWithPublicId(expectedPlayers, publicId)
-            },
-            onFailure = { error ->
-                OnlineDebugLog.e("public_id_create_room_fallback", error)
+        OnlineTempIdentity.ensureAuthenticated(this)
+            .addOnSuccessListener {
+                PlayerPublicIdentity.ensurePublicId(
+                    context = this,
+                    firestore = firestore,
+                    onReady = { publicId ->
+                        createOnlineRoomWithPublicId(expectedPlayers, publicId)
+                    },
+                    onFailure = { error ->
+                        OnlineDebugLog.e("public_id_create_room_fallback", error)
+                    }
+                )
             }
-        )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("auth_create_room_failure", error)
+                btnCreate.isEnabled = true
+                btnCreate.text = "CREAR PARTIDA"
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo preparar la sala online", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private fun createOnlineRoomWithPublicId(expectedPlayers: Int, publicId: String) {
@@ -377,37 +401,50 @@ class OnlineModeActivity : BaseActivity() {
     private fun openRecoveredRoom(room: OnlineRecoveredRoom) {
         btnRecoverRoom.isEnabled = false
         btnRecoverRoom.text = "RECUPERANDO..."
-        firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
-            .document(room.roomId)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                btnRecoverRoom.isEnabled = true
-                if (!snapshot.exists()) {
-                    OnlineRoomRecovery.clear(this)
-                    showRecoveredRoom(null)
-                    Toast.makeText(this, "La sala ya no existe.", Toast.LENGTH_LONG).show()
-                    return@addOnSuccessListener
-                }
-                val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
-                when (OnlineRecoveryGate.targetForRoomState(state)) {
-                    OnlineRecoveryTarget.LOBBY -> openRecoveredLobby(room, snapshot)
-                    OnlineRecoveryTarget.GAMEPLAY -> openRecoveredGameplay(room, snapshot)
-                    OnlineRecoveryTarget.CLEAR -> {
-                        OnlineRoomRecovery.clear(this)
-                        showRecoveredRoom(null)
-                        Toast.makeText(this, "La sala ya termino o fue abandonada.", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
+        OnlineTempIdentity.ensureAuthenticated(this)
             .addOnFailureListener { error ->
                 btnRecoverRoom.isEnabled = true
                 showRecoveredRoom(room)
-                OnlineDebugLog.e("recover_room_open_failure roomId=${room.roomId}", error)
+                OnlineDebugLog.e("auth_recover_room_failure roomId=${room.roomId}", error)
                 Toast.makeText(
                     this,
-                    OnlineErrorMessages.forAction("No se pudo reingresar", error),
+                    OnlineErrorMessages.forAction("No se pudo preparar el reingreso", error),
                     Toast.LENGTH_LONG
                 ).show()
+            }
+            .addOnSuccessListener {
+                firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+                    .document(room.roomId)
+                    .get()
+                    .addOnSuccessListener roomSnapshot@{ snapshot ->
+                        btnRecoverRoom.isEnabled = true
+                        if (!snapshot.exists()) {
+                            OnlineRoomRecovery.clear(this)
+                            showRecoveredRoom(null)
+                            Toast.makeText(this, "La sala ya no existe.", Toast.LENGTH_LONG).show()
+                            return@roomSnapshot
+                        }
+                        val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
+                        when (OnlineRecoveryGate.targetForRoomState(state)) {
+                            OnlineRecoveryTarget.LOBBY -> openRecoveredLobby(room, snapshot)
+                            OnlineRecoveryTarget.GAMEPLAY -> openRecoveredGameplay(room, snapshot)
+                            OnlineRecoveryTarget.CLEAR -> {
+                                OnlineRoomRecovery.clear(this)
+                                showRecoveredRoom(null)
+                                Toast.makeText(this, "La sala ya termino o fue abandonada.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    .addOnFailureListener { error ->
+                        btnRecoverRoom.isEnabled = true
+                        showRecoveredRoom(room)
+                        OnlineDebugLog.e("recover_room_open_failure roomId=${room.roomId}", error)
+                        Toast.makeText(
+                            this,
+                            OnlineErrorMessages.forAction("No se pudo reingresar", error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
             }
     }
 
@@ -689,16 +726,29 @@ class OnlineModeActivity : BaseActivity() {
         publicId: String? = null
     ) {
         if (publicId == null) {
-            PlayerPublicIdentity.ensurePublicId(
-                context = this,
-                firestore = firestore,
-                onReady = { resolvedPublicId ->
-                    joinOnlineRoom(roomId, roomName, roomCode, mapKey, dialog, joinButton, resolvedPublicId)
-                },
-                onFailure = { error ->
-                    OnlineDebugLog.e("public_id_join_room_fallback roomId=$roomId", error)
+            OnlineTempIdentity.ensureAuthenticated(this)
+                .addOnSuccessListener {
+                    PlayerPublicIdentity.ensurePublicId(
+                        context = this,
+                        firestore = firestore,
+                        onReady = { resolvedPublicId ->
+                            joinOnlineRoom(roomId, roomName, roomCode, mapKey, dialog, joinButton, resolvedPublicId)
+                        },
+                        onFailure = { error ->
+                            OnlineDebugLog.e("public_id_join_room_fallback roomId=$roomId", error)
+                        }
+                    )
                 }
-            )
+                .addOnFailureListener { error ->
+                    OnlineDebugLog.e("auth_join_room_failure roomId=$roomId", error)
+                    joinButton.isEnabled = true
+                    joinButton.text = "UNIRSE"
+                    Toast.makeText(
+                        this,
+                        OnlineErrorMessages.forAction("No se pudo preparar el ingreso online", error),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             return
         }
         val playerName = OnlineRoomFirestore.normalizedPlayerName(

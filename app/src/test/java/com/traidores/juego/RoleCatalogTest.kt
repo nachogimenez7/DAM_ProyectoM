@@ -34,8 +34,8 @@ class RoleCatalogTest {
 
         assertTrue(function.contains("molesta", ignoreCase = true))
         assertTrue(function.contains("interrumpe", ignoreCase = true))
-        assertTrue(function.contains("unica condicion de victoria", ignoreCase = true))
-        assertTrue(function.contains("durante la votacion", ignoreCase = true))
+        assertTrue(function.contains("única condición de victoria", ignoreCase = true))
+        assertTrue(function.contains("durante la votación", ignoreCase = true))
     }
 
     @Test

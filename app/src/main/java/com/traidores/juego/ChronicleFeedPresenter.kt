@@ -1,7 +1,5 @@
 package com.traidores.juego
 
-import java.text.Normalizer
-
 enum class ChronicleEntryKind {
     PLAYER,
     DEATH,
@@ -77,9 +75,11 @@ object ChronicleFeedPresenter {
         val round = roundFor(text)
         val kind = when {
             "victoria especial" in lower || "bufon" in lower -> ChronicleEntryKind.SPECIAL_VICTORY
+            ("murio" in lower || "asesin" in lower) &&
+                "no murio" !in lower &&
+                "nadie murio" !in lower -> ChronicleEntryKind.DEATH
+            "silenci" in lower || "mudo" in lower || "no puede hablar" in lower -> ChronicleEntryKind.SILENCE
             "nadie murio" in lower || "amanec" in lower -> ChronicleEntryKind.DAWN
-            "murio" in lower || "asesin" in lower -> ChronicleEntryKind.DEATH
-            "silenci" in lower || "mudo" in lower -> ChronicleEntryKind.SILENCE
             "desempate" in lower || "empate" in lower -> ChronicleEntryKind.TIE
             "expuls" in lower -> ChronicleEntryKind.EXPULSION
             "votacion" in lower || "voto" in lower -> ChronicleEntryKind.VOTE
@@ -103,9 +103,7 @@ object ChronicleFeedPresenter {
     }
 
     private fun normalizeText(text: String): String {
-        return Normalizer.normalize(text, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .lowercase()
+        return GameplayTextMarkers.normalize(text)
     }
 
     private fun dayDivider(round: Int): ChronicleEntry {

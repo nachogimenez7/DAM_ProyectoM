@@ -407,18 +407,18 @@ class GameplayTableUiTest {
         assertEquals("2 protecciones", summary.humanHighlight)
         assertEquals(
             listOf(
-                "Dia 1: murio Objetivo; se silencio a Rival.",
-                "Dia 2: no murio nadie; nadie fue silenciado.",
-                "Dia 3: no murio nadie; nadie fue silenciado.",
-                "Dia 4: no murio nadie; nadie fue silenciado."
+                "Día 1: murió Objetivo; se silenció a Rival.",
+                "Día 2: no murió nadie; nadie fue silenciado.",
+                "Día 3: no murió nadie; nadie fue silenciado.",
+                "Día 4: no murió nadie; nadie fue silenciado."
             ),
             summary.daySummaries
         )
         assertEquals(
             listOf(
-                "Dia 1: murio Objetivo.",
-                "Dia 1: Rival fue silenciado.",
-                "Dia 2: no murio nadie."
+                "Día 1: murió Objetivo.",
+                "Día 1: Rival fue silenciado.",
+                "Día 2: no murió nadie."
             ),
             summary.keyMoments
         )
@@ -442,16 +442,16 @@ class GameplayTableUiTest {
 
         assertEquals(
             listOf(
-                "Dia 1: no murio nadie; nadie fue silenciado; nadie fue expulsado; hubo empate.",
-                "Dia 2: no murio nadie; nadie fue silenciado; se expulso a Valen; victoria especial del Bufon."
+                "Día 1: no murió nadie; nadie fue silenciado; nadie fue expulsado; hubo empate.",
+                "Día 2: no murió nadie; nadie fue silenciado; se expulsó a Valen; victoria especial del Bufón."
             ),
             summary.daySummaries
         )
         assertEquals(
             listOf(
-                "Dia 1: hubo empate en la votacion.",
-                "Dia 2: Valen fue expulsado.",
-                "Dia 2: victoria especial del Bufon."
+                "Día 1: hubo empate en la votación.",
+                "Día 2: Valen fue expulsado.",
+                "Día 2: victoria especial del Bufón."
             ),
             summary.keyMoments
         )
@@ -499,7 +499,7 @@ class GameplayTableUiTest {
             GameplayTableUi.gameSummary(desertor, desertor.startedAtEpochMs).humanHighlight
         )
         assertEquals(
-            "Invocacion utilizada",
+            "Invocación utilizada",
             GameplayTableUi.gameSummary(oracle, oracle.startedAtEpochMs).humanHighlight
         )
     }
@@ -657,13 +657,14 @@ class GameplayTableUiTest {
         assertEquals("INVESTIGAR", GameplayTableUi.confirmedTargetActionLabel(detective, "Objetivo"))
         assertEquals("SALVAR", GameplayTableUi.confirmedTargetActionLabel(medic, "Objetivo"))
         assertEquals("VOTAR", GameplayTableUi.confirmedTargetActionLabel(voting, "Objetivo"))
-        assertEquals("SENALAR", GameplayTableUi.confirmedTargetActionLabel(payador, "Objetivo"))
+        assertEquals("SEÑALAR", GameplayTableUi.confirmedTargetActionLabel(payador, "Objetivo"))
         assertEquals("DECIDIR", GameplayTableUi.confirmedTargetActionLabel(mayor, "Objetivo"))
         assertEquals(listOf("Objetivo"), GameplayTableUi.validHumanTargets(assassin).map { it.name })
 
         assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR"))
         assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("MATAR A MORA"))
-        assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("VICTIMA"))
+        assertEquals(GameplayActionTone.KILL, GameplayTableUi.actionToneFor("VÍCTIMA"))
+        assertEquals(GameplayActionTone.CONTRAPUNTO, GameplayTableUi.actionToneFor("SEÑALAR"))
         assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("SALVARME"))
         assertEquals(GameplayActionTone.SAVE, GameplayTableUi.actionToneFor("PROTEGER A NACHO"))
         assertEquals(GameplayActionTone.INVESTIGATE, GameplayTableUi.actionToneFor("INVESTIGAR"))
@@ -731,7 +732,7 @@ class GameplayTableUiTest {
             GameplayTableUi.centralPhaseMessage(assassinTurn, "Texto de respaldo")
         )
         assertEquals(
-            "Debatan, comparen versiones y preparen la votacion.",
+            "Debatan, comparen versiones y preparen la votación.",
             GameplayTableUi.centralPhaseMessage(debate, "Texto de respaldo")
         )
         assertFalse(
