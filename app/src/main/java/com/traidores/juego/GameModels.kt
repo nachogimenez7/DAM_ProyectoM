@@ -350,11 +350,10 @@ object GameRules {
 
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
         if (desertor != null && session.desertorTeam.isBlank()) return ""
-        val desertorSupportsTown = desertor != null && session.desertorTeam == TOWN_WINNER
         val traitors = alive.count { isTraitorRole(it.role) }
-        val town = alive.count { it.role?.team == TOWN_WINNER } + if (desertorSupportsTown) 1 else 0
+        val townForParity = alive.count { it.role?.team == TOWN_WINNER || it.role?.key == "desertor" }
         return when {
-            traitors >= town -> TRAITOR_WINNER
+            traitors >= townForParity -> TRAITOR_WINNER
             else -> ""
         }
     }

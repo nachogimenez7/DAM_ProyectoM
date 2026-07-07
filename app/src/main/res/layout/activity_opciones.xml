@@ -244,30 +244,6 @@
                     android:textSize="17sp"
                     android:textStyle="italic" />
 
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switchGameplayVerticalDev"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="14dp"
-                    android:fontFamily="sans-serif"
-                    android:gravity="center_vertical"
-                    android:text="Modo vertical de gameplay"
-                    android:textColor="@color/text_primary"
-                    android:textSize="17sp"
-                    android:thumb="@drawable/switch_thumb_traidores"
-                    android:track="@drawable/switch_track_traidores"
-                    app:showText="false" />
-
-                <TextView
-                    android:id="@+id/descGameplayVerticalDev"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="sans-serif"
-                    android:text="Activado por defecto. Desactivalo para jugar en horizontal."
-                    android:textColor="@color/text_muted"
-                    android:textSize="14sp" />
-
             </LinearLayout>
 
             <TextView

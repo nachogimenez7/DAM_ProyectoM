@@ -3,7 +3,6 @@ package com.traidores.juego
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -2184,15 +2183,6 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(4), dp(10), dp(4), dp(4))
         }
 
-        val portraitSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Modo retrato"
-            isChecked = preferences.getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(10), dp(4), dp(4))
-        }
-
         val textSizeLabel = TextView(this).apply {
             setTextColor(getColor(R.color.text_secondary))
             textSize = 12f
@@ -2237,15 +2227,6 @@ class LobbyActivity : BaseActivity() {
             preferences.edit().putBoolean(PREF_VIBRATION_ON, enabled).apply()
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
-        portraitSwitch.setOnCheckedChangeListener { _, enabled ->
-            preferences.edit().putBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, enabled).apply()
-            requestedOrientation = if (enabled) {
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
-            GameplayEffects.play(this, GameplayEffect.CONFIRM)
-        }
         musicSeek.setOnSeekBarChangeListener(lobbyVolumeListener(AudioPreferences.MUSIC_VOLUME) {
             refreshAudioRows()
             MusicManager.refresh(this)
@@ -2261,7 +2242,6 @@ class LobbyActivity : BaseActivity() {
         content.addView(effectsLabel)
         content.addView(effectsSeek)
         content.addView(vibrationSwitch)
-        content.addView(portraitSwitch)
         content.addView(textSizeLabel)
         val textSizeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL

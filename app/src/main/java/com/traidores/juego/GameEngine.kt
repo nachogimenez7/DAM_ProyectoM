@@ -368,9 +368,11 @@ object GameEngine {
             dawnDeathMessage(session, victim)
         }
 
+        val silencePrevented = session.nightSilenceTarget.isNotBlank() &&
+            session.nightSilenceTarget == session.protectedPlayer
         var silenceApplied = false
         updatedPlayers = updatedPlayers.map { player ->
-            if (player.name == session.nightSilenceTarget && player.alive) {
+            if (!silencePrevented && player.name == session.nightSilenceTarget && player.alive) {
                 silenceApplied = true
                 player.copy(muted = true, lastSilencedRound = session.round)
             } else {

@@ -9,9 +9,12 @@ import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
@@ -53,19 +56,9 @@ import android.view.animation.DecelerateInterpolator
 import java.util.ArrayDeque
 import kotlin.math.ceil
 
-private data class RevealInset(
-    val left: Int,
-    val top: Int,
-    val right: Int,
-    val bottom: Int
-)
-
-private data class RevealPanelInsets(
-    val death: RevealInset = RevealInset(56, 50, 56, 48),
-    val silence: RevealInset = RevealInset(50, 60, 50, 48),
-    val noDeath: RevealInset = RevealInset(42, 66, 42, 42),
-    val voteResult: RevealInset = RevealInset(46, 60, 46, 42),
-    val privateFeedback: RevealInset = RevealInset(52, 56, 52, 50)
+private data class RevealPanelTheme(
+    val frame: Int,
+    val innerColor: Int
 )
 
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
@@ -723,6 +716,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             cards = traitorRevealCards,
             handler = autoAdvanceHandler
         )
+        applyTraitorRevealOverlayTheme()
         btnContinueJesterVictory = findViewById(R.id.btnContinueJesterVictory)
         jesterConfettiLayer = findViewById(R.id.jesterConfettiLayer)
         jesterHornLeft = findViewById(R.id.jesterHornLeft)
@@ -3362,60 +3356,113 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun applyRevealOverlayTheme() {
-        val frame = revealPanelBackgroundForMap(session.mapKey)
-        val insets = revealInsetsForMap(session.mapKey)
-        // Reveals grandes: marco ornamental (xxhdpi). El contenido se insetea para caer dentro
-        // del centro oscuro de cada marco. Grecia necesita mas aire por columnas/laurel.
-        deathRevealContent.setBackgroundResource(frame)
-        deathRevealContent.applyRevealPadding(insets.death)
-        silenceRevealContent.setBackgroundResource(frame)
-        silenceRevealContent.applyRevealPadding(insets.silence)
-        noDeathRevealContent.setBackgroundResource(frame)
-        noDeathRevealContent.applyRevealPadding(insets.noDeath)
-        voteResultPanel.setBackgroundResource(frame)
-        voteResultPanel.applyRevealPadding(insets.voteResult)
-        // Ventana de info privada: usa el mismo marco ornamental por mapa que los reveals.
-        privateFeedbackPanel.setBackgroundResource(frame)
-        privateFeedbackPanel.applyRevealPadding(insets.privateFeedback)
-    }
-
-    private fun View.applyRevealPadding(inset: RevealInset) {
-        setPadding(dp(inset.left), dp(inset.top), dp(inset.right), dp(inset.bottom))
-    }
-
-    private fun revealInsetsForMap(mapKey: String): RevealPanelInsets {
-        return when (mapKey) {
-            "grecia" -> RevealPanelInsets(
-                death = RevealInset(72, 74, 72, 58),
-                silence = RevealInset(70, 82, 70, 58),
-                noDeath = RevealInset(66, 88, 66, 56),
-                voteResult = RevealInset(70, 88, 70, 56),
-                privateFeedback = RevealInset(70, 78, 70, 58)
+        val panelTheme = revealPanelThemeForMap(session.mapKey)
+        // Los 9-patch de marco estan recortados al arte y declaran su hueco interior
+        // real como padding. Panel oscuro y padding de contenido se derivan de ahi:
+        // una sola fuente de verdad, sin numeros calibrados a mano.
+        listOf(
+            deathRevealContent,
+            silenceRevealContent,
+            noDeathRevealContent,
+            voteResultPanel,
+            privateFeedbackPanel
+        ).forEach { panel ->
+            val framePadding = Rect()
+            panel.background = createRevealPanelBackground(panelTheme, framePadding)
+            val greekFrame = session.mapKey == "grecia"
+            val pampaSilenceFrame = session.mapKey == "pampa" && panel == silenceRevealContent
+            panel.setPadding(
+                framePadding.left + dp(6),
+                framePadding.top + if (greekFrame) dp(18) else dp(4),
+                framePadding.right + dp(6),
+                framePadding.bottom + when {
+                    greekFrame -> dp(12)
+                    pampaSilenceFrame -> dp(20)
+                    else -> dp(4)
+                }
             )
-            "medieval" -> RevealPanelInsets(
-                death = RevealInset(66, 64, 66, 54),
-                silence = RevealInset(62, 74, 62, 54),
-                noDeath = RevealInset(58, 80, 58, 50),
-                voteResult = RevealInset(60, 76, 60, 50),
-                privateFeedback = RevealInset(62, 70, 62, 56)
-            )
-            "pampa" -> RevealPanelInsets(
-                death = RevealInset(64, 60, 64, 52),
-                silence = RevealInset(58, 70, 58, 52),
-                noDeath = RevealInset(54, 76, 54, 48),
-                voteResult = RevealInset(56, 72, 56, 48),
-                privateFeedback = RevealInset(60, 66, 60, 54)
-            )
-            else -> RevealPanelInsets()
+            if (greekFrame) panel.applyRevealTextShadow()
         }
     }
 
-    private fun revealPanelBackgroundForMap(mapKey: String): Int {
+    private fun applyTraitorRevealOverlayTheme() {
+        val framePadding = Rect()
+        traitorRevealContent.background = createRevealPanelBackground(
+            revealPanelThemeForMap(session.mapKey),
+            framePadding
+        )
+        traitorRevealContent.setPadding(
+            framePadding.left + dp(18),
+            framePadding.top + dp(24),
+            framePadding.right + dp(18),
+            framePadding.bottom + dp(22)
+        )
+        if (session.mapKey == "grecia") {
+            traitorRevealContent.applyRevealTextShadow()
+        }
+    }
+
+    private fun createRevealPanelBackground(
+        panelTheme: RevealPanelTheme,
+        outFramePadding: Rect
+    ): LayerDrawable {
+        val inner = ResourcesCompat.getDrawable(
+            resources,
+            R.drawable.bg_reveal_inner_panel,
+            theme
+        )?.mutate() ?: ColorDrawable(panelTheme.innerColor)
+        inner.setTint(panelTheme.innerColor)
+        val frame = ResourcesCompat.getDrawable(resources, panelTheme.frame, theme)?.mutate()
+            ?: ColorDrawable(Color.TRANSPARENT)
+        if (!frame.getPadding(outFramePadding) || outFramePadding.left <= 0) {
+            outFramePadding.set(dp(12), dp(12), dp(12), dp(12))
+        }
+        // El panel oscuro se mete unos dp por debajo del labio del marco para sellar
+        // la union sin asomar nunca por fuera del arte.
+        val overlap = dp(10)
+        return LayerDrawable(
+            arrayOf(
+                InsetDrawable(
+                    inner,
+                    (outFramePadding.left - overlap).coerceAtLeast(0),
+                    (outFramePadding.top - overlap).coerceAtLeast(0),
+                    (outFramePadding.right - overlap).coerceAtLeast(0),
+                    (outFramePadding.bottom - overlap).coerceAtLeast(0)
+                ),
+                frame
+            )
+        )
+    }
+
+    private fun revealPanelThemeForMap(mapKey: String): RevealPanelTheme {
         return when (mapKey) {
-            "grecia" -> R.drawable.ui_frame_event_grecia
-            "medieval" -> R.drawable.ui_frame_event_medieval
-            "pampa" -> R.drawable.ui_frame_event_pampa
-            else -> R.drawable.bg_reveal_event_panel
+            "grecia" -> RevealPanelTheme(
+                frame = R.drawable.ui_frame_event_grecia,
+                innerColor = Color.parseColor("#EB080A10")
+            )
+            "medieval" -> RevealPanelTheme(
+                frame = R.drawable.ui_frame_event_medieval,
+                innerColor = Color.parseColor("#F0060708")
+            )
+            "pampa" -> RevealPanelTheme(
+                frame = R.drawable.ui_frame_event_pampa,
+                innerColor = Color.parseColor("#EC120C07")
+            )
+            else -> RevealPanelTheme(
+                frame = R.drawable.bg_reveal_event_panel,
+                innerColor = Color.parseColor("#EA08090D")
+            )
+        }
+    }
+
+    private fun View.applyRevealTextShadow() {
+        if (this is TextView) {
+            setShadowLayer(4f, 0f, 1.5f, Color.BLACK)
+        }
+        if (this is ViewGroup) {
+            for (index in 0 until childCount) {
+                getChildAt(index).applyRevealTextShadow()
+            }
         }
     }
 
@@ -6179,21 +6226,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val playerName = TextView(this)
         playerName.text = player.name
         playerName.gravity = Gravity.CENTER
+        playerName.includeFontPadding = false
         playerName.maxLines = 1
         playerName.ellipsize = TextUtils.TruncateAt.END
         playerName.setTextColor(getColor(R.color.accent_gold))
-        playerName.textSize = 13f
+        playerName.textSize = 14f
         playerName.setTypeface(null, Typeface.BOLD)
         val nameParams = LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
-        nameParams.topMargin = dp(5)
+        nameParams.topMargin = dp(7)
         container.addView(playerName, nameParams)
 
         val roleLabel = TextView(this)
         roleLabel.text = player.role?.name?.uppercase() ?: ""
         roleLabel.gravity = Gravity.CENTER
+        roleLabel.includeFontPadding = false
         roleLabel.maxLines = 1
         roleLabel.setTextColor(getColor(R.color.text_secondary))
-        roleLabel.textSize = 10f
+        roleLabel.textSize = 11.5f
         container.addView(
             roleLabel,
             LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -6322,8 +6371,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun usesVerticalGameplayBackgrounds(): Boolean {
-        return getSharedPreferences(AudioPreferences.PREFS_NAME, MODE_PRIVATE)
-            .getBoolean(BaseActivity.PREF_GAMEPLAY_VERTICAL_DEV, true)
+        // El juego es vertical: se elimino el modo horizontal legacy y su preferencia.
+        return true
     }
 
     private fun logDrawableFor(theme: String): Int {

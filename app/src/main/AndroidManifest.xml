@@ -25,12 +25,12 @@
         <activity android:name=".JugarActivity" android:screenOrientation="portrait" />
         <activity android:name=".LocalModeActivity" android:screenOrientation="portrait" />
         <activity android:name=".OnlineModeActivity" android:screenOrientation="portrait" />
-        <activity android:name=".LobbyBrowserActivity" android:screenOrientation="unspecified" />
-        <activity android:name=".LobbyActivity" android:screenOrientation="unspecified" />
-        <activity android:name=".AssigningRolesActivity" android:screenOrientation="unspecified" />
+        <activity android:name=".LobbyBrowserActivity" android:screenOrientation="portrait" />
+        <activity android:name=".LobbyActivity" android:screenOrientation="portrait" />
+        <activity android:name=".AssigningRolesActivity" android:screenOrientation="portrait" />
         <activity
             android:name=".GameplayMockActivity"
-            android:screenOrientation="unspecified"
+            android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RolesActivity" android:screenOrientation="portrait" />
         <activity android:name=".AyudaActivity" android:screenOrientation="portrait" />

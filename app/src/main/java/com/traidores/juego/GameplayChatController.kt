@@ -11,6 +11,7 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -469,7 +470,7 @@ class GameplayChatController(
         val containerHeight = centerColumn.height.takeIf { it > 0 }
             ?: root.height.takeIf { it > 0 }
             ?: host.dp(CHAT_PANEL_MAX_HEIGHT_DP)
-        val params = chatPanel.layoutParams as RelativeLayout.LayoutParams
+        val params = chatPanel.layoutParams
         val widthRatio = if (isChatKeyboardCompact) {
             CHAT_PANEL_COMPACT_WIDTH_RATIO
         } else {
@@ -492,10 +493,17 @@ class GameplayChatController(
                 host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_HEIGHT_DP else CHAT_PANEL_MIN_HEIGHT_DP),
                 host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_HEIGHT_DP else CHAT_PANEL_MAX_HEIGHT_DP)
             )
-        params.topMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
-        params.bottomMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
-        params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
-        params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+        (params as? ViewGroup.MarginLayoutParams)?.apply {
+            topMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
+            bottomMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
+        }
+        (params as? RelativeLayout.LayoutParams)?.apply {
+            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
+            addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+        }
+        (params as? FrameLayout.LayoutParams)?.apply {
+            gravity = Gravity.CENTER
+        }
         chatPanel.layoutParams = params
         chatPanelContent.setPadding(
             host.dp(if (isChatKeyboardCompact) 7 else 10),
@@ -521,7 +529,7 @@ class GameplayChatController(
     }
 
     private fun applyChatSheetDimensionsPortrait() {
-        val params = chatPanel.layoutParams as RelativeLayout.LayoutParams
+        val params = chatPanel.layoutParams
         val heightRatio = if (isChatKeyboardCompact) {
             CHAT_SHEET_COMPACT_HEIGHT_RATIO
         } else {
@@ -531,12 +539,19 @@ class GameplayChatController(
             .coerceAtLeast(host.dp(210))
         params.height = host.dp((root.resources.configuration.screenHeightDp * heightRatio).toInt())
             .coerceIn(host.dp(CHAT_SHEET_MIN_HEIGHT_DP), host.dp(CHAT_SHEET_MAX_HEIGHT_DP))
-        params.marginStart = 0
-        params.marginEnd = 0
-        params.topMargin = 0
-        params.bottomMargin = 0
-        params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
-        params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+        (params as? ViewGroup.MarginLayoutParams)?.apply {
+            marginStart = 0
+            marginEnd = 0
+            topMargin = 0
+            bottomMargin = 0
+        }
+        (params as? RelativeLayout.LayoutParams)?.apply {
+            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
+            addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+        }
+        (params as? FrameLayout.LayoutParams)?.apply {
+            gravity = Gravity.CENTER
+        }
         chatPanel.layoutParams = params
         chatPanelContent.setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
         chatHeader.layoutParams = chatHeader.layoutParams.apply {

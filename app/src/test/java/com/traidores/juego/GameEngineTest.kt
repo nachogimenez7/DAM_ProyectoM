@@ -2747,6 +2747,43 @@ class GameEngineTest {
     }
 
     @Test
+    fun desertorSupportingTraitorsStillCountsAsLivingOppositionForParity() {
+        val players = listOf(
+            GamePlayer("Humano", "H", role = role("desertor", "Desertor", "Neutral"), isHuman = true),
+            GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+            GamePlayer("Mercenario", "R", role = role("mercenario", "Mercenario", "Traidores")),
+            GamePlayer("Espia", "E", role = role("espia", "Espia", "Traidores")),
+            GamePlayer("Policia", "P", role = role("policia", "Comisario", "Pueblo")),
+            GamePlayer("Medico", "M", role = role("medico", "Medico", "Pueblo")),
+            GamePlayer("Alcalde", "L", role = role("alcalde", "Alcalde", "Pueblo")),
+            GamePlayer("Aldeano1", "1", role = role("aldeano", "Aldeano", "Pueblo"), alive = false),
+            GamePlayer("Aldeano2", "2", role = role("aldeano", "Aldeano", "Pueblo"), alive = false),
+            GamePlayer("Payador", "Y", role = role("payador", "Payador", "Pueblo"), alive = false)
+        )
+
+        val session = GameSession(
+            code = "DESERTOR-10",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = players,
+            desertorTeam = GameRules.TRAITOR_WINNER,
+            initialPlayerCount = 10
+        )
+
+        assertEquals("", GameRules.winnerFor(session))
+        assertEquals(
+            GameRules.TRAITOR_WINNER,
+            GameRules.winnerFor(
+                session.copy(
+                    players = players.map {
+                        if (it.name == "Alcalde") it.copy(alive = false) else it
+                    }
+                )
+            )
+        )
+    }
+
+    @Test
     fun spyResolvesKillWhenNoAssassinIsAlive() {
         val base = sessionWithHumanAdvancedRole("espia").copy(phase = GamePhase.NOCHE_ASESINO)
         val session = base.copy(
@@ -2905,6 +2942,22 @@ class GameEngineTest {
         assertFalse(victim!!.alive)
         assertFalse(victim.muted)
         assertFalse(dawn.publicAnnouncement.contains("no puede hablar"))
+    }
+
+    @Test
+    fun medicProtectionPreventsMercenarySilenceOnSameTarget() {
+        val session = sessionWithHumanAdvancedRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            nightSilenceTarget = "Policia"
+        )
+
+        val protectedByMedic = GameEngine.resolveMedic(session, "Policia")
+        val dawn = GameEngine.resolveDawn(protectedByMedic.copy(phase = GamePhase.AMANECER))
+        val protected = GameEngine.playerByName(dawn, "Policia")
+
+        assertTrue(protected!!.alive)
+        assertFalse(protected.muted)
+        assertFalse(dawn.publicAnnouncement.contains("Policia no puede hablar"))
     }
 
     @Test

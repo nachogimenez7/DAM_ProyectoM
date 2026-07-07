@@ -208,7 +208,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginHorizontal="120dp"
+            android:layout_marginHorizontal="32dp"
             android:elevation="14dp">
 
             <View
@@ -231,7 +231,6 @@
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="12dp"
                     android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_reveal_text_shade"
                     android:gravity="center"
                     android:orientation="vertical"
                     android:paddingHorizontal="16dp"
@@ -310,7 +309,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:layout_marginHorizontal="40dp"
+            android:layout_marginHorizontal="24dp"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -487,7 +486,6 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_reveal_text_shade"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:includeFontPadding="false"
@@ -564,11 +562,15 @@
                 android:id="@+id/silenceRevealPlayerName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginHorizontal="22dp"
+                android:layout_marginTop="0dp"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:includeFontPadding="false"
                 android:maxLines="1"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="2dp"
                 android:text="MARTINA"
                 android:textColor="@color/text_primary"
                 android:textSize="19sp"
@@ -577,10 +579,14 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginHorizontal="22dp"
+                android:layout_marginTop="0dp"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:includeFontPadding="false"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="6dp"
                 android:text="No puede hablar ni votar durante el dia"
                 android:textColor="@color/text_muted"
                 android:textSize="12sp" />
@@ -611,7 +617,6 @@
                 android:layout_gravity="center_horizontal"
                 android:layout_marginHorizontal="18dp"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_reveal_text_shade"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:includeFontPadding="false"
@@ -646,7 +651,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="18dp"
                 android:layout_marginTop="9dp"
-                android:background="@drawable/bg_reveal_text_shade"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:paddingHorizontal="14dp"
@@ -890,31 +894,38 @@
             android:paddingBottom="14dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
                 android:text="TUS COMPAÑEROS TRAIDORES"
                 android:textColor="@color/accent_gold"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textSize="21sp"
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="21sp"
+                app:autoSizeMinTextSize="17sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
 
             <LinearLayout
                 android:id="@+id/traitorRevealCards"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="14dp"
                 android:gravity="center"
                 android:orientation="horizontal" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="16dp"
                 android:fontFamily="sans-serif"
+                android:includeFontPadding="false"
                 android:text="Toca para continuar"
-                android:textColor="@color/text_muted"
-                android:textSize="12sp" />
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
         </LinearLayout>
     </FrameLayout>
 
@@ -1288,7 +1299,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="14dp"
                 android:layout_marginTop="6dp"
-                android:background="@drawable/bg_reveal_text_shade"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:paddingHorizontal="10dp"
