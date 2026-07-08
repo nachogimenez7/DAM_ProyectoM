@@ -3029,6 +3029,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
 
+        // Sonido del emote (humano y bots): canal único con "el último gana" + throttle.
+        EmoteSoundEffects.play(this, spec.key)
+
         activeReactionBubbles.remove(playerName)?.let { oldBubble ->
             oldBubble.animate().cancel()
             (oldBubble.parent as? ViewGroup)?.removeView(oldBubble)

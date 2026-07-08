@@ -14,6 +14,16 @@ El usuario ya generó y dejó los SFX en `app/src/main/res/raw/` (mono, `.mp3`).
 
 ---
 
+## ✅ ESTADO: sonidos de emote (jul 2026)
+Voces cortas estilo Clash Royale (hombre adulto cartoon, secas/limpias), **una por emoción** reutilizada en los tres temas (aldeano/asesino/detective) y en todos los mapas. Archivos en `app/src/main/res/raw/`:
+`sfx_emote_happy` (wujuu), `sfx_emote_sad` (llanto), `sfx_emote_suspicious` (mmm de detective), `sfx_emote_angry` (gruñido con dientes apretados).
+
+**Reproducción — canal aparte de `GameplaySoundEffects`:** los emotes usan `EmoteSoundEffects` (nuevo), un **canal único con "el último gana"** (un emote nuevo corta al anterior en vez de apilarse) + **throttle** de ~300ms. Así una avalancha de emotes (p. ej. muchos jugadores online reaccionando juntos) no ametralla ni superpone 15 audios. Respeta efectos on/off + volumen vía `AudioPreferences`.
+
+**Cableado:** disparo único en `GameplayMockActivity.showReactionBubble(...)` resuelto por `spec.key` (`happy/sad/suspicious/angry`) → cubre humano y bots con un solo punto, y queda listo para emotes online cuando se sincronicen. El feedback háptico del emote sigue siendo solo del humano (`GameplayEffect.EMOTE`).
+
+---
+
 # PARTE 1 — Lista de audio a conseguir (para Ignacio) — YA COMPLETADA
 
 Bajar de bancos **libres / CC0** para evitar problemas de licencia en una app publicada: [freesound.org](https://freesound.org) (filtrar License = "Creative Commons 0"), [Pixabay Sound Effects](https://pixabay.com/sound-effects/), [mixkit](https://mixkit.co/free-sound-effects/).
