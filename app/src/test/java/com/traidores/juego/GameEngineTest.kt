@@ -2295,6 +2295,42 @@ class GameEngineTest {
     }
 
     @Test
+    fun humanDayPressureBonusOnlyAppliesOnHardAndScalesWithRounds() {
+        val base = baseSession()
+
+        assertEquals(0, humanDayPressureBonus(base.copy(botDifficulty = BotDifficulty.NORMAL, round = 1)))
+        assertEquals(4, humanDayPressureBonus(base.copy(botDifficulty = BotDifficulty.HARD, round = 1)))
+        assertEquals(8, humanDayPressureBonus(base.copy(botDifficulty = BotDifficulty.HARD, round = 3)))
+        assertEquals(14, humanDayPressureBonus(base.copy(botDifficulty = BotDifficulty.HARD, round = 9)))
+    }
+
+    @Test
+    fun humanNightPressureChanceUsesConfiguredDifficultyTable() {
+        val base = baseSession()
+
+        assertEquals(5, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.NORMAL, round = 1)))
+        assertEquals(17, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.NORMAL, round = 5)))
+        assertEquals(20, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.NORMAL, round = 9)))
+        assertEquals(12, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.HARD, round = 1)))
+        assertEquals(40, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.HARD, round = 5)))
+        assertEquals(45, humanPressureChancePercent(base.copy(botDifficulty = BotDifficulty.HARD, round = 9)))
+    }
+
+    @Test
+    fun hardDifficultyPressuresUnreadHumanButNormalDoesNot() {
+        val base = baseSession().copy(round = 3, chatHistory = emptyList(), publicHistory = emptyList())
+        val voter = base.players.first { it.role?.key == RoleCatalog.ASESINO }
+        val human = GameEngine.humanPlayer(base)
+
+        val normalRead = scoreCandidate(base.copy(botDifficulty = BotDifficulty.NORMAL), voter, human, emptySet())
+        val hardRead = scoreCandidate(base.copy(botDifficulty = BotDifficulty.HARD), voter, human, emptySet())
+
+        assertFalse(normalRead.reasons.contains("esta poco leido"))
+        assertTrue(hardRead.reasons.contains("esta poco leido"))
+        assertTrue(hardRead.score > normalRead.score)
+    }
+
+    @Test
     fun botVotesFollowPublicSuspicionInsteadOfSecretInvestigation() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,
