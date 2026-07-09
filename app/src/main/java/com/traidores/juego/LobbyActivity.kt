@@ -14,7 +14,6 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import android.view.View
@@ -2134,169 +2133,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun showLobbyOptionsDialog() {
-        val preferences = AudioPreferences.preferences(this)
-        val content = dialogColumn()
-        content.addView(dialogTitle("OPCIONES"))
-
-        val musicSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Música"
-            isChecked = AudioPreferences.isMusicEnabled(preferences)
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(2), dp(4), dp(4))
-        }
-        val musicLabel = TextView(this).apply {
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 12f
-            setPadding(dp(4), 0, dp(4), dp(2))
-        }
-        val musicSeek = SeekBar(this).apply {
-            max = 100
-            progress = preferences.getInt(AudioPreferences.MUSIC_VOLUME, 80).coerceIn(0, 100)
-        }
-
-        val effectsSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Efectos"
-            isChecked = AudioPreferences.areEffectsEnabled(preferences)
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(10), dp(4), dp(4))
-        }
-        val effectsLabel = TextView(this).apply {
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 12f
-            setPadding(dp(4), 0, dp(4), dp(2))
-        }
-        val effectsSeek = SeekBar(this).apply {
-            max = 100
-            progress = preferences.getInt(AudioPreferences.EFFECTS_VOLUME, 80).coerceIn(0, 100)
-        }
-
-        val vibrationSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Vibración al interactuar"
-            isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(10), dp(4), dp(4))
-        }
-
-        val textSizeLabel = TextView(this).apply {
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 12f
-            setPadding(dp(4), dp(12), dp(4), dp(5))
-        }
-        var textSize = preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_GAMEPLAY_TEXT_SIZE).coerceIn(0, 2)
-        val textSizeButtons = mutableListOf<Button>()
-
-        fun refreshAudioRows() {
-            musicLabel.text = "Música: ${musicSeek.progress}%"
-            effectsLabel.text = "Efectos: ${effectsSeek.progress}%"
-            val musicAlpha = if (musicSwitch.isChecked) 1f else 0.42f
-            val effectsAlpha = if (effectsSwitch.isChecked) 1f else 0.42f
-            musicLabel.alpha = musicAlpha
-            musicSeek.alpha = musicAlpha
-            musicSeek.isEnabled = musicSwitch.isChecked
-            effectsLabel.alpha = effectsAlpha
-            effectsSeek.alpha = effectsAlpha
-            effectsSeek.isEnabled = effectsSwitch.isChecked
-            textSizeLabel.text = "Tamaño de texto: ${gameplayTextSizeLabel(textSize)}"
-            textSizeButtons.forEachIndexed { index, button ->
-                val selected = index == textSize
-                button.setBackgroundResource(
-                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
-                )
-                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
-                button.alpha = if (selected) 1f else 0.82f
-            }
-        }
-
-        musicSwitch.setOnCheckedChangeListener { _, enabled ->
-            preferences.edit().putBoolean(AudioPreferences.MUSIC_ENABLED, enabled).apply()
-            refreshAudioRows()
-            MusicManager.refresh(this)
-        }
-        effectsSwitch.setOnCheckedChangeListener { _, enabled ->
-            preferences.edit().putBoolean(AudioPreferences.EFFECTS_ENABLED, enabled).apply()
-            refreshAudioRows()
-            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
-        }
-        vibrationSwitch.setOnCheckedChangeListener { _, enabled ->
-            preferences.edit().putBoolean(PREF_VIBRATION_ON, enabled).apply()
-            if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
-        }
-        musicSeek.setOnSeekBarChangeListener(lobbyVolumeListener(AudioPreferences.MUSIC_VOLUME) {
-            refreshAudioRows()
-            MusicManager.refresh(this)
-        })
-        effectsSeek.setOnSeekBarChangeListener(lobbyVolumeListener(AudioPreferences.EFFECTS_VOLUME) {
-            refreshAudioRows()
-        })
-
-        content.addView(musicSwitch)
-        content.addView(musicLabel)
-        content.addView(musicSeek)
-        content.addView(effectsSwitch)
-        content.addView(effectsLabel)
-        content.addView(effectsSeek)
-        content.addView(vibrationSwitch)
-        content.addView(textSizeLabel)
-        val textSizeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        gameplayTextSizeOptions().forEachIndexed { index, label ->
-            val button = compactDialogButton(label).apply {
-                this.textSize = 12f
-                setOnClickListener {
-                    textSize = index
-                    preferences.edit().putInt(PREF_GAMEPLAY_TEXT_SIZE, textSize).apply()
-                    GameplayEffects.play(this@LobbyActivity, GameplayEffect.CONFIRM)
-                    refreshAudioRows()
-                }
-            }
-            textSizeButtons += button
-            textSizeRow.addView(
-                button,
-                LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                    if (index > 0) marginStart = dp(7)
-                }
-            )
-        }
-        content.addView(textSizeRow)
-        refreshAudioRows()
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(ScrollView(this).apply { addView(content) })
-            .setPositiveButton("CERRAR", null)
-            .create()
-        showLandscapeDialog(dialog, widthDp = 500)
-    }
-
-    private fun gameplayTextSizeOptions(): List<String> = listOf("Compacto", "Normal", "Grande")
-
-    private fun gameplayTextSizeLabel(index: Int): String {
-        return gameplayTextSizeOptions()[index.coerceIn(0, 2)]
-    }
-
-    private fun lobbyVolumeListener(
-        key: String,
-        onChanged: () -> Unit
-    ): SeekBar.OnSeekBarChangeListener {
-        return object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                AudioPreferences.preferences(this@LobbyActivity)
-                    .edit()
-                    .putInt(key, progress.coerceIn(0, 100))
-                    .apply()
-                onChanged()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-        }
+        AccessibilityOptionsDialog.show(this)
     }
 
     private fun roleLabel(roleKey: String): String {
@@ -2571,10 +2408,7 @@ class LobbyActivity : BaseActivity() {
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
-        private const val DEFAULT_ROLE_READING_SECONDS = 6
-        private const val PREF_VIBRATION_ON = "vibration_on"
-        private const val PREF_GAMEPLAY_TEXT_SIZE = "gameplay_text_size"
-        private const val DEFAULT_GAMEPLAY_TEXT_SIZE = 1
+        private const val DEFAULT_ROLE_READING_SECONDS = 0
     }
 
     private data class OnlineLobbyPlayer(

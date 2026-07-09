@@ -1,12 +1,21 @@
 package com.traidores.juego
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.content.Context
+import android.graphics.Color
+import android.graphics.Path
 import android.graphics.Typeface
 import android.os.Handler
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
@@ -27,19 +36,30 @@ class VoteResultAnimator(
     private val notice: TextView,
     private val continueButton: Button,
     private val boot: ImageView,
+    private val dust: ImageView,
     private val roleImageFor: (GameRole?) -> Int,
     private val dp: (Int) -> Int,
+    private val onImpact: (() -> Unit)? = null,
     private val onContinueReady: (() -> Unit)? = null
 ) {
     private companion object {
         const val RECOUNT_INITIAL_DELAY_MS = 420L
         const val RECOUNT_TOKEN_STEP_MS = 420L
         const val RECOUNT_FINAL_READ_MS = 700L
-        const val EXPULSION_NAME_READ_MS = 3_200L
-        const val REVEALED_CARD_READ_MS = 4_000L
-        const val EXPULSION_KICK_WINDUP_MS = 280L
-        const val BOOT_IMPACT_PAUSE_MS = 120L
-        const val EXPULSION_AFTER_KICK_READ_MS = 2_600L
+        const val EXPULSION_NAME_READ_MS = 1_500L
+        const val REVEALED_CARD_READ_MS = 1_700L
+        const val EXPULSION_KICK_WINDUP_MS = 120L
+        const val EXPULSION_SENTENCE_READ_MS = 700L
+        const val BOOT_ENTER_MS = 460L
+        const val BOOT_WINDUP_MS = 320L
+        const val BOOT_STRIKE_MS = 240L
+        const val BOOT_IMPACT_PAUSE_MS = 80L
+        const val EXPULSION_LAUNCH_MS = 720L
+        const val EXPULSION_AFTER_KICK_READ_MS = 1_700L
+        // Cuanto se mete la punta de la bota MAS ALLA del borde de la carta: un
+        // "zapatazo" en el borde, no un golpe que llegue hasta el centro.
+        const val BOOT_CONTACT_OVERLAP_DP = 18
+        const val BOOT_REBOUND_MS = 90L
         const val PANEL_MARGIN_HORIZONTAL_DP = 18
     }
 
@@ -55,11 +75,15 @@ class VoteResultAnimator(
         val roleImage: ImageView,
         val total: TextView,
         val voterTokens: GridLayout,
+        val seal: ImageView? = null,
         var count: Int = 0
     )
 
     private val scheduled = mutableListOf<Runnable>()
     private val cardHolders = linkedMapOf<String, VoteCardHolder>()
+    private var launchAnimator: AnimatorSet? = null
+    private var shakeAnimator: ObjectAnimator? = null
+    private var flashView: View? = null
 
     fun show(session: GameSession) {
         cancelAnimations()
@@ -73,6 +97,7 @@ class VoteResultAnimator(
         panel.scaleX = 0.96f
         panel.scaleY = 0.96f
         boot.visibility = View.INVISIBLE
+        dust.visibility = View.INVISIBLE
         continueButton.visibility = View.INVISIBLE
         continueButton.isEnabled = false
         continueButton.alpha = 0f
@@ -232,7 +257,8 @@ class VoteResultAnimator(
             .alpha(1f)
             .scaleX(1f)
             .scaleY(1f)
-            .setDuration(340L)
+            .setInterpolator(OvershootInterpolator(2.0f))
+            .setDuration(320L)
             .withEndAction {
                 if (session.revealRolesOnDeath) {
                     revealExpelledRoleBeforeKick(session, holder) {
@@ -263,16 +289,35 @@ class VoteResultAnimator(
 
     fun cancelAnimations() {
         cancelScheduled()
+        launchAnimator?.cancel()
+        launchAnimator = null
+        shakeAnimator?.cancel()
+        shakeAnimator = null
+        panel.translationX = 0f
+        flashView?.let { overlay.removeView(it) }
+        flashView = null
         panel.animate().cancel()
         continueButton.animate().cancel()
         boot.animate().cancel()
+        dust.animate().cancel()
+        dust.visibility = View.INVISIBLE
+        dust.alpha = 0f
         cardHolders.values.forEach { holder ->
             holder.root.animate().cancel()
             holder.root.alpha = 1f
             holder.root.translationX = 0f
+            holder.root.translationY = 0f
             holder.root.rotation = 0f
             holder.root.scaleX = 1f
             holder.root.scaleY = 1f
+            holder.seal?.apply {
+                animate().cancel()
+                visibility = View.GONE
+                alpha = 0f
+                rotation = 0f
+                scaleX = 1f
+                scaleY = 1f
+            }
         }
     }
 
@@ -300,7 +345,8 @@ class VoteResultAnimator(
                     .alpha(1f)
                     .scaleX(1f)
                     .scaleY(1f)
-                    .setDuration(260L)
+                    .setInterpolator(OvershootInterpolator(2.4f))
+                    .setDuration(300L)
                     .withEndAction(onRevealed)
                     .start()
             }
@@ -357,61 +403,260 @@ class VoteResultAnimator(
             "La carta de $targetName permanece oculta."
         }
         setNotice("La sentencia esta por cumplirse.")
+        stampSeal(holder)
+
+        // La bota espera fuera de cuadro, "cargada" (echada atras y girada).
+        boot.setImageResource(R.drawable.boot_windup)
         boot.visibility = View.VISIBLE
         boot.alpha = 1f
-        boot.translationX = overlay.width.toFloat()
-        boot.rotation = -14f
-        boot.scaleX = 1.08f
-        boot.scaleY = 1.08f
+        boot.translationX = overlay.width.toFloat() + dp(40)
+        boot.rotation = -26f
+        boot.scaleX = 1.12f
+        boot.scaleY = 1.12f
 
         val overlayLocation = IntArray(2)
         val holderLocation = IntArray(2)
         overlay.getLocationOnScreen(overlayLocation)
         holder.root.getLocationOnScreen(holderLocation)
-        val targetCenter = holderLocation[0] - overlayLocation[0] + holder.root.width / 2f
-        val bootTravel = targetCenter - overlay.width - dp(44)
-        boot.animate()
-            .translationX(bootTravel)
-            .rotation(-4f)
-            .scaleX(1.16f)
-            .scaleY(1.16f)
-            .setDuration(360L)
-            .withEndAction {
-                schedule(BOOT_IMPACT_PAUSE_MS) {
+        // El contacto apunta al BORDE derecho de la carta (no al centro): la bota
+        // solo "zapatea" un poco mas alla de ese borde, no atraviesa toda la carta.
+        val cardRightEdge = holderLocation[0] - overlayLocation[0] + holder.root.width
+        val bootTravel = cardRightEdge - overlay.width - dp(44) - dp(BOOT_CONTACT_OVERLAP_DP)
+        val cockedX = bootTravel + dp(150)
+
+        // La patada se lee en 3 tiempos para que se entienda (antes pasaba en un borron):
+        // Beat 1 — dejar leer la sentencia; despues la bota ENTRA a la vista, cargada.
+        schedule(EXPULSION_SENTENCE_READ_MS) {
+            boot.animate()
+                .translationX(cockedX.toFloat())
+                .rotation(-20f)
+                .setInterpolator(DecelerateInterpolator())
+                .setDuration(BOOT_ENTER_MS)
+                .withEndAction {
+                    // Beat 2 — pausa "cargada" mientras la carta se afirma (anticipacion).
+                    // La carta se inclina en sentido CONTRARIO al giro final (sentido horario)
+                    // para que el rebote se sienta como una liberacion, no una continuacion.
                     holder.root.animate()
-                        .translationX(-overlay.width.toFloat())
-                        .rotation(46f)
-                        .alpha(0f)
-                        .setDuration(420L)
+                        .translationX(dp(10).toFloat())
+                        .rotation(-5f)
+                        .setInterpolator(DecelerateInterpolator())
+                        .setDuration(BOOT_WINDUP_MS)
                         .start()
-                    boot.animate()
-                        .translationX(bootTravel + dp(120))
-                        .rotation(-22f)
-                        .scaleX(0.98f)
-                        .scaleY(0.98f)
-                        .setDuration(260L)
-                        .withEndAction {
-                            boot.visibility = View.INVISIBLE
-                            title.text = "$targetName FUE EXPULSADO"
-                            subtitle.text = if (session.revealRolesOnDeath) {
-                                "Su carta ya fue revelada."
-                            } else {
-                                "Su carta permanece oculta."
-                            }
-                            setNotice(if (session.alcaldeCorruption) {
-                                "El poder deja su marca en la jornada."
-                            } else {
-                                "El pueblo continua con la partida."
-                            })
-                            schedule(EXPULSION_AFTER_KICK_READ_MS) {
-                                setContinueReady("CONTINUAR")
-                                onFinished()
-                            }
-                        }
-                        .start()
+                    schedule(BOOT_WINDUP_MS) {
+                        // Beat 3 — el golpe entra acelerando al contacto. Escala mas contenida
+                        // para que la bota no tape el panel entero al pegar.
+                        boot.setImageResource(R.drawable.ic_kicking_boot)
+                        boot.animate()
+                            .translationX(bootTravel.toFloat())
+                            .rotation(6f)
+                            .scaleX(1.1f)
+                            .scaleY(1.1f)
+                            .setInterpolator(AccelerateInterpolator(1.6f))
+                            .setDuration(BOOT_STRIKE_MS)
+                            .withEndAction { onExpulsionImpact(session, holder, targetName, onFinished) }
+                            .start()
+                    }
                 }
+                .start()
+        }
+    }
+
+    private fun onExpulsionImpact(
+        session: GameSession,
+        holder: VoteCardHolder,
+        targetName: String,
+        onFinished: () -> Unit
+    ) {
+        // Pico: sonido + haptico + destello calido + sacudida, en el frame de contacto.
+        onImpact?.invoke()
+        playImpactFlash()
+        shakePanel()
+        playImpactDust(holder)
+
+        // La bota clava el golpe, pausa breve y retrocede fuera de cuadro.
+        boot.setImageResource(R.drawable.boot_recoil)
+        boot.animate()
+            .translationX(overlay.width.toFloat() + dp(40))
+            .rotation(-30f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setStartDelay(BOOT_IMPACT_PAUSE_MS)
+            .setInterpolator(AccelerateInterpolator())
+            .setDuration(300L)
+            .withEndAction { boot.visibility = View.INVISIBLE }
+            .start()
+
+        // Squash marcado de la carta en el impacto, seguido de un REBOTE elastico
+        // (se estira para el otro lado) que es lo que la termina de soltar a volar.
+        holder.root.animate()
+            .scaleX(1.32f)
+            .scaleY(0.68f)
+            .setInterpolator(DecelerateInterpolator())
+            .setDuration(90L)
+            .withEndAction {
+                holder.root.animate()
+                    .scaleX(0.82f)
+                    .scaleY(1.2f)
+                    .setInterpolator(OvershootInterpolator(2.2f))
+                    .setDuration(BOOT_REBOUND_MS)
+                    .withEndAction { launchExpelledCard(session, holder, targetName, onFinished) }
+                    .start()
             }
             .start()
+    }
+
+    private fun stampSeal(holder: VoteCardHolder) {
+        val seal = holder.seal ?: return
+        seal.animate().cancel()
+        seal.visibility = View.VISIBLE
+        seal.alpha = 0f
+        seal.rotation = -18f
+        seal.scaleX = 2.1f
+        seal.scaleY = 2.1f
+        seal.animate()
+            .alpha(1f)
+            .rotation(-6f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setInterpolator(OvershootInterpolator(1.6f))
+            .setDuration(240L)
+            .start()
+    }
+
+    private fun playImpactDust(holder: VoteCardHolder) {
+        val overlayLocation = IntArray(2)
+        val holderLocation = IntArray(2)
+        overlay.getLocationOnScreen(overlayLocation)
+        holder.root.getLocationOnScreen(holderLocation)
+        // El polvo se ubica del lado IZQUIERDO de la carta: es hacia ahi que sale
+        // volando, asi que el estallido de tierra acompaña esa direccion de salida.
+        val contactX = holderLocation[0] - overlayLocation[0] + holder.root.width * 0.18f
+        val contactY = holderLocation[1] - overlayLocation[1] + holder.root.height * 0.52f
+        val dustWidth = dust.width.takeIf { it > 0 } ?: dp(190)
+        val dustHeight = dust.height.takeIf { it > 0 } ?: dp(190)
+
+        dust.animate().cancel()
+        dust.visibility = View.VISIBLE
+        dust.alpha = 0.95f
+        dust.scaleX = 0.5f
+        dust.scaleY = 0.5f
+        dust.translationX = contactX - dustWidth / 2f
+        dust.translationY = contactY - dustHeight / 2f
+        dust.animate()
+            .alpha(0f)
+            .scaleX(1.85f)
+            .scaleY(1.85f)
+            .setInterpolator(DecelerateInterpolator())
+            .setDuration(360L)
+            .withEndAction { dust.visibility = View.INVISIBLE }
+            .start()
+    }
+
+    private fun launchExpelledCard(
+        session: GameSession,
+        holder: VoteCardHolder,
+        targetName: String,
+        onFinished: () -> Unit
+    ) {
+        val card = holder.root
+        val outX = -overlay.width.toFloat() - dp(80)
+        // Sale volando en un arco amplio (sube y despues cruza fuera de cuadro) girando
+        // en sentido horario (arriba de la carta barriendo de izquierda a derecha).
+        val arc = Path().apply {
+            moveTo(card.translationX, card.translationY)
+            quadTo(-overlay.width * 0.28f, -dp(120).toFloat(), outX, -dp(30).toFloat())
+        }
+        var cancelled = false
+        val set = AnimatorSet()
+        set.playTogether(
+            ObjectAnimator.ofFloat(card, View.TRANSLATION_X, View.TRANSLATION_Y, arc),
+            ObjectAnimator.ofFloat(card, View.ROTATION, card.rotation, 210f),
+            ObjectAnimator.ofFloat(card, View.SCALE_X, card.scaleX, 0.55f),
+            ObjectAnimator.ofFloat(card, View.SCALE_Y, card.scaleY, 0.55f),
+            ObjectAnimator.ofFloat(card, View.ALPHA, 1f, 0f)
+        )
+        set.duration = EXPULSION_LAUNCH_MS
+        set.interpolator = AccelerateInterpolator(1.5f)
+        set.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationCancel(animation: Animator) {
+                cancelled = true
+            }
+
+            override fun onAnimationEnd(animation: Animator) {
+                if (launchAnimator === set) launchAnimator = null
+                if (!cancelled) announceExpulsionOutcome(session, targetName, onFinished)
+            }
+        })
+        launchAnimator = set
+        set.start()
+    }
+
+    private fun announceExpulsionOutcome(
+        session: GameSession,
+        targetName: String,
+        onFinished: () -> Unit
+    ) {
+        title.text = "$targetName FUE EXPULSADO"
+        subtitle.text = if (session.revealRolesOnDeath) {
+            "Su carta ya fue revelada."
+        } else {
+            "Su carta permanece oculta."
+        }
+        setNotice(if (session.alcaldeCorruption) {
+            "El poder deja su marca en la jornada."
+        } else {
+            "El pueblo continua con la partida."
+        })
+        schedule(EXPULSION_AFTER_KICK_READ_MS) {
+            setContinueReady("CONTINUAR")
+            onFinished()
+        }
+    }
+
+    private fun playImpactFlash() {
+        val flash = View(context).apply {
+            setBackgroundColor(Color.parseColor("#FFE9C8"))
+            alpha = 0f
+        }
+        overlay.addView(
+            flash,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        flashView = flash
+        flash.animate()
+            .alpha(0.22f)
+            .setDuration(60L)
+            .withEndAction {
+                flash.animate()
+                    .alpha(0f)
+                    .setDuration(150L)
+                    .withEndAction {
+                        overlay.removeView(flash)
+                        if (flashView === flash) flashView = null
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+    private fun shakePanel() {
+        shakeAnimator?.cancel()
+        shakeAnimator = ObjectAnimator.ofFloat(
+            panel,
+            View.TRANSLATION_X,
+            0f,
+            dp(9).toFloat(),
+            -dp(7).toFloat(),
+            dp(5).toFloat(),
+            -dp(3).toFloat(),
+            0f
+        ).apply {
+            duration = 260L
+            start()
+        }
     }
 
     private fun finishRecount(session: GameSession) {
@@ -669,8 +914,18 @@ class VoteResultAnimator(
             )
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
+        val seal = ImageView(context).apply {
+            setImageResource(R.drawable.expulsion_seal)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+            alpha = 0f
+        }
         portrait.addView(avatar, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
         portrait.addView(roleImage, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
+        portrait.addView(
+            seal,
+            FrameLayout.LayoutParams(dp(38), dp(38), Gravity.BOTTOM or Gravity.END)
+        )
         root.addView(portrait, LinearLayout.LayoutParams(dp(66), dp(62)))
 
         root.addView(TextView(context).apply {
@@ -700,7 +955,7 @@ class VoteResultAnimator(
             voterTokens,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
         )
-        return VoteCardHolder(root, avatar, roleImage, total, voterTokens)
+        return VoteCardHolder(root, avatar, roleImage, total, voterTokens, seal)
     }
 
     private fun emptyVoteMessage(): TextView {

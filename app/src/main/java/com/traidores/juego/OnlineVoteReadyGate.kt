@@ -1,0 +1,43 @@
+package com.traidores.juego
+
+data class OnlineVoteReadyState(
+    val uid: String,
+    val playerName: String,
+    val ready: Boolean,
+    val round: Int,
+    val phaseIndex: Int
+)
+
+data class OnlineVoteReadyResult(
+    val readyCount: Int,
+    val totalCount: Int,
+    val canSkip: Boolean
+)
+
+object OnlineVoteReadyGate {
+    fun evaluate(
+        eligiblePlayerNames: Collection<String>,
+        states: Collection<OnlineVoteReadyState>,
+        round: Int,
+        phaseIndex: Int
+    ): OnlineVoteReadyResult {
+        val eligibleNames = eligiblePlayerNames
+            .map(::normalizedName)
+            .filter { it.isNotBlank() }
+            .toSet()
+        val readyNames = states.asSequence()
+            .filter { it.ready && it.round == round && it.phaseIndex == phaseIndex }
+            .map { normalizedName(it.playerName) }
+            .filter { it in eligibleNames }
+            .toSet()
+        val readyCount = readyNames.size
+        val totalCount = eligibleNames.size
+        return OnlineVoteReadyResult(
+            readyCount = readyCount,
+            totalCount = totalCount,
+            canSkip = totalCount > 0 && readyCount >= totalCount
+        )
+    }
+
+    private fun normalizedName(name: String): String = name.trim().lowercase()
+}

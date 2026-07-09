@@ -1,4 +1,4 @@
-﻿package com.traidores.juego
+package com.traidores.juego
 
 
 internal fun humanMessageIntent(
@@ -435,7 +435,7 @@ internal fun latestExpelledTarget(session: GameSession): String? {
     return eventTarget(session, announcement, "fue expulsado")
         ?: eventTarget(session, announcement, "expulsar a")
         ?: eventTarget(session, announcement, "expulso a")
-        ?: eventTarget(session, announcement, "expulsÃ³ a")
+        ?: eventTarget(session, announcement, "expulsó a")
 }
 
 internal fun eventTarget(

@@ -169,7 +169,10 @@ service cloud.firestore {
           'ultimaConexionLocal',
           'orden',
           'activoEnPartida',
-          'listo'
+          'listo',
+          'listoParaVotar',
+          'listoParaVotarRonda',
+          'listoParaVotarPhaseIndex'
         ])
         && hasAll(data, ['nombre', 'estado', 'uidTemporal'])
         && isString(data.nombre, 1, 18)
@@ -185,7 +188,16 @@ service cloud.firestore {
           (data.orden is int &&
            data.orden >= 0 &&
            data.orden <= 14))
-        && (!('listo' in data) || data.listo is bool);
+        && (!('listo' in data) || data.listo is bool)
+        && (!('listoParaVotar' in data) || data.listoParaVotar is bool)
+        && (!('listoParaVotarRonda' in data) ||
+          (data.listoParaVotarRonda is int &&
+           data.listoParaVotarRonda >= 0 &&
+           data.listoParaVotarRonda <= 30))
+        && (!('listoParaVotarPhaseIndex' in data) ||
+          (data.listoParaVotarPhaseIndex is int &&
+           data.listoParaVotarPhaseIndex >= 0 &&
+           data.listoParaVotarPhaseIndex <= 500));
     }
 
     match /pruebas/{docId} {

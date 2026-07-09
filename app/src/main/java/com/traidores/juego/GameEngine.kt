@@ -49,12 +49,15 @@ object GameEngine {
         ) {
             return session
         }
+        val coordinatedHumanTarget = selectedTarget.takeIf {
+            humanKiller != null && isValidKillTarget(session, it, humanKiller)
+        }
 
         val assassinVotes = killers.mapNotNull { killer ->
-            val target = if (killer.isHuman) {
-                selectedTarget
-            } else {
-                LocalBotAi.chooseAssassinTarget(session, killer)
+            val target = when {
+                killer.isHuman -> selectedTarget
+                coordinatedHumanTarget != null -> coordinatedHumanTarget
+                else -> LocalBotAi.chooseAssassinTarget(session, killer)
             }
             if (isValidKillTarget(session, target, killer)) {
                 killer.name to target

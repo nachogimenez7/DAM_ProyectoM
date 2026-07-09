@@ -426,7 +426,7 @@ class OpcionesActivity : BaseActivity() {
         return if (currentLanguage == LANGUAGE_ENGLISH) {
             "Language changed to English."
         } else {
-            "Idioma cambiado a espanol."
+            "Idioma cambiado a español."
         }
     }
 
@@ -489,7 +489,7 @@ class OpcionesActivity : BaseActivity() {
         private const val PREF_LANGUAGE = "language"
         private const val DEFAULT_VOLUME = 80
         private const val DEFAULT_TEXT_SIZE = 1
-        private const val LANGUAGE_SPANISH = "Espanol (ES)"
+        private const val LANGUAGE_SPANISH = "Español (ES)"
         private const val LANGUAGE_ENGLISH = "English (EN)"
 
         const val PREF_PLAYER_NAME = "player_name"

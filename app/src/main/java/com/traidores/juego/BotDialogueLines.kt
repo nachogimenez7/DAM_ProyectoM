@@ -1,4 +1,4 @@
-﻿package com.traidores.juego
+package com.traidores.juego
 
 
 internal fun roleClaimStatementReaction(
@@ -26,7 +26,7 @@ internal fun roleClaimStatementReaction(
             else -> null
         }
         StatementType.INVESTIGATED -> when (index) {
-            0 -> "ok detective, miraste a $shownTarget. falta decir si te cerrÃ³ o no"
+            0 -> "ok detective, miraste a $shownTarget. falta decir si te cerró o no"
             1 -> "$shownTarget queda en el hilo entonces, no saltemos de tema"
             else -> null
         }
@@ -147,15 +147,15 @@ internal fun eventReactionLine(
     val options = when (event.type) {
         BotEventType.MUERTE_NOCTURNA -> when (personality) {
             BotPersonality.TRANQUI -> listOf(
-                "bueno, muriÃ³ $target. bajemos un cambio y ordenemos quien lo venÃ­a mirando",
+                "bueno, murió $target. bajemos un cambio y ordenemos quien lo venía mirando",
                 "lo de $target duele, pero ahora importan las versiones",
-                "no regalemos otro voto por pÃ¡nico, revisemos quien gana con $target fuera"
+                "no regalemos otro voto por pánico, revisemos quien gana con $target fuera"
             )
             BotPersonality.PICANTE -> listOf(
                 "mataron a $target y alguno aca esta actuando demasiado tranquilo",
                 "$target cae justo cuando $fallbackTarget venia flojo, mira vos",
                 "esto no fue al azar, alguien queria sacar a $target del medio",
-                "a $target lo callaron de noche, de dÃ­a nadie se anima"
+                "a $target lo callaron de noche, de día nadie se anima"
             )
             BotPersonality.JODON -> listOf(
                 "bueno $target se fue a mirar la partida desde platea, pero dejo ruido",
@@ -171,11 +171,11 @@ internal fun eventReactionLine(
             BotPersonality.IMPULSIVO -> listOf(
                 "nah listo, con $target muerto hay que apurar a alguien ya",
                 "esto me calienta, $fallbackTarget explica antes de que votemos cualquiera",
-                "no durmamos, $target muriÃ³ y alguno se estÃ¡ escondiendo"
+                "no durmamos, $target murió y alguno se está escondiendo"
             )
             BotPersonality.ANALITICO -> listOf(
-                "$target muriÃ³; miren quiÃ©n lo nombrÃ³ ayer y quiÃ©n evitÃ³ hablar de Ã©l",
-                "si $target era una voz cÃ³moda para el pueblo, el ataque tiene sentido",
+                "$target murió; miren quién lo nombró ayer y quién evitó hablar de él",
+                "si $target era una voz cómoda para el pueblo, el ataque tiene sentido",
                 "dato: $target fuera beneficia a quien estaba quedando bajo presion"
             )
         }
@@ -186,12 +186,12 @@ internal fun eventReactionLine(
                 "bien o mal, lo de $target nos deja votos para revisar"
             )
             BotPersonality.PICANTE -> listOf(
-                "si lo de $target saliÃ³ mal, miren quienes lo empujaron primeros",
-                "$target afuera, pero yo no me olvido de quiÃ©n lo vendiÃ³ como seguro",
-                "el voto a $target tuvo dueÃ±os, despuÃ©s no se hagan los perdidos"
+                "si lo de $target salió mal, miren quienes lo empujaron primeros",
+                "$target afuera, pero yo no me olvido de quién lo vendió como seguro",
+                "el voto a $target tuvo dueños, después no se hagan los perdidos"
             )
             BotPersonality.JODON -> listOf(
-                "$target saliÃ³ por la puerta grande, ahora falta ver si nos mandamos cualquiera",
+                "$target salió por la puerta grande, ahora falta ver si nos mandamos cualquiera",
                 "bueno $target fue el elegido del pueblo, premio raro",
                 "chau $target, la mesa queda mas picante ahora"
             )
@@ -203,18 +203,18 @@ internal fun eventReactionLine(
             BotPersonality.IMPULSIVO -> listOf(
                 "listo, $target afuera. ahora que nadie cambie la historia",
                 "si $target era mala salida, voy directo contra los que empujaron",
-                "no me gusta cÃ³mo se cerrÃ³ lo de $target, ojo"
+                "no me gusta cómo se cerró lo de $target, ojo"
             )
             BotPersonality.ANALITICO -> listOf(
                 "$target expulsado: comparen el primer voto con los que se sumaron al final",
                 "lo importante no es solo $target, es quien necesito cerrar ese voto",
-                "la votaciÃ³n a $target deja informaciÃ³n, no la desperdicien"
+                "la votación a $target deja información, no la desperdicien"
             )
         }
         BotEventType.SILENCIO -> when (personality) {
             BotPersonality.TRANQUI -> listOf(
                 "$target no puede hablar, no lo usemos como excusa facil",
-                "si $target estÃ¡ silenciado, preguntemos a quienes sÃ­ pueden responder",
+                "si $target está silenciado, preguntemos a quienes sí pueden responder",
                 "ojo con armar todo sobre $target si hoy no puede defenderse"
             )
             BotPersonality.PICANTE -> listOf(
@@ -223,7 +223,7 @@ internal fun eventReactionLine(
                 "si silencian a $target, miren quien queda comodo hablando"
             )
             BotPersonality.JODON -> listOf(
-                "$target modo estatua hoy, igual los demÃ¡s no zafan",
+                "$target modo estatua hoy, igual los demás no zafan",
                 "a $target le taparon la boca, pero al resto no",
                 "$target no habla, perfecto, ahora no griten todos a la vez"
             )
@@ -239,7 +239,7 @@ internal fun eventReactionLine(
             )
             BotPersonality.ANALITICO -> listOf(
                 "$target silenciado: revisen sus mensajes anteriores, no su silencio de hoy",
-                "el silencio de $target es informaciÃ³n sobre quien querÃ­a cortar esa lÃ­nea",
+                "el silencio de $target es información sobre quien quería cortar esa línea",
                 "si $target molestaba a alguien, ese alguien acaba de ganar tiempo"
             )
         }
@@ -293,21 +293,21 @@ internal fun agendaLine(
         } else {
             listOf(
                 "yo apuraria a $target, $reason",
-                "$target tiene que contestar ahora, despuÃ©s no hay tiempo",
-                "si $target no cierra esto, para mÃ­ va por ahÃ­"
+                "$target tiene que contestar ahora, después no hay tiempo",
+                "si $target no cierra esto, para mí va por ahí"
             )
         }
         BotAgenda.DEFEND_WEAK -> if (weakRead) {
             listOf(
-                "no maten a alguien solo por intuiciÃ³n, falta evidencia",
-                "esto todavÃ­a estÃ¡ flojo, no compremos una acusaciÃ³n gratis",
-                "si van a marcar a alguien, que sea con algo mÃ¡s que silencio"
+                "no maten a alguien solo por intuición, falta evidencia",
+                "esto todavía está flojo, no compremos una acusación gratis",
+                "si van a marcar a alguien, que sea con algo más que silencio"
             )
         } else {
             listOf(
                 "puede ser $target, pero dejemos que responda primero",
-                "no cierro a $target todavÃ­a, aunque $reason",
-                "yo escucharÃ­a a $target antes de mandar el voto"
+                "no cierro a $target todavía, aunque $reason",
+                "yo escucharía a $target antes de mandar el voto"
             )
         }
         BotAgenda.FOLLOW_THREAD -> if (session.botDifficulty == BotDifficulty.HARD) {
@@ -360,8 +360,8 @@ internal fun objectiveLine(
             "$target necesito algo tuyo para ordenar la ronda"
         )
         RoundObjectiveType.DEFEND_PLAYER -> listOf(
-            "yo no matarÃ­a a $target por ahora, falta algo mÃ¡s fuerte",
-            "$target no me parece el voto mÃ¡s limpio todavÃ­a",
+            "yo no mataría a $target por ahora, falta algo más fuerte",
+            "$target no me parece el voto más limpio todavía",
             "si van contra $target, que sea con algo mejor que ruido"
         )
         RoundObjectiveType.PUSH_VOTE -> listOf(
@@ -402,8 +402,8 @@ internal fun playerFocusLine(
     val name = safeName(human, session)
     val options = when {
         !GameEngine.canSpeak(session, human) -> listOf(
-            "$name no puede hablar, asÃ­ que no armemos todo sobre Ã©l",
-            "ojo que $name estÃ¡ silenciado, busquemos otro hilo",
+            "$name no puede hablar, así que no armemos todo sobre él",
+            "ojo que $name está silenciado, busquemos otro hilo",
             "como $name no puede contestar, no lo usemos de excusa"
         )
         mentionsName(target, human.name) && !weakRead -> listOf(
@@ -429,18 +429,18 @@ internal fun statementReaction(statement: PublicStatement, index: Int): String? 
     val target = statement.target ?: "eso"
     return when (statement.type) {
         StatementType.PROTECTED -> when (index) {
-            0 -> "ok, queda anotado lo de $target. si despuÃ©s no cierra te lo vamos a cobrar"
+            0 -> "ok, queda anotado lo de $target. si después no cierra te lo vamos a cobrar"
             1 -> "$target confirma algo de eso o nada que ver?"
             else -> null
         }
         StatementType.INVESTIGATED -> when (index) {
-            0 -> "bien, pero decÃ­ quÃ© te dio esa investigaciÃ³n sin vender humo"
-            1 -> "ojo con tirar info a medias, eso despuÃ©s confunde todo"
+            0 -> "bien, pero decí qué te dio esa investigación sin vender humo"
+            1 -> "ojo con tirar info a medias, eso después confunde todo"
             else -> null
         }
         StatementType.REFUSED_ROLE -> when (index) {
             0 -> "ok no digas rol, pero aporta algo entonces"
-            1 -> "si esquivÃ¡s todo despuÃ©s no te quejes si te miran raro"
+            1 -> "si esquivás todo después no te quejes si te miran raro"
             else -> null
         }
         StatementType.TRUST -> when (index) {
@@ -609,7 +609,7 @@ internal fun coordinationLine(
     val options = when (role) {
         BotConversationRole.CALMER -> listOf(
             "paren un toque, no votemos solo porque todos repiten $target",
-            "bajen un cambio, primero escuchemos a $target y despuÃ©s vemos",
+            "bajen un cambio, primero escuchemos a $target y después vemos",
             "ordenemos: una pregunta para $target y una respuesta clara"
         )
         BotConversationRole.CLOSER -> if (hasThread) {
@@ -620,8 +620,8 @@ internal fun coordinationLine(
             )
         } else {
             listOf(
-                "por ahora no cerrarÃ­a voto, falta una punta mÃ¡s",
-                "no veo una acusaciÃ³n limpia todavÃ­a",
+                "por ahora no cerraría voto, falta una punta más",
+                "no veo una acusación limpia todavía",
                 "si nadie suma algo concreto esto queda medio al aire"
             )
         }
@@ -659,7 +659,7 @@ internal fun pendingAnswerReply(
     }
     val options = when {
         pending != null && pending.speaker == bot.name && priorStatement?.type == StatementType.TRUST && priorTarget != null -> listOf(
-            "ah ok, me lo decÃ­as a mi. entonces $priorTarget queda mÃ¡s limpio por ahora",
+            "ah ok, me lo decías a mi. entonces $priorTarget queda más limpio por ahora",
             "listo, entendi. si tu dato es $priorTarget limpio, no lo voto hoy",
             "ok, tomo esa lectura sobre $priorTarget. ahora busquemos quien queda peor"
         )
@@ -670,8 +670,8 @@ internal fun pendingAnswerReply(
         )
         claim != null -> listOf(
             "ok, dijiste ${claim.label}. ahora falta ver si alguien te cruza",
-            "bien, queda ese rol anotado. no lo cambiemos despuÃ©s eh",
-            "listo, claim de ${claim.label}. ahora explica la jugada sin regalar de mÃ¡s"
+            "bien, queda ese rol anotado. no lo cambiemos después eh",
+            "listo, claim de ${claim.label}. ahora explica la jugada sin regalar de más"
         )
         statement?.type in setOf(StatementType.ACCUSE, StatementType.VOTE) && statementTarget != null -> listOf(
             "ok, entonces estas mirando a $statementTarget. que responda eso",
@@ -740,7 +740,7 @@ internal fun humanQuestionReply(
             )
         } else {
             listOf(
-                "todavÃ­a no votarÃ­a apurado, falta escuchar mÃ¡s",
+                "todavía no votaría apurado, falta escuchar más",
                 "por ahora no tengo voto claro, preguntemos primero",
                 "si votamos ahora es medio al aire, esperaria una respuesta mas"
             )
@@ -759,8 +759,8 @@ internal fun humanQuestionReply(
             )
         } else {
             listOf(
-                "todavÃ­a nadie me cierra como culpable fuerte",
-                "por ahora no hay sospecha limpia, hay que hablar mÃ¡s",
+                "todavía nadie me cierra como culpable fuerte",
+                "por ahora no hay sospecha limpia, hay que hablar más",
                 "no tengo nombre firme, ojo con votar por costumbre"
             )
         }
@@ -876,9 +876,9 @@ internal fun linesFor(intent: BotSpeechIntent, spokenTarget: String, reason: Str
             "no no, para $spokenTarget, responde eso primero",
             "$spokenTarget estas esquivando la pregunta hace rato",
             "dale $spokenTarget contesta bien, pq $reason?",
-            "$spokenTarget no saltes a otra cosa, cerrÃ¡ lo anterior",
-            "me falta la respuesta de $spokenTarget todavÃ­a",
-            "$spokenTarget estÃ¡s pateando la pelota, respondÃ©",
+            "$spokenTarget no saltes a otra cosa, cerrá lo anterior",
+            "me falta la respuesta de $spokenTarget todavía",
+            "$spokenTarget estás pateando la pelota, respondé",
             "eso de $spokenTarget quedo colgado"
         )
         BotSpeechIntent.ACCUSE -> listOf(
@@ -890,16 +890,16 @@ internal fun linesFor(intent: BotSpeechIntent, spokenTarget: String, reason: Str
             "no me gusta nada lo de $spokenTarget",
             "para mi hay que mirar fuerte a $spokenTarget",
             "$spokenTarget cada vez me cierra menos",
-            "yo a $spokenTarget no le fÃ­o ni una moneda, $reason",
+            "yo a $spokenTarget no le fío ni una moneda, $reason",
             "$spokenTarget jura mucho y explica poco"
         )
         BotSpeechIntent.DEFEND -> listOf(
             "nah tampoco para matarlo por eso",
-            "yo a $spokenTarget no lo veo tan raro todavÃ­a",
+            "yo a $spokenTarget no lo veo tan raro todavía",
             "banco un toque a $spokenTarget, dejenlo explicar",
             "capaz estamos flasheando cualquiera con $spokenTarget",
             "no compremos tan rapido contra $spokenTarget",
-            "$spokenTarget todavÃ­a puede explicar, aflojen",
+            "$spokenTarget todavía puede explicar, aflojen",
             "a mi $spokenTarget no me parece el peor ahora",
             "si vamos contra $spokenTarget que sea con algo mas",
             "no quememos a $spokenTarget en la plaza sin escucharlo"
@@ -922,7 +922,7 @@ internal fun linesFor(intent: BotSpeechIntent, spokenTarget: String, reason: Str
             "igual no votemos por votar, escuchemos a $spokenTarget",
             "tranqui, primero veamos pq $reason",
             "no se apuren, falta escuchar a $spokenTarget",
-            "paren un poco, todavÃ­a hay tiempo",
+            "paren un poco, todavía hay tiempo",
             "si lo van a marcar a $spokenTarget que sea con calma",
             "ordenemos esto, porque sino votamos cualquier cosa",
             "no armemos la horca antes del juicio, escuchemos a $spokenTarget"
@@ -935,7 +935,7 @@ internal fun linesFor(intent: BotSpeechIntent, spokenTarget: String, reason: Str
             "no estoy cerrado igual",
             "me hace ruido pero puedo estar viendo fantasmas",
             "capaz estoy viendo brujas donde no hay",
-            "si me equivoco despuÃ©s me hago cargo",
+            "si me equivoco después me hago cargo",
             "lo tengo en duda, no como sentencia"
         )
     }
@@ -980,7 +980,7 @@ internal fun botToBotLine(session: GameSession, bot: GamePlayer, index: Int): St
             val options = listOf(
                 "$speaker banca a $target pero yo quiero una razon concreta",
                 "ok $speaker, pero defender a $target sin explicar no alcanza",
-                "$target igual habla vos, no te escondas atrÃ¡s de $speaker"
+                "$target igual habla vos, no te escondas atrás de $speaker"
             )
             options[seed % options.size]
         }
@@ -1052,7 +1052,7 @@ internal fun traitorRoleLines(
     } else if (session.botDifficulty == BotDifficulty.HARD) {
         listOf(
             "yo por ahora no quiero quemar rol, pero $target tiene que hablar",
-            "si necesitan claim despuÃ©s lo doy, ahora me importa $target",
+            "si necesitan claim después lo doy, ahora me importa $target",
             "no regalen roles gratis, primero que $target cierre lo suyo"
         )
     } else {
@@ -1079,7 +1079,7 @@ internal fun medicRoleLines(
         protected != null -> listOf(
             "yo tengo una jugada de noche anotada con $protected, no la ignoren",
             "no quiero regalar todo, pero $protected entra en mi lectura de anoche",
-            "si hace falta despuÃ©s explico lo de $protected, ahora escuchemos"
+            "si hace falta después explico lo de $protected, ahora escuchemos"
         )
         pressure -> listOf(
             "soy medico, no me sirve morir por una corazonada",
@@ -1087,7 +1087,7 @@ internal fun medicRoleLines(
             "me estan apurando y soy medico, aflojen un toque"
         )
         seed % 5 == 0 -> listOf(
-            "si no muriÃ³ nadie, no asumamos cualquiera, ordenemos primero",
+            "si no murió nadie, no asumamos cualquiera, ordenemos primero",
             "ojo con leer la noche como prueba total, falta hablar",
             "la noche dio algo de aire, pero no alcanza para votar ciego"
         )
@@ -1139,8 +1139,8 @@ internal fun deserterRoleLines(target: String, pressure: Boolean, seed: Int): Li
             "mi carta es rara, pero $target tiene mas para explicar ahora"
         )
         seed % 4 == 0 -> listOf(
-            "yo no me caso con ningÃºn bando todavÃ­a, quiero ver quiÃ©n se pisa",
-            "me sirve escuchar mÃ¡s, no votar por costumbre",
+            "yo no me caso con ningún bando todavía, quiero ver quién se pisa",
+            "me sirve escuchar más, no votar por costumbre",
             "$target me interesa mas por como viene respondiendo"
         )
         else -> emptyList()
@@ -1186,7 +1186,7 @@ internal fun contradictionLine(playerName: String, contradiction: ClaimContradic
     val firstRole = contradiction.first.roleKey
     val latestRole = contradiction.latest.roleKey
     return if (firstRole != null && latestRole != null) {
-        "$playerName espera, el dÃ­a ${contradiction.first.round} dijiste ${roleLabel(firstRole)} y ahora ${roleLabel(latestRole)}? eso no cierra"
+        "$playerName espera, el día ${contradiction.first.round} dijiste ${roleLabel(firstRole)} y ahora ${roleLabel(latestRole)}? eso no cierra"
     } else if (
         contradiction.first.statementType in setOf(StatementType.TRUST, StatementType.ACCUSE) &&
         contradiction.latest.statementType in setOf(StatementType.TRUST, StatementType.ACCUSE)
@@ -1366,40 +1366,80 @@ internal fun finishSpeech(
     } else {
         safe
     }
-    return withOccasionalEmoji(guarded, session, bot, context)
+    return guarded
 }
 
-internal fun withOccasionalEmoji(
-    line: String,
-    session: GameSession,
-    bot: GamePlayer,
-    context: String
-): String {
-    if (line.isBlank() || !canUseOccasionalEmoji(session.phase)) return line
-    val seed = stableNoise("${session.code}:${session.round}:${bot.name}:emoji:$context:${socialChatSize(session)}")
-    if (seed % 7 != 0) return line
+private val leadingBotFillers = listOf(
+    "mira vos",
+    "tal cual",
+    "y si",
+    "dale",
+    "bien",
+    "okey",
+    "obvio",
+    "claro",
+    "bueno",
+    "posta",
+    "igual",
+    "mira",
+    "oka",
+    "che",
+    "eh",
+    "ok",
+    "ya",
+    "nada"
+)
 
-    val normalized = normalizedForParsing(line)
-    val emoji = when {
-        listOf("raro", "ruido", "sospech", "no cierra", "contradic").any { normalized.contains(it) } ->
-            if (seed % 2 == 0) "ðŸ¤”" else "ðŸ‘€"
-        listOf("murio", "silenci", "miedo", "callado").any { normalized.contains(it) } -> "ðŸ˜°"
-        listOf("voto", "votar", "afuera", "cerrar").any { normalized.contains(it) } -> "ðŸ‘€"
-        seed % 3 == 0 -> "ðŸ¤”"
-        else -> return line
+internal fun botMessageCore(text: String): String {
+    var core = normalizedForParsing(text)
+    while (core.isNotBlank()) {
+        val filler = leadingBotFillers.firstOrNull { core == it || core.startsWith("$it ") }
+            ?: break
+        if (core == filler) return ""
+        core = core.removePrefix("$filler ").trim()
     }
-    return if (line.length + 1 + emoji.length <= 140) "$line $emoji" else line
+    return core
 }
 
-internal fun canUseOccasionalEmoji(phase: GamePhase): Boolean {
-    return phase == GamePhase.DIA_DEBATE ||
-        phase == GamePhase.CONTRAPUNTO ||
-        phase == GamePhase.VOTACION ||
-        phase == GamePhase.DESEMPATE_VOTACION
+private fun botMessagesAreEchoes(first: String, second: String): Boolean {
+    if (first.isBlank() || second.isBlank()) return false
+    if (first == second) return true
+    val shorter = if (first.length <= second.length) first else second
+    val longer = if (first.length > second.length) first else second
+    return shorter.length >= 14 &&
+        shorter.count { it == ' ' } >= 2 &&
+        longer.contains(shorter)
 }
 
 internal fun List<Pair<String, String>>.dedupeBotMessages(): List<Pair<String, String>> {
-    return distinctBy { normalizedForParsing(it.second).take(42) }
+    val acceptedCores = mutableListOf<String>()
+    return filter { (_, text) ->
+        val core = botMessageCore(text)
+        if (core.isBlank() || acceptedCores.any { botMessagesAreEchoes(it, core) }) {
+            false
+        } else {
+            acceptedCores += core
+            true
+        }
+    }
+}
+
+internal fun List<Pair<String, String>>.dropEchoesOfRecentChat(
+    session: GameSession
+): List<Pair<String, String>> {
+    val botNames = session.players.asSequence()
+        .filterNot { it.isHuman }
+        .map { it.name }
+        .toSet()
+    val recentCores = recentPublicMessages(session)
+        .filter { it.speaker in botNames }
+        .takeLast(6)
+        .map { botMessageCore(it.message) }
+        .filter { it.isNotBlank() }
+    return filterNot { (_, text) ->
+        val core = botMessageCore(text)
+        recentCores.any { botMessagesAreEchoes(it, core) }
+    }
 }
 
 internal fun containsLaugh(text: String): Boolean {

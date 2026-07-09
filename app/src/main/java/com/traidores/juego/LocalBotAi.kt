@@ -522,7 +522,7 @@ internal object LocalBotAi {
             val allowRoleTerms = line.contains("soy ", ignoreCase = true) ||
                 line.contains("rol", ignoreCase = true)
             bot.name to finishSpeech(line, session, bot, "opening:$index", allowRoleTerms = allowRoleTerms)
-        }.dedupeBotMessages()
+        }.dropEchoesOfRecentChat(session).dedupeBotMessages()
     }
 
     fun votingIntentMessages(session: GameSession, limit: Int = 4): List<Pair<String, String>> {
@@ -622,7 +622,7 @@ internal object LocalBotAi {
                 }
             }
             bot.name to finishSpeech(line, session, bot, "vote:$index")
-        }.dedupeBotMessages()
+        }.dropEchoesOfRecentChat(session).dedupeBotMessages()
     }
 
     fun reactionsToHumanMessage(session: GameSession, humanMessage: String): List<Pair<String, String>> {
@@ -737,7 +737,7 @@ internal object LocalBotAi {
                 "reply:$index:${humanMessage.length}",
                 allowRoleTerms = roleClaim != null
             )
-        }
+        }.dropEchoesOfRecentChat(session).dedupeBotMessages()
     }
 
     internal fun roleClaimFrom(message: String): RoleClaim? {
@@ -921,9 +921,21 @@ internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): Vote
                 plan
             }
         }
+        .map { plan -> softenHumanVotePlanInNormal(session, plan) }
         .filter { plan -> plan.confidence >= 4 && canVotePlanTarget(session, voter, plan) }
         .distinctBy { it.target to it.reason }
     return choosePlanForDifficulty(session, voter, plans)
+}
+
+private fun softenHumanVotePlanInNormal(session: GameSession, plan: VotePlan): VotePlan {
+    if (session.botDifficulty != BotDifficulty.NORMAL) return plan
+    val target = GameEngine.playerByName(session, plan.target) ?: return plan
+    if (!target.isHuman) return plan
+    // La evidencia dura (contradiccion conf 18 / doble claim 15) NO se ablanda; solo los
+    // planes blandos (manada, pregunta colgada, presion previa) para cortar el voto por manada
+    // sobre el unico humano en modo Normal.
+    if (plan.confidence >= 15) return plan
+    return plan.copy(confidence = (plan.confidence - HUMAN_NORMAL_VOTE_RELIEF).coerceAtLeast(0))
 }
 
 internal fun choosePlanForDifficulty(
@@ -1522,6 +1534,10 @@ internal fun scoreCandidate(
             } else {
                 "falta cerrar su version"
             }
+        } else if (session.botDifficulty == BotDifficulty.NORMAL) {
+            // En Normal, sin evidencia dura el humano recibe el beneficio de la duda:
+            // siendo el unico humano de la mesa, no debe ser el voto por descarte.
+            score -= HUMAN_NORMAL_VOTE_RELIEF
         }
     }
 
@@ -1548,6 +1564,8 @@ internal fun nightPressureScore(session: GameSession, candidate: GamePlayer): In
         accusedCount * 2 +
         stableNoise("${session.code}:${session.round}:${candidate.name}:night") % 2
 }
+
+private const val HUMAN_NORMAL_VOTE_RELIEF = 5
 
 internal fun humanDayPressureBonus(session: GameSession): Int {
     if (session.botDifficulty != BotDifficulty.HARD) return 0

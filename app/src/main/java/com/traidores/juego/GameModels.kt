@@ -577,12 +577,12 @@ object LocalGameFactory {
         )
         when (preset) {
             RoleCompositionPreset.RECOMMENDED -> {
-                if (count >= 8) counts[RoleCatalog.ASESINO] = 2
                 if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
                 if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
                 if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
                 if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
                 if (count >= 10) counts[RoleCatalog.ESPIA] = 1
+                if (count >= 13) counts[RoleCatalog.ASESINO] = 2
             }
             RoleCompositionPreset.CLASSIC -> Unit
             RoleCompositionPreset.CHAOTIC -> {

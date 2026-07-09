@@ -370,7 +370,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun recommendedRoleCompositionUsesTwoAssassinsFromEightPlayers() {
+    fun recommendedRoleCompositionUsesTwoTraitorsFromEightPlayers() {
         var setup = LocalGameFactory.createSession()
         repeat(3) {
             setup = LocalGameFactory.addMockPlayer(setup)
@@ -383,7 +383,47 @@ class GameEngineTest {
             .eachCount()
 
         assertEquals(8, session.players.size)
-        assertEquals(2, roleCounts[RoleCatalog.ASESINO])
+        assertEquals(1, roleCounts[RoleCatalog.ASESINO])
+        assertEquals(1, roleCounts[RoleCatalog.MERCENARIO])
+        assertEquals(
+            2,
+            session.players.count { it.role?.key in GameRules.traitorRoleKeys }
+        )
+    }
+
+    @Test
+    fun recommendedTraitorDistributionScalesAtAgreedThresholds() {
+        val expected = mapOf(
+            5 to 1,
+            6 to 1,
+            7 to 2,
+            8 to 2,
+            9 to 2,
+            10 to 3,
+            11 to 3,
+            12 to 3,
+            13 to 4,
+            14 to 4,
+            15 to 4
+        )
+
+        expected.forEach { (playerCount, expectedTraitors) ->
+            val composition = LocalGameFactory.roleCompositionPreset(
+                playerCount,
+                "pampa",
+                RoleCompositionPreset.RECOMMENDED
+            )
+            val traitorCount = GameRules.traitorRoleKeys.sumOf {
+                composition.counts[it] ?: 0
+            }
+
+            assertEquals("Cantidad de traidores para $playerCount jugadores", expectedTraitors, traitorCount)
+            assertEquals(
+                "Cantidad de asesinos para $playerCount jugadores",
+                if (playerCount >= 13) 2 else 1,
+                composition.counts[RoleCatalog.ASESINO]
+            )
+        }
     }
 
     @Test
@@ -399,7 +439,7 @@ class GameEngineTest {
             .groupingBy { it }
             .eachCount()
 
-        assertEquals(2, roleCounts["asesino"])
+        assertEquals(1, roleCounts["asesino"])
         assertEquals(1, roleCounts["policia"])
         assertEquals(1, roleCounts["medico"])
         assertEquals(1, roleCounts["mercenario"])
@@ -407,7 +447,7 @@ class GameEngineTest {
         assertEquals(1, roleCounts["payador"])
         assertEquals(1, roleCounts["desertor"])
         assertEquals(1, roleCounts["espia"])
-        assertEquals(session.players.size - 9, roleCounts["aldeano"])
+        assertEquals(session.players.size - 8, roleCounts["aldeano"])
     }
 
     @Test
@@ -521,7 +561,7 @@ class GameEngineTest {
             RoleCompositionPreset.CHAOTIC
         )
 
-        assertEquals(2, recommended.counts[RoleCatalog.ASESINO])
+        assertEquals(1, recommended.counts[RoleCatalog.ASESINO])
         assertEquals(1, recommended.counts[RoleCatalog.PAYADOR])
         assertEquals(0, classic.counts[RoleCatalog.PAYADOR] ?: 0)
         assertEquals(7, classic.counts[RoleCatalog.ALDEANO])
@@ -941,6 +981,7 @@ class GameEngineTest {
         assertEquals(GamePhase.NOCHE_MERCENARIO, resolved.phase)
         assertEquals(4, resolved.assassinVotes.size)
         assertEquals("Pueblo1", resolved.assassinVotes["Asesino1"])
+        assertEquals(setOf("Pueblo1"), resolved.assassinVotes.values.toSet())
         assertTrue(resolved.assassinVotes.containsKey("Espia"))
         assertTrue(resolved.nightKillTarget in resolved.assassinVotes.values)
         assertEquals(
@@ -973,6 +1014,38 @@ class GameEngineTest {
         assertTrue(resolved.privateHint.contains("Tu voto fue registrado."))
         assertTrue(resolved.privateHint.contains("Victima elegida:"))
         assertTrue(GameEngine.requiresHumanInput(session))
+    }
+
+    @Test
+    fun botTraitorsFollowHumanNightTargetOnNormalAndHard() {
+        BotDifficulty.entries.forEach { difficulty ->
+            val session = GameSession(
+                code = "COORDINATED-$difficulty",
+                mapKey = "pampa",
+                mapName = "Pampa",
+                phase = GamePhase.NOCHE_ASESINO,
+                botDifficulty = difficulty,
+                players = listOf(
+                    GamePlayer(
+                        "Humano",
+                        "H",
+                        role = role("asesino", "Asesino", "Traidores"),
+                        isHuman = true
+                    ),
+                    GamePlayer("AsesinoBot", "A", role = role("asesino", "Asesino", "Traidores")),
+                    GamePlayer("EspiaBot", "E", role = role("espia", "Espia", "Traidores")),
+                    GamePlayer("Objetivo", "O", role = role("aldeano", "Aldeano", "Pueblo")),
+                    GamePlayer("Pueblo2", "2", role = role("medico", "Medico", "Pueblo")),
+                    GamePlayer("Pueblo3", "3", role = role("policia", "Comisario", "Pueblo"))
+                )
+            )
+
+            val resolved = GameEngine.resolveAssassin(session, "Objetivo")
+
+            assertEquals("Objetivo", resolved.nightKillTarget)
+            assertEquals(setOf("Objetivo"), resolved.assassinVotes.values.toSet())
+            assertEquals(3, resolved.assassinVotes.size)
+        }
     }
 
     @Test
@@ -3112,6 +3185,42 @@ class GameEngineTest {
             ),
             phase = GamePhase.NOCHE_ORACULO
         )
+    }
+
+    @Test
+    fun botMessageCoreRemovesRepeatedLeadingFillers() {
+        assertEquals(
+            "mora tiene que explicar su voto",
+            botMessageCore("Bueno, dale, Mora tiene que explicar su voto.")
+        )
+        assertEquals("", botMessageCore("Okey"))
+    }
+
+    @Test
+    fun botMessageDedupeRejectsFillerWrappedEchoes() {
+        val messages = listOf(
+            "Beto" to "Mora tiene que explicar por qué cambió el voto",
+            "Ciro" to "Dale, Mora tiene que explicar por qué cambió el voto",
+            "Dina" to "Mora todavía puede contar qué vio anoche"
+        )
+
+        assertEquals(listOf(messages[0], messages[2]), messages.dedupeBotMessages())
+    }
+
+    @Test
+    fun recentEchoFilterOnlyUsesBotMessages() {
+        val session = publicNameSession().copy(
+            chatHistory = listOf(
+                GameChatMessage("Humano", "Mora tiene que explicar por qué cambió el voto"),
+                GameChatMessage("Beto", "Dina tiene que explicar por qué cambió el voto")
+            )
+        )
+        val candidates = listOf(
+            "Ciro" to "Bien, Dina tiene que explicar por qué cambió el voto",
+            "Ema" to "Mora tiene que explicar por qué cambió el voto"
+        )
+
+        assertEquals(listOf(candidates[1]), candidates.dropEchoesOfRecentChat(session))
     }
 
     private fun sessionWithHumanAdvancedRole(roleKey: String): GameSession {
