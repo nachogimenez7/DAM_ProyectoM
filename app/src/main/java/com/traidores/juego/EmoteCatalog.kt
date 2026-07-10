@@ -9,7 +9,8 @@ data class EmoteSpec(
     val label: String,
     val toneHex: String,
     val themeKey: String,
-    val themeLabel: String
+    val themeLabel: String,
+    val isPremium: Boolean = false
 )
 
 object EmoteCatalog {
@@ -17,6 +18,7 @@ object EmoteCatalog {
     const val THEME_GREEK = "griego"
     const val THEME_MEDIEVAL_ASSASSIN = "medieval_asesino"
     const val THEME_GAUCHO_DETECTIVE = "gaucho_detective"
+    const val THEME_PREMIUM = "premium"
 
     val all = listOf(
         emote(
@@ -126,6 +128,36 @@ object EmoteCatalog {
             toneHex = "#8D6B33",
             themeKey = THEME_GAUCHO_DETECTIVE,
             themeLabel = "Detective gaucho"
+        ),
+        emote(
+            id = "premium_hermosa_manana",
+            emotionKey = "premium_hermosa_manana",
+            imageRes = R.drawable.reaction_premium_hermosa_manana,
+            label = "Hermosa mañana verdad?",
+            toneHex = "#E8B84B",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_mate",
+            emotionKey = "premium_mate",
+            imageRes = R.drawable.reaction_premium_mate,
+            label = "Ruidito de mate",
+            toneHex = "#B87333",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_dormida",
+            emotionKey = "premium_dormida",
+            imageRes = R.drawable.reaction_premium_dormida,
+            label = "Me duermo zzz",
+            toneHex = "#8E7CC3",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
         )
     )
 
@@ -148,9 +180,10 @@ object EmoteCatalog {
         label: String,
         toneHex: String,
         themeKey: String,
-        themeLabel: String
+        themeLabel: String,
+        isPremium: Boolean = false
     ): EmoteSpec {
-        return EmoteSpec(id, emotionKey, imageRes, label, toneHex, themeKey, themeLabel)
+        return EmoteSpec(id, emotionKey, imageRes, label, toneHex, themeKey, themeLabel, isPremium)
     }
 }
 

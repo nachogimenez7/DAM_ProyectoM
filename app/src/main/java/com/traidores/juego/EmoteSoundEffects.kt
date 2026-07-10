@@ -68,6 +68,9 @@ object EmoteSoundEffects {
         "sad" -> R.raw.sfx_emote_sad
         "suspicious" -> R.raw.sfx_emote_suspicious
         "angry" -> R.raw.sfx_emote_angry
+        "premium_hermosa_manana" -> R.raw.sfx_emote_premium_hermosa_manana
+        "premium_mate" -> R.raw.sfx_emote_premium_mate
+        "premium_dormida" -> R.raw.sfx_emote_premium_dormida
         else -> null
     }
 }

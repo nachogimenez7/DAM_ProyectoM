@@ -12,6 +12,7 @@ object MusicManager {
     private val handler = Handler(Looper.getMainLooper())
     private var activeScreens = 0
     private var currentTrackRes = R.raw.menu_music
+    private var currentVictoryTrackRes = 0
     private var player: MediaPlayer? = null
     private var victoryPlayer: MediaPlayer? = null
     private var transitionPaused = false
@@ -105,21 +106,24 @@ object MusicManager {
         }
     }
 
-    fun playVictoryMusic(context: Context) {
-        if (victoryPlayer != null) {
+    fun playVictoryMusic(context: Context, winnerKey: String) {
+        val trackRes = victoryTrackForWinner(winnerKey)
+        if (victoryPlayer != null && currentVictoryTrackRes == trackRes) {
             refresh(context)
             return
         }
 
         transitionPaused = true
         pausePlayer()
+        stopVictoryMusic()
+        currentVictoryTrackRes = trackRes
         val appContext = context.applicationContext
         val sharedPref = AudioPreferences.preferences(appContext)
         val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
         val volume = AudioPreferences.musicVolume(sharedPref)
         if (!musicOn || volume <= 0f) return
 
-        victoryPlayer = MediaPlayer.create(appContext, R.raw.victory_music)?.apply {
+        victoryPlayer = MediaPlayer.create(appContext, trackRes)?.apply {
             isLooping = false
             setVolume(volume, volume)
             setOnErrorListener { errored, _, _ ->
@@ -160,6 +164,7 @@ object MusicManager {
             release()
         }
         victoryPlayer = null
+        currentVictoryTrackRes = 0
     }
 
     private fun trackForSession(session: GameSession): Int {
@@ -175,6 +180,13 @@ object MusicManager {
             "grecia" -> R.raw.day_music_greece
             "medieval" -> R.raw.day_music_medieval
             else -> R.raw.day_music_pampa
+        }
+    }
+
+    private fun victoryTrackForWinner(winnerKey: String): Int {
+        return when (winnerKey) {
+            GameRules.TRAITOR_WINNER -> R.raw.victory_music_traitors
+            else -> R.raw.victory_music_town
         }
     }
 

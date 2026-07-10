@@ -166,6 +166,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
+    private val winnerAutoReturnRunnable = Runnable {
+        if (isWinnerRevealVisible && ::session.isInitialized && session.winner.isNotBlank()) {
+            returnToLobby()
+        }
+    }
     private val nightSkipEnableRunnable = Runnable {
         nightSkipEnableScheduled = false
         if (::btnAction.isInitialized && ::session.isInitialized) {
@@ -906,6 +911,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
         autoAdvanceHandler.removeCallbacks(nightSkipEnableRunnable)
         nightSkipEnableScheduled = false
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
@@ -956,6 +962,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         eventLogHeightAnimator?.cancel()
         closeRolePreview(resumeGameFlow = false)
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
         autoAdvanceHandler.removeCallbacks(nightSkipEnableRunnable)
         nightSkipEnableScheduled = false
         autoAdvanceHandler.removeCallbacks(feedbackDismissRunnable)
@@ -982,7 +989,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         if (::session.isInitialized && isWinnerRevealVisible) {
-            MusicManager.resumeVictoryMusic(this)
+            MusicManager.playVictoryMusic(this, session.winner)
+            scheduleWinnerAutoReturn()
             return
         }
         if (::session.isInitialized && feedbackState.pending?.blocksGameplay == true) {
@@ -6378,11 +6386,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealPresented = true
         if (!animate) {
             winnerRevealAnimator.show(cardViews, animate = false) {}
-            MusicManager.resumeVictoryMusic(this)
+            MusicManager.playVictoryMusic(this, session.winner)
+            scheduleWinnerAutoReturn()
             return
         }
 
-        MusicManager.playVictoryMusic(this)
+        MusicManager.playVictoryMusic(this, session.winner)
+        scheduleWinnerAutoReturn()
         winnerRevealAnimator.show(cardViews, animate = true) {}
     }
 
@@ -6500,8 +6510,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealAnimator.settle()
     }
 
+    private fun scheduleWinnerAutoReturn() {
+        autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
+        autoAdvanceHandler.postDelayed(winnerAutoReturnRunnable, WINNER_AUTO_RETURN_MS)
+    }
+
     private fun returnToLobby() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
         MusicManager.stopVictoryMusic()
         finish()
     }
@@ -6835,6 +6851,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val JESTER_VICTORY_DURATION_MS = 5000L
+        private const val WINNER_AUTO_RETURN_MS = 45_000L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
