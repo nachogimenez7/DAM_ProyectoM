@@ -181,36 +181,18 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun loadProfile(): ProfileDraft {
-        AchievementTracker.ensureProfileOpened(this)
-        val fallbackName = preferences
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
-            .ifBlank { "Jugador" }
-        val achievements = preferences
-            .getString(PREF_ACHIEVEMENTS, null)
-            ?.split(ACHIEVEMENT_SEPARATOR)
-            ?.filter { it.isNotBlank() }
-            ?.take(MAX_FEATURED_ACHIEVEMENTS)
-            .orEmpty()
-            .let(::validFeaturedAchievements)
-
+        val profile = PlayerProfileStore.loadHumanProfile(this)
         return ProfileDraft(
-            name = preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
-            publicId = PlayerPublicIdentity.currentPublicId(this),
-            bio = preferences.getString(PREF_BIO, DEFAULT_BIO).orEmpty(),
-            avatarKey = preferences.getString(PREF_AVATAR, DEFAULT_AVATAR_KEY)
-                .orEmpty()
-                .ifBlank { DEFAULT_AVATAR_KEY },
-            bannerKey = ProfileCustomizationCatalog.normalizeBannerKey(
-                preferences.getString(PREF_BANNER, DEFAULT_BANNER_KEY)
-                    .orEmpty()
-                    .ifBlank { DEFAULT_BANNER_KEY }
-            ),
-            favoriteRoleKey = preferences.getString(PREF_FAVORITE_ROLE, DEFAULT_ROLE_KEY)
-                .orEmpty()
-                .ifBlank { DEFAULT_ROLE_KEY },
-            achievements = achievements,
-            emoteLoadout = EmoteLoadout.selectedIds(this)
+            name = profile.name,
+            publicId = profile.publicId,
+            bio = profile.bio,
+            avatarKey = profile.avatarKey,
+            bannerKey = profile.bannerKey,
+            favoriteRoleKey = profile.favoriteRoleKey,
+            achievements = profile.featuredAchievementIds
+                .mapNotNull { ProfileCustomizationCatalog.achievementById(it)?.name }
+                .let(::validFeaturedAchievements),
+            emoteLoadout = profile.emoteIds
         )
     }
 
@@ -389,7 +371,8 @@ class ProfileActivity : BaseActivity() {
     private fun showExpandedAvatar() {
         val content = layoutInflater.inflate(R.layout.dialog_profile_avatar, null)
         val expandedAvatar: ImageView = content.findViewById(R.id.expandedProfileAvatar)
-        setRoleImage(expandedAvatar, ProfileRoleCatalog.find(draftProfile.avatarKey).role)
+        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+        setRoleImage(expandedAvatar, avatarEntry.role)
         val dialog = AlertDialog.Builder(this)
             .setView(content)
             .create()
@@ -402,7 +385,10 @@ class ProfileActivity : BaseActivity() {
                 val maxHeight = (resources.displayMetrics.heightPixels - dp(48)).coerceAtLeast(dp(220))
                 setLayout(dp(320).coerceAtMost(maxWidth), dp(320).coerceAtMost(maxHeight))
             }
-            expandedAvatar.scaleType = ImageView.ScaleType.CENTER_CROP
+            // Mismo encuadre tipo retrato que el avatar chico (alignAvatarToFocus),
+            // en vez de centerCrop plano: consistencia visual y evita que la version
+            // ampliada muestre la imagen sin recortar dentro del marco circular.
+            alignAvatarToFocus(expandedAvatar, avatarEntry.verticalFocus)
         }
         dialog.show()
     }

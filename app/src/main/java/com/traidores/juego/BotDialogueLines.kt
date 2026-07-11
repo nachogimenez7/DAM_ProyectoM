@@ -53,11 +53,15 @@ internal fun roleClaimReaction(
         .firstOrNull { it != GameEngine.humanPlayer(session).name }
     return when {
         existingClaim != null && index == 0 ->
-            "ojo q $existingClaim ya habia dicho ${claim.label}, eso es doble claim"
+            "ojo q $existingClaim ya habia dicho ${claim.label}, los dos no pueden tener ese rol"
         claimResponder != null && index == 1 ->
-            "doble claim entonces, uno esta vendiendo humo"
+            "ah bueno, dos que dicen lo mismo. uno vende humo seguro"
         index == 0 ->
-            "ok decis ${claim.label}, pero tira algo concreto sin quemar de mas"
+            if (claim.roleKey == RoleCatalog.ALDEANO) {
+                "ok decis ${claim.label}; no tenes accion, tira a quien miras y por que"
+            } else {
+                "ok decis ${claim.label}, pero tira algo concreto sin quemar de mas"
+            }
         index == 1 ->
             "bien, preguntemos antes de votar por votar"
         else -> null
@@ -82,7 +86,7 @@ internal fun traitorCounterClaimLine(
         RoleCatalog.MEDICO,
         RoleCatalog.POLICIA -> "mmm raro, yo tambien tengo ${claim.label}. conta ${claimFollowUp(claim.roleKey)}"
         RoleCatalog.ALDEANO -> "aldeano dicen todos cuando los apuran, dame algo mas"
-        else -> "puede ser, pero ese claim solo no alcanza"
+        else -> "puede ser, pero decir el rol solo no alcanza"
     }
 }
 
@@ -97,7 +101,7 @@ internal fun roleAwareClaimQuestion(
         return when (claim.roleKey) {
             RoleCatalog.MEDICO -> "si sos medico, deci la ronda exacta y a quien, el titulo solo no alcanza"
             RoleCatalog.POLICIA -> "si sos detective, dame el nombre que investigaste anoche, ahora"
-            RoleCatalog.ALDEANO -> "aldeano no explica nada por si solo, con quien votaste y por que"
+            RoleCatalog.ALDEANO -> "aldeano no tiene accion nocturna; dame una sospecha y el motivo"
             else -> null
         }
     }
@@ -107,7 +111,8 @@ internal fun roleAwareClaimQuestion(
         RoleCatalog.MEDICO -> when (claim.roleKey) {
             RoleCatalog.MEDICO -> "si sos medico, deci a quien cuidaste sin vender humo"
             RoleCatalog.POLICIA -> "ok detective, tira el hilo pero no regales todo"
-            else -> if (seed % 2 == 0) "claim anotado, pero falta explicar que hiciste" else null
+            RoleCatalog.ALDEANO -> if (seed % 2 == 0) "anotado lo de aldeano; entonces tira lectura, no accion" else null
+            else -> if (seed % 2 == 0) "anotado lo del rol, pero conta que hiciste" else null
         }
         RoleCatalog.POLICIA -> when (claim.roleKey) {
             RoleCatalog.MEDICO -> "si sos medico, tu noche deberia ordenar algo"
@@ -671,7 +676,7 @@ internal fun pendingAnswerReply(
         claim != null -> listOf(
             "ok, dijiste ${claim.label}. ahora falta ver si alguien te cruza",
             "bien, queda ese rol anotado. no lo cambiemos después eh",
-            "listo, claim de ${claim.label}. ahora explica la jugada sin regalar de más"
+            "listo, dijiste ${claim.label}. ahora explica la jugada sin regalar de más"
         )
         statement?.type in setOf(StatementType.ACCUSE, StatementType.VOTE) && statementTarget != null -> listOf(
             "ok, entonces estas mirando a $statementTarget. que responda eso",
@@ -816,6 +821,43 @@ internal fun casualHumanReply(
     return chooseFreshLine(options, session, bot, "casual:$seed")
 }
 
+internal fun offTopicReply(
+    session: GameSession,
+    bot: GamePlayer,
+    repeated: Boolean,
+    index: Int
+): String {
+    val personality = personalityFor(session, bot)
+    val options = if (repeated) {
+        listOf(
+            "en serio, si no jugas te van a votar por dar vueltas. a quien miras?",
+            "dale, volve a la partida: quien te parece raro hoy?"
+        )
+    } else {
+        when (personality) {
+            BotPersonality.TRANQUI -> listOf(
+                "jaja despues lo hablamos, ahora concentrate: a quien miras vos?"
+            )
+            BotPersonality.PICANTE -> listOf(
+                "eso que tiene que ver? aca hay un traidor suelto, deci algo util"
+            )
+            BotPersonality.JODON -> listOf(
+                "buenisimo, contalo en el velorio del que muera esta noche. dale, a quien votas?"
+            )
+            BotPersonality.DESCONFIADO -> listOf(
+                "cambias de tema justo ahora... te estas haciendo el distraido? a quien miras?"
+            )
+            BotPersonality.IMPULSIVO -> listOf(
+                "menos vueltas y mas juego: tira un nombre o una pregunta"
+            )
+            BotPersonality.ANALITICO -> listOf(
+                "volvamos a la ronda: quien te genera mas dudas y por que?"
+            )
+        }
+    }
+    return chooseFreshLine(options, session, bot, "off-topic:$repeated:$index:${socialChatSize(session)}")
+}
+
 internal fun lowEvidenceOpeningLine(session: GameSession, bot: GamePlayer, index: Int): String {
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:low-evidence:$index:${socialChatSize(session)}")
     val options = listOf(
@@ -826,6 +868,91 @@ internal fun lowEvidenceOpeningLine(session: GameSession, bot: GamePlayer, index
         "no me copa votar por silencio nomas, falta charla"
     )
     return chooseFreshLine(options, session, bot, "low-evidence:$seed")
+}
+
+internal fun pastRoundThreadLine(session: GameSession, bot: GamePlayer, index: Int): String? {
+    if (index > 2 || session.round <= 1) return null
+    val seed = stableNoise("${session.code}:${session.round}:${bot.name}:past-thread:$index:${socialChatSize(session)}")
+    if (index > 0 && seed % 3 == 1) return null
+
+    previousDetectiveReadLine(session, bot, index)?.let { return it }
+    previousStanceFlipLine(session, bot)?.let { return it }
+    return null
+}
+
+private fun previousDetectiveReadLine(session: GameSession, bot: GamePlayer, index: Int): String? {
+    val read = session.tableMemory.declaredInvestigationReads
+        .asReversed()
+        .firstOrNull {
+            it.round < session.round &&
+                normalizedForParsing(it.result) in setOf("sospechoso", "sospechosa", "traidor", "culpable") &&
+                GameEngine.playerByName(session, it.target)?.alive == true &&
+                it.source != bot.name
+        }
+        ?: return null
+    val target = GameEngine.playerByName(session, read.target)?.let { safeName(it, session) } ?: read.target
+    val source = GameEngine.playerByName(session, read.source)?.let { safeName(it, session) } ?: read.source
+    val sourceAlive = GameEngine.playerByName(session, read.source)?.alive == true
+    return when {
+        !sourceAlive ->
+            "antes de morir, $source habia marcado a $target. no lo borremos del hilo"
+        index == 0 ->
+            "$source habia marcado a $target y todavia falta una respuesta clara"
+        else ->
+            "lo de $target no nace de la nada: ya venia marcado por $source"
+    }
+}
+
+private fun previousStanceFlipLine(session: GameSession, bot: GamePlayer): String? {
+    val aliveNames = GameEngine.alivePlayers(session).map { it.name }.toSet()
+    session.claimLedger.forEach { (speaker, records) ->
+        if (speaker == bot.name || speaker !in aliveNames) return@forEach
+        records
+            .filter { it.target in aliveNames }
+            .groupBy { it.target.orEmpty() }
+            .forEach { (target, targetRecords) ->
+                val trusted = targetRecords.firstOrNull { it.statementType == StatementType.TRUST }
+                val pushed = targetRecords.lastOrNull {
+                    it.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE) &&
+                        trusted != null &&
+                        it.round > trusted.round
+                }
+                if (trusted != null && pushed != null) {
+                    val shownSpeaker = GameEngine.playerByName(session, speaker)?.let { safeName(it, session) } ?: speaker
+                    val shownTarget = GameEngine.playerByName(session, target)?.let { safeName(it, session) } ?: target
+                    return "ayer $shownSpeaker bancaba a $shownTarget y ahora lo empuja. eso hay que explicarlo"
+                }
+            }
+    }
+    return null
+}
+
+internal fun eliminationLastWordsLine(session: GameSession, player: GamePlayer): String {
+    val seed = stableNoise("${session.code}:${session.round}:${player.name}:last-words:${session.voteRound}")
+    val options = when {
+        GameRules.isTraitorRole(player.role) -> listOf(
+            "miren bien quienes empujaron este voto, despues no digan que no avise",
+            "se van a acordar de este voto cuando sea tarde",
+            "buena suerte con lo que dejaron vivo"
+        )
+        player.role?.key == RoleCatalog.ALDEANO -> listOf(
+            "me sacan sin accion para defenderme, revisen quien apuro esto",
+            "soy pueblo raso, si sale mal miren a los que cerraron rapido",
+            "no tenia poder, tenia lectura. no la tiren a la basura"
+        )
+        else -> listOf(
+            "si esto sale mal, revisen quien no quiso escuchar",
+            "me voy, pero el hilo queda: no voten por inercia manana",
+            "acuerdense de quien cambio la historia antes de cerrar"
+        )
+    }
+    return finishSpeech(
+        raw = options[seed % options.size],
+        session = session,
+        bot = player,
+        context = "last-words:${session.phaseIndex}",
+        allowRoleTerms = true
+    )
 }
 
 internal fun lineForIntent(
@@ -1052,7 +1179,7 @@ internal fun traitorRoleLines(
     } else if (session.botDifficulty == BotDifficulty.HARD) {
         listOf(
             "yo por ahora no quiero quemar rol, pero $target tiene que hablar",
-            "si necesitan claim después lo doy, ahora me importa $target",
+            "si necesitan que diga mi rol después lo digo, ahora me importa $target",
             "no regalen roles gratis, primero que $target cierre lo suyo"
         )
     } else {
@@ -1182,6 +1309,60 @@ internal val TRAITOR_FAKE_CLAIM_UNDER_PRESSURE_LINES = listOf(
     "paren un toque, soy \$label. miren a \$target que viene peor"
 )
 
+internal fun traitorPlannedDayLine(
+    session: GameSession,
+    bot: GamePlayer,
+    index: Int
+): String? {
+    if (!isTraitor(bot)) return null
+    val plan = activeTraitorPlanForPublicDay(session) ?: return null
+    val cover = plan.cover
+    val dirtyTarget = cover?.targetToDirty?.takeIf { isAlivePublicTarget(session, it, bot) }
+    val pushTarget = plan.dayPushTarget.takeIf { isAlivePublicTarget(session, it, bot) }
+        ?: dirtyTarget
+
+    return when {
+        cover?.kind == CoverKind.COUNTER_CLAIM &&
+            cover.actor == bot.name &&
+            dirtyTarget != null &&
+            !hasClaimedRole(session, bot.name) -> {
+            val label = roleLabel(cover.fakeRoleKey ?: RoleCatalog.POLICIA)
+            "paro ahi: yo tambien soy $label. $dirtyTarget esta acomodando la historia"
+        }
+        cover?.kind == CoverKind.COUNTER_CLAIM &&
+            cover.backer == bot.name &&
+            dirtyTarget != null &&
+            cover.actor.isNotBlank() ->
+            "yo le creo mas a ${cover.actor}; $dirtyTarget viene forzando esa lectura"
+        cover?.kind == CoverKind.FAKE_CLAIM &&
+            cover.actor == bot.name &&
+            !hasClaimedRole(session, bot.name) -> {
+            val label = roleLabel(cover.fakeRoleKey ?: RoleCatalog.ALDEANO)
+            "lo digo para ordenar: soy $label. no me hagan quemar mas de lo necesario"
+        }
+        cover?.kind == CoverKind.BUS_ALLY &&
+            dirtyTarget != null ->
+            "no voy a tapar a $dirtyTarget, ya queda demasiado raro todo lo que hizo"
+        pushTarget != null && index <= 2 -> {
+            if (cover?.backer == bot.name && cover.actor.isNotBlank()) {
+                "banco a ${cover.actor}; el voto para mi esta en $pushTarget"
+            } else {
+                "para mi hoy hay que ordenar con $pushTarget, viene dejando huecos"
+            }
+        }
+        else -> null
+    }
+}
+
+private fun isAlivePublicTarget(
+    session: GameSession,
+    targetName: String,
+    speaker: GamePlayer
+): Boolean {
+    if (targetName.isBlank() || targetName == speaker.name) return false
+    return GameEngine.playerByName(session, targetName)?.alive == true
+}
+
 internal fun contradictionLine(playerName: String, contradiction: ClaimContradiction): String {
     val firstRole = contradiction.first.roleKey
     val latestRole = contradiction.latest.roleKey
@@ -1242,6 +1423,183 @@ internal fun traitorDeflectionLine(
     return options[seed % options.size]
 }
 
+internal fun traitorPlanOpeningLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan
+): String {
+    val mainThreat = plan.threats.firstOrNull()
+    return when {
+        session.round <= 1 ->
+            "arranquemos tranquilos, todavia no hay mucha lectura. yo miraria a ${plan.killTarget.ifBlank { "alguien activo" }}"
+        mainThreat?.kind == ThreatKind.DETECTIVE_DECLARADO && mainThreat.markedTraitor != null ->
+            "ojo que ${mainThreat.player} se paro de detective y marco a ${mainThreat.markedTraitor}. hay que jugar fino"
+        mainThreat?.kind == ThreatKind.NOS_MARCO_SOSPECHA ->
+            "${mainThreat.player} esta empujando contra ${mainThreat.markedTraitor ?: bot.name}. si lo dejamos, nos ordena el dia"
+        mainThreat?.kind == ThreatKind.JUNTA_VOTOS ->
+            "${mainThreat.player} esta juntando gente. no lo dejemos manejar la mesa"
+        else ->
+            "tenemos noche para ordenar esto. no regalemos roles y salgamos con una sola linea manana"
+    }
+}
+
+internal fun traitorKillProposalLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan
+): String {
+    val target = plan.killTarget.ifBlank { return "si no hay objetivo claro, mejor no inventar ruido" }
+    return when (plan.killRationale) {
+        KillRationale.LIDER_DE_OPINION ->
+            "bajemos a $target, esta ordenando demasiado al pueblo"
+        KillRationale.CONFIRMA_ROL ->
+            "si dejamos vivo a $target puede confirmar rol, me gusta que caiga hoy"
+        KillRationale.NOS_MARCO ->
+            if (plan.cover?.kind == CoverKind.COUNTER_CLAIM) {
+                "$target nos marco, pero matarlo lo confirma. mejor lo cruzamos de dia"
+            } else {
+                "$target nos marco y puede arrastrar votos, que no llegue comodo al dia"
+            }
+        KillRationale.JUNTA_VOTOS_LIMPIOS ->
+            "$target viene juntando votos limpios, hay que cortarlo antes de que mande la plaza"
+        KillRationale.CALLADO_PELIGROSO ->
+            "$target habla poco pero lee bastante, esos despues te ganan sin hacer ruido"
+        KillRationale.SIN_LECTURA ->
+            "no hay lectura fuerte todavia; $target es una baja segura para empezar a mover la mesa"
+    }
+}
+
+internal fun traitorCoverLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan,
+    cover: CoverMove
+): String {
+    return when (cover.kind) {
+        CoverKind.COUNTER_CLAIM -> when (bot.name) {
+            cover.actor ->
+                "manana yo digo que soy ${roleLabel(cover.fakeRoleKey ?: RoleCatalog.POLICIA)} y cruzo a ${cover.targetToDirty}. que quede palabra contra palabra"
+            cover.backer ->
+                "dale, yo te banco y le tiro a ${cover.targetToDirty} que se contradijo"
+            else ->
+                "${cover.actor} cruza a ${cover.targetToDirty}; los demas no lo sobredefendemos"
+        }
+        CoverKind.FAKE_CLAIM -> when (bot.name) {
+            cover.actor ->
+                "si me aprietan, tiro ${roleLabel(cover.fakeRoleKey ?: RoleCatalog.ALDEANO)} y salgo por ahi"
+            cover.backer ->
+                "si te preguntan, te banco suave. sin defenderte de mas"
+            else ->
+                "dejemos que ${cover.actor} tire rol si lo aprietan, pero sin hacer una muralla"
+        }
+        CoverKind.BUS_ALLY ->
+            "si ${cover.targetToDirty ?: cover.actor} esta quemado, lo soltamos y salvamos la ronda"
+        CoverKind.LOW_PROFILE ->
+            "perfil bajo. hablamos lo justo y dejamos que el pueblo se pelee solo"
+    }
+}
+
+internal fun traitorDayPushLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan
+): String {
+    val target = plan.dayPushTarget.ifBlank { return "manana no empujemos al azar, esperamos quien se regala" }
+    return when (personalityFor(session, bot)) {
+        BotPersonality.PICANTE,
+        BotPersonality.IMPULSIVO ->
+            "en votacion empujamos a $target. si duda, lo clavamos ahi"
+        BotPersonality.ANALITICO ->
+            "manana armemos el caso contra $target con calma, no por manada"
+        BotPersonality.DESCONFIADO ->
+            "a $target lo quiero incomodo todo el dia, que explique cada cosa"
+        else ->
+            "de dia llevemos la charla a $target y no nos crucemos entre nosotros"
+    }
+}
+
+internal fun traitorAgreementLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan
+): String {
+    val seed = stableNoise("${session.code}:${session.round}:${bot.name}:traitor-agree")
+    val options = when (personalityFor(session, bot)) {
+        BotPersonality.PICANTE -> listOf(
+            "cerrado. si el pueblo duda, lo empujamos nosotros",
+            "me sirve. sin miedo, pero sin regalarse"
+        )
+        BotPersonality.JODON -> listOf(
+            "jaja hermoso, plan turbio pero prolijo",
+            "listo, actuemos normales que es lo mas dificil"
+        )
+        BotPersonality.ANALITICO -> listOf(
+            "bien. victima, coartada y voto tienen que coincidir",
+            "ordenado entonces: noche limpia y dia con foco"
+        )
+        else -> listOf(
+            "de una, quedamos asi",
+            "cerrado, manana nadie se pisa",
+            "me gusta, corto y claro"
+        )
+    }
+    return options[seed % options.size]
+}
+
+internal fun shouldSpeakerTakeCoverLine(
+    cover: CoverMove,
+    speaker: String,
+    normalizedLines: List<String>
+): Boolean {
+    val actorSaidCover = normalizedLines.any {
+        it.contains("yo digo") ||
+            it.contains("tiro") ||
+            it.contains("cruzo") ||
+            it.contains("perfil bajo")
+    }
+    val backerSaidCover = normalizedLines.any {
+        it.contains("yo te banco") ||
+            it.contains("te banco") ||
+            it.contains("no lo sobredefendemos")
+    }
+    return when (cover.kind) {
+        CoverKind.COUNTER_CLAIM,
+        CoverKind.FAKE_CLAIM -> when (speaker) {
+            cover.actor -> !actorSaidCover
+            cover.backer -> actorSaidCover && !backerSaidCover
+            else -> actorSaidCover && !backerSaidCover
+        }
+        CoverKind.LOW_PROFILE -> !actorSaidCover
+        CoverKind.BUS_ALLY -> !actorSaidCover
+    }
+}
+
+internal fun minimumTraitorPlanLines(session: GameSession): Int {
+    val traitors = GameEngine.aliveTraitors(session).size.coerceAtLeast(1)
+    return (traitors + 2).coerceIn(3, 6)
+}
+
+internal fun finishTraitorSpeech(
+    raw: String,
+    session: GameSession,
+    bot: GamePlayer,
+    context: String
+): String {
+    val personality = personalityFor(session, bot)
+    val seed = stableNoise("${session.code}:${session.round}:${bot.name}:traitor-style:$context")
+    var text = raw.lowercase()
+        .replace("porque", if (seed % 3 == 0) "pq" else "porque")
+        .replace("que ", if (seed % 5 == 0) "q " else "que ")
+        .replace("tambien", if (seed % 4 == 0) "tmb" else "tambien")
+        .replace("no se", if (seed % 2 == 0) "nose" else "no se")
+    text = applyPersonalitySignature(text, personality, seed)
+    return text
+        .replace(Regex("[.!]{1,}$"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(140)
+}
+
 internal fun informalReason(reason: String?, contextSeed: String = ""): String {
     val variants = when (reason) {
         "lo nombraron en el pueblo" -> listOf(
@@ -1274,15 +1632,15 @@ internal fun informalReason(reason: String?, contextSeed: String = ""): String {
             "lo vienen apurando hace rato",
             "ya estaba en la mira"
         )
-        "hay doble claim" -> listOf(
-            "hay doble claim",
+        "dos dijeron el mismo rol" -> listOf(
+            "dos dijeron el mismo rol",
             "dos personas dijeron lo mismo",
-            "ese claim esta peleado"
+            "ese rol esta peleado"
         )
         "tiro rol y falta detalle" -> listOf(
             "tiro rol pero falta detalle",
             "dijo rol y no cerro nada",
-            "el claim quedo medio suelto"
+            "lo del rol quedo medio suelto"
         )
         "lo presionaron con algo concreto" -> listOf(
             "lo marcaron con algo concreto",
@@ -1301,7 +1659,7 @@ internal fun informalReason(reason: String?, contextSeed: String = ""): String {
         )
         "se contradijo de rol" -> listOf(
             "se contradijo con el rol",
-            "cambio el claim",
+            "primero dijo un rol y despues otro",
             "dijo dos roles distintos"
         )
         "se contradijo con la accion" -> listOf(
@@ -1350,6 +1708,7 @@ internal fun finishSpeech(
     if (personality == BotPersonality.TRANQUI && seed % 4 == 0 && !text.startsWith("igual")) {
         text = "igual $text"
     }
+    text = applyPersonalitySignature(text, personality, seed)
     text = text
         .replace(Regex("[.!]{1,}$"), "")
         .replace(Regex("\\s+"), " ")
@@ -1367,6 +1726,28 @@ internal fun finishSpeech(
         safe
     }
     return guarded
+}
+
+internal fun applyPersonalitySignature(
+    text: String,
+    personality: BotPersonality,
+    seed: Int
+): String {
+    if (text.length > 110 || seed % 6 != 0) return text
+    return when (personality) {
+        BotPersonality.TRANQUI ->
+            if (text.startsWith("igual")) text else "tranqui, $text"
+        BotPersonality.PICANTE ->
+            if (text.startsWith("sin vueltas")) text else "sin vueltas, $text"
+        BotPersonality.JODON ->
+            if (containsLaugh(text)) text else "$text jaja"
+        BotPersonality.DESCONFIADO ->
+            if (text.startsWith("mmm")) text else "mmm, $text"
+        BotPersonality.IMPULSIVO ->
+            if (text.startsWith("dale")) text else "dale, $text"
+        BotPersonality.ANALITICO ->
+            if (text.startsWith("van dos cosas")) text else "van dos cosas: $text"
+    }
 }
 
 private val leadingBotFillers = listOf(
@@ -1505,6 +1886,7 @@ internal fun claimFollowUp(roleKey: String): String {
     return when (roleKey) {
         RoleCatalog.MEDICO -> "a quien cuidaste"
         RoleCatalog.POLICIA -> "a quien investigaste"
+        RoleCatalog.ALDEANO -> "a quien miras y por que"
         RoleCatalog.ALCALDE -> "por que no te revelaste antes"
         RoleCatalog.PAYADOR -> "cuando pensas usar la jugada"
         RoleCatalog.ORACULO -> "a quien queres traer"

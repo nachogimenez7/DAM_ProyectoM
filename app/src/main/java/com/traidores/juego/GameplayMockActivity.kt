@@ -110,7 +110,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastRenderedEventExpanded: Boolean? = null
     private var lastPresentedCentralEventKey: String? = null
     private var lastPresentedAssassinVoteLogKey: String? = null
-    private var stagedBotBurstPhaseIndex = -1
     private val readyToVote = mutableSetOf<String>()
     private var readyVotePhaseIndex = -1
     private var readyVoteBotCascadeScheduled = false
@@ -459,7 +458,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             finish()
             return
         }
-        session = incomingSession ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        session = PlayerProfileStore.withProfiles(
+            this,
+            incomingSession ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
+        )
         onlinePartidaId = incomingOnlinePartidaId
         onlinePlayerId = incomingOnlinePlayerId
         onlineIsHost = savedInstanceState?.getBoolean(STATE_ONLINE_IS_HOST)
@@ -1266,7 +1268,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GamePhase.RESULTADO -> GameEngine.resolveResult(session)
         }
         recordOnlinePhaseAdvance(before, session)
-        chatController.stageBotBurstForCurrentPhase()
+        chatController.onPhaseSettled()
         clearSelection()
         renderGame()
     }
@@ -1299,7 +1301,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
         session = resolved
-        chatController.stageBotBurstForCurrentPhase()
+        chatController.onPhaseSettled()
         clearSelection()
         val feedbackPresentation = feedbackState.submit(feedback)
         blockingFeedbackPeriod = if (
@@ -3648,7 +3650,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "vote_ready_advance mode=${if (isOnlineGameplay()) "online" else "local"} reason=$reason round=${before.round} phaseIndex=${before.phaseIndex}"
         )
         recordOnlinePhaseAdvance(before, session)
-        chatController.stageBotBurstForCurrentPhase()
+        chatController.onPhaseSettled()
         clearSelection()
         renderGame()
     }
@@ -4372,8 +4374,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     GameplayEffects.play(this, GameplayEffect.ERROR)
                     Toast.makeText(this, "${player.name} esta eliminado.", Toast.LENGTH_SHORT).show()
                 }
-                else -> GameplayEffects.play(this, GameplayEffect.ERROR)
+                else -> showMiniPlayerProfile(player)
             }
+        }
+        holder.root.setOnLongClickListener {
+            showMiniPlayerProfile(player)
+            true
         }
         holder.root.contentDescription = when {
             isOracleGuest -> "${player.name}, invocado para discutir"
@@ -4383,6 +4389,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isActionable -> "${player.name}, objetivo disponible para $actionLabel"
             else -> player.name
         }
+    }
+
+    private fun showMiniPlayerProfile(player: GamePlayer) {
+        GameplayEffects.play(this, GameplayEffect.PANEL)
+        val profile = PlayerProfileStore.profileFor(this, session, player)
+        PlayerProfileDialog.showMini(this, profile)
     }
 
     private fun updateSideActionBadgePulse(
@@ -4809,7 +4821,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 session = resolveOnlineNightWindow(nightActions)
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
-                chatController.stageBotBurstForCurrentPhase()
+                chatController.onPhaseSettled()
                 clearSelection()
                 renderGame()
             }
@@ -4824,7 +4836,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 session = resolveOnlineNightWindow()
                 onlineNightResolutionInProgress = false
                 recordOnlinePhaseAdvance(before, session)
-                chatController.stageBotBurstForCurrentPhase()
+                chatController.onPhaseSettled()
                 clearSelection()
                 renderGame()
             }
@@ -6149,6 +6161,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.dayEliminationTarget.isNotBlank() &&
             !voteExpulsionComplete
         ) {
+            val withLastWords = GameEngine.addEliminationLastWords(session)
+            if (withLastWords != session) {
+                session = withLastWords
+                chatController.onSessionUpdated()
+                renderGame()
+                return
+            }
             voteResultAnimator.playExpulsion(session) {
                 voteExpulsionComplete = true
             }

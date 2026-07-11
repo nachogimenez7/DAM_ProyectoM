@@ -160,6 +160,7 @@ internal enum class HumanMessageIntent {
     DOUBT,
     ANSWER_PENDING,
     SECRET_LEAK,
+    OFF_TOPIC,
     OTHER
 }
 
@@ -207,8 +208,8 @@ internal val secretWords = listOf(
 )
 
 internal val roleAliases = linkedMapOf(
-    RoleCatalog.MEDICO to listOf("medico", "doc"),
-    RoleCatalog.POLICIA to listOf("detective", "comisario", "policia"),
+    RoleCatalog.MEDICO to listOf("medico", "medica", "doctor", "doctora", "doc"),
+    RoleCatalog.POLICIA to listOf("detective", "comisario", "policia", "inspector", "poli"),
     RoleCatalog.ALCALDE to listOf("alcalde"),
     RoleCatalog.PAYADOR to listOf("payador"),
     RoleCatalog.ORACULO to listOf("oraculo"),
@@ -244,7 +245,7 @@ internal object LocalBotAi {
 
     internal fun votePlanSnapshot(session: GameSession, voterName: String): VotePlanSnapshot? {
         val voter = GameEngine.playerByName(session, voterName) ?: return null
-        return conversationVotePlan(session, voter)?.let { plan ->
+        return (traitorPlanVotePlan(session, voter) ?: conversationVotePlan(session, voter))?.let { plan ->
             VotePlanSnapshot(
                 target = plan.target,
                 reason = plan.reason,
@@ -255,6 +256,16 @@ internal object LocalBotAi {
     }
 
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
+        session.traitorPlan
+            ?.takeIf { it.round == session.round }
+            ?.killTarget
+            ?.takeIf { GameEngine.isValidKillTarget(session, it, assassin) }
+            ?.let { return it }
+
+        return chooseAssassinTargetWithoutPlan(session, assassin)
+    }
+
+    internal fun chooseAssassinTargetWithoutPlan(session: GameSession, assassin: GamePlayer): String {
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
         if (session.quickTestMode && !session.debugBotsNeverKillHuman) {
@@ -323,7 +334,9 @@ internal object LocalBotAi {
         return candidates
             .sortedWith(
                 compareByDescending<GamePlayer> { player ->
-                    session.chatHistory.count { it.speaker == player.name } +
+                    session.chatHistory.count {
+                        it.channel == ChatChannel.PUBLICO && !it.isGod && it.speaker == player.name
+                    } +
                         session.actionHistory.count { it.actor == player.name }
                 }.thenByDescending { player ->
                     session.publicHistory.indexOfLast { it.contains(player.name) }
@@ -333,10 +346,44 @@ internal object LocalBotAi {
             .name
     }
 
+    fun nextTraitorLine(session: GameSession, speaker: String): String? {
+        val bot = GameEngine.playerByName(session, speaker)
+            ?.takeIf { !it.isHuman && GameEngine.canSeeTraitorChat(session, it) }
+            ?: return null
+        val plan = session.traitorPlan
+            ?.takeIf { it.round == session.round }
+            ?: return null
+        val recent = recentTraitorMessages(session)
+        val spokenCount = recent.count { it.speaker == speaker }
+        val normalizedLines = recent.map { normalizedForParsing(it.message) }
+        val cover = plan.cover
+        val raw = when {
+            normalizedLines.none { it.contains("arranqu") || it.contains("ojo ") || it.contains("mesa") } ->
+                traitorPlanOpeningLine(session, bot, plan)
+            plan.killTarget.isNotBlank() && normalizedLines.none { line ->
+                line.contains(normalizedForParsing(plan.killTarget)) &&
+                    (line.contains("baj") || line.contains("cae") || line.contains("matar") || line.contains("objetivo"))
+            } ->
+                traitorKillProposalLine(session, bot, plan)
+            cover != null && shouldSpeakerTakeCoverLine(cover, speaker, normalizedLines) ->
+                traitorCoverLine(session, bot, plan, cover)
+            plan.dayPushTarget.isNotBlank() && normalizedLines.none { line ->
+                line.contains(normalizedForParsing(plan.dayPushTarget)) &&
+                    (line.contains("vot") || line.contains("empuj") || line.contains("ensuci") || line.contains("cruz"))
+            } ->
+                traitorDayPushLine(session, bot, plan)
+            spokenCount == 0 || recent.count { !it.isGod } < minimumTraitorPlanLines(session) ->
+                traitorAgreementLine(session, bot, plan)
+            else -> null
+        } ?: return null
+        return finishTraitorSpeech(raw, session, bot, "traitor:${recent.size}:$speaker")
+    }
+
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {
         debugVoteCommandTarget(session, voter)
             ?.takeIf { canUseBotVoteTarget(session, voter, it) }
             ?.let { return it }
+        traitorPlanVotePlan(session, voter)?.let { return it.target }
         conversationVotePlan(session, voter)?.let { return it.target }
         val ranked = rankedPublicSuspects(session, voter)
         val declaredTarget = declaredSuspicionTarget(session, voter)
@@ -461,6 +508,7 @@ internal object LocalBotAi {
             val weakRead = isWeakSuspicion(read)
             val objective = roundObjectiveFor(session, bot)
             val objectiveLine = objectiveLine(session, bot, objective, index)
+            val plannedTraitorLine = traitorPlannedDayLine(session, bot, index)
             val conversationRole = conversationRole(index)
             val coordinationLine = coordinationLine(
                 session = session,
@@ -490,6 +538,7 @@ internal object LocalBotAi {
                 )
             }.let { toneAdjustedIntent(session, it) }
             val hardLine = hardOpeningLine(session, bot, conversationRole, target, index)
+            val pastThreadLine = pastRoundThreadLine(session, bot, index)
             val line = when {
                 contradiction != null && index <= 1 ->
                     contradictionLine(read.player.name, contradiction)
@@ -501,8 +550,10 @@ internal object LocalBotAi {
                     "ayer me pude haber equivocado con ${social.failedPush}, hoy quiero escuchar mas antes de mandar fruta"
                 social.ignoredBy != null ->
                     "${social.ignoredBy} me sigue debiendo una respuesta de antes"
+                pastThreadLine != null -> pastThreadLine
                 expelled != null && index == 1 ->
                     "ayer sacamos a $expelled y seguimos igual, no votemos por inercia"
+                plannedTraitorLine != null -> plannedTraitorLine
                 roleLine != null -> roleLine
                 coordinationLine != null -> coordinationLine
                 botToBotLine(session, bot, index) != null ->
@@ -527,8 +578,11 @@ internal object LocalBotAi {
 
     fun votingIntentMessages(session: GameSession, limit: Int = 4): List<Pair<String, String>> {
         return messageBots(session, limit).mapIndexed { index, bot ->
-            val read = rankedPublicSuspects(session, bot).firstOrNull()
-            val votePlan = conversationVotePlan(session, bot)
+            val votePlan = traitorPlanVotePlan(session, bot) ?: conversationVotePlan(session, bot)
+            val read = votePlan
+                ?.target
+                ?.let { target -> rankedPublicSuspects(session, bot).firstOrNull { it.player.name == target } }
+                ?: rankedPublicSuspects(session, bot).firstOrNull()
             val target = votePlan?.target ?: speechTarget(session, bot, read)
             val role = conversationRole(index)
             val contextSeed = "vote:$index:${session.phaseIndex}:${socialChatSize(session)}"
@@ -536,6 +590,7 @@ internal object LocalBotAi {
             val claim = read?.player?.name?.let { latestClaimBySpeaker(session, it) }
             val social = socialRead(session, bot)
             val contradiction = read?.player?.name?.let { publicContradiction(session, it) }
+            val pastThreadLine = pastRoundThreadLine(session, bot, index)
             val templates = if (votePlan != null && votePlan.beats >= 3 && role == BotConversationRole.OPENER) {
                 listOf(
                     "voy con $target por toda la secuencia: $reason",
@@ -575,7 +630,7 @@ internal object LocalBotAi {
             } else if (claim != null) {
                 listOf(
                     "antes de votar quiero q $target cierre lo del rol",
-                    "si $target no explica ese claim yo voy por ahi",
+                    "si $target no explica lo del rol yo voy por ahi",
                     "$target tira rol pero falta detalle, ojo"
                 )
             } else if (social.ignoredBy != null && mentionsName(target, social.ignoredBy)) {
@@ -606,6 +661,8 @@ internal object LocalBotAi {
             }
             val line = if (contradiction != null && index <= 1) {
                 contradictionVoteLine(target, contradiction)
+            } else if (pastThreadLine != null && index <= 1) {
+                pastThreadLine
             } else {
                 templates[
                     stableNoise("${session.code}:${session.round}:${bot.name}:vote:$index:${socialChatSize(session)}") % templates.size
@@ -623,6 +680,26 @@ internal object LocalBotAi {
             }
             bot.name to finishSpeech(line, session, bot, "vote:$index")
         }.dropEchoesOfRecentChat(session).dedupeBotMessages()
+    }
+
+    fun nextConversationLine(session: GameSession, speaker: String): String? {
+        val bot = GameEngine.playerByName(session, speaker)
+            ?.takeIf { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
+            ?: return null
+        val limit = session.players.count { !it.isHuman }.coerceAtLeast(1)
+        val candidates = when (session.phase) {
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION -> votingIntentMessages(session, limit = limit)
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO -> openingDebateMessages(session, limit = limit)
+            else -> emptyList()
+        }
+        return candidates.firstOrNull { it.first == bot.name }?.second
+    }
+
+    fun eliminationLastWords(session: GameSession, player: GamePlayer): String? {
+        if (player.isHuman || !player.alive || session.dayEliminationTarget != player.name) return null
+        return eliminationLastWordsLine(session, player).takeIf { it.isNotBlank() }
     }
 
     fun reactionsToHumanMessage(session: GameSession, humanMessage: String): List<Pair<String, String>> {
@@ -647,7 +724,14 @@ internal object LocalBotAi {
             questionKind = questionKind
             )
         }
+        val repeatedOffTopic = messageIntent == HumanMessageIntent.OFF_TOPIC &&
+            recentPublicMessages(session)
+                .asReversed()
+                .filter { it.speaker == GameEngine.humanPlayer(session).name }
+                .take(2)
+                .count { BotPerception.isOffTopicMessage(session, it.message) } >= 2
         val desiredReplyCount = when {
+            messageIntent == HumanMessageIntent.OFF_TOPIC -> if (repeatedOffTopic) 2 else 1
             messageIntent in setOf(
                 HumanMessageIntent.ROLE_CLAIM,
                 HumanMessageIntent.ROLE_QUESTION,
@@ -716,6 +800,8 @@ internal object LocalBotAi {
                 statementLine != null -> statementLine
                 questionKind != null -> humanQuestionReply(session, bot, questionKind, read, index)
                 casualMessage -> casualHumanReply(session, bot, humanMessage, index)
+                messageIntent == HumanMessageIntent.OFF_TOPIC ->
+                    offTopicReply(session, bot, repeatedOffTopic, index)
                 unanswered != null && (
                     intent == BotSpeechIntent.FOLLOW_UP ||
                         messageIntent in setOf(HumanMessageIntent.ACCUSE, HumanMessageIntent.DOUBT, HumanMessageIntent.OTHER)
@@ -740,94 +826,79 @@ internal object LocalBotAi {
         }.dropEchoesOfRecentChat(session).dedupeBotMessages()
     }
 
-    internal fun roleClaimFrom(message: String): RoleClaim? {
-        val text = normalizedForParsing(message)
-        return roleAliases.entries.firstOrNull { (_, aliases) ->
-            aliases.any { alias ->
-                Regex("(^|\\s)(soy|tengo|me toco)(\\s+el|\\s+la)?\\s+$alias(\\s|$)").containsMatchIn(text)
-            }
-        }?.let { (roleKey, aliases) ->
-            RoleClaim(roleKey, aliases.first())
-        }
-    }
+    internal fun roleClaimFrom(message: String): RoleClaim? = BotPerception.roleClaimFrom(message)
 
-    internal fun publicStatementFrom(session: GameSession, message: String): PublicStatement? {
-        val text = normalizedForParsing(message)
-        val target = mentionedPlayerNames(session, message).firstOrNull()
-        val targetText = target?.let { normalizedForParsing(it) }
-        return when {
-            Regex("(^|\\s)(protegi|cuide|salve|cure)(\\s+a)?\\s+").containsMatchIn(text) ->
-                PublicStatement(StatementType.PROTECTED, target)
-            text.contains("no digo mi rol") ||
-                text.contains("no voy a decir rol") ||
-                text.contains("no quiero decir rol") ||
-                text.contains("no revelo rol") ||
-                text.contains("no voy a revelar") ||
-                text.contains("prefiero no decir") ||
-                text.contains("no digo rol") ->
-                PublicStatement(StatementType.REFUSED_ROLE)
-            target != null && (
-                text.contains("confio en $targetText") ||
-                    text.contains("banco a $targetText") ||
-                    text.contains("$targetText es limpio") ||
-                    text.contains("$targetText es inocente") ||
-                    text.contains("$targetText salio inocente") ||
-                    text.contains("$targetText dio inocente") ||
-                    text.contains("$targetText me dio inocente") ||
-                    text.contains("es inocente") ||
-                    text.contains("salio inocente") ||
-                    text.contains("$targetText no me parece raro") ||
-                    text.contains("$targetText no es") ||
-                    text.contains("no votaria a $targetText") ||
-                    text.contains("me dio inocente") ||
-                    text.contains("dio inocente")
-                ) ->
-                PublicStatement(StatementType.TRUST, target)
-            target != null && (
-                text.contains("$targetText miente") ||
-                    text.contains("no confio en $targetText") ||
-                    text.contains("$targetText esta raro") ||
-                    text.contains("$targetText es raro") ||
-                    text.contains("$targetText me hace ruido") ||
-                    text.contains("$targetText es culpable") ||
-                    text.contains("$targetText salio culpable") ||
-                    text.contains("$targetText dio culpable") ||
-                    text.contains("$targetText me dio culpable") ||
-                    text.contains("$targetText es sospechoso") ||
-                    text.contains("$targetText salio sospechoso") ||
-                    text.contains("$targetText dio sospechoso") ||
-                    text.contains("$targetText me dio sospechoso") ||
-                    text.contains("$targetText es traidor") ||
-                    text.contains("$targetText salio traidor") ||
-                    text.contains("$targetText me dio traidor") ||
-                    text.contains("es culpable") ||
-                    text.contains("salio culpable") ||
-                    text.contains("es sospechoso") ||
-                    text.contains("salio sospechoso") ||
-                    text.contains("es traidor") ||
-                    text.contains("salio traidor") ||
-                    text.contains("sospecho de $targetText") ||
-                    text.contains("para mi es $targetText") ||
-                    text.contains("me dio culpable") ||
-                    text.contains("dio culpable") ||
-                    text.contains("me dio sospechoso") ||
-                    text.contains("dio sospechoso") ||
-                    text.contains("me dio traidor") ||
-                    text.contains("dio traidor")
-                ) ->
-                PublicStatement(StatementType.ACCUSE, target)
-            target != null && (
-                text.contains("voto a $targetText") ||
-                text.contains("votaria a $targetText") ||
-                    text.contains("voy con $targetText")
-                ) ->
-                PublicStatement(StatementType.VOTE, target)
-            Regex("(^|\\s)(investigue|revise|mire|pregunte)(\\s+a|\\s+por)?\\s+").containsMatchIn(text) ->
-                PublicStatement(StatementType.INVESTIGATED, target)
-            else -> null
-        }
-    }
+    internal fun publicStatementFrom(session: GameSession, message: String): PublicStatement? =
+        BotPerception.publicStatementFrom(session, message)
 
+}
+
+internal fun activeTraitorPlanForPublicDay(session: GameSession): TraitorPlan? {
+    if (
+        session.phase != GamePhase.DIA_DEBATE &&
+        session.phase != GamePhase.CONTRAPUNTO &&
+        session.phase != GamePhase.VOTACION &&
+        session.phase != GamePhase.DESEMPATE_VOTACION
+    ) {
+        return null
+    }
+    val plan = session.traitorPlan ?: return null
+    return plan.takeIf { it.round == session.round || it.round == session.round - 1 }
+}
+
+internal fun traitorPlanVotePlan(session: GameSession, voter: GamePlayer): VotePlan? {
+    if (!isTraitor(voter)) return null
+    val plan = activeTraitorPlanForPublicDay(session) ?: return null
+    val cover = plan.cover
+    val coverTarget = cover?.targetToDirty.orEmpty()
+    val targetName = when {
+        cover?.kind == CoverKind.BUS_ALLY && coverTarget.isNotBlank() ->
+            coverTarget
+        plan.dayPushTarget.isNotBlank() -> plan.dayPushTarget
+        coverTarget.isNotBlank() -> coverTarget
+        else -> null
+    } ?: return null
+    if (!canUseBotVoteTarget(session, voter, targetName)) return null
+    val target = GameEngine.playerByName(session, targetName)
+        ?.takeIf { it.alive && it.name != voter.name }
+        ?: return null
+    if (isTraitor(target) && cover?.kind != CoverKind.BUS_ALLY) return null
+
+    val basePlan = VotePlan(
+        target = target.name,
+        reason = traitorPlanVoteReason(plan, target.name),
+        confidence = traitorPlanVoteConfidence(session, plan),
+        beats = if (cover?.kind == CoverKind.LOW_PROFILE) 1 else 2
+    )
+    return basePlan.takeIf { canVotePlanTarget(session, voter, it) }
+}
+
+private fun traitorPlanVoteReason(plan: TraitorPlan, targetName: String): String {
+    val cover = plan.cover
+    return when {
+        cover?.kind == CoverKind.COUNTER_CLAIM && cover.targetToDirty == targetName ->
+            "se contradijo con el rol y fuerza una lectura"
+        cover?.kind == CoverKind.FAKE_CLAIM ->
+            "viene empujando raro y deja huecos"
+        cover?.kind == CoverKind.BUS_ALLY ->
+            "ya queda demasiado quemado y no conviene taparlo"
+        plan.killRationale == KillRationale.NOS_MARCO ->
+            "viene marcando sin cerrar la historia"
+        plan.killRationale == KillRationale.LIDER_DE_OPINION ->
+            "esta ordenando el voto demasiado facil"
+        else ->
+            "es el hilo que mas ordena la votacion"
+    }
+}
+
+private fun traitorPlanVoteConfidence(session: GameSession, plan: TraitorPlan): Int {
+    return when (plan.cover?.kind) {
+        CoverKind.COUNTER_CLAIM -> if (session.botDifficulty == BotDifficulty.HARD) 18 else 14
+        CoverKind.FAKE_CLAIM -> if (session.botDifficulty == BotDifficulty.HARD) 15 else 11
+        CoverKind.BUS_ALLY -> 19
+        CoverKind.LOW_PROFILE -> if (session.botDifficulty == BotDifficulty.HARD) 13 else 9
+        null -> if (session.botDifficulty == BotDifficulty.HARD) 12 else 8
+    }
 }
 
 internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): VotePlan? {
@@ -856,7 +927,7 @@ internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): Vote
         val name = read.player.name
         latestClaimBySpeaker(session, name)?.let { claim ->
             if (publicClaimants(session, claim.roleKey).size > 1) {
-                rawPlans += VotePlan(name, "hay doble claim y uno esta mintiendo", 15)
+                rawPlans += VotePlan(name, "dos dijeron el mismo rol y uno miente", 15)
             }
         }
     }
@@ -986,7 +1057,7 @@ internal fun historicalVotePlans(
                 if (session.botDifficulty == BotDifficulty.HARD) 17 else 13
             }
             reasons += if (contradiction.latest.roleKey != null) {
-                "cambio el claim de rol"
+                "primero dijo un rol y despues otro"
             } else {
                 "cambio la historia de su accion"
             }
@@ -995,7 +1066,7 @@ internal fun historicalVotePlans(
         latestClaimBySpeaker(session, name)?.let { claim ->
             if (publicClaimants(session, claim.roleKey).size > 1) {
                 confidence += if (session.botDifficulty == BotDifficulty.HARD) 16 else 12
-                reasons += "hay doble claim"
+                reasons += "dos dijeron el mismo rol"
             } else if (!hasUsefulPublicRead(session, name)) {
                 confidence += if (session.botDifficulty == BotDifficulty.HARD) 3 else 4
                 reasons += "tiro rol y falta detalle"
@@ -1119,6 +1190,15 @@ internal fun votePluralityTarget(session: GameSession, voter: GamePlayer): Strin
 
 internal fun humanSuggestedVoteTarget(session: GameSession): String? {
     val human = GameEngine.humanPlayer(session)
+    val aliveNames = GameEngine.alivePlayers(session).map { it.name }.toSet()
+    session.claimLedger[human.name].orEmpty()
+        .asReversed()
+        .firstOrNull {
+            it.target in aliveNames &&
+                it.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
+        }
+        ?.target
+        ?.let { return it }
     return recentPublicMessages(session)
         .asReversed()
         .filter { it.speaker == human.name }
@@ -1206,7 +1286,7 @@ internal fun relationshipRead(
     latestClaimBySpeaker(session, player.name)?.let { claim ->
         if (publicClaimants(session, claim.roleKey).size > 1) {
             score += 8
-            reasons += "hay doble claim"
+            reasons += "dos dijeron el mismo rol"
         }
     }
 
@@ -1268,14 +1348,16 @@ internal fun relationshipReason(reasons: List<String>): String {
     val priority = listOf(
         "se contradijo de rol",
         "cambio su accion",
-        "hay doble claim",
+        "dos dijeron el mismo rol",
         "dejo una pregunta colgada",
         "debe una respuesta",
         "lo marcaron varios",
+        "quedo marcado de antes",
         "me voto",
         "yo ya lo venia votando",
         "me marco antes",
         "me banco antes",
+        "lo habian bancado antes",
         "alguien lo banco",
         "declaro rol"
     )
@@ -1375,7 +1457,9 @@ internal fun debugVoteCommandTarget(session: GameSession, voter: GamePlayer): St
     val human = session.players.firstOrNull { it.isHuman && it.alive } ?: return null
     val message = session.chatHistory
         .asReversed()
-        .firstOrNull { !it.isGod && it.speaker == human.name }
+        .firstOrNull {
+            it.channel == ChatChannel.PUBLICO && !it.isGod && it.speaker == human.name
+        }
         ?.message
         ?.let(::normalizedVoteCommand)
         ?: return null
@@ -1439,6 +1523,14 @@ internal fun scoreCandidate(
     val recent = recentPublicMessages(session)
     val reasons = mutableListOf<String>()
     var score = stableNoise("${session.code}:${session.round}:${voter.name}:${candidate.name}:base") % 3
+    val persistentPressure = session.tableMemory.suspicion[voter.name]?.get(candidate.name) ?: 0
+    if (persistentPressure > 0) {
+        score += persistentPressure
+        reasons += "quedo marcado de antes"
+    } else if (persistentPressure < 0) {
+        score += persistentPressure
+        reasons += "lo habian bancado antes"
+    }
 
     if (candidate.name in focusNames) {
         score += 8
@@ -1495,7 +1587,7 @@ internal fun scoreCandidate(
         val voterHasClaimedRole = voter.role?.key == claim.roleKey && voter.name != candidate.name
         if (claimants.size > 1 || voterHasClaimedRole) {
             score += if (session.botDifficulty == BotDifficulty.HARD) 14 else 10
-            reasons += "hay doble claim"
+            reasons += "dos dijeron el mismo rol"
         } else {
             if (!hasUsefulPublicRead(session, candidate.name)) {
                 score += 2

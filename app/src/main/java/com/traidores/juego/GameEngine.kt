@@ -3,6 +3,7 @@ package com.traidores.juego
 object GameEngine {
 
     private const val MAX_ACTION_HISTORY = 60
+    private const val TRAITOR_PLAN_SPEAKER = "Plan"
 
     fun startNight(session: GameSession): GameSession {
         if (session.winner.isNotBlank()) return session
@@ -28,38 +29,41 @@ object GameEngine {
             alcaldeTieCandidates = emptyList(),
             phaseIndex = prepared.phaseIndex + 1
         ).withPublicHistory(message)
+            .withPreparedTraitorPlan(force = true)
+            .withTraitorNightHeader()
     }
 
     fun resolveAssassin(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
+        val plannedSession = session.withPreparedTraitorPlan()
 
-        val killers = activeKillers(session)
+        val killers = activeKillers(plannedSession)
         if (killers.isEmpty()) {
             return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
         }
 
         val humanKiller = killers.firstOrNull { it.isHuman }
         if (
             humanKiller != null &&
-            !isValidKillTarget(session, selectedTarget, humanKiller)
+            !isValidKillTarget(plannedSession, selectedTarget, humanKiller)
         ) {
-            return session
+            return plannedSession
         }
         val coordinatedHumanTarget = selectedTarget.takeIf {
-            humanKiller != null && isValidKillTarget(session, it, humanKiller)
+            humanKiller != null && isValidKillTarget(plannedSession, it, humanKiller)
         }
 
         val assassinVotes = killers.mapNotNull { killer ->
             val target = when {
                 killer.isHuman -> selectedTarget
                 coordinatedHumanTarget != null -> coordinatedHumanTarget
-                else -> LocalBotAi.chooseAssassinTarget(session, killer)
+                else -> LocalBotAi.chooseAssassinTarget(plannedSession, killer)
             }
-            if (isValidKillTarget(session, target, killer)) {
+            if (isValidKillTarget(plannedSession, target, killer)) {
                 killer.name to target
             } else {
                 null
@@ -68,28 +72,34 @@ object GameEngine {
 
         if (assassinVotes.isEmpty()) {
             return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
         }
 
-        val target = assassinVoteWinner(session, assassinVotes)
+        val target = assassinVoteWinner(plannedSession, assassinVotes)
             ?: return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
 
-        val updated = session.copy(
+        val updated = plannedSession.copy(
             nightKillTarget = target,
             assassinVotes = assassinVotes,
-            actionHistory = recordAssassinVotes(session, assassinVotes)
+            actionHistory = recordAssassinVotes(plannedSession, assassinVotes)
         )
         return updated.transitionTo(
             nextPhaseAfterAssassin(updated),
             nightContinuesMessage(updated),
             assassinVotePrivateHint(updated, humanKiller != null)
+        ).withTraitorTargetMessage(
+            target = target,
+            humanOverride = humanKiller != null &&
+                plannedSession.traitorPlan?.killTarget
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { it != target } == true
         )
     }
 
@@ -98,19 +108,20 @@ object GameEngine {
         recordedVotes: Map<String, String>
     ): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
+        val plannedSession = session.withPreparedTraitorPlan()
 
-        val killers = activeKillers(session)
+        val killers = activeKillers(plannedSession)
         if (killers.isEmpty()) {
             return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
         }
 
         val assassinVotes = killers.mapNotNull { killer ->
             val target = recordedVotes[killer.name].orEmpty()
-            if (isValidKillTarget(session, target, killer)) {
+            if (isValidKillTarget(plannedSession, target, killer)) {
                 killer.name to target
             } else {
                 null
@@ -119,29 +130,29 @@ object GameEngine {
 
         if (assassinVotes.isEmpty()) {
             return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
         }
 
-        val target = assassinVoteWinner(session, assassinVotes)
+        val target = assassinVoteWinner(plannedSession, assassinVotes)
             ?: return advanceNight(
-                session,
-                nextPhaseAfterAssassin(session),
-                nightContinuesMessage(session)
+                plannedSession,
+                nextPhaseAfterAssassin(plannedSession),
+                nightContinuesMessage(plannedSession)
             )
 
-        val updated = session.copy(
+        val updated = plannedSession.copy(
             nightKillTarget = target,
             assassinVotes = assassinVotes,
-            actionHistory = recordAssassinVotes(session, assassinVotes)
+            actionHistory = recordAssassinVotes(plannedSession, assassinVotes)
         )
         return updated.transitionTo(
             nextPhaseAfterAssassin(updated),
             nightContinuesMessage(updated),
             assassinVotePrivateHint(updated, humanVoted = false)
-        )
+        ).withTraitorTargetMessage(target)
     }
 
     private fun activeKillers(session: GameSession): List<GamePlayer> {
@@ -564,6 +575,24 @@ object GameEngine {
 
     fun resolveTieVoting(session: GameSession, selectedTarget: String): GameSession {
         return resolveTieVotingInternal(session, selectedTarget, allowHumanAbstention = false)
+    }
+
+    fun addEliminationLastWords(session: GameSession): GameSession {
+        if (session.phase != GamePhase.RECUENTO_VOTOS || session.dayEliminationTarget.isBlank()) return session
+        val target = playerByName(session, session.dayEliminationTarget)
+            ?.takeIf { !it.isHuman && it.alive }
+            ?: return session
+        val message = LocalBotAi.eliminationLastWords(session, target) ?: return session
+        if (
+            session.chatHistory.any {
+                it.channel == ChatChannel.PUBLICO &&
+                    it.speaker == target.name &&
+                    it.message == message
+            }
+        ) {
+            return session
+        }
+        return session.withChatMessage(target.name, message)
     }
 
     fun resolveVotingWithRecordedVotes(session: GameSession, recordedVotes: Map<String, String>): GameSession {
@@ -1004,6 +1033,20 @@ object GameEngine {
         return session.players.filter { isAlive(it) }
     }
 
+    fun aliveTraitors(session: GameSession): List<GamePlayer> {
+        return alivePlayers(session).filter { GameRules.isTraitorRole(it.role) }
+    }
+
+    fun aliveTraitorAllies(session: GameSession): List<GamePlayer> {
+        return alivePlayers(session).filter { isDesertorAlignedWithTraitors(session, it) }
+    }
+
+    fun isDesertorAlignedWithTraitors(session: GameSession, player: GamePlayer): Boolean {
+        return player.role?.key == RoleCatalog.DESERTOR &&
+            player.alive &&
+            session.desertorTeam == GameRules.TRAITOR_WINNER
+    }
+
     fun isHumanRoleTurn(session: GameSession, roleKey: String): Boolean {
         return alivePlayers(session).any { it.isHuman && canActAs(session, it, roleKey) }
     }
@@ -1176,6 +1219,25 @@ object GameEngine {
         }
     }
 
+    fun isTraitorChatUnlocked(session: GameSession): Boolean {
+        return aliveTraitors(session).isNotEmpty()
+    }
+
+    fun canSeeTraitorChat(session: GameSession, player: GamePlayer): Boolean {
+        return player.alive && GameRules.isTraitorRole(player.role)
+    }
+
+    fun isTraitorChatWritable(session: GameSession): Boolean {
+        return session.winner.isBlank() &&
+            isTraitorChatUnlocked(session) &&
+            isNightActionPhase(session.phase)
+    }
+
+    fun canHumanChatTraitor(session: GameSession): Boolean {
+        return canSeeTraitorChat(session, humanPlayer(session)) &&
+            isTraitorChatWritable(session)
+    }
+
     fun canParticipateInChat(session: GameSession, player: GamePlayer): Boolean {
         if (!canSpeak(session, player)) return false
         return when (session.phase) {
@@ -1188,14 +1250,24 @@ object GameEngine {
     fun addHumanChatMessage(
         session: GameSession,
         rawMessage: String,
-        includeBotReactions: Boolean = true
+        includeBotReactions: Boolean = true,
+        channel: ChatChannel = ChatChannel.PUBLICO
     ): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
-        if (message.isBlank() || !canHumanChat(session)) return session
+        if (message.isBlank()) return session
+        if (channel == ChatChannel.TRAIDORES) {
+            if (!canHumanChatTraitor(session)) return session
+            return session.withChatMessage(
+                humanPlayer(session).name,
+                message,
+                channel = ChatChannel.TRAIDORES
+            )
+        }
+        if (!canHumanChat(session)) return session
         val humanName = humanPlayer(session).name
         val withHumanMessage = session
-            .withChatMessage(humanName, message)
-            .withRecordedClaim(humanName, message)
+            .withChatMessage(humanName, message, channel = ChatChannel.PUBLICO)
+            .withRecordedPublicMemory(humanName, message)
         if (!includeBotReactions || LocalBotAi.isDebugVoteCommand(withHumanMessage, message)) {
             return withHumanMessage
         }
@@ -1213,10 +1285,20 @@ object GameEngine {
         }
     }
 
-    fun addBotChatMessage(session: GameSession, speaker: String, rawMessage: String): GameSession {
+    fun addBotChatMessage(
+        session: GameSession,
+        speaker: String,
+        rawMessage: String,
+        channel: ChatChannel = ChatChannel.PUBLICO
+    ): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         val bot = playerByName(session, speaker)
-        if (message.isBlank() || bot == null || bot.isHuman || !canParticipateInChat(session, bot)) return session
+        if (message.isBlank() || bot == null || bot.isHuman) return session
+        if (channel == ChatChannel.TRAIDORES) {
+            if (!canSeeTraitorChat(session, bot) || !isTraitorChatWritable(session)) return session
+            return session.withChatMessage(bot.name, message, channel = ChatChannel.TRAIDORES)
+        }
+        if (!canParticipateInChat(session, bot)) return session
         if (
             session.winner.isNotBlank() ||
             session.phase !in botChatPhases
@@ -1224,8 +1306,8 @@ object GameEngine {
             return session
         }
         return session
-            .withChatMessage(bot.name, message)
-            .withRecordedClaim(bot.name, message)
+            .withChatMessage(bot.name, message, channel = ChatChannel.PUBLICO)
+            .withRecordedPublicMemory(bot.name, message)
     }
 
     fun requiresHumanInput(session: GameSession): Boolean {
@@ -1474,10 +1556,17 @@ object GameEngine {
             contrapuntoPlayers = emptyList(),
             contrapuntoSuspicion = "",
             alcaldeTieCandidates = emptyList(),
+            tableMemory = BotTableMemory.decayForNewRound(
+                prepared.tableMemory,
+                prepared.players,
+                prepared.round + 1
+            ),
             publicAnnouncement = message,
             privateHint = privateRoleHint(prepared),
             phaseIndex = prepared.phaseIndex + 1
         ).withPublicHistory(nightMessage)
+            .withPreparedTraitorPlan(force = true)
+            .withTraitorNightHeader()
     }
 
     private fun enterUnifiedNight(session: GameSession): GameSession {
@@ -1654,6 +1743,7 @@ object GameEngine {
         return target != null &&
             isAlive(target) &&
             target.name != actor.name &&
+            !isDesertorAlignedWithTraitors(session, target) &&
             target.role?.key !in GameRules.traitorRoleKeys
     }
 
@@ -1962,29 +2052,131 @@ object GameEngine {
         return copy(
             publicHistory = (publicHistory + message).takeLast(8),
             godHistory = (godHistory + message).takeLast(32)
-        ).withChatMessage("Dios", message, isGod = true)
+        ).withChatMessage("Dios", message, isGod = true, channel = ChatChannel.PUBLICO)
     }
 
-    private fun GameSession.withChatMessage(speaker: String, message: String, isGod: Boolean = false): GameSession {
-        return copy(
-            chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod))
-                .takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+    private fun GameSession.withPreparedTraitorPlan(force: Boolean = false): GameSession {
+        if (!isTraitorChatUnlocked(this)) {
+            return if (traitorPlan == null) this else copy(traitorPlan = null)
+        }
+        if (!force && traitorPlan?.round == round) return this
+        return copy(traitorPlan = TraitorPlanBrain.build(this))
+    }
+
+    private fun GameSession.withTraitorNightHeader(): GameSession {
+        if (!isTraitorChatUnlocked(this)) return this
+        val traitors = aliveTraitors(this)
+        val allies = aliveTraitorAllies(this)
+        val traitorNames = traitors.joinToReadableNames()
+        val allyClause = if (allies.isEmpty()) {
+            ""
+        } else {
+            val allyNames = allies.joinToReadableNames()
+            " Aliado externo: $allyNames; no lee este chat, pero hoy no es objetivo del plan."
+        }
+        val message = if (traitors.size == 1) {
+            "Noche $round: malo en la mesa: $traitorNames.$allyClause Piensa la jugada; el pueblo duerme."
+        } else {
+            "Noche $round: malos en la mesa: $traitorNames.$allyClause Piensen la jugada; el pueblo duerme."
+        }
+        return withTraitorSystemMessage(message)
+    }
+
+    private fun GameSession.withTraitorTargetMessage(
+        target: String,
+        humanOverride: Boolean = false
+    ): GameSession {
+        if (target.isBlank() || !isTraitorChatUnlocked(this)) return this
+        val message = if (humanOverride) {
+            "Noche $round: cambio de plan: el objetivo pasa a ser $target."
+        } else {
+            "Noche $round: objetivo del plan: $target."
+        }
+        return withTraitorSystemMessage(message)
+    }
+
+    private fun GameSession.withTraitorSystemMessage(message: String): GameSession {
+        if (!isTraitorChatUnlocked(this)) return this
+        if (
+            chatHistory.any {
+                it.channel == ChatChannel.TRAIDORES &&
+                    it.isGod &&
+                    it.speaker == TRAITOR_PLAN_SPEAKER &&
+                    it.message == message
+            }
+        ) {
+            return this
+        }
+        return withChatMessage(
+            TRAITOR_PLAN_SPEAKER,
+            message,
+            isGod = true,
+            channel = ChatChannel.TRAIDORES
         )
     }
 
-    private fun GameSession.withRecordedClaim(speaker: String, message: String): GameSession {
+    private fun GameSession.withChatMessage(
+        speaker: String,
+        message: String,
+        isGod: Boolean = false,
+        channel: ChatChannel = ChatChannel.PUBLICO
+    ): GameSession {
+        return copy(
+            chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod, channel))
+                .takeLastPerChannel(GameplayFeedMessages.MAX_FEED_MESSAGES)
+        )
+    }
+
+    private fun List<GameChatMessage>.takeLastPerChannel(limit: Int): List<GameChatMessage> {
+        val counts = mutableMapOf<ChatChannel, Int>()
+        return asReversed()
+            .filter { message ->
+                val currentCount = counts[message.channel] ?: 0
+                if (currentCount >= limit) {
+                    false
+                } else {
+                    counts[message.channel] = currentCount + 1
+                    true
+                }
+            }
+            .asReversed()
+    }
+
+    private fun List<GamePlayer>.joinToReadableNames(): String {
+        val names = map { it.name }
+        return when (names.size) {
+            0 -> ""
+            1 -> names.first()
+            2 -> names.joinToString(" y ")
+            else -> names.dropLast(1).joinToString(", ") + " y " + names.last()
+        }
+    }
+
+    private fun GameSession.withRecordedPublicMemory(speaker: String, message: String): GameSession {
         val roleClaim = LocalBotAi.roleClaimFrom(message)
         val statement = LocalBotAi.publicStatementFrom(this, message)
-        if (roleClaim == null && statement == null) return this
-        val record = ClaimRecord(
-            round = round,
-            phase = phase,
-            roleKey = roleClaim?.roleKey,
-            statementType = statement?.type,
-            target = statement?.target
-        )
-        return copy(
-            claimLedger = claimLedger + (speaker to (claimLedger[speaker].orEmpty() + record).takeLast(12))
+        val withLedger = if (roleClaim == null && statement == null) {
+            this
+        } else {
+            val record = ClaimRecord(
+                round = round,
+                phase = phase,
+                roleKey = roleClaim?.roleKey,
+                statementType = statement?.type,
+                target = statement?.target
+            )
+            copy(
+                claimLedger = claimLedger + (speaker to (claimLedger[speaker].orEmpty() + record))
+            )
+        }
+        return withLedger.copy(
+            tableMemory = BotTableMemory.recordPublicMessage(
+                session = withLedger,
+                speaker = speaker,
+                message = message,
+                roleClaim = roleClaim,
+                publicStatement = statement
+            )
         )
     }
 
@@ -2001,19 +2193,19 @@ object GameEngine {
     )
 
     private fun GameSession.withBotDebate(): GameSession {
-        return withBotMessages(LocalBotAi.openingDebateMessages(this))
+        return this
     }
 
     private fun GameSession.withBotVotingIntent(): GameSession {
-        return withBotMessages(LocalBotAi.votingIntentMessages(this))
+        return this
     }
 
     private fun GameSession.withBotMessages(messages: List<Pair<String, String>>): GameSession {
         var updated = this
         messages.forEach { (speaker, message) ->
             updated = updated
-                .withChatMessage(speaker, message)
-                .withRecordedClaim(speaker, message)
+                .withChatMessage(speaker, message, channel = ChatChannel.PUBLICO)
+                .withRecordedPublicMemory(speaker, message)
         }
         return updated
     }

@@ -12,7 +12,7 @@
         android:elevation="10dp"
         android:padding="7dp">
 
-        <ImageView
+        <com.traidores.juego.CircleProfileImageView
             android:id="@+id/expandedProfileAvatar"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -20,7 +20,7 @@
             android:clipToOutline="true"
             android:contentDescription="Foto de perfil ampliada"
             android:outlineProvider="background"
-            android:scaleType="centerCrop"
+            android:scaleType="matrix"
             android:src="@drawable/rol_aldeano_gaucho" />
     </FrameLayout>
 </FrameLayout>

@@ -691,6 +691,65 @@ class GameEngineTest {
     }
 
     @Test
+    fun desertorAlignedWithTraitorsIsNotAssassinTarget() {
+        val assassin = GamePlayer(
+            "Asesino",
+            "A",
+            role = role(RoleCatalog.ASESINO, "Asesino", GameRules.TRAITOR_WINNER)
+        )
+        val desertor = GamePlayer(
+            "Desertor",
+            "D",
+            role = role(RoleCatalog.DESERTOR, "Desertor", "Neutral")
+        )
+        val session = GameSession(
+            code = "DESERTOR-ALLY",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                assassin,
+                desertor,
+                GamePlayer("Aldeano", "P", role = role(RoleCatalog.ALDEANO, "Aldeano", GameRules.TOWN_WINNER))
+            ),
+            phase = GamePhase.NOCHE_ASESINO,
+            desertorTeam = GameRules.TRAITOR_WINNER
+        )
+
+        assertTrue(GameEngine.isDesertorAlignedWithTraitors(session, desertor))
+        assertFalse(GameEngine.isValidKillTarget(session, "Desertor", assassin))
+    }
+
+    @Test
+    fun desertorAlignedWithTownCanBeAssassinTarget() {
+        val assassin = GamePlayer(
+            "Asesino",
+            "A",
+            role = role(RoleCatalog.ASESINO, "Asesino", GameRules.TRAITOR_WINNER)
+        )
+        val desertor = GamePlayer(
+            "Desertor",
+            "D",
+            role = role(RoleCatalog.DESERTOR, "Desertor", "Neutral")
+        )
+        val session = GameSession(
+            code = "DESERTOR-TOWN",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                assassin,
+                desertor,
+                GamePlayer("Aldeano", "P", role = role(RoleCatalog.ALDEANO, "Aldeano", GameRules.TOWN_WINNER))
+            ),
+            phase = GamePhase.NOCHE_ASESINO,
+            desertorTeam = GameRules.TOWN_WINNER,
+            desertorChangedTeam = true
+        )
+
+        assertFalse(GameEngine.isDesertorAlignedWithTraitors(session, desertor))
+        assertTrue(GameEngine.isValidKillTarget(session, "Desertor", assassin))
+    }
+
+    @Test
     fun eachMapAssignsOnlyItsExclusiveRole() {
         var setup = LocalGameFactory.createSession()
         repeat(3) {

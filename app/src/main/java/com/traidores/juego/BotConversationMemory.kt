@@ -26,6 +26,7 @@ internal fun humanMessageIntent(
         publicStatement?.type == StatementType.TRUST -> HumanMessageIntent.DEFEND
         isDoubtMessage(message) -> HumanMessageIntent.DOUBT
         casualMessage -> HumanMessageIntent.CASUAL
+        BotPerception.isOffTopicMessage(session, message) -> HumanMessageIntent.OFF_TOPIC
         else -> HumanMessageIntent.OTHER
     }
 }
@@ -70,41 +71,11 @@ internal fun previousHumanStatement(session: GameSession, currentMessage: String
 }
 
 internal fun humanQuestionKind(message: String): HumanQuestionKind? {
-    val text = normalizedForParsing(message)
-    return when {
-        text.contains("que soy") ||
-            text.contains("quien soy") ||
-            text.contains("q soy") ||
-            text.contains("cual es mi rol") ||
-            text.contains("que rol soy") ||
-            text.contains("q rol soy") ||
-            text.contains("mi rol") ->
-            HumanQuestionKind.ROLE_HELP
-        text.contains("a quien voto") ||
-            text.contains("a quien votamos") ||
-            text.contains("quien voto") ||
-            text.contains("voto a quien") ->
-            HumanQuestionKind.VOTE_HELP
-        text.contains("que hago") ||
-            text.contains("q hago") ||
-            text.contains("que deberia hacer") ||
-            text.contains("como juego") ->
-            HumanQuestionKind.ACTION_HELP
-        text.contains("quien sospecha") ||
-            text.contains("de quien sospechan") ||
-            text.contains("a quien miramos") ||
-            text.contains("quien les parece") ->
-            HumanQuestionKind.SUSPECT_HELP
-        else -> null
-    }
+    return BotPerception.humanQuestionKind(message)
 }
 
 internal fun isCasualHumanMessage(message: String): Boolean {
-    val text = normalizedForParsing(message)
-    if (text.isBlank()) return false
-    val words = text.split(" ").filter { it.isNotBlank() }
-    if (words.size <= 2 && words.any { it in casualWords }) return true
-    return text in casualPhrases
+    return BotPerception.isCasualHumanMessage(message)
 }
 
 internal fun isWeakSuspicion(read: SuspectRead?): Boolean {
@@ -176,6 +147,28 @@ internal fun conversationMemory(session: GameSession): Map<String, PlayerConvers
     val latestQuestionForTarget = mutableMapOf<String, Pair<Int, String>>()
     val messages = recentPublicMessages(session)
 
+    session.claimLedger.forEach { (speaker, records) ->
+        if (speaker !in players) return@forEach
+        records.forEach { record ->
+            claimFromRecord(record)?.let { roleClaims[speaker] = it }
+            statementFromRecord(record)?.let { statement ->
+                latestStatements[speaker] = statement
+                val target = statement.target
+                when {
+                    target != null && target in players &&
+                        statement.type in setOf(StatementType.ACCUSE, StatementType.VOTE) -> {
+                        accusedTargets.getOrPut(speaker) { mutableSetOf() } += target
+                        accusedBy.getOrPut(target) { mutableSetOf() } += speaker
+                    }
+                    target != null && target in players && statement.type == StatementType.TRUST -> {
+                        defendedTargets.getOrPut(speaker) { mutableSetOf() } += target
+                        defendedBy.getOrPut(target) { mutableSetOf() } += speaker
+                    }
+                }
+            }
+        }
+    }
+
     messages.forEachIndexed { index, message ->
         val speaker = message.speaker.takeIf { it in players } ?: return@forEachIndexed
         LocalBotAi.roleClaimFrom(message.message)?.let { roleClaims[speaker] = it }
@@ -183,11 +176,12 @@ internal fun conversationMemory(session: GameSession): Map<String, PlayerConvers
             latestStatements[speaker] = statement
             val target = statement.target
             when {
-                target != null && statement.type in setOf(StatementType.ACCUSE, StatementType.VOTE) -> {
+                target != null && target in players &&
+                    statement.type in setOf(StatementType.ACCUSE, StatementType.VOTE) -> {
                     accusedTargets.getOrPut(speaker) { mutableSetOf() } += target
                     accusedBy.getOrPut(target) { mutableSetOf() } += speaker
                 }
-                target != null && statement.type == StatementType.TRUST -> {
+                target != null && target in players && statement.type == StatementType.TRUST -> {
                     defendedTargets.getOrPut(speaker) { mutableSetOf() } += target
                     defendedBy.getOrPut(target) { mutableSetOf() } += speaker
                 }
@@ -202,10 +196,15 @@ internal fun conversationMemory(session: GameSession): Map<String, PlayerConvers
         }
     }
 
-    val pendingQuestionFrom = latestQuestionForTarget.mapValues { (target, question) ->
+    val pendingFromTable = session.tableMemory.pendingQuestions
+        .filterKeys { it in players }
+        .filterValues { it.source in players }
+        .mapValues { it.value.source }
+    val pendingFromRecent = latestQuestionForTarget.mapValues { (target, question) ->
         val answered = messages.drop(question.first + 1).any { it.speaker == target }
         question.second.takeUnless { answered }
     }
+    val pendingQuestionFrom = pendingFromRecent + pendingFromTable
 
     return players.associateWith { name ->
         PlayerConversationMemory(
@@ -222,6 +221,9 @@ internal fun conversationMemory(session: GameSession): Map<String, PlayerConvers
 
 internal fun pendingQuestionForHuman(session: GameSession): PendingHumanQuestion? {
     val human = GameEngine.humanPlayer(session)
+    session.tableMemory.pendingQuestions[human.name]
+        ?.takeIf { it.source != human.name && GameEngine.playerByName(session, it.source)?.alive == true }
+        ?.let { return PendingHumanQuestion(it.source, it.message) }
     val messages = recentPublicMessages(session)
     val questionIndex = messages.indexOfLast { message ->
         message.speaker != human.name &&
@@ -255,6 +257,13 @@ internal fun answeredQuestionForHuman(session: GameSession, currentMessage: Stri
 }
 
 internal fun unansweredQuestionFor(session: GameSession, bot: GamePlayer): String? {
+    session.tableMemory.pendingQuestions.values
+        .firstOrNull {
+            it.source == bot.name &&
+                it.target != bot.name &&
+                GameEngine.playerByName(session, it.target)?.alive == true
+        }
+        ?.let { return it.target }
     val messages = recentPublicMessages(session)
     val botQuestionIndex = messages.indexOfLast {
         it.speaker == bot.name && it.message.contains("?")
@@ -271,6 +280,15 @@ internal fun unansweredQuestionFor(session: GameSession, bot: GamePlayer): Strin
 internal fun declaredSuspicionTarget(session: GameSession, bot: GamePlayer): String? {
     val candidates = GameEngine.alivePlayers(session)
         .filter { it.name != bot.name }
+    val candidateNames = candidates.map { it.name }.toSet()
+    session.claimLedger[bot.name].orEmpty()
+        .asReversed()
+        .firstOrNull {
+            it.target in candidateNames &&
+                it.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
+        }
+        ?.target
+        ?.let { return it }
     return recentPublicMessages(session)
         .asReversed()
         .asSequence()
@@ -506,17 +524,33 @@ internal fun isBotSpeaker(session: GameSession, speaker: String): Boolean {
 }
 
 internal fun mentionedPlayerNames(session: GameSession, message: String): List<String> {
-    return GameEngine.alivePlayers(session)
-        .filter { mentionsName(message, it.name) }
+    val alive = GameEngine.alivePlayers(session)
+    val words = normalizedForParsing(message).split(" ").filter(String::isNotBlank).toSet()
+    return alive
+        .filter { player ->
+            mentionsName(message, player.name) || words.any { prefix ->
+                prefix.length >= 4 &&
+                    normalizedForParsing(player.name).startsWith(prefix) &&
+                    alive.count { other -> normalizedForParsing(other.name).startsWith(prefix) } == 1
+            }
+        }
         .map { it.name }
 }
 
 internal fun recentPublicMessages(session: GameSession): List<GameChatMessage> {
-    return session.chatHistory.filterNot { it.isGod }.takeLast(16)
+    return session.chatHistory
+        .filter { it.channel == ChatChannel.PUBLICO && !it.isGod }
+        .takeLast(16)
+}
+
+internal fun recentTraitorMessages(session: GameSession): List<GameChatMessage> {
+    return session.chatHistory
+        .filter { it.channel == ChatChannel.TRAIDORES && !it.isGod }
+        .takeLast(16)
 }
 
 internal fun socialChatSize(session: GameSession): Int {
-    return session.chatHistory.count { !it.isGod }
+    return session.chatHistory.count { it.channel == ChatChannel.PUBLICO && !it.isGod }
 }
 
 internal fun hasAnySignal(message: String, signals: List<String>): Boolean {
@@ -555,7 +589,11 @@ internal fun containsSecretTerm(message: String, session: GameSession): Boolean 
 }
 
 internal fun mentionsName(message: String, name: String): Boolean {
-    return normalized(message).contains(normalized(name))
+    val normalizedMessage = normalizedForParsing(message)
+    val normalizedName = normalizedForParsing(name)
+    if (normalizedName.isBlank()) return false
+    return Regex("(^|[^a-z0-9])${Regex.escape(normalizedName)}($|[^a-z0-9])")
+        .containsMatchIn(normalizedMessage)
 }
 
 internal fun safeName(player: GamePlayer, session: GameSession): String {
@@ -595,6 +633,7 @@ internal fun stripSpanishAccents(value: String): String {
 }
 
 internal fun botWithRole(session: GameSession, roleKey: String): GamePlayer? {
+    if (!isExclusivePublicClaimRole(roleKey)) return null
     return session.players.firstOrNull {
         !it.isHuman &&
             GameEngine.canSpeak(session, it) &&
@@ -604,27 +643,45 @@ internal fun botWithRole(session: GameSession, roleKey: String): GamePlayer? {
 }
 
 internal fun publicClaimants(session: GameSession, roleKey: String): List<String> {
-    return recentPublicMessages(session)
-        .mapNotNull { message ->
-            message.speaker.takeIf { LocalBotAi.roleClaimFrom(message.message)?.roleKey == roleKey }
+    if (!isExclusivePublicClaimRole(roleKey)) return emptyList()
+    val alive = GameEngine.alivePlayers(session).map { it.name }.toSet()
+    val fromLedger = session.claimLedger
+        .filterKeys { it in alive }
+        .mapNotNull { (speaker, records) ->
+            speaker.takeIf { records.any { record -> record.roleKey == roleKey } }
         }
-        .distinct()
+    val fromRecent = recentPublicMessages(session)
+        .mapNotNull { message ->
+            message.speaker.takeIf {
+                it in alive &&
+                    LocalBotAi.roleClaimFrom(message.message)?.roleKey == roleKey
+            }
+        }
+    return (fromLedger + fromRecent).distinct()
 }
 
 internal fun latestClaimBySpeaker(session: GameSession, speaker: String): RoleClaim? {
-    return recentPublicMessages(session)
+    return session.claimLedger[speaker].orEmpty()
         .asReversed()
-        .firstOrNull { it.speaker == speaker }
-        ?.message
-        ?.let { LocalBotAi.roleClaimFrom(it) }
+        .mapNotNull { claimFromRecord(it) }
+        .firstOrNull()
+        ?: recentPublicMessages(session)
+            .asReversed()
+            .firstOrNull { it.speaker == speaker }
+            ?.message
+            ?.let { LocalBotAi.roleClaimFrom(it) }
 }
 
 internal fun latestStatementBySpeaker(session: GameSession, speaker: String): PublicStatement? {
-    return recentPublicMessages(session)
+    return session.claimLedger[speaker].orEmpty()
         .asReversed()
-        .firstOrNull { it.speaker == speaker }
-        ?.message
-        ?.let { LocalBotAi.publicStatementFrom(session, it) }
+        .mapNotNull { statementFromRecord(it) }
+        .firstOrNull()
+        ?: recentPublicMessages(session)
+            .asReversed()
+            .firstOrNull { it.speaker == speaker }
+            ?.message
+            ?.let { LocalBotAi.publicStatementFrom(session, it) }
 }
 
 internal fun hasUsefulPublicRead(session: GameSession, speaker: String): Boolean {
@@ -637,4 +694,18 @@ internal fun hasUsefulPublicRead(session: GameSession, speaker: String): Boolean
             StatementType.ACCUSE,
             StatementType.INVESTIGATED
         )
+}
+
+internal fun claimFromRecord(record: ClaimRecord): RoleClaim? {
+    val roleKey = record.roleKey ?: return null
+    return RoleClaim(roleKey, roleAliases[roleKey]?.firstOrNull() ?: roleKey)
+}
+
+internal fun statementFromRecord(record: ClaimRecord): PublicStatement? {
+    val type = record.statementType ?: return null
+    return PublicStatement(type = type, target = record.target)
+}
+
+internal fun isExclusivePublicClaimRole(roleKey: String): Boolean {
+    return roleKey != RoleCatalog.ALDEANO
 }

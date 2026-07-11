@@ -69,12 +69,26 @@ class GameplayChatController(
     private var lastSeenChatCount = 0
     private var restoreTieVoteAfterChat = false
     private var showOnlyEvents = false
+    private var selectedChatChannel = ChatChannel.PUBLICO
     private var unreadChatCount = 0
     private var onlineChatListener: ListenerRegistration? = null
     private var lastOnlineChatSentAtMs = 0L
     private var lastOnlineChatMessage = ""
-    private var stagedBotBurstPhaseIndex = -1
+    private var onlineTraitorChatListener: ListenerRegistration? = null
+    private var lastOnlineTraitorChatSentAtMs = 0L
+    private var lastOnlineTraitorChatMessage = ""
     private var stagedEventReactionKey = ""
+    private var directorPhaseIndex = -1
+    private var directorIdleLines = 0
+    private var directorReactionLines = 0
+    private var directorBeatCounter = 0
+    private var directorPendingHumanMessage = ""
+    private var directorLastSpeaker: String? = null
+    private var directorHumanSpokePhaseIndex = -1
+    private var directorPromptedSilentHuman = false
+    private var traitorDirectorPhaseIndex = -1
+    private var traitorDirectorLines = 0
+    private var traitorDirectorLastSpeaker: String? = null
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val typingBotSpeakers = linkedSetOf<String>()
 
@@ -86,6 +100,7 @@ class GameplayChatController(
     private val chatAmbientBackground: ImageView = root.findViewById(R.id.chatAmbientBackground)
     private val chatAmbientHint: TextView = root.findViewById(R.id.chatAmbientHint)
     private val chatAmbientMessages: LinearLayout = root.findViewById(R.id.chatAmbientMessages)
+    private val chatAmbientShade: View = root.findViewById(R.id.chatAmbientShade)
     private val chatAmbientTitle: TextView = root.findViewById(R.id.chatAmbientTitle)
     private val chatCharacterCount: TextView = root.findViewById(R.id.chatCharacterCount)
     private val chatComposer: LinearLayout = root.findViewById(R.id.chatComposer)
@@ -98,6 +113,7 @@ class GameplayChatController(
     private val chatPanel: FrameLayout = root.findViewById(R.id.chatPanel)
     private val chatPanelBackground: ImageView = root.findViewById(R.id.chatPanelBackground)
     private val chatPanelContent: LinearLayout = root.findViewById(R.id.chatPanelContent)
+    private val chatPanelShade: View = root.findViewById(R.id.chatPanelShade)
     private val chatRoleChip: TextView = root.findViewById(R.id.chatRoleChip)
     private val chatStatusRow: LinearLayout = root.findViewById(R.id.chatStatusRow)
     private val chatUnreadBadge: TextView = root.findViewById(R.id.chatUnreadBadge)
@@ -114,6 +130,10 @@ class GameplayChatController(
 
     fun onCreate(savedState: Bundle?) {
         isChatOpen = savedState?.getBoolean(STATE_CHAT_OPEN) ?: false
+        selectedChatChannel = savedState
+            ?.getString(STATE_CHAT_CHANNEL)
+            ?.let { savedChannel -> runCatching { ChatChannel.valueOf(savedChannel) }.getOrNull() }
+            ?: ChatChannel.PUBLICO
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
@@ -143,10 +163,17 @@ class GameplayChatController(
         renderChatTitle()
         if (host.isOnlineGameplay()) {
             startOnlineChatListener()
+            startOnlineTraitorChatListener()
         }
     }
 
     fun onSessionUpdated() {
+        if (host.isOnlineGameplay()) {
+            // El rol del humano puede llegar despues de onCreate (reconstruccion online),
+            // asi que reintentamos arrancar el canal traidor cuando ya se conoce el rol.
+            // startOnlineTraitorChatListener() se auto-protege contra doble suscripcion.
+            startOnlineTraitorChatListener()
+        }
         updateUnreadChatCount()
         renderChatPanel()
         applyKeyboardAwarePlayerPanel()
@@ -162,11 +189,14 @@ class GameplayChatController(
 
     fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean(STATE_CHAT_OPEN, isChatOpen)
+        outState.putString(STATE_CHAT_CHANNEL, selectedChatChannel.name)
     }
 
     fun onDestroy() {
         onlineChatListener?.remove()
         onlineChatListener = null
+        onlineTraitorChatListener?.remove()
+        onlineTraitorChatListener = null
         cancelPendingBotChat()
         handler.removeCallbacksAndMessages(null)
     }
@@ -191,48 +221,44 @@ class GameplayChatController(
     fun isOpenOrRestoringTieVote(): Boolean = isChatOpen || restoreTieVoteAfterChat
 
     fun cancelPendingBotChat() {
+        cancelScheduledBotChat()
+        directorPendingHumanMessage = ""
+        directorReactionLines = 0
+    }
+
+    fun onPhaseSettled() {
+        if (host.isOnlineGameplay()) return
+        val session = host.currentSession
+        if (canRunVisibleTraitorNight(session)) {
+            cancelPublicDirectorState()
+            if (traitorDirectorPhaseIndex != session.phaseIndex) {
+                resetTraitorDirectorForPhase(session)
+            }
+            scheduleNextTraitorNightBeat()
+            return
+        }
+        resetTraitorDirectorIfNeeded(session)
+        if (!BotConversationDirector.canRun(session)) {
+            cancelPendingBotChat()
+            return
+        }
+        if (directorPhaseIndex != session.phaseIndex) {
+            resetDirectorForPhase(session)
+        }
+        scheduleNextIdleBeat()
+    }
+
+    private fun cancelScheduledBotChat() {
         pendingBotChatRunnables.forEach(handler::removeCallbacks)
         pendingBotChatRunnables.clear()
         typingBotSpeakers.clear()
+        renderChatPanel()
     }
 
-    fun stageBotBurstForCurrentPhase() {
-        if (host.isOnlineGameplay()) return
-        val session = host.currentSession
-        if (stagedBotBurstPhaseIndex == session.phaseIndex) return
-        if (
-            session.phase != GamePhase.DIA_DEBATE &&
-            session.phase != GamePhase.CONTRAPUNTO &&
-            session.phase != GamePhase.VOTACION &&
-            session.phase != GamePhase.DESEMPATE_VOTACION
-        ) {
-            return
-        }
-        val humanName = GameEngine.humanPlayer(session).name
-        val trailingBotMessages = session.chatHistory
-            .asReversed()
-            .takeWhile { !it.isGod && it.speaker != humanName }
-            .asReversed()
-        if (trailingBotMessages.size <= 1) return
-
-        val visibleNow = trailingBotMessages.first()
-        val staged = trailingBotMessages.drop(1)
-        host.currentSession = session.copy(
-            chatHistory = session.chatHistory.dropLast(trailingBotMessages.size) + visibleNow
-        )
-        stagedBotBurstPhaseIndex = host.currentSession.phaseIndex
-        staged.filter { message ->
-            val speaker = GameEngine.playerByName(host.currentSession, message.speaker)
-            speaker != null && GameEngine.canParticipateInChat(host.currentSession, speaker)
-        }.forEachIndexed { index, message ->
-            scheduleBotChatMessage(
-                speaker = message.speaker,
-                message = message.message,
-                phaseIndex = host.currentSession.phaseIndex,
-                phase = host.currentSession.phase,
-                delayMs = PHASE_BOT_BURST_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS
-            )
-        }
+    private fun cancelPublicDirectorState() {
+        directorPendingHumanMessage = ""
+        directorReactionLines = 0
+        directorIdleLines = 0
     }
 
     private fun stageEventReactionsForCurrentAnnouncement() {
@@ -338,15 +364,18 @@ class GameplayChatController(
     private fun renderChatPanel() {
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.9f
         renderChatBackgrounds()
+        renderFeedFilterButton()
+        renderChatTitle()
         renderAmbientChatFeed()
         if (!isChatOpen) return
 
-        renderChatMessages(host.currentSession.chatHistory)
+        val channel = activeChatChannel()
+        renderChatMessages(activeChannelMessages(channel), channel)
 
-        val canChat = GameEngine.canHumanChat(host.currentSession)
+        val canChat = canHumanChatInChannel(channel)
         chatInput.isEnabled = canChat
         btnSendChat.isEnabled = canChat
-        chatInput.hint = chatInputHint(canChat)
+        chatInput.hint = chatInputHint(canChat, channel)
         btnSendChat.alpha = if (canChat) 1f else 0.45f
         renderChatCharacterCount(chatInput.text.length)
         renderNewChatMessageNotice()
@@ -577,10 +606,11 @@ class GameplayChatController(
             return
         }
 
-        val entries = ChronicleFeedPresenter.entries(host.currentSession.chatHistory)
+        val channel = activeChatChannel()
+        val entries = ChronicleFeedPresenter.entries(activeChannelMessages(channel))
             .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
             .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
-        val canChat = GameEngine.canHumanChat(host.currentSession)
+        val canChat = canHumanChatInChannel(channel)
         if (entries.isEmpty() && !canChat) {
             chatAmbientFeed.visibility = View.GONE
             return
@@ -597,9 +627,9 @@ class GameplayChatController(
             }
         }
         chatAmbientHint.text = if (canChat) {
-            "Toca para hablar"
+            if (channel == ChatChannel.TRAIDORES) "Toca para tramar" else "Toca para hablar"
         } else {
-            chatInputHint(canChat)
+            chatInputHint(canChat, channel)
         }
         chatAmbientHint.visibility = View.VISIBLE
 
@@ -617,11 +647,23 @@ class GameplayChatController(
 
     private fun createAmbientPlaceholderRow(): View {
         return TextView(root.context).apply {
-            text = "El pueblo aun no hablo"
+            text = if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                "El plan aun no tiene notas"
+            } else {
+                "El pueblo aun no hablo"
+            }
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setTextColor(root.context.getColor(R.color.text_secondary))
+            setTextColor(
+                root.context.getColor(
+                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                        R.color.traitor_text
+                    } else {
+                        R.color.text_secondary
+                    }
+                )
+            )
             textSize = 12f * host.gameplayTextScale
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
             setPadding(0, host.dp(2), 0, host.dp(2))
@@ -640,7 +682,13 @@ class GameplayChatController(
             text = "$speakerName:"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setTextColor(PlayerChatColor.colorFor(speakerName, host.currentSession))
+            setTextColor(
+                if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                    root.context.getColor(R.color.traitor_red_bright)
+                } else {
+                    PlayerChatColor.colorFor(speakerName, host.currentSession)
+                }
+            )
             textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -648,7 +696,15 @@ class GameplayChatController(
             text = entry.text
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setTextColor(root.context.getColor(R.color.text_primary))
+            setTextColor(
+                root.context.getColor(
+                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                        R.color.traitor_text
+                    } else {
+                        R.color.text_primary
+                    }
+                )
+            )
             textSize = 12f * host.gameplayTextScale
         }
         row.addView(
@@ -713,6 +769,17 @@ class GameplayChatController(
     }
 
     private fun renderChatTitle() {
+        if (activeChatChannel() == ChatChannel.TRAIDORES) {
+            chatAmbientTitle.text = "CHAT DE LOS ASESINOS"
+            chatFeedTitle.text = "CHAT DE LOS ASESINOS"
+            chatFeedTitle.maxLines = 1
+            chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
+            chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            chatAmbientTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
+            chatFeedTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
+            renderTraitorHeaderChip()
+            return
+        }
         val (compactTitle, expandedTitle) = when (host.currentSession.mapKey) {
             "grecia" -> "QUE SE DICE EN LA POLIS..." to "CRONISTA DE LA POLIS"
             "medieval" -> "QUE SE DICE EN EL FEUDO..." to "CRONISTA DEL FEUDO"
@@ -720,6 +787,35 @@ class GameplayChatController(
         }
         chatAmbientTitle.text = compactTitle
         chatFeedTitle.text = expandedTitle
+        chatFeedTitle.maxLines = 1
+        chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
+        chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        chatAmbientTitle.setTextColor(root.context.getColor(R.color.accent_gold))
+        chatFeedTitle.setTextColor(root.context.getColor(R.color.accent_gold))
+        if (!shouldCompactBottomPlayerPanel()) {
+            chatRoleChip.visibility = View.GONE
+        }
+    }
+
+    private fun renderTraitorHeaderChip() {
+        val traitors = GameEngine.aliveTraitors(host.currentSession)
+        if (traitors.isEmpty()) {
+            chatRoleChip.visibility = View.GONE
+            return
+        }
+        chatRoleChip.visibility = View.VISIBLE
+        chatRoleChip.maxWidth = host.dp(88)
+        chatRoleChip.text = if (traitors.size == 1) {
+            "SOLO VOS"
+        } else {
+            "${traitors.size} MALOS"
+        }
+        chatRoleChip.setTextColor(root.context.getColor(R.color.traitor_text))
+        chatRoleChip.background = roundedBackground(
+            fillColor = root.context.getColor(R.color.traitor_panel),
+            strokeColor = root.context.getColor(R.color.traitor_red),
+            cornerRadiusDp = 8
+        )
     }
 
     private fun cronistaTypeface(): Typeface {
@@ -735,6 +831,18 @@ class GameplayChatController(
     )
 
     private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
+        if (activeChatChannel() == ChatChannel.TRAIDORES) {
+            val bright = root.context.getColor(R.color.traitor_red_bright)
+            val normalized = GameplayTextMarkers.normalize(entry.text)
+            val isTarget = "objetivo del plan" in normalized || "cambio de plan" in normalized
+            return EventPresentation(
+                icon = if (isTarget) "X" else "*",
+                label = if (isTarget) "OBJETIVO" else "PLAN",
+                backgroundColor = root.context.getColor(R.color.traitor_panel),
+                strokeColor = root.context.getColor(R.color.traitor_red),
+                iconColor = bright
+            )
+        }
         val gold = root.context.getColor(R.color.accent_gold)
         return when (entry.kind) {
             ChronicleEntryKind.DEATH -> EventPresentation(
@@ -805,28 +913,58 @@ class GameplayChatController(
 
     private fun createDayDivider(entry: ChronicleEntry): View {
         return TextView(root.context).apply {
-            text = entry.text
+            text = if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                entry.text.replace("DIA", "NOCHE")
+            } else {
+                entry.text
+            }
             gravity = Gravity.CENTER
-            setTextColor(root.context.getColor(R.color.accent_gold))
+            setTextColor(
+                root.context.getColor(
+                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                        R.color.traitor_red_bright
+                    } else {
+                        R.color.accent_gold
+                    }
+                )
+            )
             textSize = 9f * host.gameplayTextScale
             typeface = cronistaTypeface()
             setPadding(0, host.dp(7), 0, host.dp(5))
         }
     }
 
-    private fun renderChatMessages(messages: List<GameChatMessage>) {
+    private fun renderChatMessages(messages: List<GameChatMessage>, channel: ChatChannel) {
         chatMessagesContainer.removeAllViews()
-        val entries = ChronicleFeedPresenter.entries(messages, showOnlyEvents).takeLast(24)
-        if (entries.isEmpty() && typingBotSpeakers.isEmpty()) {
+        val entries = ChronicleFeedPresenter.entries(
+            messages,
+            showOnlyEvents && channel == ChatChannel.PUBLICO
+        )
+            .filterNot { channel == ChatChannel.TRAIDORES && it.kind == ChronicleEntryKind.DAY_DIVIDER }
+            .takeLast(24)
+        val typingSpeakers = typingBotSpeakers.filter { speaker ->
+            typingSpeakerBelongsToChannel(speaker, channel)
+        }
+        if (entries.isEmpty() && typingSpeakers.isEmpty()) {
             chatMessagesContainer.addView(TextView(root.context).apply {
-                text = if (showOnlyEvents) {
+                text = if (channel == ChatChannel.TRAIDORES) {
+                    "Todavia no hay plan."
+                } else if (showOnlyEvents) {
                     "Todavia no hay sucesos."
                 } else {
                     "Todavia no hay mensajes."
                 }
                 gravity = Gravity.CENTER
                 setPadding(host.dp(8), host.dp(16), host.dp(8), host.dp(16))
-                setTextColor(root.context.getColor(R.color.text_secondary))
+                setTextColor(
+                    root.context.getColor(
+                        if (channel == ChatChannel.TRAIDORES) {
+                            R.color.traitor_text
+                        } else {
+                            R.color.text_secondary
+                        }
+                    )
+                )
                 textSize = 12f * host.gameplayTextScale
             })
             return
@@ -853,16 +991,26 @@ class GameplayChatController(
                 speaker = if (ownMessage) "VOS" else speakerName.uppercase(),
                 body = entry.text,
                 speakerColor = if (ownMessage) {
-                    root.context.getColor(R.color.bg_dark)
+                    root.context.getColor(
+                        if (channel == ChatChannel.TRAIDORES) {
+                            R.color.traitor_text
+                        } else {
+                            R.color.bg_dark
+                        }
+                    )
                 } else {
-                    PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    if (channel == ChatChannel.TRAIDORES) {
+                        root.context.getColor(R.color.traitor_red_bright)
+                    } else {
+                        PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    }
                 },
                 ownMessage = ownMessage,
                 bubbleMaxWidth = bubbleMaxWidth,
                 muted = false
             )
         }
-        typingBotSpeakers.forEach { speaker ->
+        typingSpeakers.forEach { speaker ->
             addChatBubble(
                 speaker = speaker.uppercase(),
                 body = "esta escribiendo...",
@@ -874,7 +1022,28 @@ class GameplayChatController(
         }
     }
 
+    private fun typingSpeakerBelongsToChannel(speaker: String, channel: ChatChannel): Boolean {
+        val player = GameEngine.playerByName(host.currentSession, speaker) ?: return false
+        return when (channel) {
+            ChatChannel.PUBLICO -> !GameRules.isTraitorRole(player.role) ||
+                BotConversationDirector.canRun(host.currentSession)
+            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(host.currentSession, player)
+        }
+    }
+
     private fun toggleFeedFilter() {
+        if (canToggleTraitorChannel()) {
+            selectedChatChannel = if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                ChatChannel.PUBLICO
+            } else {
+                ChatChannel.TRAIDORES
+            }
+            showOnlyEvents = false
+            renderFeedFilterButton()
+            renderChatPanel()
+            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+            return
+        }
         showOnlyEvents = !showOnlyEvents
         renderFeedFilterButton()
         renderChatPanel()
@@ -882,13 +1051,49 @@ class GameplayChatController(
     }
 
     private fun renderFeedFilterButton() {
+        val channel = activeChatChannel()
+        if (canToggleTraitorChannel()) {
+            btnChatFeedFilter.visibility = View.VISIBLE
+            btnChatFeedFilter.isEnabled = true
+            btnChatFeedFilter.text = if (channel == ChatChannel.TRAIDORES) "PUEBLO" else "PLAN"
+            btnChatFeedFilter.contentDescription = if (channel == ChatChannel.TRAIDORES) {
+                "Volver al chat del pueblo"
+            } else {
+                "Ver Plan de los Asesinos"
+            }
+            btnChatFeedFilter.alpha = 1f
+            btnChatFeedFilter.background = roundedBackground(
+                fillColor = root.context.getColor(
+                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_panel else R.color.btn_dark
+                ),
+                strokeColor = root.context.getColor(
+                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_red else R.color.btn_dark_border
+                ),
+                cornerRadiusDp = 7
+            )
+            btnChatFeedFilter.setTextColor(
+                root.context.getColor(
+                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_text else R.color.text_primary
+                )
+            )
+            return
+        }
+        if (channel == ChatChannel.TRAIDORES) {
+            btnChatFeedFilter.visibility = View.GONE
+            btnChatFeedFilter.isEnabled = false
+            return
+        }
         btnChatFeedFilter.text = if (showOnlyEvents) "SUCESOS" else "TODO"
         btnChatFeedFilter.contentDescription = if (showOnlyEvents) {
             "Mostrar todo el feed"
         } else {
             "Mostrar solo sucesos"
         }
+        btnChatFeedFilter.visibility = View.VISIBLE
+        btnChatFeedFilter.isEnabled = true
         btnChatFeedFilter.alpha = if (showOnlyEvents) 1f else 0.82f
+        btnChatFeedFilter.setBackgroundResource(R.drawable.bg_btn_dark)
+        btnChatFeedFilter.setTextColor(root.context.getColor(R.color.text_primary))
     }
 
     private fun addGodEventBanner(entry: ChronicleEntry) {
@@ -959,13 +1164,23 @@ class GameplayChatController(
         val bubble = LinearLayout(root.context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(10), host.dp(7), host.dp(10), host.dp(8))
-            setBackgroundResource(
-                if (ownMessage) {
-                    R.drawable.bg_chat_bubble_own
-                } else {
-                    R.drawable.bg_chat_bubble_other
-                }
-            )
+            if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                background = roundedBackground(
+                    fillColor = root.context.getColor(
+                        if (ownMessage) R.color.traitor_red else R.color.traitor_panel
+                    ),
+                    strokeColor = root.context.getColor(R.color.traitor_red_bright),
+                    cornerRadiusDp = 10
+                )
+            } else {
+                setBackgroundResource(
+                    if (ownMessage) {
+                        R.drawable.bg_chat_bubble_own
+                    } else {
+                        R.drawable.bg_chat_bubble_other
+                    }
+                )
+            }
             alpha = if (muted) 0.78f else 1f
         }
         bubble.addView(TextView(root.context).apply {
@@ -978,7 +1193,17 @@ class GameplayChatController(
         bubble.addView(TextView(root.context).apply {
             text = body
             maxWidth = bubbleMaxWidth
-            setTextColor(root.context.getColor(if (ownMessage) R.color.bg_dark else R.color.text_primary))
+            setTextColor(
+                root.context.getColor(
+                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                        R.color.traitor_text
+                    } else if (ownMessage) {
+                        R.color.bg_dark
+                    } else {
+                        R.color.text_primary
+                    }
+                )
+            )
             textSize = 12f * host.gameplayTextScale
             if (muted) typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
         })
@@ -1080,24 +1305,34 @@ class GameplayChatController(
         }
         val rawMessage = chatInput.text.toString()
         if (host.isOnlineGameplay()) {
-            sendOnlineHumanChatMessage(rawMessage)
+            if (activeChatChannel() == ChatChannel.TRAIDORES) {
+                sendOnlineTraitorChatMessage(rawMessage)
+            } else {
+                sendOnlineHumanChatMessage(rawMessage)
+            }
             return
         }
+        val channel = activeChatChannel()
         val before = session.chatHistory.size
         val updated = GameEngine.addHumanChatMessage(
             session,
             rawMessage,
-            includeBotReactions = false
+            includeBotReactions = false,
+            channel = channel
         )
         host.currentSession = updated
         if (updated.chatHistory.size > before) {
             GameplayEffects.play(root.context, GameplayEffect.CHAT)
-            scheduleBotChatReactions(rawMessage)
+            if (channel == ChatChannel.PUBLICO) {
+                onHumanMessage(rawMessage)
+            } else if (channel == ChatChannel.TRAIDORES) {
+                onHumanTraitorMessage()
+            }
             clearChatComposerAfterSend()
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-        } else if (!GameEngine.canHumanChat(updated)) {
+        } else if (!canHumanChatInChannel(channel, updated)) {
             GameplayEffects.play(root.context, GameplayEffect.ERROR)
-            host.showToast(blockedChatMessage(updated))
+            host.showToast(blockedChatMessage(updated, channel))
         }
         updateUnreadChatCount()
         renderChatPanel()
@@ -1163,6 +1398,66 @@ class GameplayChatController(
             }
     }
 
+    private fun sendOnlineTraitorChatMessage(rawMessage: String) {
+        val session = host.currentSession
+        val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
+        if (message.isBlank()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastOnlineTraitorChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast("Espera un momento antes de enviar otro mensaje.")
+            return
+        }
+        if (message.equals(lastOnlineTraitorChatMessage, ignoreCase = true)) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast("Ese mensaje ya fue enviado.")
+            return
+        }
+        if (!GameEngine.canHumanChatTraitor(session)) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast(blockedChatMessage(session, ChatChannel.TRAIDORES))
+            return
+        }
+        val human = GameEngine.humanPlayer(session)
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(host.onlineRoomId)
+            .collection("chat_traidores")
+            .add(
+                mapOf(
+                    "actorId" to host.onlinePlayerUid,
+                    "speaker" to human.name,
+                    "mensaje" to message,
+                    "fase" to session.phase.name,
+                    "ronda" to session.round,
+                    "isGod" to false,
+                    "canal" to "traidores",
+                    "creadaEn" to FieldValue.serverTimestamp(),
+                    "creadaEnLocal" to System.currentTimeMillis()
+                )
+            )
+            .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "traitor_chat_send_success roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} speaker=${human.name} phase=${session.phase.name}"
+                )
+                lastOnlineTraitorChatSentAtMs = SystemClock.elapsedRealtime()
+                lastOnlineTraitorChatMessage = message
+                GameplayEffects.play(root.context, GameplayEffect.CHAT)
+                clearChatComposerAfterSend()
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "traitor_chat_send_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} speaker=${human.name} phase=${session.phase.name}",
+                    error
+                )
+                GameplayEffects.play(root.context, GameplayEffect.ERROR)
+                host.showToast(
+                    OnlineErrorMessages.forAction("No se pudo enviar el mensaje", error),
+                    Toast.LENGTH_LONG
+                )
+            }
+    }
+
     private fun startOnlineChatListener() {
         if (!host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
@@ -1194,10 +1489,16 @@ class GameplayChatController(
     private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
         val session = host.currentSession
         val previousCount = session.chatHistory.size
-        val godMessages = session.chatHistory.filter { it.isGod }
+        val godMessages = session.chatHistory.filter {
+            it.channel == ChatChannel.PUBLICO && it.isGod
+        }
+        val traitorMessages = session.chatHistory.filter {
+            it.channel == ChatChannel.TRAIDORES
+        }
         val onlineMessages = entries.map { GameChatMessage(it.speaker, it.message, it.isGod) }
         host.currentSession = session.copy(
-            chatHistory = (godMessages + onlineMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+            chatHistory = (godMessages + onlineMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES) +
+                traitorMessages.takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
         )
         if (host.currentSession.chatHistory.size > previousCount) {
             updateUnreadChatCount()
@@ -1206,27 +1507,254 @@ class GameplayChatController(
         renderChatBadge()
     }
 
-    private fun scheduleBotChatReactions(rawHumanMessage: String) {
+    private fun startOnlineTraitorChatListener() {
+        if (!host.isOnlineGameplay() || onlineTraitorChatListener != null) return
+        if (!GameEngine.canSeeTraitorChat(host.currentSession, GameEngine.humanPlayer(host.currentSession))) {
+            return
+        }
+        OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
+        onlineTraitorChatListener = FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(host.onlineRoomId)
+            .collection("chat_traidores")
+            .orderBy("creadaEnLocal")
+            .limit(40)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    OnlineDebugLog.e("traitor_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
+                val entries = snapshot.documents.map { document ->
+                    OnlineChatEntry(
+                        id = document.id,
+                        speaker = document.getString("speaker").orEmpty(),
+                        message = document.getString("mensaje").orEmpty(),
+                        isGod = document.getBoolean("isGod") ?: false
+                    )
+                }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                OnlineDebugLog.i("traitor_chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}")
+                applyOnlineTraitorChatEntries(entries)
+            }
+    }
+
+    private fun applyOnlineTraitorChatEntries(entries: List<OnlineChatEntry>) {
+        val session = host.currentSession
+        val previousCount = session.chatHistory.size
+        val publicMessages = session.chatHistory.filter {
+            it.channel == ChatChannel.PUBLICO
+        }
+        val traitorGodMessages = session.chatHistory.filter {
+            it.channel == ChatChannel.TRAIDORES && it.isGod
+        }
+        val onlineTraitorMessages = entries.map {
+            GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.TRAIDORES)
+        }
+        host.currentSession = session.copy(
+            chatHistory = publicMessages.takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES) +
+                (traitorGodMessages + onlineTraitorMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+        )
+        if (host.currentSession.chatHistory.size > previousCount) {
+            updateUnreadChatCount()
+        }
+        renderChatPanel()
+        renderChatBadge()
+    }
+
+    private fun onHumanMessage(rawHumanMessage: String) {
         if (host.isOnlineGameplay()) return
-        cancelPendingBotChat()
+        cancelScheduledBotChat()
         val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         val session = host.currentSession
         if (humanMessage.isBlank() || LocalBotAi.isDebugVoteCommand(session, humanMessage)) return
-        val phaseIndex = session.phaseIndex
-        val phase = session.phase
-        val reactions = try {
-            LocalBotAi.reactionsToHumanMessage(session, humanMessage)
-        } catch (_: RuntimeException) {
-            emptyList()
+        if (directorPhaseIndex != session.phaseIndex) {
+            resetDirectorForPhase(session)
         }
-        reactions.take(MAX_STAGGERED_BOT_REACTIONS).forEachIndexed { index, (speaker, message) ->
-            scheduleBotChatMessage(
-                speaker = speaker,
-                message = message,
-                phaseIndex = phaseIndex,
-                phase = phase,
-                delayMs = botReactionDelayMs(index, message)
+        directorHumanSpokePhaseIndex = session.phaseIndex
+        directorPendingHumanMessage = humanMessage
+        directorReactionLines = 0
+        scheduleNextHumanReactionBeat()
+    }
+
+    private fun onHumanTraitorMessage() {
+        if (host.isOnlineGameplay()) return
+        val session = host.currentSession
+        if (!canRunVisibleTraitorNight(session)) return
+        if (traitorDirectorPhaseIndex != session.phaseIndex) {
+            resetTraitorDirectorForPhase(session)
+        }
+        scheduleNextTraitorNightBeat()
+    }
+
+    private fun resetDirectorForPhase(session: GameSession) {
+        directorPhaseIndex = session.phaseIndex
+        directorIdleLines = 0
+        directorReactionLines = 0
+        directorBeatCounter = 0
+        directorPendingHumanMessage = ""
+        directorLastSpeaker = recentPublicMessages(session)
+            .lastOrNull { !it.isGod && isBotSpeaker(session, it.speaker) }
+            ?.speaker
+        val humanName = GameEngine.humanPlayer(session).name
+        directorHumanSpokePhaseIndex = if (
+            recentPublicMessages(session)
+                .asReversed()
+                .take(6)
+                .any { it.speaker == humanName }
+        ) {
+            session.phaseIndex
+        } else {
+            -1
+        }
+        directorPromptedSilentHuman = false
+    }
+
+    private fun scheduleNextHumanReactionBeat() {
+        val session = host.currentSession
+        if (
+            host.isOnlineGameplay() ||
+            directorPendingHumanMessage.isBlank() ||
+            !BotConversationDirector.canRun(session) ||
+            directorPhaseIndex != session.phaseIndex ||
+            pendingBotChatRunnables.isNotEmpty()
+        ) {
+            return
+        }
+        val beat = BotConversationDirector.nextHumanReactionBeat(
+            session = session,
+            humanMessage = directorPendingHumanMessage,
+            deliveredReactions = directorReactionLines,
+            lastSpeaker = directorLastSpeaker
+        )
+        if (beat == null) {
+            directorPendingHumanMessage = ""
+            directorReactionLines = 0
+            scheduleNextIdleBeat()
+            return
+        }
+        val delayMs = BotConversationDirector.naturalDelayMs(
+            session = session,
+            beatIndex = directorBeatCounter++,
+            message = beat.message,
+            reaction = true
+        )
+        scheduleBotChatMessage(
+            speaker = beat.speaker,
+            message = beat.message,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = delayMs
+        ) { committed ->
+            directorLastSpeaker = beat.speaker
+            directorReactionLines += 1
+            if (directorReactionLines >= MAX_STAGGERED_BOT_REACTIONS) {
+                directorPendingHumanMessage = ""
+                directorReactionLines = 0
+                scheduleNextIdleBeat(committed)
+            } else {
+                scheduleNextHumanReactionBeat()
+            }
+        }
+    }
+
+    private fun scheduleNextIdleBeat(sessionOverride: GameSession? = null) {
+        val session = sessionOverride ?: host.currentSession
+        if (
+            host.isOnlineGameplay() ||
+            !BotConversationDirector.canRun(session) ||
+            directorPhaseIndex != session.phaseIndex ||
+            directorPendingHumanMessage.isNotBlank() ||
+            pendingBotChatRunnables.isNotEmpty()
+        ) {
+            return
+        }
+        val beat = BotConversationDirector.nextIdleBeat(
+            session = session,
+            idleLinesUsed = directorIdleLines,
+            lastSpeaker = directorLastSpeaker,
+            humanSpokeThisPhase = directorHumanSpokePhaseIndex == session.phaseIndex,
+            promptedSilentHuman = directorPromptedSilentHuman
+        ) ?: return
+        val pauseDelay = if (
+            directorIdleLines > 0 &&
+            recentBotStreak(session) >= BotConversationDirector.pauseAfterBotStreak(session)
+        ) {
+            BotConversationDirector.silenceDelayMs(session, directorIdleLines)
+        } else {
+            0L
+        }
+        val delayMs = pauseDelay.takeIf { it > 0L }
+            ?: BotConversationDirector.naturalDelayMs(
+                session = session,
+                beatIndex = directorBeatCounter++,
+                message = beat.message,
+                reaction = false
             )
+        scheduleBotChatMessage(
+            speaker = beat.speaker,
+            message = beat.message,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = delayMs
+        ) { committed ->
+            directorLastSpeaker = beat.speaker
+            directorIdleLines += 1
+            if (beat.promptsSilentHuman) {
+                directorPromptedSilentHuman = true
+            }
+            scheduleNextIdleBeat(committed)
+        }
+    }
+
+    private fun resetTraitorDirectorForPhase(session: GameSession) {
+        traitorDirectorPhaseIndex = session.phaseIndex
+        traitorDirectorLines = recentTraitorMessages(session)
+            .count { isBotSpeaker(session, it.speaker) }
+        traitorDirectorLastSpeaker = recentTraitorMessages(session)
+            .lastOrNull { isBotSpeaker(session, it.speaker) }
+            ?.speaker
+    }
+
+    private fun resetTraitorDirectorIfNeeded(session: GameSession) {
+        if (!GameplayTableUi.isNightPhase(session.phase)) {
+            traitorDirectorPhaseIndex = -1
+            traitorDirectorLines = 0
+            traitorDirectorLastSpeaker = null
+        }
+    }
+
+    private fun scheduleNextTraitorNightBeat(sessionOverride: GameSession? = null) {
+        val session = sessionOverride ?: host.currentSession
+        if (
+            host.isOnlineGameplay() ||
+            !canRunVisibleTraitorNight(session) ||
+            traitorDirectorPhaseIndex != session.phaseIndex ||
+            pendingBotChatRunnables.isNotEmpty()
+        ) {
+            return
+        }
+        val beat = BotConversationDirector.nextTraitorNightBeat(
+            session = session,
+            deliveredLines = traitorDirectorLines,
+            lastSpeaker = traitorDirectorLastSpeaker
+        ) ?: return
+        val delayMs = BotConversationDirector.naturalDelayMs(
+            session = session,
+            beatIndex = directorBeatCounter++,
+            message = beat.message,
+            reaction = false
+        )
+        scheduleBotChatMessage(
+            speaker = beat.speaker,
+            message = beat.message,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = delayMs,
+            channel = ChatChannel.TRAIDORES
+        ) { committed ->
+            traitorDirectorLastSpeaker = beat.speaker
+            traitorDirectorLines += 1
+            scheduleNextTraitorNightBeat(committed)
         }
     }
 
@@ -1235,7 +1763,9 @@ class GameplayChatController(
         message: String,
         phaseIndex: Int,
         phase: GamePhase,
-        delayMs: Long
+        delayMs: Long,
+        channel: ChatChannel = ChatChannel.PUBLICO,
+        afterCommit: ((GameSession) -> Unit)? = null
     ) {
         val typingRunnable = object : Runnable {
             override fun run() {
@@ -1245,7 +1775,8 @@ class GameplayChatController(
                     session.phaseIndex != phaseIndex ||
                     session.phase != phase ||
                     session.winner.isNotBlank() ||
-                    !canScheduledBotSpeak(session, speaker)
+                    host.isTransitionLocked(phaseIndex) ||
+                    !canScheduledBotSpeak(session, speaker, channel)
                 ) {
                     return
                 }
@@ -1263,43 +1794,58 @@ class GameplayChatController(
                     session.phaseIndex != phaseIndex ||
                     session.phase != phase ||
                     session.winner.isNotBlank() ||
-                    !canScheduledBotSpeak(session, speaker)
+                    !canScheduledBotSpeak(session, speaker, channel)
                 ) {
                     return
                 }
+                if (host.isTransitionLocked(phaseIndex)) {
+                    scheduleBotChatMessage(
+                        speaker = speaker,
+                        message = message,
+                        phaseIndex = phaseIndex,
+                        phase = phase,
+                        delayMs = TRANSITION_RETRY_DELAY_MS,
+                        channel = channel,
+                        afterCommit = afterCommit
+                    )
+                    return
+                }
                 val beforeCount = session.chatHistory.size
-                val updated = GameEngine.addBotChatMessage(session, speaker, message)
+                val updated = GameEngine.addBotChatMessage(session, speaker, message, channel = channel)
                 if (updated.chatHistory.size == beforeCount) return
                 host.currentSession = updated
                 GameplayEffects.play(root.context, GameplayEffect.CHAT)
                 updateUnreadChatCount()
                 renderChatPanel()
                 renderChatBadge()
+                afterCommit?.invoke(updated)
             }
         }
         pendingBotChatRunnables += typingRunnable
         pendingBotChatRunnables += runnable
         handler.postDelayed(
             typingRunnable,
-            (delayMs - BOT_TYPING_LEAD_DELAY_MS).coerceAtLeast(250L)
+            (delayMs - botTypingVisibleMs(delayMs)).coerceAtLeast(250L)
         )
         handler.postDelayed(runnable, delayMs)
     }
 
-    private fun canScheduledBotSpeak(session: GameSession, speaker: String): Boolean {
+    private fun canScheduledBotSpeak(
+        session: GameSession,
+        speaker: String,
+        channel: ChatChannel = ChatChannel.PUBLICO
+    ): Boolean {
         val player = GameEngine.playerByName(session, speaker) ?: return false
-        return !player.isHuman && GameEngine.canParticipateInChat(session, player)
+        if (player.isHuman) return false
+        return when (channel) {
+            ChatChannel.PUBLICO -> GameEngine.canParticipateInChat(session, player)
+            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(session, player) &&
+                GameEngine.isTraitorChatWritable(session)
+        }
     }
 
-    private fun botReactionDelayMs(index: Int, message: String): Long {
-        val readingDelay = (message.length * 38L).coerceAtMost(1_800L)
-        val punctuationDelay = message.count { it == '?' || it == ',' }.coerceAtMost(3) * 180L
-        val humanJitter = ((message.hashCode() and 0x7fffffff) % 1_250).toLong()
-        return FIRST_BOT_REACTION_DELAY_MS +
-            humanJitter +
-            index * NEXT_BOT_REACTION_DELAY_MS +
-            readingDelay +
-            punctuationDelay
+    private fun botTypingVisibleMs(delayMs: Long): Long {
+        return (delayMs * 3 / 5).coerceIn(900L, 2_800L)
     }
 
     private fun clearChatComposerAfterSend() {
@@ -1314,12 +1860,25 @@ class GameplayChatController(
         }
     }
 
-    private fun chatInputHint(canChat: Boolean): String {
-        if (canChat) return "Escribir..."
+    private fun chatInputHint(canChat: Boolean, channel: ChatChannel = activeChatChannel()): String {
+        if (canChat) {
+            return if (channel == ChatChannel.TRAIDORES) {
+                "Tramar en las sombras..."
+            } else {
+                "Escribir..."
+            }
+        }
         val session = host.currentSession
         val human = GameEngine.humanPlayer(session)
         if (!human.alive) return "Eliminado: solo lectura"
         if (human.muted) return "Muteado: solo lectura"
+        if (channel == ChatChannel.TRAIDORES) {
+            return if (GameplayTableUi.isNightPhase(session.phase)) {
+                "El plan no puede escribirse ahora"
+            } else {
+                "El plan descansa hasta la noche"
+            }
+        }
         return when (session.phase) {
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
@@ -1333,11 +1892,18 @@ class GameplayChatController(
         }
     }
 
-    private fun blockedChatMessage(session: GameSession): String {
+    private fun blockedChatMessage(
+        session: GameSession,
+        channel: ChatChannel = activeChatChannel()
+    ): String {
         val human = GameEngine.humanPlayer(session)
         return when {
             !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
             human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
+            channel == ChatChannel.TRAIDORES && !GameEngine.canSeeTraitorChat(session, human) ->
+                "No formas parte del Plan de los Asesinos."
+            channel == ChatChannel.TRAIDORES ->
+                "El plan descansa hasta la noche."
             GameplayTableUi.isNightPhase(session.phase) ->
                 "El pueblo duerme. Las voces deben esperar al amanecer."
             else -> "No puedes escribir durante esta fase."
@@ -1348,6 +1914,22 @@ class GameplayChatController(
         val logDrawable = host.chatLogDrawableRes()
         chatPanelBackground.setImageResource(logDrawable)
         chatAmbientBackground.setImageResource(logDrawable)
+        if (activeChatChannel() == ChatChannel.TRAIDORES) {
+            renderTraitorChatBackgrounds()
+            return
+        }
+        chatPanel.setBackgroundResource(R.drawable.bg_reveal_text_shade)
+        chatAmbientFeed.setBackgroundResource(R.drawable.bg_reveal_text_shade)
+        chatPanelShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
+        chatAmbientShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
+        chatHeader.background = null
+        chatComposer.background = null
+        chatInput.setBackgroundResource(R.drawable.bg_chat_input)
+        chatInput.setTextColor(root.context.getColor(R.color.text_primary))
+        chatInput.setHintTextColor(root.context.getColor(R.color.text_muted))
+        btnSendChat.setBackgroundResource(R.drawable.bg_btn_gold)
+        btnSendChat.setTextColor(root.context.getColor(R.color.bg_dark))
+        chatNewMessages.setTextColor(root.context.getColor(R.color.accent_gold))
         val ambientAlpha = when (host.currentSession.mapKey) {
             "grecia" -> 0.54f
             "medieval" -> 0.64f
@@ -1361,8 +1943,125 @@ class GameplayChatController(
         }
     }
 
+    private fun renderTraitorChatBackgrounds() {
+        val writable = GameEngine.canHumanChatTraitor(host.currentSession)
+        val red = root.context.getColor(R.color.traitor_red)
+        val bright = root.context.getColor(R.color.traitor_red_bright)
+        val panel = root.context.getColor(R.color.traitor_panel)
+        val bg = root.context.getColor(R.color.traitor_bg)
+        val text = root.context.getColor(R.color.traitor_text)
+        val muted = root.context.getColor(R.color.traitor_muted)
+
+        chatPanel.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 238 else 220),
+            strokeColor = red,
+            cornerRadiusDp = 12,
+            strokeWidthDp = 2
+        )
+        chatAmbientFeed.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 226 else 208),
+            strokeColor = red,
+            cornerRadiusDp = 12,
+            strokeWidthDp = 1
+        )
+        chatPanelShade.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(colorWithAlpha(panel, 236), colorWithAlpha(bg, 246))
+        )
+        chatAmbientShade.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(colorWithAlpha(panel, 220), colorWithAlpha(bg, 238))
+        )
+        chatHeader.background = roundedBackground(
+            fillColor = colorWithAlpha(panel, 226),
+            strokeColor = colorWithAlpha(red, 180),
+            cornerRadiusDp = 9
+        )
+        chatComposer.background = roundedBackground(
+            fillColor = colorWithAlpha(panel, 220),
+            strokeColor = colorWithAlpha(red, 170),
+            cornerRadiusDp = 10
+        )
+        chatInput.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, 235),
+            strokeColor = colorWithAlpha(red, 170),
+            cornerRadiusDp = 10
+        )
+        chatInput.setTextColor(text)
+        chatInput.setHintTextColor(muted)
+        btnSendChat.background = roundedBackground(
+            fillColor = red,
+            strokeColor = bright,
+            cornerRadiusDp = 10
+        )
+        btnSendChat.setTextColor(root.context.getColor(R.color.text_primary))
+        chatNewMessages.setTextColor(bright)
+        chatAmbientBackground.alpha = if (writable) 0.30f else 0.22f
+        chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
+    }
+
+    private fun activeChatChannel(): ChatChannel {
+        val session = host.currentSession
+        if (!canUseTraitorChatUi(session)) return ChatChannel.PUBLICO
+        if (GameplayTableUi.isNightPhase(session.phase)) return ChatChannel.TRAIDORES
+        return selectedChatChannel
+    }
+
+    private fun activeChannelMessages(channel: ChatChannel): List<GameChatMessage> {
+        return host.currentSession.chatHistory.filter { it.channel == channel }
+    }
+
+    private fun canHumanChatInChannel(
+        channel: ChatChannel,
+        session: GameSession = host.currentSession
+    ): Boolean {
+        return when (channel) {
+            ChatChannel.PUBLICO -> GameEngine.canHumanChat(session)
+            ChatChannel.TRAIDORES -> GameEngine.canHumanChatTraitor(session)
+        }
+    }
+
+    private fun canToggleTraitorChannel(): Boolean {
+        val session = host.currentSession
+        return canUseTraitorChatUi(session) &&
+            !GameplayTableUi.isNightPhase(session.phase) &&
+            session.phase != GamePhase.REPARTO &&
+            session.phase != GamePhase.RESULTADO
+    }
+
+    private fun canUseTraitorChatUi(session: GameSession): Boolean {
+        return GameEngine.canSeeTraitorChat(session, GameEngine.humanPlayer(session))
+    }
+
+    private fun canRunVisibleTraitorNight(session: GameSession): Boolean {
+        // El director nocturno de bots nunca corre en online: el online es humano contra
+        // humano, y el chat de traidores solo transporta mensajes escritos por jugadores.
+        return !host.isOnlineGameplay() &&
+            canUseTraitorChatUi(session) &&
+            BotConversationDirector.canRunTraitorNight(session)
+    }
+
+    private fun roundedBackground(
+        fillColor: Int,
+        strokeColor: Int,
+        cornerRadiusDp: Int,
+        strokeWidthDp: Int = 1
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = host.dp(cornerRadiusDp).toFloat()
+            setColor(fillColor)
+            setStroke(host.dp(strokeWidthDp), strokeColor)
+        }
+    }
+
+    private fun colorWithAlpha(color: Int, alpha: Int): Int {
+        return (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
+    }
+
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
+        private const val STATE_CHAT_CHANNEL = "chat_channel"
         private const val CHAT_PANEL_WIDTH_RATIO = 0.58f
         private const val CHAT_PANEL_HEIGHT_RATIO = 0.68f
         private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.78f
@@ -1388,10 +2087,8 @@ class GameplayChatController(
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
         private const val MAX_STAGGERED_BOT_REACTIONS = 3
         private const val MAX_EVENT_BOT_REACTIONS = 3
-        private const val FIRST_BOT_REACTION_DELAY_MS = 3_200L
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
-        private const val PHASE_BOT_BURST_DELAY_MS = 1_800L
         private const val EVENT_BOT_REACTION_DELAY_MS = 2_400L
-        private const val BOT_TYPING_LEAD_DELAY_MS = 1_650L
+        private const val TRANSITION_RETRY_DELAY_MS = 650L
     }
 }

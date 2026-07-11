@@ -675,7 +675,7 @@ object GameplayTableUi {
 
     private fun publicSummaryMessages(session: GameSession): List<String> {
         val godChatMessages = session.chatHistory
-            .filter { it.isGod }
+            .filter { it.channel == ChatChannel.PUBLICO && it.isGod }
             .map { it.message }
         return (session.publicHistory + session.godHistory + godChatMessages)
             .map { it.trim() }

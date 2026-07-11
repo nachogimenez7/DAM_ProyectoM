@@ -328,6 +328,40 @@ service cloud.firestore {
 
         allow update, delete: if false;
       }
+
+      match /chat_traidores/{mensajeId} {
+        // Canal secreto del equipo asesino. Hoy la lectura es honor-system, igual que el
+        // secreto de roles en online (partidaInicial es world-readable). Para cerrar la
+        // lectura a nivel servidor, reemplazar `allow read: if true` por una funcion que
+        // haga get() sobre partidaInicial y verifique que request.auth.uid tiene un rol
+        // traidor. Requiere confirmar el shape del rol por uid en partidaInicial.
+        allow read: if true;
+
+        allow create: if signedIn()
+          && hasOnly(request.resource.data, [
+            'actorId',
+            'speaker',
+            'mensaje',
+            'fase',
+            'ronda',
+            'isGod',
+            'canal',
+            'creadaEn',
+            'creadaEnLocal'
+          ])
+          && request.resource.data.actorId == request.auth.uid
+          && isString(request.resource.data.speaker, 1, 18)
+          && isString(request.resource.data.mensaje, 1, 140)
+          && isString(request.resource.data.fase, 1, 40)
+          && request.resource.data.ronda is int
+          && request.resource.data.ronda >= 0
+          && request.resource.data.ronda <= 30
+          && request.resource.data.isGod == false
+          && request.resource.data.canal == 'traidores'
+          && request.resource.data.creadaEnLocal is int;
+
+        allow update, delete: if false;
+      }
     }
 
     match /meta/public_ids {

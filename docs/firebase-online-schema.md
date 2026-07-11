@@ -207,6 +207,29 @@ Campos:
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
 
+### `partidas/{partidaId}/chat_traidores/{mensajeId}`
+
+Canal secreto del equipo asesino ("Plan de los Asesinos"). En online es humano contra humano: no hay bots, asi que solo transporta mensajes escritos por jugadores traidores. La UI (piel roja, toggle PUEBLO/PLAN) es la misma que en local; solo cambia la fuente de los mensajes (Firestore en vez del motor local). El cliente solo se suscribe si su rol es traidor.
+
+Campos:
+
+- `actorId`: id temporal del jugador (debe coincidir con `request.auth.uid`).
+- `speaker`: nombre visible, maximo 18 caracteres.
+- `mensaje`: texto entre 1 y 140 caracteres.
+- `fase`: fase en la que se envio.
+- `ronda`: numero de ronda, 0 a 30.
+- `isGod`: booleano, siempre `false` (las lineas de sistema del plan son locales, no se sincronizan).
+- `canal`: constante `"traidores"`.
+- `creadaEn`: timestamp de servidor.
+- `creadaEnLocal`: timestamp local.
+
+Seguridad actual del canal:
+
+- **Integridad de autoria garantizada** por reglas: `actorId == request.auth.uid`, o sea nadie puede escribir en nombre de otro.
+- **Secreto de lectura honor-system**, igual que el secreto de roles en online: como `partidas/{id}` y `partidaInicial` son `allow read: if true`, un cliente puede leer los roles de todos con o sin este chat. El chat de traidores no agrega una clase nueva de vulnerabilidad; hereda la que ya existe.
+- Para cerrar la lectura del canal a nivel servidor: reemplazar `allow read: if true` en `chat_traidores` por una funcion que haga `get()` sobre `partidaInicial` y verifique que el `request.auth.uid` tiene rol traidor. Requiere que el reparto guarde el rol por uid en un shape navegable por reglas. Como todos los documentos del canal exigen la misma condicion, el listener de la subcoleccion pasa entero para un traidor y es rechazado entero para un no-traidor.
+- Cierre real del secreto general de roles requiere backend autoritativo (Cloud Functions) que reparta y guarde roles sin exponerlos world-readable, o payloads de rol cifrados por jugador.
+
 ## Limites actuales
 
 Las reglas validan forma y tamanos, pero no pueden garantizar frecuencia fuerte de escritura. El cooldown local evita spam accidental, pero un cliente modificado podria seguir abusando.

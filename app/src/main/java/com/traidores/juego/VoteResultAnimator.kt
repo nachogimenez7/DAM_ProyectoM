@@ -84,6 +84,7 @@ class VoteResultAnimator(
     private var launchAnimator: AnimatorSet? = null
     private var shakeAnimator: ObjectAnimator? = null
     private var flashView: View? = null
+    private var flyingCard: View? = null
 
     fun show(session: GameSession) {
         cancelAnimations()
@@ -296,6 +297,8 @@ class VoteResultAnimator(
         panel.translationX = 0f
         flashView?.let { overlay.removeView(it) }
         flashView = null
+        flyingCard?.let { overlay.removeView(it) }
+        flyingCard = null
         panel.animate().cancel()
         continueButton.animate().cancel()
         boot.animate().cancel()
@@ -559,6 +562,10 @@ class VoteResultAnimator(
         onFinished: () -> Unit
     ) {
         val card = holder.root
+        // Se reparenta de "cards" (GridLayout, con celdas) a "overlay" (FrameLayout
+        // simple) ANTES de volar, para que el vuelo no dependa de ningun limite de
+        // celda/columna — solo del propio overlay, que ya es clipChildren=false.
+        reparentCardToOverlayForFlight(card)
         val outX = -overlay.width.toFloat() - dp(80)
         // Sale volando en un arco amplio (sube y despues cruza fuera de cuadro) girando
         // en sentido horario (arriba de la carta barriendo de izquierda a derecha).
@@ -584,11 +591,41 @@ class VoteResultAnimator(
 
             override fun onAnimationEnd(animation: Animator) {
                 if (launchAnimator === set) launchAnimator = null
+                removeFlyingCardFromOverlay(card)
                 if (!cancelled) announceExpulsionOutcome(session, targetName, onFinished)
             }
         })
         launchAnimator = set
         set.start()
+    }
+
+    // Saca la carta de "cards" (GridLayout) y la agrega a "overlay" en la misma
+    // posicion visual, conservando su translationX/Y actual.
+    private fun reparentCardToOverlayForFlight(card: View) {
+        val currentParent = card.parent as? ViewGroup ?: return
+        if (currentParent === overlay) return
+        val overlayLocation = IntArray(2)
+        val cardLocation = IntArray(2)
+        overlay.getLocationOnScreen(overlayLocation)
+        card.getLocationOnScreen(cardLocation)
+        val baseLeft = (cardLocation[0] - overlayLocation[0]) - card.translationX
+        val baseTop = (cardLocation[1] - overlayLocation[1]) - card.translationY
+        val width = card.width
+        val height = card.height
+        currentParent.removeView(card)
+        overlay.addView(
+            card,
+            FrameLayout.LayoutParams(width, height).apply {
+                leftMargin = baseLeft.toInt()
+                topMargin = baseTop.toInt()
+            }
+        )
+        flyingCard = card
+    }
+
+    private fun removeFlyingCardFromOverlay(card: View) {
+        if (card.parent === overlay) overlay.removeView(card)
+        if (flyingCard === card) flyingCard = null
     }
 
     private fun announceExpulsionOutcome(

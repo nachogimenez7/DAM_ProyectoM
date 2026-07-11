@@ -7,6 +7,7 @@ data class GameSession(
     val mapKey: String,
     val mapName: String,
     val players: List<GamePlayer>,
+    val playerProfiles: Map<String, PlayerProfile> = emptyMap(),
     val timingConfig: GameTimingConfig = GameTimingConfig(),
     val roleRevealConfig: RoleRevealConfig = RoleRevealConfig(),
     val roleComposition: RoleCompositionConfig = RoleCompositionConfig(),
@@ -36,6 +37,8 @@ data class GameSession(
     val publicHistory: List<String> = emptyList(),
     val chatHistory: List<GameChatMessage> = emptyList(),
     val claimLedger: Map<String, List<ClaimRecord>> = emptyMap(),
+    val tableMemory: TableMemory = TableMemory(),
+    val traitorPlan: TraitorPlan? = null,
     val godHistory: List<String> = emptyList(),
     val actionHistory: List<GameAction> = emptyList(),
     val payadorUsed: Boolean = false,
@@ -76,6 +79,72 @@ data class ClaimRecord(
     val roleKey: String? = null,
     val statementType: StatementType? = null,
     val target: String? = null
+) : Serializable
+
+data class TableMemory(
+    val suspicion: Map<String, Map<String, Int>> = emptyMap(),
+    val pendingQuestions: Map<String, PendingQuestion> = emptyMap(),
+    val declaredInvestigationReads: List<InvestigationRead> = emptyList()
+) : Serializable
+
+data class TraitorPlan(
+    val round: Int,
+    val killTarget: String,
+    val killRationale: KillRationale,
+    val dayPushTarget: String,
+    val threats: List<TraitorThreat>,
+    val cover: CoverMove? = null,
+    val speakingOrder: List<String> = emptyList()
+) : Serializable
+
+enum class KillRationale : Serializable {
+    LIDER_DE_OPINION,
+    CONFIRMA_ROL,
+    NOS_MARCO,
+    JUNTA_VOTOS_LIMPIOS,
+    CALLADO_PELIGROSO,
+    SIN_LECTURA
+}
+
+data class TraitorThreat(
+    val player: String,
+    val kind: ThreatKind,
+    val markedTraitor: String? = null
+) : Serializable
+
+enum class ThreatKind : Serializable {
+    DETECTIVE_DECLARADO,
+    NOS_MARCO_SOSPECHA,
+    JUNTA_VOTOS
+}
+
+data class CoverMove(
+    val kind: CoverKind,
+    val actor: String,
+    val backer: String?,
+    val fakeRoleKey: String?,
+    val targetToDirty: String?
+) : Serializable
+
+enum class CoverKind : Serializable {
+    LOW_PROFILE,
+    COUNTER_CLAIM,
+    FAKE_CLAIM,
+    BUS_ALLY
+}
+
+data class PendingQuestion(
+    val round: Int,
+    val source: String,
+    val target: String,
+    val message: String
+) : Serializable
+
+data class InvestigationRead(
+    val round: Int,
+    val source: String,
+    val target: String,
+    val result: String
 ) : Serializable
 
 data class RoleCompositionConfig(
@@ -283,10 +352,16 @@ data class GameRole(
     val imageResName: String
 ) : Serializable
 
+enum class ChatChannel : Serializable {
+    PUBLICO,
+    TRAIDORES
+}
+
 data class GameChatMessage(
     val speaker: String,
     val message: String,
-    val isGod: Boolean = false
+    val isGod: Boolean = false,
+    val channel: ChatChannel = ChatChannel.PUBLICO
 ) : Serializable
 
 data class GameAction(
@@ -533,6 +608,8 @@ object LocalGameFactory {
             publicHistory = listOf(publicStart),
             chatHistory = listOf(GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, publicStart, isGod = true)),
             claimLedger = emptyMap(),
+            tableMemory = TableMemory(),
+            traitorPlan = null,
             godHistory = listOf(publicStart),
             actionHistory = emptyList(),
             payadorUsed = false,

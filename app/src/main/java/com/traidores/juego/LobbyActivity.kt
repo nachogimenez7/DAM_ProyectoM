@@ -99,7 +99,7 @@ class LobbyActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_lobby)
 
-        session = readSession() ?: LocalGameFactory.createSession()
+        session = PlayerProfileStore.withProfiles(this, readSession() ?: LocalGameFactory.createSession())
         lobbyMode = intent.getStringExtra(EXTRA_LOBBY_MODE) ?: MODE_LOCAL
         onlineLobbyName = intent.getStringExtra(EXTRA_LOBBY_NAME).orEmpty()
         onlinePartidaId = intent.getStringExtra(EXTRA_PARTIDA_ID).orEmpty()
@@ -174,7 +174,7 @@ class LobbyActivity : BaseActivity() {
             if (updated.players.size == session.players.size) {
                 Toast.makeText(this, "Maximo ${LocalGameFactory.MAX_PLAYERS} jugadores en esta demo.", Toast.LENGTH_SHORT).show()
             }
-            session = updated
+            session = PlayerProfileStore.withProfiles(this, updated)
             renderLobby()
         }
 
@@ -188,7 +188,7 @@ class LobbyActivity : BaseActivity() {
                 }
                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
-            session = updated
+            session = PlayerProfileStore.withProfiles(this, updated)
             renderLobby()
         }
 
@@ -319,7 +319,7 @@ class LobbyActivity : BaseActivity() {
             row.findViewById<TextView>(R.id.playerStatus).text =
                 onlinePlayer?.statusLabel() ?: if (index == 0) "Anfitrion" else "Listo"
             row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
-                showPlayerProfile(index, player)
+                showPlayerProfile(player)
             }
             row.findViewById<ImageButton>(R.id.btnPlayerProfile).contentDescription =
                 "Ver perfil de ${player.name}"
@@ -715,7 +715,7 @@ class LobbyActivity : BaseActivity() {
                     "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} active=${activeOnlinePlayers().size} connected=${activeOnlinePlayers().count { it.status == PLAYER_STATE_CONNECTED }}"
                 )
                 val visiblePlayers = activeOnlinePlayers()
-                session = session.copy(
+                session = PlayerProfileStore.withProfiles(this, session.copy(
                     players = visiblePlayers.map { player ->
                         GamePlayer(
                             name = player.name,
@@ -723,7 +723,7 @@ class LobbyActivity : BaseActivity() {
                             isHuman = player.id == onlineTempUid
                         )
                     }
-                )
+                ))
                 maybeClaimOnlineLobbyHostHandoff()
                 renderLobby()
             }
@@ -759,7 +759,7 @@ class LobbyActivity : BaseActivity() {
         val requestedMapKey = snapshot.getString(FIELD_MAP_KEY).orEmpty()
         val selectedMap = LocalGameFactory.maps.firstOrNull { it.key == requestedMapKey }
             ?: LocalGameFactory.maps.first()
-        session = LocalGameFactory.selectMap(session, selectedMap.key)
+        session = PlayerProfileStore.withProfiles(this, LocalGameFactory.selectMap(session, selectedMap.key))
 
         if (
             onlineRoomState == OnlineRoomFirestore.STATE_FINISHED ||
@@ -1483,14 +1483,14 @@ class LobbyActivity : BaseActivity() {
                     ).show()
                     return@setOnClickListener
                 }
-                session = LocalGameFactory.selectMap(session, map.key).let {
+                session = PlayerProfileStore.withProfiles(this, LocalGameFactory.selectMap(session, map.key).let {
                     it.copy(
                         roleComposition = LocalGameFactory.defaultRoleComposition(
                             it.players.size,
                             it.mapKey
                         )
                     )
-                }
+                })
                 getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                     .edit()
                     .putString(OpcionesActivity.PREF_LAST_SELECTED_MAP, session.mapKey)
@@ -2270,24 +2270,14 @@ class LobbyActivity : BaseActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private fun showPlayerProfile(index: Int, player: GamePlayer) {
-        val onlinePlayer = activeOnlinePlayers().getOrNull(index)
-        val status = when {
-            onlinePlayer != null -> onlinePlayer.statusLabel()
-            index == 0 -> "Anfitrion de la sala"
-            else -> "Participante listo"
-        }
-        val type = when {
-            onlinePlayer != null -> "Jugador online"
-            player.isHuman -> "Tu perfil"
-            lobbyMode != MODE_LOCAL -> "Participante simulado"
-            else -> "Bot local"
-        }
-        AlertDialog.Builder(this)
-            .setTitle(player.name)
-            .setMessage("$status\n$type\nMapa: ${session.mapName}")
-            .setPositiveButton("CERRAR", null)
-            .show()
+    private fun showPlayerProfile(player: GamePlayer) {
+        session = PlayerProfileStore.withProfiles(this, session)
+        val profile = PlayerProfileStore.profileFor(this, session, player)
+        PlayerProfileDialog.showFull(
+            activity = this,
+            profile = profile,
+            canEdit = player.isHuman
+        )
     }
 
     private fun confirmPlayerRemoval(
@@ -2327,7 +2317,7 @@ class LobbyActivity : BaseActivity() {
             .setMessage("Quitar a ${player.name} de la sala local?")
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Expulsar") { _, _ ->
-                session = LocalGameFactory.removePlayer(session, index)
+                session = PlayerProfileStore.withProfiles(this, LocalGameFactory.removePlayer(session, index))
                 renderLobby()
             }
             .show()
