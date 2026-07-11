@@ -261,6 +261,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun renderLobby() {
+        updateOnlineControlState()
         playerCount.text = "${currentVisiblePlayerCount()}/${currentMaxPlayers()} JUGADORES"
         lobbyTitle.text = when (lobbyMode) {
             MODE_ONLINE_CREATE -> onlineLobbyName
@@ -271,13 +272,10 @@ class LobbyActivity : BaseActivity() {
                 .takeIf { it.isNotBlank() }
                 ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
                 ?: "LOBBY ONLINE - SALA ENCONTRADA"
-            MODE_ONLINE_QUICK -> "LOBBY ONLINE - PARTIDA RAPIDA"
             else -> "JUGAR vs IA"
         }
         lobbyModeHint.text = when (lobbyMode) {
             MODE_ONLINE_CREATE, MODE_ONLINE_SEARCH -> onlineLobbyHint()
-            MODE_ONLINE_QUICK ->
-                "Partida completa. Comenzara cuando el anfitrion confirme."
             else -> if (session.botDifficulty == BotDifficulty.HARD) {
                 "Modo dificil: la IA traidora coordina mejor sus votos."
             } else {
@@ -1311,6 +1309,7 @@ class LobbyActivity : BaseActivity() {
             mapKey = map.key,
             mapName = map.name,
             players = realPlayers,
+            timingConfig = session.timingConfig.normalized(),
             revealRolesOnDeath = session.revealRolesOnDeath,
             showIndividualVotes = session.showIndividualVotes,
             roleComposition = LocalGameFactory.onlineSafeRoleComposition(realPlayers.size)
@@ -1378,6 +1377,14 @@ class LobbyActivity : BaseActivity() {
             "fase" to assignedSession.phase.name,
             "ronda" to assignedSession.round,
             "creadaEnLocal" to System.currentTimeMillis(),
+            "config" to mapOf(
+                "transicionSeg" to assignedSession.timingConfig.transitionSeconds,
+                "nocheSeg" to assignedSession.timingConfig.nightSeconds,
+                "discusionSeg" to assignedSession.timingConfig.discussionSeconds,
+                "votacionSeg" to assignedSession.timingConfig.votingSeconds,
+                "revelarRolesAlMorir" to assignedSession.revealRolesOnDeath,
+                "votosIndividuales" to assignedSession.showIndividualVotes
+            ),
             "jugadores" to assignedSession.players.mapIndexed { index, player ->
                 val onlinePlayer = activeOnlinePlayers().getOrNull(index)
                 mapOf(
@@ -1463,10 +1470,17 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun updateOnlineControlState() {
-        val disabled = isOnlineGuest() || isFirestoreOnlineLobby()
-        listOf(btnAddPlayer, btnRemovePlayer, timingOptionsButton, btnAdvancedOptions).forEach { button ->
-            button.isEnabled = !disabled
-            button.alpha = if (disabled) 0.55f else 1f
+        val firestoreLobby = isFirestoreOnlineLobby()
+        val localPlayerControlsVisibility = if (firestoreLobby) View.GONE else View.VISIBLE
+        (btnAddPlayer.parent as? View)?.visibility = localPlayerControlsVisibility
+        btnAddPlayer.visibility = localPlayerControlsVisibility
+        btnRemovePlayer.visibility = localPlayerControlsVisibility
+
+        val hostOptionsVisible = !firestoreLobby || currentUserIsOnlineHost()
+        listOf(timingOptionsButton, btnAdvancedOptions).forEach { button ->
+            button.visibility = if (hostOptionsVisible) View.VISIBLE else View.GONE
+            button.isEnabled = hostOptionsVisible
+            button.alpha = if (hostOptionsVisible) 1f else 0.55f
         }
     }
 
@@ -1688,6 +1702,10 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun showAdvancedOptionsDialog() {
+        if (isFirestoreOnlineLobby()) {
+            showOnlineAdvancedOptionsDialog()
+            return
+        }
         var revealRolesOnDeath = session.revealRolesOnDeath
         var showIndividualVotes = session.showIndividualVotes
         var quickTestMode = session.quickTestMode
@@ -2132,6 +2150,43 @@ class LobbyActivity : BaseActivity() {
         showLandscapeDialog(dialog, widthDp = 640)
     }
 
+    private fun showOnlineAdvancedOptionsDialog() {
+        var revealRolesOnDeath = session.revealRolesOnDeath
+        var showIndividualVotes = session.showIndividualVotes
+        val content = dialogColumn()
+        content.addView(dialogTitle("OPCIONES DE PARTIDA"))
+        content.addView(SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Mostrar roles al morir"
+            isChecked = revealRolesOnDeath
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+            setOnCheckedChangeListener { _, checked -> revealRolesOnDeath = checked }
+        })
+        content.addView(SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "Mostrar votos individuales"
+            isChecked = showIndividualVotes
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+            setOnCheckedChangeListener { _, checked -> showIndividualVotes = checked }
+        })
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("APLICAR") { _, _ ->
+                session = session.copy(
+                    revealRolesOnDeath = revealRolesOnDeath,
+                    showIndividualVotes = showIndividualVotes
+                )
+                renderLobby()
+            }
+            .create()
+        showLandscapeDialog(dialog, widthDp = 480)
+    }
+
     private fun showLobbyOptionsDialog() {
         AccessibilityOptionsDialog.show(this)
     }
@@ -2347,7 +2402,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun isOnlineGuest(): Boolean {
-        return lobbyMode == MODE_ONLINE_SEARCH || lobbyMode == MODE_ONLINE_QUICK
+        return lobbyMode == MODE_ONLINE_SEARCH
     }
 
     private fun isFirestoreOnlineLobby(): Boolean {
@@ -2370,7 +2425,6 @@ class LobbyActivity : BaseActivity() {
         const val MODE_LOCAL = "local"
         const val MODE_ONLINE_CREATE = "online_create"
         const val MODE_ONLINE_SEARCH = "online_search"
-        const val MODE_ONLINE_QUICK = "online_quick"
         private const val ONLINE_ROOMS_COLLECTION = "partidas"
         private const val ONLINE_PLAYERS_COLLECTION = "jugadores"
         private const val ONLINE_ROOM_STATE_WAITING = "esperando"

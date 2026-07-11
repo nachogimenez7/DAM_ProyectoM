@@ -59,11 +59,6 @@
             android:text="REINGRESAR A PARTIDA" />
 
         <Button
-            android:id="@+id/btnQuick"
-            style="@style/BtnGold"
-            android:text="PARTIDA RAPIDA" />
-
-        <Button
             android:id="@+id/btnSearch"
             style="@style/BtnDark"
             android:text="BUSCAR PARTIDA" />

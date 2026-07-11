@@ -151,6 +151,46 @@ async function main() {
       actualizadaEn: serverTimestamp(),
     }));
 
+    await assertSucceeds(updateDoc(doc(guest, "partidas", "room_auth"), {
+      "estadoClientes.guest_uid": {
+        fase: "REPARTO",
+        phaseIndex: 0,
+        enGameplay: true,
+        jugadoresVistos: 5,
+        rolLeido: false,
+      },
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(guest, "partidas", "room_auth"), {
+      "estadoClientes.guest_uid.rolLeido": true,
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(guest, "partidas", "room_auth"), {
+      "estadoClientes.host_uid": {
+        fase: "REPARTO",
+        phaseIndex: 0,
+        enGameplay: true,
+        jugadoresVistos: 5,
+        rolLeido: true,
+      },
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(intruder, "partidas", "room_auth"), {
+      "estadoClientes.intruder_uid": {
+        fase: "REPARTO",
+        phaseIndex: 0,
+        enGameplay: true,
+        jugadoresVistos: 5,
+        rolLeido: true,
+      },
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(guest, "partidas", "room_auth"), {
+      "estadoClientes.guest_uid.rolLeido": false,
+      estado: "finalizada",
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+
     await seedRoom(testEnv, "room_handoff", "old_host_uid");
     await assertSucceeds(setDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), playerData("guest_uid", "Guest", 1)));
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff"), {

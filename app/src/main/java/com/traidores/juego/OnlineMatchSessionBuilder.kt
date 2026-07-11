@@ -82,6 +82,17 @@ object OnlineMatchSessionBuilder {
         val sessionCode = (initialMatch["codigoSala"] as? String)
             ?.takeIf { it.isNotBlank() }
             ?: fallbackRoomCode.ifBlank { fallbackRoomId.take(OnlineRoomFirestore.ROOM_CODE_LENGTH) }
+        val config = initialMatch["config"].asStringAnyMap()
+        val timingConfig = GameTimingConfig(
+            transitionSeconds = (config?.get("transicionSeg") as? Number)?.toInt()
+                ?: GameTimingConfig.DEFAULT_TRANSITION_SECONDS,
+            nightSeconds = (config?.get("nocheSeg") as? Number)?.toInt()
+                ?: GameTimingConfig.DEFAULT_NIGHT_SECONDS,
+            discussionSeconds = (config?.get("discusionSeg") as? Number)?.toInt()
+                ?: GameTimingConfig.DEFAULT_DISCUSSION_SECONDS,
+            votingSeconds = (config?.get("votacionSeg") as? Number)?.toInt()
+                ?: GameTimingConfig.DEFAULT_VOTING_SECONDS
+        ).normalized()
         val base = GameSession(
             code = sessionCode,
             mapKey = selectedMap.key,
@@ -89,6 +100,7 @@ object OnlineMatchSessionBuilder {
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackMapName.ifBlank { selectedMap.name },
             players = players,
+            timingConfig = timingConfig,
             phase = GamePhase.REPARTO,
             round = (initialMatch["ronda"] as? Number)?.toInt() ?: 1,
             roleComposition = LocalGameFactory.normalizedRoleComposition(
@@ -99,8 +111,10 @@ object OnlineMatchSessionBuilder {
                     players = players
                 )
             ),
-            revealRolesOnDeath = revealRolesOnDeath,
-            showIndividualVotes = showIndividualVotes,
+            revealRolesOnDeath = (config?.get("revelarRolesAlMorir") as? Boolean)
+                ?: revealRolesOnDeath,
+            showIndividualVotes = (config?.get("votosIndividuales") as? Boolean)
+                ?: showIndividualVotes,
             initialPlayerCount = players.size,
             startedAtEpochMs = System.currentTimeMillis()
         )

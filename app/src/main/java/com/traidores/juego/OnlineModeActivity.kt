@@ -33,7 +33,6 @@ class OnlineModeActivity : BaseActivity() {
         setContentView(R.layout.activity_online_mode)
 
         val btnBack: ImageButton = findViewById(R.id.btnBack)
-        val btnQuick: Button = findViewById(R.id.btnQuick)
         val btnSearch: Button = findViewById(R.id.btnSearch)
         btnRecoverRoom = findViewById(R.id.btnRecoverRoom)
         btnJoinCode = findViewById(R.id.btnJoinCode)
@@ -44,14 +43,6 @@ class OnlineModeActivity : BaseActivity() {
         btnRecoverRoom.setOnClickListener {
             val recovered = pendingRecoveredRoom ?: return@setOnClickListener
             openRecoveredRoom(recovered)
-        }
-
-        btnQuick.setOnClickListener {
-            openOnlineLobby(
-                mode = LobbyActivity.MODE_ONLINE_QUICK,
-                playerCount = LocalGameFactory.MAX_PLAYERS,
-                humanIsHost = false
-            )
         }
 
         btnSearch.setOnClickListener {
@@ -85,6 +76,10 @@ class OnlineModeActivity : BaseActivity() {
 
     private fun showCreateRoomDialog() {
         var expectedPlayers = OnlineRoomFirestore.DEFAULT_EXPECTED_PLAYERS
+        val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
+        var selectedMap = OnlineRoomFirestore.selectedMapFromKey(
+            preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
+        )
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -135,6 +130,48 @@ class OnlineModeActivity : BaseActivity() {
         selectorRow.addView(plus, LinearLayout.LayoutParams(dp(56), dp(44)))
         content.addView(selectorRow)
 
+        content.addView(TextView(this).apply {
+            text = "MAPA"
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(6))
+        })
+        val mapButtons = linkedMapOf<GameMap, Button>()
+        val mapRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun refreshMapButtons() {
+            mapButtons.forEach { (map, button) ->
+                val isSelected = map.key == selectedMap.key
+                button.setBackgroundResource(
+                    if (isSelected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(
+                    resources.getColor(if (isSelected) R.color.bg_dark else R.color.text_primary, theme)
+                )
+                button.alpha = if (isSelected) 1f else 0.82f
+            }
+        }
+        LocalGameFactory.maps.forEachIndexed { index, map ->
+            val button = dialogButton(map.name.uppercase(), gold = map.key == selectedMap.key)
+            mapButtons[map] = button
+            button.setOnClickListener {
+                selectedMap = map
+                refreshMapButtons()
+            }
+            mapRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    if (index > 0) leftMargin = dp(6)
+                }
+            )
+        }
+        refreshMapButtons()
+        content.addView(mapRow)
+
         fun refreshCount() {
             countLabel.text = "$expectedPlayers JUGADORES"
             minus.isEnabled = expectedPlayers > LocalGameFactory.MIN_PLAYERS
@@ -174,7 +211,10 @@ class OnlineModeActivity : BaseActivity() {
         cancelButton.setOnClickListener { dialog.dismiss() }
         createButton.setOnClickListener {
             dialog.dismiss()
-            createOnlineRoom(expectedPlayers)
+            preferences.edit()
+                .putString(OpcionesActivity.PREF_LAST_SELECTED_MAP, selectedMap.key)
+                .apply()
+            createOnlineRoom(expectedPlayers, selectedMap)
         }
         refreshCount()
         dialog.show()
@@ -189,7 +229,7 @@ class OnlineModeActivity : BaseActivity() {
         }
     }
 
-    private fun createOnlineRoom(expectedPlayers: Int) {
+    private fun createOnlineRoom(expectedPlayers: Int, selectedMap: GameMap) {
         btnCreate.isEnabled = false
         btnCreate.text = "PREPARANDO..."
         OnlineTempIdentity.ensureAuthenticated(this)
@@ -198,7 +238,7 @@ class OnlineModeActivity : BaseActivity() {
                     context = this,
                     firestore = firestore,
                     onReady = { publicId ->
-                        createOnlineRoomWithPublicId(expectedPlayers, publicId)
+                        createOnlineRoomWithPublicId(expectedPlayers, selectedMap, publicId)
                     },
                     onFailure = { error ->
                         OnlineDebugLog.e("public_id_create_room_fallback", error)
@@ -217,12 +257,18 @@ class OnlineModeActivity : BaseActivity() {
             }
     }
 
-    private fun createOnlineRoomWithPublicId(expectedPlayers: Int, publicId: String) {
-        createOnlineRoomWithPublicId(expectedPlayers, publicId, remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS)
+    private fun createOnlineRoomWithPublicId(expectedPlayers: Int, selectedMap: GameMap, publicId: String) {
+        createOnlineRoomWithPublicId(
+            expectedPlayers,
+            selectedMap,
+            publicId,
+            remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
+        )
     }
 
     private fun createOnlineRoomWithPublicId(
         expectedPlayers: Int,
+        selectedMap: GameMap,
         publicId: String,
         remainingCodeAttempts: Int
     ) {
@@ -233,9 +279,6 @@ class OnlineModeActivity : BaseActivity() {
         val playerName = preferences
             .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
             .orEmpty()
-        val selectedMap = OnlineRoomFirestore.selectedMapFromKey(
-            preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
-        )
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         OnlineDebugLog.i(
             "create_room_requested hostId=$uidTemporal map=${selectedMap.key} expected=$expectedPlayers player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
@@ -253,6 +296,7 @@ class OnlineModeActivity : BaseActivity() {
                     if (remainingCodeAttempts > 1) {
                         createOnlineRoomWithPublicId(
                             expectedPlayers = expectedPlayers,
+                            selectedMap = selectedMap,
                             publicId = publicId,
                             remainingCodeAttempts = remainingCodeAttempts - 1
                         )
@@ -904,23 +948,6 @@ class OnlineModeActivity : BaseActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-    }
-
-    private fun openOnlineLobby(mode: String, playerCount: Int, humanIsHost: Boolean) {
-        val playerName = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
-        val session = LocalGameFactory.createOnlineLobby(
-            humanName = playerName,
-            playerCount = playerCount,
-            humanIsHost = humanIsHost
-        )
-        Toast.makeText(this, "Entrando al lobby online.", Toast.LENGTH_SHORT).show()
-        startActivity(
-            Intent(this, LobbyActivity::class.java)
-                .putExtra(LobbyActivity.EXTRA_SESSION, session)
-                .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, mode)
-            )
     }
 
     private fun dp(value: Int): Int {

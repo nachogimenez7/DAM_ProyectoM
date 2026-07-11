@@ -155,6 +155,18 @@ service cloud.firestore {
         && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales;
     }
 
+    function clientStateSelfPublish(partidaId) {
+      return signedIn()
+        && changedOnly(['estadoClientes', 'ultimaActividadOnline'])
+        && request.resource.data.get('estadoClientes', {})
+          .diff(resource.data.get('estadoClientes', {}))
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+        && exists(/databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid))
+        && validRoomPostUpdate(request.resource.data)
+        && immutableRoomFieldsUnchanged();
+    }
+
     function validPlayerDocument(data, uidTemporal) {
       return hasOnly(data, [
           'nombre',
@@ -250,7 +262,8 @@ service cloud.firestore {
 
       allow update: if activeHostCanUpdateRoom()
         || waitingPlayerCountUpdate()
-        || handoffUpdate();
+        || handoffUpdate()
+        || clientStateSelfPublish(partidaId);
       allow delete: if false;
 
       match /jugadores/{uidTemporal} {

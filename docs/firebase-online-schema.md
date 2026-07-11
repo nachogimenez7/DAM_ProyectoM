@@ -72,6 +72,19 @@ Campos agregados durante la partida:
 - `estadoClientes`: estado resumido publicado por cada cliente.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
 
+`partidaInicial.config` conserva la configuracion elegida por el host para que todos los
+celulares, incluido un reingreso, reconstruyan la misma partida:
+
+- `transicionSeg`: duracion de las transiciones de dia y noche.
+- `nocheSeg`: duracion de cada fase nocturna.
+- `discusionSeg`: duracion del debate diurno.
+- `votacionSeg`: duracion de la votacion.
+- `revelarRolesAlMorir`: muestra u oculta la carta de un jugador eliminado.
+- `votosIndividuales`: muestra quien emitio cada voto o solamente los totales.
+
+Las salas creadas antes de incorporar `config` siguen siendo compatibles: usan los
+tiempos predeterminados y las reglas locales recibidas como fallback.
+
 ### `partidas/{partidaId}/jugadores/{uidTemporal}`
 
 Documento de presencia por jugador.

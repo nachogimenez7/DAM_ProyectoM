@@ -22,6 +22,46 @@ class OnlineMatchSessionBuilderTest {
     }
 
     @Test
+    fun buildUsesSerializedOnlineConfiguration() {
+        val initial = initialMatch(players = defaultPlayers()) + mapOf(
+            "config" to mapOf(
+                "transicionSeg" to 7L,
+                "nocheSeg" to 75L,
+                "discusionSeg" to 165L,
+                "votacionSeg" to 55L,
+                "revelarRolesAlMorir" to true,
+                "votosIndividuales" to false
+            )
+        )
+
+        val result = buildSession(uidTemporal = "uid_2", initialMatch = initial)
+        val session = (result as OnlineMatchSessionResult.Success).session
+
+        assertEquals(GameTimingConfig(7, 75, 165, 55), session.timingConfig)
+        assertEquals(true, session.revealRolesOnDeath)
+        assertEquals(false, session.showIndividualVotes)
+    }
+
+    @Test
+    fun buildNormalizesSerializedTimingAndFallsBackForOldRooms() {
+        val invalidConfig = initialMatch(players = defaultPlayers()) + mapOf(
+            "config" to mapOf(
+                "transicionSeg" to 999L,
+                "nocheSeg" to -1L,
+                "discusionSeg" to 999L,
+                "votacionSeg" to -1L
+            )
+        )
+        val normalized = (buildSession("uid_1", invalidConfig) as OnlineMatchSessionResult.Success).session
+        assertEquals(GameTimingConfig(10, 10, 180, 10), normalized.timingConfig)
+        assertEquals(false, normalized.revealRolesOnDeath)
+        assertEquals(true, normalized.showIndividualVotes)
+
+        val oldRoom = (buildSession("uid_1") as OnlineMatchSessionResult.Success).session
+        assertEquals(GameTimingConfig(), oldRoom.timingConfig)
+    }
+
+    @Test
     fun buildAppliesAuthoritativeStateByOrderBeforeName() {
         val initial = initialMatch(
             players = listOf(
@@ -164,9 +204,12 @@ class OnlineMatchSessionBuilderTest {
         )
     }
 
-    private fun buildSession(uidTemporal: String): OnlineMatchSessionResult {
+    private fun buildSession(
+        uidTemporal: String,
+        initialMatch: Map<String, Any?> = initialMatch(players = defaultPlayers())
+    ): OnlineMatchSessionResult {
         return OnlineMatchSessionBuilder.build(
-            initialMatchRaw = initialMatch(players = defaultPlayers()),
+            initialMatchRaw = initialMatch,
             matchStateRaw = initialState(),
             uidTemporal = uidTemporal,
             expectedPlayers = 5,
