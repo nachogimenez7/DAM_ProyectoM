@@ -427,13 +427,9 @@ object GameEngine {
             it.role?.key == "payador" && !it.isHuman
         }
         if (botPayador != null && !session.payadorUsed) {
-            val candidates = alivePlayers(session)
-                .filter { it.name != botPayador.name }
-                .sortedBy { it.name }
-                .take(2)
-            if (candidates.size == 2) {
-                val first = chooseContrapuntoPlayer(session, candidates[0].name)
-                return chooseContrapuntoPlayer(first, candidates[1].name)
+            LocalBotAi.chooseBotContrapuntoPair(session, botPayador)?.let { (first, second) ->
+                val afterFirst = chooseContrapuntoPlayer(session, first)
+                return chooseContrapuntoPlayer(afterFirst, second)
             }
         }
 
@@ -557,7 +553,7 @@ object GameEngine {
         val selected = if (payador.isHuman) {
             suspiciousPlayer.takeIf { it in session.contrapuntoPlayers }.orEmpty()
         } else {
-            session.contrapuntoPlayers.firstOrNull().orEmpty()
+            LocalBotAi.chooseBotContrapuntoSuspect(session, payador, session.contrapuntoPlayers)
         }
         if (selected.isBlank()) return session
 
@@ -1475,7 +1471,7 @@ object GameEngine {
         } else {
             human.consecutiveVoteAfk + 1
         }
-        val expelled = nextStreak >= 2
+        val expelled = session.afkExpulsionEnabled && nextStreak >= 2
         val updatedPlayers = session.players.map { player ->
             if (!player.isHuman) {
                 player
@@ -1494,12 +1490,17 @@ object GameEngine {
         }
 
         if (!expelled) {
-        val nextOpportunity = if (night) "próxima noche" else "próxima votación"
+            val nextOpportunity = if (night) "próxima noche" else "próxima votación"
             val action = if (night) "accion" else "voto"
+            val missHint = if (session.afkExpulsionEnabled) {
+                "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, serás expulsado por AFK."
+            } else {
+                "Perdiste tu $action de esta ronda."
+            }
             return AfkMissResult(
                 session = session.copy(
                     players = updatedPlayers,
-                    privateHint = "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, serás expulsado por AFK."
+                    privateHint = missHint
                 ),
                 expelled = false,
                 humanName = human.name
@@ -2256,7 +2257,15 @@ object GameEngine {
         val alive = session.players.filter { it.alive && it.role?.key != "desertor" }
         val traitors = alive.count { GameRules.isTraitorRole(it.role) }
         val town = alive.count { it.role?.team == GameRules.TOWN_WINNER }
-        val selectedTeam = if (traitors >= town) GameRules.TRAITOR_WINNER else GameRules.TOWN_WINNER
+        // Casi siempre se pasa al bando que va ganando, pero de vez en cuando mantiene su
+        // bando inicial por "lealtad", para que la reconsideracion no sea 100% mecanica.
+        val loyaltyStay = session.desertorTeam.isNotBlank() &&
+            stableNoise("${session.code}:${session.round}:desertor-loyalty") % 4 == 0
+        val selectedTeam = when {
+            loyaltyStay -> session.desertorTeam
+            traitors >= town -> GameRules.TRAITOR_WINNER
+            else -> GameRules.TOWN_WINNER
+        }
         return session.copy(
             desertorTeam = selectedTeam,
             desertorChangedTeam = true

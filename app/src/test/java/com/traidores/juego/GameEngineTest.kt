@@ -177,7 +177,10 @@ class GameEngineTest {
 
     @Test
     fun firstNightTimeoutSkipsActionAndWarnsWithoutBlocking() {
-        val firstNight = sessionWithHumanRole("medico").copy(phase = GamePhase.NOCHE_MEDICO)
+        val firstNight = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            afkExpulsionEnabled = true
+        )
 
         val firstMiss = GameEngine.resolveHumanTimeout(firstNight)
         val human = GameEngine.humanPlayer(firstMiss)
@@ -187,6 +190,26 @@ class GameEngineTest {
         assertEquals(1, human.consecutiveNightAfk)
         assertTrue(firstMiss.privateHint.contains("próxima noche"))
         assertFalse(firstMiss.publicHistory.any { it.contains("expulsado por inactividad") })
+    }
+
+    @Test
+    fun localAfkDoesNotExpelHumanAndGivesNeutralHint() {
+        // En local (afkExpulsionEnabled = false, el default) la ausencia es abstencion, nunca
+        // expulsion, y el aviso no amenaza con AFK.
+        val session = sessionWithHumanRole("medico").copy(
+            phase = GamePhase.NOCHE_MEDICO,
+            round = 2,
+            players = sessionWithHumanRole("medico").players.map {
+                if (it.isHuman) it.copy(consecutiveNightAfk = 1) else it
+            }
+        )
+
+        val secondMiss = GameEngine.resolveHumanTimeout(session)
+        val human = GameEngine.humanPlayer(secondMiss)
+
+        assertTrue(human.alive)
+        assertFalse(secondMiss.publicHistory.any { it.contains("expulsado por inactividad") })
+        assertFalse(secondMiss.privateHint.contains("AFK"))
     }
 
     @Test
@@ -206,6 +229,7 @@ class GameEngineTest {
         val secondNight = sessionWithHumanRole("medico").copy(
             phase = GamePhase.NOCHE_MEDICO,
             round = 2,
+            afkExpulsionEnabled = true,
             players = sessionWithHumanRole("medico").players.map {
                 if (it.isHuman) it.copy(consecutiveNightAfk = 1) else it
             }
@@ -243,7 +267,10 @@ class GameEngineTest {
 
     @Test
     fun firstVoteTimeoutAbstainsAndSecondConsecutiveTimeoutExpelsForAfk() {
-        val firstVote = baseSession().copy(phase = GamePhase.VOTACION)
+        val firstVote = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            afkExpulsionEnabled = true
+        )
 
         val firstMiss = GameEngine.resolveHumanTimeout(firstVote)
         val warnedHuman = GameEngine.humanPlayer(firstMiss)
@@ -1961,6 +1988,90 @@ class GameEngineTest {
     }
 
     @Test
+    fun botPayadorSkipsContrapuntoWithoutRealMaterial() {
+        val resolved = GameEngine.resolveDayDebate(payadorBotSession())
+
+        assertEquals(GamePhase.VOTACION, resolved.phase)
+        assertFalse(resolved.payadorUsed)
+        assertTrue(resolved.contrapuntoPlayers.isEmpty())
+    }
+
+    @Test
+    fun botPayadorOpensContrapuntoForPublicContradictionAndAccuser() {
+        val session = payadorBotSession().copy(
+            claimLedger = mapOf(
+                "Beto" to listOf(
+                    ClaimRecord(round = 1, phase = GamePhase.DIA_DEBATE, roleKey = RoleCatalog.POLICIA),
+                    ClaimRecord(round = 1, phase = GamePhase.DIA_DEBATE, roleKey = RoleCatalog.MEDICO)
+                ),
+                "Ciro" to listOf(
+                    ClaimRecord(
+                        round = 1,
+                        phase = GamePhase.DIA_DEBATE,
+                        statementType = StatementType.ACCUSE,
+                        target = "Beto"
+                    )
+                )
+            )
+        )
+
+        val resolved = GameEngine.resolveDayDebate(session)
+
+        assertEquals(GamePhase.CONTRAPUNTO, resolved.phase)
+        assertEquals(listOf("Beto", "Ciro"), resolved.contrapuntoPlayers)
+    }
+
+    @Test
+    fun botContrapuntoSuspectUsesHighestPublicReadAmongParticipants() {
+        val session = payadorBotSession().copy(
+            tableMemory = TableMemory(
+                suspicion = mapOf("Payador" to mapOf("Beto" to 1, "Ciro" to 12))
+            )
+        )
+        val payador = GameEngine.playerByName(session, "Payador")!!
+
+        assertEquals(
+            "Ciro",
+            LocalBotAi.chooseBotContrapuntoSuspect(session, payador, listOf("Beto", "Ciro"))
+        )
+    }
+
+    @Test
+    fun jesterSelfAccusationSurvivesFinishSpeechButTownSelfAccusationDoesNot() {
+        val session = payadorBotSession()
+        val jester = GamePlayer("Bufon", "B", role = role(RoleCatalog.BUFON, "Bufon", "Neutral"))
+        val town = GamePlayer("Aldeano", "A", role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"))
+        val raw = "saquenme a mi total no aporto nada"
+
+        val jesterLine = finishSpeech(raw, session, jester, "test")
+        val townLine = finishSpeech(raw, session, town, "test")
+
+        assertTrue(jesterLine.contains("saquenme"))
+        assertFalse(townLine.contains("saquenme"))
+    }
+
+    @Test
+    fun desertorInitialTeamUsesAssignedRolesInsteadOfOnlySessionCode() {
+        val townLeaning = listOf(
+            GamePlayer("Humano", "H", role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"), isHuman = true),
+            GamePlayer("Desertor", "D", role = role(RoleCatalog.DESERTOR, "Desertor", "Neutral")),
+            GamePlayer("Asesino", "A", role = role(RoleCatalog.ASESINO, "Asesino", "Traidores")),
+            GamePlayer("Beto", "B", role = role(RoleCatalog.MEDICO, "Medico", "Pueblo"))
+        )
+        val traitorLeaning = listOf(
+            townLeaning[0],
+            townLeaning[1],
+            townLeaning[2].copy(role = townLeaning[3].role),
+            townLeaning[3].copy(role = townLeaning[2].role)
+        )
+
+        assertNotEquals(
+            LocalGameFactory.initialDesertorTeam(townLeaning, "SALA-01"),
+            LocalGameFactory.initialDesertorTeam(traitorLeaning, "SALA-01")
+        )
+    }
+
+    @Test
     fun gameSoundRelativeVolumesOnlyAttenuate() {
         GameSound.entries.forEach { sound ->
             assertTrue("${sound.name}: ${sound.relativeVolume}", sound.relativeVolume > 0f)
@@ -3320,6 +3431,23 @@ class GameEngineTest {
             round = 1,
             dayEliminationTarget = target,
             initialPlayerCount = players.size
+        )
+    }
+
+    private fun payadorBotSession(): GameSession {
+        return GameSession(
+            code = "PAYADOR",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            phase = GamePhase.DIA_DEBATE,
+            round = 1,
+            players = listOf(
+                GamePlayer("Humano", "H", role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"), isHuman = true),
+                GamePlayer("Payador", "P", role = role(RoleCatalog.PAYADOR, "Payador", "Pueblo")),
+                GamePlayer("Beto", "B", role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo")),
+                GamePlayer("Ciro", "C", role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo")),
+                GamePlayer("Dina", "D", role = role(RoleCatalog.ASESINO, "Asesino", "Traidores"))
+            )
         )
     }
 

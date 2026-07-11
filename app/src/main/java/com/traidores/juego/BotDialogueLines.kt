@@ -1147,6 +1147,7 @@ internal fun roleDrivenLine(
         roleKey == RoleCatalog.MEDICO -> medicRoleLines(session, action, pressure, seed)
         roleKey == RoleCatalog.POLICIA -> policeRoleLines(session, action, target, pressure, seed)
         roleKey == RoleCatalog.DESERTOR -> deserterRoleLines(target, pressure, seed)
+        roleKey == RoleCatalog.BUFON -> jesterProvocationLines(target, pressure)
         roleKey == RoleCatalog.ALDEANO && pressure -> listOf(
             "soy pueblo raso, si me sacan por ruido pierden un voto",
             "no tengo carta fuerte, pero tampoco me inventen cosas",
@@ -1157,11 +1158,50 @@ internal fun roleDrivenLine(
     if (options.isEmpty()) return null
     val shouldSpeak = when {
         pressure -> true
+        // El Bufon habla un poco mas seguido que un rol normal (pero no siempre) para hacerse notar.
+        roleKey == RoleCatalog.BUFON -> seed % 3 == 0
         session.botDifficulty == BotDifficulty.HARD -> seed % 4 == 0
         else -> seed % 7 == 0
     }
     if (!shouldSpeak) return null
     return chooseFreshLine(options, session, bot, "role-line:$roleKey:$index:$seed")
+}
+
+// El Bufon busca que lo expulsen: provoca, molesta y se hace el raro. Sin terminos de rol
+// (los limpiaria sanitizeBotSpeech) y con frecuencia moderada para que no gane siempre.
+internal fun jesterProvocationLines(
+    target: String,
+    pressure: Boolean
+): List<String> {
+    val provocations = listOf(
+        "que aburridos todos, si fuera por mi ya habriamos sacado a alguien",
+        "yo digo saquenme a mi y listo, total nadie me banca",
+        "$target habla mucho pero el mas raro de la mesa soy yo, no?",
+        "voten al mas molesto, ah pero ese soy yo, que problema",
+        "hagan lo que quieran igual, esto lo termino decidiendo yo",
+        "si buscan un culpable facil aca estoy, no se hagan drama"
+    )
+    val underPressure = listOf(
+        "gracias eh, justo queria que me miren a mi",
+        "dale si, saquenme, es lo unico interesante que va a pasar hoy",
+        "me encanta que desconfien de mi, hago un sospechoso ideal no?",
+        "por fin alguien me da bola, voten tranquilos"
+    )
+    return if (pressure) underPressure else provocations
+}
+
+internal fun jesterEmbraceAccusationLine(
+    session: GameSession,
+    bot: GamePlayer,
+    seed: Int
+): String {
+    val options = listOf(
+        "gracias por nombrarme, justo queria un poco de atencion",
+        "si me quieren sacar haganlo, no pienso defenderme",
+        "dale, tirenme toda la sospecha encima, me la banco",
+        "por fin alguien me mira, seria un buen expulsado no?"
+    )
+    return chooseFreshLine(options, session, bot, "jester-embrace:$seed")
 }
 
 internal fun traitorRoleLines(
@@ -1720,7 +1760,9 @@ internal fun finishSpeech(
         emptySet()
     }
     val safe = sanitizeBotSpeech(text, session, allowedTerms)
-    val guarded = if (isSelfAccusatoryLine(safe, session, bot)) {
+    // El Bufon es el unico rol al que se le permite tirarse tierra encima: su victoria es que
+    // el pueblo lo expulse, asi que la auto-incriminacion es intencional.
+    val guarded = if (bot.role?.key != RoleCatalog.BUFON && isSelfAccusatoryLine(safe, session, bot)) {
         neutralSelfAccusationFallback(session, bot, context)
     } else {
         safe

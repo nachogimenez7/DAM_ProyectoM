@@ -90,7 +90,7 @@ object RoleCatalog {
         RoleDefinition(
             PAYADOR,
             GameRules.TOWN_WINNER,
-            "Una vez por partida elige dos participantes para un Contrapunto. Solo ellos y el Payador pueden hablar; al terminar señala a uno, que recibe un voto adicional.",
+            "Una vez por partida elige dos participantes para un Contrapunto. Solo esos dos pueden hablar (el Payador escucha); al terminar señala a uno, que recibe un voto adicional.",
             8,
             RoleMap.PAMPA,
             "Rol de Mapa"

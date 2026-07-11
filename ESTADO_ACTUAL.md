@@ -97,23 +97,24 @@ Estado por rol pedido:
 | Detective/Policia | Si, clave `policia`, `RoleCatalog.kt:48-52` | Si, `resolvePolice` (`GameEngine.kt:242-273`) | Si, accion `INVESTIGAR` (`GameEngine.kt:1022-1023`, `1047`) |
 | Mercenario | Si, `RoleCatalog.kt:78-82` | Si, `resolveMercenary` (`GameEngine.kt:206-239`) | Si, accion `SILENCIAR` (`GameEngine.kt:1020-1021`, `1046`) |
 | Alcalde | Si, `RoleCatalog.kt:60-64` | Si, revelar y desempatar (`GameEngine.kt:433-470`, `751-881`) | Si, `DECIDIR` en desempate y revelar desde gameplay (`GameEngine.kt:1033-1035`, `1042-1053`, `GameplayMockActivity.kt:5262`) |
-| Payador | Si, mapa Pampa, `RoleCatalog.kt:90-97` | Si, Contrapunto (`GameEngine.kt:501-546`) | Si, `CONTRAPUNTO` y `SENALAR` (`GameEngine.kt:1028-1032`, `1050-1051`) |
-| Espia | Si, `RoleCatalog.kt:72-76` | Parcial: cuenta como traidor/killer y aparece inocente ante investigacion (`GameModels.kt:336-342`, `GameEngine.kt:1802-1805`), pero no tiene fase propia | Parcial: no tiene accion propia; comparte asesinato por `killerRoleKeys`/`activeKillers` |
-| Desertor | Si, `RoleCatalog.kt:84-89` | Si, elige/reconsidera bando y afecta ganador (`GameEngine.kt:473-499`, `GameModels.kt:344-356`) | Si, dialogo de eleccion (`GameplayMockActivity.kt:5876-5920`) |
+| Payador | Si, mapa Pampa, `RoleCatalog.kt:90-97` | Si, Contrapunto; el bot solo lo abre con conflicto/sospecha real y ya no por orden alfabetico (`GameEngine.kt:427-433`, `LocalBotAi.kt:358-393`) | Si, `CONTRAPUNTO` y `SENALAR` (`GameEngine.kt:1028-1032`, `1050-1051`) |
+| Espia | Si, `RoleCatalog.kt:72-76` | Si: traidora killer desde el inicio, comparte asesinato con Asesinos y aparece inocente ante investigacion (`GameModels.kt:336-342`, `GameEngine.kt:1802-1805`) | Si, participa de la accion de asesinato por `killerRoleKeys`/`activeKillers`; no tiene fase separada por diseno |
+| Desertor | Si, `RoleCatalog.kt:84-89` | Si, elige/reconsidera bando, afecta ganador y su bando inicial bot ya usa el reparto de roles como semilla variable (`GameEngine.kt:473-499`, `GameModels.kt:344-356`, `GameModels.kt:842-850`) | Si, dialogo de eleccion (`GameplayMockActivity.kt:5876-5920`) |
 | Oraculo | Si, mapa Grecia, `RoleCatalog.kt:106-113` | Si, invoca muertos una vez (`GameEngine.kt:313-351`, `1546-1564`) | Si, `INVOCAR` y `GUARDAR PODER` (`GameEngine.kt:1026-1027`, `1049`, `GameplayMockActivity.kt:2478-2480`) |
-| Bufon | Si, mapa Medieval, `RoleCatalog.kt:98-105` | Si, victoria especial al ser expulsado (`GameEngine.kt:907-925`) | Parcial: no tiene accion; se muestra victoria especial (`GameplayMockActivity.kt:5457`) |
+| Bufon | Si, mapa Medieval, `RoleCatalog.kt:98-105` | Si, victoria especial al ser expulsado; el bot provoca y acepta acusaciones sin tener accion nocturna (`GameEngine.kt:907-925`, `BotDialogueLines.kt:1150-1204`, `LocalBotAi.kt:893-894`) | Si, se muestra victoria especial y, si era humano, luego ofrece seguir mirando o volver al menu (`GameplayMockActivity.kt:6362-6369`, `6784-6829`) |
 
 Desertor:
 - Esta en las definiciones y en `baseRoleKeys` (`RoleCatalog.kt:84-89`, `116-125`).
 - Entra al deck recomendado desde 9 jugadores y al deck si la composicion lo pide (`GameModels.kt:571`, `712-731`).
 - No tiene `GamePhase` propia; su eleccion ocurre como input requerido fuera de una fase exclusiva (`GameEngine.kt:1204-1219`).
-- Tiene logica real de cambio de equipo (`GameEngine.kt:473-499`, `1959-1978`).
+- Tiene logica real de cambio de equipo (`GameEngine.kt:473-499`, `1959-1978`). En bots, el bando inicial ya no depende solo del codigo fijo local `"SALA-01"`: incorpora el reparto de roles; la reconsideracion conserva una chance chica de mantener el bando inicial.
 
 Oraculo y Bufon:
-- Existen en modelo, catalogo, recursos y motor. Oraculo tiene fase `NOCHE_ORACULO`; Bufon no tiene fase, pero tiene victoria especial por expulsion (`RoleCatalog.kt:38-39`, `GameModels.kt:321`, `GameEngine.kt:313-351`, `907-925`).
+- Existen en modelo, catalogo, recursos y motor. Oraculo tiene fase `NOCHE_ORACULO`; Bufon no tiene fase nocturna, pero tiene victoria especial por expulsion y comportamiento social de bot orientado a provocarla (`RoleCatalog.kt:38-39`, `GameModels.kt:321`, `GameEngine.kt:313-351`, `907-925`).
 
 Payador/Contrapunto:
 - Sigue restringido a Pampa por `exclusiveMap = RoleMap.PAMPA` y por `exclusiveRoleForMap` (`RoleCatalog.kt:90-97`, `GameModels.kt:704-709`).
+- El Payador bot ya no abre Contrapunto por orden alfabetico: busca contradiccion publica o dos sospechosos con score fuerte; si no hay material, no usa la habilidad esa ronda.
 - No se encontraron claves `orador` ni `juglar` en los `rg` hechos sobre codigo/recursos; el codigo usa `payador`, `bufon`, `oraculo` como exclusivos.
 
 Discrepancias:
@@ -223,12 +224,12 @@ Puntos pedidos:
 - Write inicial del match: PARCIAL. La asignacion se calcula en cliente host antes de la transaccion (`LobbyActivity.kt:870-877`), pero la transaccion falla cerrado si ya existe match inicial (`LobbyActivity.kt:880-887`). La ventana de doble host queda reducida por transaccion, no eliminada por backend.
 - Host handoff: PARCIAL. Existe reclamo de `hostActivoId` por transaccion en gameplay (`GameplayMockActivity.kt:2079-2117`), pero no se verifico mecanismo equivalente completo en lobby antes de iniciar.
 - Timer/resolucion host-authoritative: PARCIAL. `OnlinePhaseGate` bloquea avance local de invitados y el host publica `estadoPartida` (`OnlinePhaseGate.kt:11-21`, `GameplayMockActivity.kt:1403-1473`). No hay Cloud Functions en el codigo; si el host queda sin conexion, el respaldo observable es handoff de cliente, no backend.
-- Reglas de seguridad Firestore: PARCIAL/ROTO para produccion. Validan forma y limites, pero no usan `request.auth.uid`; por ejemplo `allow update: if validRoomPostUpdate(request.resource.data)` y jugadores solo comparan `uidTemporal` con id de documento (`firestore.rules:155`, `181`).
+- Reglas de seguridad Firestore: PARCIAL para produccion. **Sí usan `request.auth.uid`** (hay Auth anónima via `OnlineTempIdentity.signInAnonymously`): p. ej. crear sala exige `hostId == request.auth.uid` (`firestore.rules:248`), acciones y chat exigen `actorId == request.auth.uid` (`firestore.rules:286`, `319`, `352`), y el host se valida con `hostActivoId == request.auth.uid` (`firestore.rules:126`). Lo que falta para produccion: Auth con cuentas reales, validacion de frecuencia (Cloud Functions) y que los documentos con roles (`partidaInicial`) no sean world-readable.
 - Union a sala con transaccion atomica: IMPLEMENTADO. `firestore.runTransaction` lee sala/jugador, valida cupo y asigna `orden` (`OnlineModeActivity.kt:715-784`).
 - `OnlineMatchSessionBuilder` falla cerrado ante reentrada incompleta: IMPLEMENTADO. Devuelve `Failure` si faltan `partidaInicial`, `estadoPartida`, jugadores, jugador humano o fase valida (`OnlineMatchSessionBuilder.kt:31-76`, `123-127`).
 
 Discrepancias:
-- La UI de opciones informa "ONLINE EXPERIMENTAL" y "cuentas y estadisticas pendientes"; eso coincide con reglas sin Auth fuerte y online client-host (`OpcionesActivity.kt:349-352`, `firestore.rules:155-255`).
+- La UI de opciones informa "ONLINE EXPERIMENTAL" y "cuentas y estadisticas pendientes"; eso coincide con Auth **anónima** (sin cuentas reales) y online client-host (`OpcionesActivity.kt:349-352`, `firestore.rules:155-255`).
 
 ## 8. Configuracion / Opciones
 
@@ -352,12 +353,12 @@ Discrepancias:
 ## Preguntas abiertas
 
 - Si `GameplayMockActivity` es la pantalla real, conviene decidir si el nombre "Mock" se mantiene como deuda aceptada o si confunde futuras auditorias.
-- El rol Espia cuenta como killer y traidor, pero no tiene una fase/accion propia: es esa la regla final o una implementacion intermedia.
+- El rol Espia queda definido como killer compartida desde el inicio; no tiene fase propia por diseno.
 - `REPARTO` no tiene `resolveReparto`; la transicion ocurre con `startNight`. Es esta separacion intencional para la pantalla de asignacion o falta una abstraccion de fase.
 - `payadorUsed` queda por partida completa y no por ronda; el comentario lo confirma, pero la pregunta de diseno es si Contrapunto debe ser una vez por partida para todos los modos.
 - Online usa host activo como autoridad y handoff cliente-cliente; falta decidir si eso alcanza para el alcance experimental o si el contrato final exige backend/Cloud Functions.
 - La expulsion/kick online esta visible como accion conceptual pero no implementada; debe quedar fuera del MVP online o bloquearse visualmente de forma distinta.
 - Online seguro desactiva roles especiales; falta definir si el online objetivo debe soportar todo el motor local o una variante reducida.
-- Las reglas Firestore no atan escrituras a `request.auth.uid`; queda abierta la decision de cuando el online deja de ser experimental.
+- Las reglas Firestore ya atan escrituras sensibles a `request.auth.uid` con Auth anonima; queda abierta la decision de cuando sumar cuentas reales, App Check y backend/Cloud Functions para que el online deje de ser experimental.
 - La traduccion de idioma en opciones existe parcialmente; falta definir si se va a internacionalizar toda la app o solo textos de configuracion.
 - La nomenclatura `policia`/`detective`/`comisario` mezcla clave interna, asset y display por mapa; falta definir si esa pluralidad es intencional.

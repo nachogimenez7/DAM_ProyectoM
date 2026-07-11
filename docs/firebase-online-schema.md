@@ -1,6 +1,6 @@
 # Firebase online experimental
 
-El modo online de Traidores sigue siendo experimental. Esta documentacion define el contrato actual para poder probar sin perder de vista los limites: todavia no hay Firebase Auth, Cloud Functions, App Check ni backend autoritativo completo.
+El modo online de Traidores sigue siendo experimental. Esta documentacion define el contrato actual para poder probar sin perder de vista los limites: **sí hay Firebase Auth anónima** (`OnlineTempIdentity.ensureAuthenticated` hace `signInAnonymously`; el `uidTemporal` es el uid anónimo y las reglas exigen `request.auth.uid`), pero todavia no hay Auth con cuentas reales, Cloud Functions, App Check ni backend autoritativo completo.
 
 ## Objetivo actual
 
@@ -245,7 +245,7 @@ Las reglas validan forma y tamanos, pero no pueden garantizar frecuencia fuerte 
 
 Pendiente para produccion:
 
-- Firebase Auth para reemplazar `uidTemporal`.
+- Firebase Auth con **cuentas reales** (hoy ya hay Auth anónima; falta login persistente que reemplace el `uidTemporal` anónimo).
 - App Check para reducir clientes no autorizados.
 - Cloud Functions para validar frecuencia, resolver sala llena de forma centralizada y limpiar salas.
 - Reglas mas estrictas por rol, host y estado real de partida.

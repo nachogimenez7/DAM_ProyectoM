@@ -186,7 +186,8 @@ object OnlineMatchSessionBuilder {
     private fun initialOnlineDesertorTeam(players: List<GamePlayer>, sessionCode: String): String {
         val desertor = players.firstOrNull { it.role?.key == RoleCatalog.DESERTOR } ?: return ""
         if (desertor.isHuman) return ""
-        return if (sessionCode.hashCode() and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
+        val seed = stableNoise("$sessionCode|${players.joinToString("|") { "${it.name}:${it.role?.key.orEmpty()}" }}")
+        return if ((seed ushr 1) and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
     }
 
     private fun Any?.asStringAnyMap(): Map<String, Any?>? {

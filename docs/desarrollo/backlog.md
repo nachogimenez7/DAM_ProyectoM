@@ -8,9 +8,9 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 
 | # | Ítem | Estado | Detalle |
 |---|---|---|---|
-| F1 | **Espía** | Completo | Traidor que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino) y aparece **inocente** ante la investigación. Si caen todos los Asesinos sigue matando (sucesión automática). Estilo "Padrino". |
-| F2 | **Bufón** | Parcial | Tiene victoria especial por expulsión, pero **sin acción nocturna propia**. Su rol depende del comportamiento social. |
-| F3 | **Modo online** | Parcial / Experimental | Crear/buscar sala, presencia, reconstrucción y sync por fases funcionan, pero sin Auth, App Check, Cloud Functions ni limpieza automática. Ver `firebase-online-schema.md` → "Límites actuales". |
+| F1 | **Espía** | Completo | Traidora "killer" normal: **elige la víctima junto a los Asesinos todas las noches desde el inicio** (comparte la fase del Asesino). Lo único distinto es que ante la investigación del Detective aparece **inocente**. No hay "sucesión" ni herencia: siempre fue killer. |
+| F2 | **Bufón** | Parcial | Tiene victoria especial por expulsión y el bot ya provoca/acepta acusaciones para perseguirla. Sigue **sin acción nocturna propia**, por diseño. |
+| F3 | **Modo online** | Parcial / Experimental | Crear/buscar sala, presencia, reconstrucción y sync por fases funcionan, con **Auth anónima** (las reglas usan `request.auth.uid`), pero sin App Check, Cloud Functions, Auth con cuentas reales ni limpieza automática. Ver `firebase-online-schema.md` → "Límites actuales". |
 | F4 | **Selector de idioma** | Parcial | Persiste `language` en preferencias pero **no cambia los textos** (no hay i18n real). |
 | F5 | **Reparto online** | Parcial | Usa preset seguro reducido (sólo Policía/Médico/Asesino/Aldeanos). Roles especiales no disponibles online. |
 
@@ -31,7 +31,7 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 
 | # | Ítem | Estado | Detalle |
 |---|---|---|---|
-| N1 | Firebase Auth real | Faltante | Reemplazar `uidTemporal` por identidad autenticada. |
+| N1 | Firebase Auth con cuentas reales | Faltante | Hoy ya hay Auth **anónima** (el `uidTemporal` es el uid anónimo). Falta login con cuenta real y persistente. |
 | N2 | App Check | Faltante | Reducir clientes no autorizados. |
 | N3 | Cloud Functions | Faltante | Validación de frecuencia, resolución centralizada de sala llena, limpieza. |
 | N4 | Reglas Firestore por rol/host/estado | Faltante | Hoy validan forma/tamaño, no autoría real ni frecuencia. |
@@ -52,5 +52,5 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 1. Estabilización visual/navegación de gameplay/lobby/perfil/chat (objetivo del ciclo actual).
 2. Corrección de documentación desactualizada (D6, este backlog).
 3. Extracción incremental de responsabilidades en `GameplayMockActivity` (D1) con tests.
-4. Completar jugabilidad de Bufón (F2) si vuelve al alcance. (Espía F1 resuelto: co-ejecutor + inocente, estilo "Padrino".)
+4. Pulir sensacion social del Bufón (F2) si vuelve al alcance. (Espía F1 resuelto: killer desde el inicio + inocente ante Detective; sin sucesion ni herencia.)
 5. Endurecer online (N1–N4) cuando se priorice multijugador real.

@@ -15,7 +15,7 @@ Roles que matan de noche: `asesino`, `espia` (`GameRules.killerRoleKeys`).
 
 **Cálculo del ganador** (`GameRules.winnerFor`):
 - Si no queda ningún "killer" vivo → gana **Pueblo**.
-- Si los traidores vivos ≥ pueblo vivo (sumando al Desertor si eligió Pueblo) → ganan **Traidores**.
+- Si los traidores vivos ≥ pueblo vivo (el Desertor vivo **siempre** cuenta del lado del pueblo para la paridad, aun si eligió Traidores; por eso apoyar a los traidores no acelera su victoria por número) → ganan **Traidores**.
 - En otro caso, la partida continúa.
 
 ## Mapas y ambientaciones
@@ -41,7 +41,7 @@ Definidos en `RoleCatalog.kt`. La columna "mínimo" es la cantidad de jugadores 
 | Médico | `medico` | Pueblo | 5 | Todos | Completo |
 | Alcalde | `alcalde` | Pueblo | 8 | Todos | Completo |
 | Asesino | `asesino` | Traidores | 5 | Todos | Completo |
-| Espía | `espia` | Traidores | 10 | Todos | Completo (co-ejecutor, comparte la fase del Asesino) |
+| Espía | `espia` | Traidores | 10 | Todos | Completo (killer normal: elige la víctima con los Asesinos; aparece inocente ante el Detective) |
 | Mercenario | `mercenario` | Traidores | 7 | Todos | Completo |
 | Desertor | `desertor` | Neutral | 9 | Todos | Completo |
 | Payador | `payador` | Pueblo (Rol de Mapa) | 8 | Pampa | Completo |
@@ -55,10 +55,10 @@ Definidos en `RoleCatalog.kt`. La columna "mínimo" es la cantidad de jugadores 
 - **Médico:** cada noche protege a un jugador; si iba a morir, se cancela la eliminación.
 - **Alcalde:** puede revelarse en el debate; desde entonces su voto vale doble y decide empates entre los dos más votados.
 - **Asesino:** los asesinos eligen en conjunto una víctima por noche; si queda uno, decide solo.
-- **Espía:** traidor que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino, sin fase propia) y aparece **inocente** ante la investigación del Policía. Si caen todos los Asesinos, sigue matando por sí mismo (la sucesión es automática al ser un ejecutor más).
+- **Espía:** traidora "killer" normal que **elige la víctima junto a los Asesinos** todas las noches desde el inicio (comparte la fase del Asesino, sin fase propia). Lo único distinto es que aparece **inocente** ante la investigación del Policía. No hay sucesión ni herencia: siempre es una killer más.
 - **Mercenario:** traidor; puede **silenciar** a una víctima para que no hable ni vote al día siguiente.
 - **Desertor:** elige bando al comenzar; puede reconsiderar **una sola vez** cuando quedan ~2/3 de los jugadores iniciales (`ceil(initial*2/3)`); debe sobrevivir para ganar con su bando final.
-- **Payador (Pampa):** una vez por partida abre un **Contrapunto** entre dos jugadores; al terminar señala a uno, que recibe un voto adicional.
+- **Payador (Pampa):** una vez por partida abre un **Contrapunto** entre dos jugadores; durante el Contrapunto solo pueden hablar esos dos (el Payador escucha) y al terminar señala a uno, que recibe un voto adicional.
 - **Bufón (Medieval):** busca que el Pueblo lo expulse en votación. **Solo gana si lo expulsan**; no gana si muere de noche.
 - **Oráculo (Grecia):** una vez por partida invoca a un jugador muerto para el debate del día siguiente; el muerto habla pero no vota.
 
@@ -118,4 +118,4 @@ Tres modos (`RoleRevealMode`):
 
 ## Modo test rápido
 
-`quickTestMode` (configurable en Lobby → Opciones avanzadas) acelera fases sin acción humana y la votación/expulsión, para probar flujos rápidamente. Por defecto las partidas locales creadas por `LocalGameFactory.createSession` arrancan con `quickTestMode = true`.
+`quickTestMode` (configurable en Lobby → Opciones avanzadas) acelera fases sin acción humana y la votación/expulsión, para probar flujos rápidamente. Por defecto las partidas locales creadas por `LocalGameFactory.createSession` arrancan con `quickTestMode = false` (es opt-in desde las opciones avanzadas del lobby).

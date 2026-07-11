@@ -4,7 +4,7 @@
 
 **App Traidores**
 
-App Traidores es un juego móvil Android de deducción social con ambientación histórica y medieval. Actualmente permite recorrer menús, configurar partidas, usar perfiles personalizables y jugar una partida completa contra IA en modo local. El modo online es **real pero experimental**: usa Firebase Firestore (colección `partidas`) para crear/buscar salas, presencia, sincronización por fases y recuperación, sin Firebase Auth, App Check ni Cloud Functions todavía. Ver `docs/firebase-online-schema.md`.
+App Traidores es un juego móvil Android de deducción social con ambientación histórica y medieval. Actualmente permite recorrer menús, configurar partidas, usar perfiles personalizables y jugar una partida completa contra IA en modo local. El modo online es **real pero experimental**: usa Firebase Firestore (colección `partidas`) para crear/buscar salas, presencia, sincronización por fases y recuperación, con **Firebase Anonymous Auth** para identidad (las reglas exigen `request.auth.uid`), pero sin App Check, Cloud Functions ni Auth con cuentas reales todavía. Ver `docs/firebase-online-schema.md`.
 
 Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, perfil y chat antes de incorporar nuevos roles o servicios reales.
 

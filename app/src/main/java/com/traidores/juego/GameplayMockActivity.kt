@@ -88,6 +88,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isTieVoteVisible = false
     private var voteExpulsionComplete = false
     private var voteNoExpulsionPresented = false
+    private var spectatorChoiceOffered = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
     private var lastPresentedTransitionKey: String? = null
@@ -515,6 +516,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         isEventLogExpanded = false
         voteNoExpulsionPresented =
             savedInstanceState?.getBoolean(STATE_VOTE_NO_EXPULSION_PRESENTED) ?: false
+        spectatorChoiceOffered =
+            savedInstanceState?.getBoolean(STATE_SPECTATOR_CHOICE_OFFERED) ?: false
         selectedTarget = savedInstanceState?.getString(STATE_SELECTED_TARGET).orEmpty()
         val restoredCountdownStage = savedInstanceState
             ?.getString(STATE_COUNTDOWN_STAGE)
@@ -1044,6 +1047,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             STATE_VOTE_NO_EXPULSION_PRESENTED,
             voteNoExpulsionPresented
         )
+        outState.putBoolean(STATE_SPECTATOR_CHOICE_OFFERED, spectatorChoiceOffered)
         outState.putBoolean(
             STATE_ROLE_PREVIEW_OPEN,
             isRolePreviewOpen || restoreRolePreviewOnResume
@@ -1484,6 +1488,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
         publishAuthoritativeOnlineState()
+        if (maybeOfferSpectatorChoice()) return
         if (blockingFeedbackPending) {
             showPendingPrivateFeedback()
         } else if (shouldStartTransition) {
@@ -5766,6 +5771,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
+        if (maybeOfferSpectatorChoice()) return
         maybeShowDesertorChoice()
         if (!desertorDialogOpen) {
             scheduleAutoAdvanceIfNeeded()
@@ -6359,6 +6365,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         jesterVictoryAnimator.hide()
         isJesterVictoryVisible = false
+        if (maybeOfferSpectatorChoice()) return
         renderGame()
     }
 
@@ -6772,6 +6779,57 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
+    // Cuando el humano queda fuera (muerto o expulsado) y la partida sigue, o gano como Bufon,
+    // le ofrecemos quedarse a mirar (con la partida acelerada) o volver al menu. Solo local.
+    private fun maybeOfferSpectatorChoice(): Boolean {
+        if (spectatorChoiceOffered) return false
+        if (isOnlineGameplay()) return false
+        if (session.winner.isNotBlank()) return false
+        val human = GameEngine.humanPlayer(session)
+        if (human.alive) return false
+        if (isBlockingGameplayUiActive()) return false
+        spectatorChoiceOffered = true
+        showSpectatorChoiceDialog(human)
+        return true
+    }
+
+    private fun showSpectatorChoiceDialog(human: GamePlayer) {
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        val wonAsJester = session.specialVictories.any {
+            it.playerName == human.name && it.roleKey == RoleCatalog.BUFON
+        }
+        val title = if (wonAsJester) "¡Ganaste como Bufón!" else "Te eliminaron"
+        val message = if (wonAsJester) {
+            "El pueblo te expulsó y cumpliste tu objetivo. Podés quedarte a ver cómo termina la partida o volver al menú."
+        } else {
+            "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver al menú."
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setCancelable(false)
+            .setPositiveButton("SEGUIR MIRANDO") { dialog, _ ->
+                dialog.dismiss()
+                enterSpectatorFastForward()
+            }
+            .setNegativeButton("VOLVER AL MENÚ") { dialog, _ ->
+                dialog.dismiss()
+                returnToLobby()
+            }
+            .show()
+    }
+
+    private fun enterSpectatorFastForward() {
+        // Reusar quickTestMode: shouldAutoAdvance exige quickTestMode && !requiresHumanInput, y con
+        // el humano fuera de juego requiresHumanInput es false, asi que las fases autoavanzan.
+        // Los reveals siguen mostrandose (los dispara renderGame y scheduleAutoAdvanceIfNeeded
+        // pausa el auto-avance mientras hay un overlay).
+        session = session.copy(quickTestMode = true)
+        renderGame()
+        scheduleAutoAdvanceIfNeeded()
+    }
+
     private fun showDesertorTeamDialog() {
         if (desertorDialogOpen || isFinishing) return
         if (
@@ -6845,6 +6903,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
         private const val STATE_VOTE_NO_EXPULSION_PRESENTED =
             "vote_no_expulsion_presented"
+        private const val STATE_SPECTATOR_CHOICE_OFFERED = "spectator_choice_offered"
         private const val STATE_ROLE_PREVIEW_OPEN = "role_preview_open"
         private const val STATE_INITIAL_ROLE_READING = "initial_role_reading"
         private const val STATE_ROLE_READING_REMAINING_MS = "role_reading_remaining_ms"

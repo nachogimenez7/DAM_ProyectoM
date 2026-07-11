@@ -353,6 +353,45 @@ internal object LocalBotAi {
             .name
     }
 
+    // El Payador bot abre el Contrapunto solo si hay material real (un conflicto entre dos
+    // jugadores). Devuelve el par a enfrentar, o null para no malgastar la habilidad.
+    fun chooseBotContrapuntoPair(session: GameSession, payador: GamePlayer): Pair<String, String>? {
+        val candidates = GameEngine.alivePlayers(session).filter { it.name != payador.name }
+        if (candidates.size < 2) return null
+        val candidateNames = candidates.map { it.name }.toSet()
+        val memory = conversationMemory(session)
+
+        // Preferencia A: un jugador con contradiccion publica vs su antagonista natural.
+        candidates.forEach { player ->
+            if (publicContradiction(session, player.name) == null) return@forEach
+            val playerMemory = memory[player.name]
+            val antagonist = (playerMemory?.accusedBy.orEmpty() + playerMemory?.accusedTargets.orEmpty())
+                .firstOrNull { it != player.name && it in candidateNames }
+            if (antagonist != null) return player.name to antagonist
+        }
+
+        // Preferencia B: los dos sospechosos mas calientes, si ambos pesan (umbral alineado
+        // con isWeakSuspicion: score < 6 es lectura floja).
+        val topTwo = rankedPublicSuspects(session, payador).take(2)
+        if (topTwo.size == 2 && topTwo.all { it.score >= 6 }) {
+            return topTwo[0].player.name to topTwo[1].player.name
+        }
+        return null
+    }
+
+    // De los dos participantes del Contrapunto, el que la lectura del payador marca mas sospechoso.
+    fun chooseBotContrapuntoSuspect(
+        session: GameSession,
+        payador: GamePlayer,
+        participants: List<String>
+    ): String {
+        return rankedPublicSuspects(session, payador)
+            .firstOrNull { it.player.name in participants }
+            ?.player
+            ?.name
+            ?: participants.firstOrNull().orEmpty()
+    }
+
     fun nextTraitorLine(session: GameSession, speaker: String): String? {
         val bot = GameEngine.playerByName(session, speaker)
             ?.takeIf { !it.isHuman && GameEngine.canSeeTraitorChat(session, it) }
@@ -850,6 +889,9 @@ internal object LocalBotAi {
                     ?: statementReaction(statement, index)
             }
             val line = when {
+                // El Bufon no se defiende cuando lo acusan: redobla para que lo expulsen.
+                bot.role?.key == RoleCatalog.BUFON && focusNames.contains(bot.name) ->
+                    jesterEmbraceAccusationLine(session, bot, index)
                 claimStatementLine != null -> claimStatementLine
                 claimLine != null -> claimLine
                 messageIntent == HumanMessageIntent.ANSWER_PENDING ->

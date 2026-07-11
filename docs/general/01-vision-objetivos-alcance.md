@@ -42,14 +42,14 @@ Según [`CLAUDE.md`](../../CLAUDE.md), el ciclo actual se concentra en **estabil
 - **Tablets** (quedan fuera de esta etapa).
 - Ampliar la matriz de orientación de cada pantalla.
 - Agregar funciones nuevas de producto (el foco es estabilización).
-- **Backend autoritativo completo, Firebase Auth, App Check y Cloud Functions** para online (pendiente; hoy se usa `uidTemporal` sin login real).
+- **Backend autoritativo completo, Firebase Auth con cuentas reales, App Check y Cloud Functions** para online (pendiente; hoy hay **login anónimo** de Firebase — el `uidTemporal` es el uid anónimo — y las reglas exigen `request.auth.uid`, pero falta login con cuenta).
 - Internacionalización real: hay un selector de idioma en Opciones, pero la mayoría de los textos están hardcodeados en español (ver [Backlog](../desarrollo/backlog.md)).
 - Testing de UI/instrumentación, screenshot testing y accesibilidad automatizada.
 
 ### Funcionalidades parcialmente implementadas (en desarrollo)
 
-- **Modo online (Firestore):** crear/buscar sala, presencia, reconstrucción de partida y sincronización por fases existen, pero sin autenticación, sin validación de frecuencia y sin limpieza automática de salas. Marcado explícitamente como experimental en el código y en la documentación.
-- **Espía:** traidor/"killer" que **elige la víctima junto a los Asesinos** cada noche (comparte la fase del Asesino, sin fase propia) y **aparece inocente** ante la investigación del Detective. Si caen todos los Asesinos, sigue matando por sí mismo.
+- **Modo online (Firestore):** crear/buscar sala, presencia, reconstrucción de partida y sincronización por fases existen, con autenticación anónima de Firebase para identidad temporal, pero sin cuentas reales, validación de frecuencia ni limpieza automática de salas. Marcado explícitamente como experimental en el código y en la documentación.
+- **Espía:** traidora "killer" normal que **elige la víctima junto a los Asesinos** todas las noches desde el inicio (comparte la fase del Asesino, sin fase propia) y **aparece inocente** ante la investigación del Detective. No hay sucesión ni herencia: siempre es una killer más.
 - **Bufón:** tiene victoria especial por expulsión, pero **no tiene acción nocturna propia**.
 - **Selector de idioma:** persiste la preferencia pero no cambia los textos de la app.
 

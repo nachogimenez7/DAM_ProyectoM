@@ -14,6 +14,7 @@ data class GameSession(
     val revealRolesOnDeath: Boolean = false,
     val showIndividualVotes: Boolean = true,
     val quickTestMode: Boolean = false,
+    val afkExpulsionEnabled: Boolean = false,
     val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
     val debugBotsObeyVoteCommands: Boolean = false,
     val debugForceVoteTies: Boolean = false,
@@ -838,10 +839,13 @@ object LocalGameFactory {
         }
     }
 
-    private fun initialDesertorTeam(players: List<GamePlayer>, sessionCode: String): String {
+    internal fun initialDesertorTeam(players: List<GamePlayer>, sessionCode: String): String {
         val desertor = players.firstOrNull { it.role?.key == "desertor" } ?: return ""
         if (desertor.isHuman) return ""
-        return if (sessionCode.hashCode() and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
+        // El codigo local es siempre "SALA-01", asi que la semilla incorpora el orden ya
+        // barajado de roles (players) para que el bando inicial varie entre partidas.
+        val seed = stableNoise("$sessionCode|${players.joinToString("|") { "${it.name}:${it.role?.key.orEmpty()}" }}")
+        return if ((seed ushr 1) and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
     }
 
     private fun roleForKey(key: String, suffix: String): GameRole {
