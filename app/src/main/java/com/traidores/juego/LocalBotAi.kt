@@ -22,6 +22,11 @@ internal data class VotePlanSnapshot(
     val beats: Int
 )
 
+private data class ConversationBatchCache(
+    val key: String,
+    val messages: List<Pair<String, String>>
+)
+
 internal data class SocialRead(
     val defended: String? = null,
     val pressured: String? = null,
@@ -226,6 +231,8 @@ internal data class SuspectRead(
 }
 
 internal object LocalBotAi {
+    private var conversationBatchCache: ConversationBatchCache? = null
+
     enum class BotEventType {
         MUERTE_NOCTURNA,
         EXPULSION,
@@ -686,15 +693,67 @@ internal object LocalBotAi {
         val bot = GameEngine.playerByName(session, speaker)
             ?.takeIf { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
             ?: return null
+        val candidates = cachedConversationBatch(session)
+        return candidates.firstOrNull { it.first == bot.name }?.second
+    }
+
+    private fun cachedConversationBatch(session: GameSession): List<Pair<String, String>> {
+        if (session.winner.isNotBlank()) {
+            conversationBatchCache = null
+            return emptyList()
+        }
+        val key = conversationBatchCacheKey(session) ?: run {
+            conversationBatchCache = null
+            return emptyList()
+        }
+        conversationBatchCache
+            ?.takeIf { it.key == key }
+            ?.let { return it.messages }
+
         val limit = session.players.count { !it.isHuman }.coerceAtLeast(1)
-        val candidates = when (session.phase) {
+        val messages = when (session.phase) {
             GamePhase.VOTACION,
             GamePhase.DESEMPATE_VOTACION -> votingIntentMessages(session, limit = limit)
             GamePhase.DIA_DEBATE,
             GamePhase.CONTRAPUNTO -> openingDebateMessages(session, limit = limit)
             else -> emptyList()
         }
-        return candidates.firstOrNull { it.first == bot.name }?.second
+        conversationBatchCache = ConversationBatchCache(key, messages)
+        return messages
+    }
+
+    private fun conversationBatchCacheKey(session: GameSession): String? {
+        return when (session.phase) {
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO,
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION -> {
+                val lastPublicMessage = session.chatHistory
+                    .asReversed()
+                    .firstOrNull { it.channel == ChatChannel.PUBLICO && !it.isGod }
+                    ?.let { "${it.speaker}:${it.message.hashCode()}" }
+                    .orEmpty()
+                val playersState = session.players.joinToString("|") {
+                    "${it.name}:${it.alive}:${it.muted}:${it.isHuman}:${it.role?.key.orEmpty()}"
+                }
+                listOf(
+                    session.code,
+                    session.round,
+                    session.phaseIndex,
+                    session.phase.name,
+                    session.voteRound,
+                    socialChatSize(session),
+                    lastPublicMessage,
+                    playersState.hashCode(),
+                    session.votes.hashCode(),
+                    session.contrapuntoPlayers.hashCode(),
+                    session.claimLedger.values.sumOf { it.size },
+                    session.tableMemory.declaredInvestigationReads.size,
+                    session.tableMemory.pendingQuestions.size
+                ).joinToString(":")
+            }
+            else -> null
+        }
     }
 
     fun eliminationLastWords(session: GameSession, player: GamePlayer): String? {

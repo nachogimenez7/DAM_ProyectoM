@@ -1920,6 +1920,10 @@ class GameplayChatController(
         }
         chatPanel.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatAmbientFeed.setBackgroundResource(R.drawable.bg_reveal_text_shade)
+        applyChatFrameForegrounds(
+            panelFrame = R.drawable.bg_chat_frame_public_expanded,
+            ambientFrame = R.drawable.bg_chat_frame_public_collapsed
+        )
         chatPanelShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatAmbientShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatHeader.background = null
@@ -1964,6 +1968,10 @@ class GameplayChatController(
             cornerRadiusDp = 12,
             strokeWidthDp = 1
         )
+        applyChatFrameForegrounds(
+            panelFrame = R.drawable.bg_chat_frame_traitor_expanded,
+            ambientFrame = R.drawable.bg_chat_frame_traitor_collapsed
+        )
         chatPanelShade.background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(colorWithAlpha(panel, 236), colorWithAlpha(bg, 246))
@@ -1998,6 +2006,14 @@ class GameplayChatController(
         chatNewMessages.setTextColor(bright)
         chatAmbientBackground.alpha = if (writable) 0.30f else 0.22f
         chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
+    }
+
+    private fun applyChatFrameForegrounds(
+        panelFrame: Int,
+        ambientFrame: Int
+    ) {
+        chatPanel.foreground = ResourcesCompat.getDrawable(root.resources, panelFrame, root.context.theme)
+        chatAmbientFeed.foreground = ResourcesCompat.getDrawable(root.resources, ambientFrame, root.context.theme)
     }
 
     private fun activeChatChannel(): ChatChannel {

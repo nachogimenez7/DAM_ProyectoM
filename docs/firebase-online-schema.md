@@ -218,10 +218,19 @@ Campos:
 - `mensaje`: texto entre 1 y 140 caracteres.
 - `fase`: fase en la que se envio.
 - `ronda`: numero de ronda, 0 a 30.
-- `isGod`: booleano, siempre `false` (las lineas de sistema del plan son locales, no se sincronizan).
+- `isGod`: booleano. Hoy los mensajes escritos por jugadores usan `false`; en una fase futura el host activo podra publicar lineas de sistema del plan con `true`.
 - `canal`: constante `"traidores"`.
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
+
+Diseno futuro para 2+ killers online:
+
+- Mientras el preset online tenga 1 solo asesino, no hay votacion nocturna de asesinos: elige y listo.
+- Cuando el preset sume mas killers (por ejemplo asesino + espia, o 2 asesinos), cada killer registra su accion nocturna normal en `acciones`.
+- El host activo lee la ultima accion valida de cada killer para la ronda/fase y publica en `chat_traidores` una linea de sistema por eleccion: `"Nacho eligio a Mora como su victima"`.
+- Al cerrar la noche por timer, el host activo resuelve como victima a la mas elegida. Si hay empate, sortea entre las empatadas con semilla estable por sala/ronda; si nadie eligio, no muere nadie.
+- El host activo publica la decision final en `chat_traidores` antes de aplicar la muerte en `estadoPartida`.
+- Solo cuentan roles killer. El mercenario no participa de esta votacion porque su accion es silenciar.
 
 Seguridad actual del canal:
 

@@ -1208,7 +1208,7 @@ object GameEngine {
             GamePhase.VOTACION,
             GamePhase.DESEMPATE_VOTACION -> true
             GamePhase.CONTRAPUNTO ->
-                human.role?.key == "payador" || human.name in session.contrapuntoPlayers
+                human.name in session.contrapuntoPlayers
             GamePhase.ALCALDE_DESEMPATE -> false
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
@@ -1241,8 +1241,10 @@ object GameEngine {
     fun canParticipateInChat(session: GameSession, player: GamePlayer): Boolean {
         if (!canSpeak(session, player)) return false
         return when (session.phase) {
+            // Durante el Contrapunto solo hablan los dos jugadores señalados; el payador
+            // escucha y luego marca, no participa de la conversación.
             GamePhase.CONTRAPUNTO ->
-                player.role?.key == RoleCatalog.PAYADOR || player.name in session.contrapuntoPlayers
+                player.name in session.contrapuntoPlayers
             else -> true
         }
     }

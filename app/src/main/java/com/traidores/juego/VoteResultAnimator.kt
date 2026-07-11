@@ -54,7 +54,7 @@ class VoteResultAnimator(
         const val BOOT_WINDUP_MS = 320L
         const val BOOT_STRIKE_MS = 240L
         const val BOOT_IMPACT_PAUSE_MS = 80L
-        const val EXPULSION_LAUNCH_MS = 720L
+        const val EXPULSION_LAUNCH_MS = 1_050L
         const val EXPULSION_AFTER_KICK_READ_MS = 1_700L
         // Cuanto se mete la punta de la bota MAS ALLA del borde de la carta: un
         // "zapatazo" en el borde, no un golpe que llegue hasta el centro.
@@ -583,7 +583,9 @@ class VoteResultAnimator(
             ObjectAnimator.ofFloat(card, View.ALPHA, 1f, 0f)
         )
         set.duration = EXPULSION_LAUNCH_MS
-        set.interpolator = AccelerateInterpolator(1.5f)
+        // Aceleración suave: la carta sale en un arco parejo hacia afuera, sin el
+        // "chasquido" final que tenía con una aceleración más agresiva.
+        set.interpolator = AccelerateInterpolator(1.15f)
         set.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationCancel(animation: Animator) {
                 cancelled = true
