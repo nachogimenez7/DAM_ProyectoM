@@ -69,6 +69,7 @@ object OnlineRoomFirestore {
         playerName: String,
         uidTemporal: String,
         publicId: String,
+        profileFields: Map<String, Any> = emptyMap(),
         map: GameMap,
         origin: String,
         expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
@@ -118,6 +119,7 @@ object OnlineRoomFirestore {
             FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp(),
             FIELD_JOINED_AT to FieldValue.serverTimestamp()
         )
+        hostData.putAll(profileFields)
         val task = firestore.batch()
             .set(roomReference, roomData)
             .set(hostReference, hostData)

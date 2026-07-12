@@ -33,5 +33,6 @@ object GameplayFeedMessages {
                 }
             }
             .asReversed()
+            .toList()
     }
 }

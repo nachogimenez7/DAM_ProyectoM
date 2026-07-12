@@ -93,8 +93,12 @@ Campos:
 
 - `nombre`: nombre de perfil normalizado, maximo 18 caracteres.
 - `nombrePerfil`: copia del nombre de perfil para futuras pantallas publicas.
-- `nombreSala`: nombre visible dentro de esa sala. Incluye el `#` publico para distinguir nombres repetidos, por ejemplo `Federico #2`.
+- `nombreSala`: nombre visible dentro de esa sala, maximo 32 caracteres. Incluye el `#` publico para distinguir nombres repetidos, por ejemplo `Federico #2`.
 - `publicId`: ID publico numerico fijo del jugador, sin el simbolo `#`.
+- `bioPerfil`: frase publica del perfil, maximo 40 caracteres.
+- `avatarPerfil`: clave de foto/avatar elegida para el perfil.
+- `bannerPerfil`: clave de banner publico del perfil.
+- `rolFavoritoPerfil`: clave del rol favorito elegido.
 - `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
 - `estado`: `conectado`, `desconectado` o `listo`.
 - `esHost`: booleano opcional.
@@ -125,6 +129,11 @@ Campos:
 - `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
 - `publicId`: ID publico numerico fijo del jugador.
 - `nombrePerfil`: nombre de perfil visible.
+- `nombreSala`: nombre visible dentro de sala, maximo 32 caracteres, con `#publicId` cuando corresponde.
+- `bioPerfil`: frase publica del perfil, maximo 40 caracteres.
+- `avatarPerfil`: clave de foto/avatar elegida para el perfil.
+- `bannerPerfil`: clave de banner publico del perfil.
+- `rolFavoritoPerfil`: clave del rol favorito elegido.
 - `actualizadaEn`: timestamp de servidor.
 
 Regla de producto actual:

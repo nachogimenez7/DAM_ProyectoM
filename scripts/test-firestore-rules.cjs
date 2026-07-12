@@ -47,6 +47,10 @@ const playerData = (uid, name = "Nacho", order = 0, isHost = false) => ({
   nombrePerfil: name,
   nombreSala: `${name} #1`,
   publicId: "1",
+  bioPerfil: "No fui yo.",
+  avatarPerfil: "grecia_oraculo",
+  bannerPerfil: "pampa",
+  rolFavoritoPerfil: "pampa_payador",
   esHost: isHost,
   estado: "conectado",
   uidTemporal: uid,
@@ -203,6 +207,11 @@ async function main() {
       uidTemporal: "guest_uid",
       publicId: "2",
       nombrePerfil: "Guest",
+      nombreSala: "Guest #2",
+      bioPerfil: "Vine a sospechar.",
+      avatarPerfil: "grecia_oraculo",
+      bannerPerfil: "pampa",
+      rolFavoritoPerfil: "pampa_payador",
       actualizadaEn: serverTimestamp(),
     }));
     await assertFails(setDoc(doc(guest, "perfiles_publicos", "other_uid"), {

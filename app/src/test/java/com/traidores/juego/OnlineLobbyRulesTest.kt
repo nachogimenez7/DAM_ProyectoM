@@ -96,8 +96,7 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
-    fun staleConnectedHostCanBeReplacedByFreshCandidate() {
-        val now = 100_000L
+    fun connectedHostIsNotReplacedEvenWhenLocalTimestampLooksStale() {
         val players = listOf(
             participant(
                 "host",
@@ -105,7 +104,7 @@ class OnlineLobbyRulesTest {
                 ready = true,
                 active = true,
                 order = 0,
-                lastSeenLocalMs = now - OnlineLobbyRules.HOST_STALE_AFTER_MS - 1
+                lastSeenLocalMs = 1
             ),
             participant(
                 "candidate",
@@ -113,17 +112,16 @@ class OnlineLobbyRulesTest {
                 ready = true,
                 active = true,
                 order = 1,
-                lastSeenLocalMs = now
+                lastSeenLocalMs = 100_000L
             )
         )
 
         val candidate = OnlineLobbyRules.hostHandoffCandidate(
             players = players,
-            activeHostId = "host",
-            nowMs = now
+            activeHostId = "host"
         )
 
-        assertEquals("candidate", candidate?.id)
+        assertEquals(null, candidate)
     }
 
     @Test

@@ -2143,6 +2143,7 @@ object GameEngine {
                 }
             }
             .asReversed()
+            .toList()
     }
 
     private fun List<GamePlayer>.joinToReadableNames(): String {

@@ -20,6 +20,10 @@ object OnlinePhaseGate {
         return isOnline && isHost && !isStartupPhase
     }
 
+    fun canAutoContinueVoteResult(isOnline: Boolean): Boolean {
+        return !isOnline
+    }
+
     fun evaluateIncomingState(
         isHost: Boolean,
         currentPhaseIndex: Int,

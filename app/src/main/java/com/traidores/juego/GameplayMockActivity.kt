@@ -2269,8 +2269,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         val candidate = OnlineLobbyRules.hostHandoffCandidate(
             players = participants,
-            activeHostId = activeHostId,
-            nowMs = System.currentTimeMillis()
+            activeHostId = activeHostId
         ) ?: return
         if (candidate.id == onlinePlayerId) {
             claimOnlineHostHandoff(activeHostId)
@@ -2306,7 +2305,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 order = previousHost.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
                 lastSeenLocalMs = previousHost.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L
             )
-            if (OnlineLobbyRules.isRecentlyConnected(previousHostParticipant, System.currentTimeMillis())) {
+            if (previousHostParticipant.connected) {
                 return@runTransaction false
             }
             if (candidate.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
@@ -6203,12 +6202,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun handleVoteResultAutoContinue() {
+        if (!OnlinePhaseGate.canAutoContinueVoteResult(isOnlineGameplay())) return
         if (!isVoteResultVisible || !btnContinueVoteResult.isEnabled) return
         handleVoteResultContinue()
     }
 
     private fun scheduleVoteResultAutoContinue() {
         autoAdvanceHandler.removeCallbacks(voteResultAutoContinueRunnable)
+        if (!OnlinePhaseGate.canAutoContinueVoteResult(isOnlineGameplay())) return
         if (!isVoteResultVisible) return
         val delayMs = if (session.quickTestMode) 1_200L else 8_000L
         autoAdvanceHandler.postDelayed(voteResultAutoContinueRunnable, delayMs)

@@ -173,6 +173,10 @@ service cloud.firestore {
           'nombrePerfil',
           'nombreSala',
           'publicId',
+          'bioPerfil',
+          'avatarPerfil',
+          'bannerPerfil',
+          'rolFavoritoPerfil',
           'esHost',
           'estado',
           'uidTemporal',
@@ -189,7 +193,11 @@ service cloud.firestore {
         && hasAll(data, ['nombre', 'estado', 'uidTemporal'])
         && isString(data.nombre, 1, 18)
         && isOptionalString(data, 'nombrePerfil', 18)
-        && isOptionalString(data, 'nombreSala', 18)
+        && isOptionalString(data, 'nombreSala', 32)
+        && isOptionalString(data, 'bioPerfil', 40)
+        && isOptionalString(data, 'avatarPerfil', 40)
+        && isOptionalString(data, 'bannerPerfil', 40)
+        && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
         && validPlayerState(data.estado)
@@ -405,11 +413,21 @@ service cloud.firestore {
           'uidTemporal',
           'publicId',
           'nombrePerfil',
+          'nombreSala',
+          'bioPerfil',
+          'avatarPerfil',
+          'bannerPerfil',
+          'rolFavoritoPerfil',
           'actualizadaEn'
         ])
         && request.resource.data.uidTemporal == uidTemporal
         && validPublicId(request.resource.data.publicId)
-        && isString(request.resource.data.nombrePerfil, 1, 18);
+        && isString(request.resource.data.nombrePerfil, 1, 18)
+        && isOptionalString(request.resource.data, 'nombreSala', 32)
+        && isOptionalString(request.resource.data, 'bioPerfil', 40)
+        && isOptionalString(request.resource.data, 'avatarPerfil', 40)
+        && isOptionalString(request.resource.data, 'bannerPerfil', 40)
+        && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40);
       allow delete: if false;
     }
 

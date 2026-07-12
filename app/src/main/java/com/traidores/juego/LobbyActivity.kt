@@ -315,7 +315,8 @@ class LobbyActivity : BaseActivity() {
             row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
             row.findViewById<TextView>(R.id.playerName).text = player.name
             row.findViewById<TextView>(R.id.playerStatus).text =
-                onlinePlayer?.statusLabel() ?: if (index == 0) "Anfitrion" else "Listo"
+                onlinePlayer?.statusLabel(onlineActiveHostId.ifBlank { onlineHostId })
+                    ?: if (index == 0) "Anfitrion" else "Listo"
             row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
                 showPlayerProfile(player)
             }
@@ -378,20 +379,16 @@ class LobbyActivity : BaseActivity() {
         OnlineDebugLog.i("presence_update roomId=$onlinePartidaId uid=$onlineTempUid state=$state")
         val firestore = FirebaseFirestore.getInstance()
         val currentlyReleased = onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false
+        val publicId = PlayerPublicIdentity.currentPublicId(this)
         val playerData = hashMapOf<String, Any>(
-                    FIELD_NAME to onlinePlayerName,
-                    PlayerPublicIdentity.FIELD_PUBLIC_ID to PlayerPublicIdentity.currentPublicId(this),
-                    PlayerPublicIdentity.FIELD_PROFILE_NAME to onlinePlayerName,
-                    PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(
-                        onlinePlayerName,
-                        PlayerPublicIdentity.currentPublicId(this)
-                    ),
-                    FIELD_PLAYER_STATE to state,
-                    "uidTemporal" to onlineTempUid,
+            FIELD_NAME to onlinePlayerName,
+            FIELD_PLAYER_STATE to state,
+            "uidTemporal" to onlineTempUid,
             OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to !currentlyReleased,
             OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
             OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
         )
+        playerData.putAll(PlayerPublicIdentity.publicProfileFields(this, publicId, onlinePlayerName))
         if (currentlyReleased) {
             playerData[FIELD_PLAYER_READY] = false
         }
@@ -720,7 +717,8 @@ class LobbyActivity : BaseActivity() {
                             initial = player.initial,
                             isHuman = player.id == onlineTempUid
                         )
-                    }
+                    },
+                    playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
                 ))
                 maybeClaimOnlineLobbyHostHandoff()
                 renderLobby()
@@ -781,18 +779,49 @@ class LobbyActivity : BaseActivity() {
             ?.take(18)
             ?.takeIf { it.isNotBlank() }
             ?: return null
-        val isHost = document.id == onlineActiveHostId.ifBlank { onlineHostId }
+        val profile = onlineProfileFromDocument(document, name)
         return OnlineLobbyPlayer(
             id = document.id,
             name = name,
             initial = name.firstOrNull()?.uppercase() ?: "?",
-            isHost = isHost,
             status = document.getString(FIELD_PLAYER_STATE) ?: PLAYER_STATE_CONNECTED,
             ready = document.getBoolean(FIELD_PLAYER_READY) == true,
             order = document.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
             activeInMatch = document.getBoolean(FIELD_ACTIVE_IN_MATCH) != false,
             lastSeenLocalMs = document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L,
-            publicId = document.getString(PlayerPublicIdentity.FIELD_PUBLIC_ID).orEmpty()
+            publicId = profile.publicId,
+            profile = profile
+        )
+    }
+
+    private fun onlineProfileFromDocument(document: DocumentSnapshot, fallbackName: String): PlayerProfile {
+        val publicId = document.getString(PlayerPublicIdentity.FIELD_PUBLIC_ID).orEmpty()
+        val profileName = document.getString(PlayerPublicIdentity.FIELD_PROFILE_NAME)
+            ?.trim()
+            ?.take(18)
+            ?.takeIf { it.isNotBlank() }
+            ?: fallbackName
+        val avatarKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_AVATAR)
+            ?.takeIf { it.isNotBlank() }
+            ?: "aldeana"
+        val bannerKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BANNER)
+            ?.takeIf { it.isNotBlank() }
+            ?: "pampa"
+        val favoriteRoleKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_FAVORITE_ROLE)
+            ?.takeIf { it.isNotBlank() }
+            ?: "detective"
+        return PlayerProfile(
+            name = profileName,
+            publicId = publicId,
+            bio = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BIO)
+                ?.take(40)
+                .orEmpty(),
+            avatarKey = ProfileRoleCatalog.find(avatarKey).key,
+            bannerKey = ProfileCustomizationCatalog.normalizeBannerKey(bannerKey),
+            favoriteRoleKey = ProfileRoleCatalog.find(favoriteRoleKey).key,
+            featuredAchievementIds = emptyList(),
+            emoteIds = emptyList(),
+            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false)
         )
     }
 
@@ -883,8 +912,7 @@ class LobbyActivity : BaseActivity() {
         }
         val candidateId = OnlineLobbyRules.hostHandoffCandidate(
             players = onlineParticipants(),
-            activeHostId = onlineActiveHostId.ifBlank { onlineHostId },
-            nowMs = System.currentTimeMillis()
+            activeHostId = onlineActiveHostId.ifBlank { onlineHostId }
         )?.id ?: return null
         return onlinePlayers.firstOrNull { it.id == candidateId }
     }
@@ -941,7 +969,7 @@ class LobbyActivity : BaseActivity() {
                 order = previousHost.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
                 lastSeenLocalMs = previousHost.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L
             )
-            if (OnlineLobbyRules.isRecentlyConnected(previousHostParticipant, System.currentTimeMillis())) {
+            if (previousHostParticipant.connected) {
                 return@runTransaction false
             }
             if (candidate.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
@@ -1103,6 +1131,7 @@ class LobbyActivity : BaseActivity() {
     private fun toggleCurrentOnlineReady() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
         val nextReady = !(currentOnlinePlayer()?.ready == true)
+        val publicId = PlayerPublicIdentity.currentPublicId(this)
         OnlineDebugLog.i("ready_update_requested roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
         FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
@@ -1110,14 +1139,8 @@ class LobbyActivity : BaseActivity() {
             .collection(ONLINE_PLAYERS_COLLECTION)
             .document(onlineTempUid)
             .set(
-                mapOf(
+                PlayerPublicIdentity.publicProfileFields(this, publicId, onlinePlayerName) + mapOf(
                     FIELD_NAME to onlinePlayerName,
-                    PlayerPublicIdentity.FIELD_PUBLIC_ID to PlayerPublicIdentity.currentPublicId(this),
-                    PlayerPublicIdentity.FIELD_PROFILE_NAME to onlinePlayerName,
-                    PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(
-                        onlinePlayerName,
-                        PlayerPublicIdentity.currentPublicId(this)
-                    ),
                     FIELD_PLAYER_STATE to PLAYER_STATE_CONNECTED,
                     FIELD_PLAYER_READY to nextReady,
                     "uidTemporal" to onlineTempUid,
@@ -2459,16 +2482,16 @@ class LobbyActivity : BaseActivity() {
         val id: String,
         val name: String,
         val initial: String,
-        val isHost: Boolean,
         val status: String,
         val ready: Boolean,
         val order: Int,
         val activeInMatch: Boolean,
         val publicId: String,
+        val profile: PlayerProfile,
         val lastSeenLocalMs: Long
     ) {
-        fun statusLabel(): String {
-            val baseStatus = if (isHost) {
+        fun statusLabel(activeHostId: String): String {
+            val baseStatus = if (id == activeHostId) {
                 "Anfitrion"
             } else if (status.equals(PLAYER_STATE_CONNECTED, ignoreCase = true)) {
                 "Conectado"

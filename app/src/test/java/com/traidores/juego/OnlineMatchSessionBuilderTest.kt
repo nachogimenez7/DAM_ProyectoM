@@ -2,6 +2,8 @@ package com.traidores.juego
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.ObjectOutputStream
 
 class OnlineMatchSessionBuilderTest {
 
@@ -202,6 +204,16 @@ class OnlineMatchSessionBuilderTest {
             OnlineMatchSessionError.MISSING_MATCH_STATE,
             (result as OnlineMatchSessionResult.Failure).reason
         )
+    }
+
+    @Test
+    fun buildProducesSerializableSessionForActivityIntentExtras() {
+        val result = buildSession(uidTemporal = "uid_2")
+        val session = (result as OnlineMatchSessionResult.Success).session
+
+        ObjectOutputStream(ByteArrayOutputStream()).use { output ->
+            output.writeObject(session)
+        }
     }
 
     private fun buildSession(

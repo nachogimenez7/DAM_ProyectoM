@@ -98,4 +98,10 @@ class OnlinePhaseGateTest {
             )
         )
     }
+
+    @Test
+    fun voteResultAutoContinueIsLocalOnly() {
+        assertTrue(OnlinePhaseGate.canAutoContinueVoteResult(isOnline = false))
+        assertFalse(OnlinePhaseGate.canAutoContinueVoteResult(isOnline = true))
+    }
 }

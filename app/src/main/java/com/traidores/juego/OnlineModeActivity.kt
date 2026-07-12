@@ -345,6 +345,7 @@ class OnlineModeActivity : BaseActivity() {
             playerName = playerName,
             uidTemporal = uidTemporal,
             publicId = publicId,
+            profileFields = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName),
             map = selectedMap,
             origin = "android-online-create",
             expectedPlayers = expectedPlayers,
@@ -827,11 +828,8 @@ class OnlineModeActivity : BaseActivity() {
                 throw IllegalStateException("La sala esta llena.")
             }
 
-            val connectedData = mapOf(
+            val connectedData = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName) + mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
-                PlayerPublicIdentity.FIELD_PUBLIC_ID to publicId,
-                PlayerPublicIdentity.FIELD_PROFILE_NAME to playerName,
-                PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(playerName, publicId),
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "uidTemporal" to uidTemporal,
                 OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
