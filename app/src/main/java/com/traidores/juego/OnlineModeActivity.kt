@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -76,6 +77,7 @@ class OnlineModeActivity : BaseActivity() {
 
     private fun showCreateRoomDialog() {
         var expectedPlayers = OnlineRoomFirestore.DEFAULT_EXPECTED_PLAYERS
+        var modePrueba = false
         val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         var selectedMap = OnlineRoomFirestore.selectedMapFromKey(
             preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
@@ -130,6 +132,23 @@ class OnlineModeActivity : BaseActivity() {
         selectorRow.addView(plus, LinearLayout.LayoutParams(dp(56), dp(44)))
         content.addView(selectorRow)
 
+        val testModeSwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = "SALA DE PRUEBA (POCOS JUGADORES)"
+            isChecked = modePrueba
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            textSize = 14f
+            setPadding(dp(4), dp(16), dp(4), 0)
+        }
+        content.addView(testModeSwitch)
+        content.addView(TextView(this).apply {
+            text = "Solo para testeo: permite bajar el minimo a 3 jugadores."
+            setTextColor(resources.getColor(R.color.text_secondary, theme))
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(4))
+        })
+
         content.addView(TextView(this).apply {
             text = "MAPA"
             setTextColor(resources.getColor(R.color.text_primary, theme))
@@ -174,17 +193,32 @@ class OnlineModeActivity : BaseActivity() {
 
         fun refreshCount() {
             countLabel.text = "$expectedPlayers JUGADORES"
-            minus.isEnabled = expectedPlayers > LocalGameFactory.MIN_PLAYERS
+            val minimum = if (modePrueba) {
+                LocalGameFactory.TEST_MIN_PLAYERS
+            } else {
+                LocalGameFactory.MIN_PLAYERS
+            }
+            minus.isEnabled = expectedPlayers > minimum
             minus.alpha = if (minus.isEnabled) 1f else 0.45f
             plus.isEnabled = expectedPlayers < LocalGameFactory.MAX_PLAYERS
             plus.alpha = if (plus.isEnabled) 1f else 0.45f
         }
         minus.setOnClickListener {
-            expectedPlayers = (expectedPlayers - 1).coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
+            val minimum = if (modePrueba) {
+                LocalGameFactory.TEST_MIN_PLAYERS
+            } else {
+                LocalGameFactory.MIN_PLAYERS
+            }
+            expectedPlayers = (expectedPlayers - 1).coerceAtLeast(minimum)
             refreshCount()
         }
         plus.setOnClickListener {
             expectedPlayers = (expectedPlayers + 1).coerceAtMost(LocalGameFactory.MAX_PLAYERS)
+            refreshCount()
+        }
+        testModeSwitch.setOnCheckedChangeListener { _, checked ->
+            modePrueba = checked
+            expectedPlayers = OnlineRoomFirestore.normalizedExpectedPlayers(expectedPlayers, modePrueba)
             refreshCount()
         }
 
@@ -214,7 +248,7 @@ class OnlineModeActivity : BaseActivity() {
             preferences.edit()
                 .putString(OpcionesActivity.PREF_LAST_SELECTED_MAP, selectedMap.key)
                 .apply()
-            createOnlineRoom(expectedPlayers, selectedMap)
+            createOnlineRoom(expectedPlayers, selectedMap, modePrueba)
         }
         refreshCount()
         dialog.show()
@@ -229,7 +263,11 @@ class OnlineModeActivity : BaseActivity() {
         }
     }
 
-    private fun createOnlineRoom(expectedPlayers: Int, selectedMap: GameMap) {
+    private fun createOnlineRoom(
+        expectedPlayers: Int,
+        selectedMap: GameMap,
+        modePrueba: Boolean
+    ) {
         btnCreate.isEnabled = false
         btnCreate.text = "PREPARANDO..."
         OnlineTempIdentity.ensureAuthenticated(this)
@@ -238,7 +276,7 @@ class OnlineModeActivity : BaseActivity() {
                     context = this,
                     firestore = firestore,
                     onReady = { publicId ->
-                        createOnlineRoomWithPublicId(expectedPlayers, selectedMap, publicId)
+                        createOnlineRoomWithPublicId(expectedPlayers, selectedMap, modePrueba, publicId)
                     },
                     onFailure = { error ->
                         OnlineDebugLog.e("public_id_create_room_fallback", error)
@@ -257,10 +295,16 @@ class OnlineModeActivity : BaseActivity() {
             }
     }
 
-    private fun createOnlineRoomWithPublicId(expectedPlayers: Int, selectedMap: GameMap, publicId: String) {
+    private fun createOnlineRoomWithPublicId(
+        expectedPlayers: Int,
+        selectedMap: GameMap,
+        modePrueba: Boolean,
+        publicId: String
+    ) {
         createOnlineRoomWithPublicId(
             expectedPlayers,
             selectedMap,
+            modePrueba,
             publicId,
             remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
         )
@@ -269,6 +313,7 @@ class OnlineModeActivity : BaseActivity() {
     private fun createOnlineRoomWithPublicId(
         expectedPlayers: Int,
         selectedMap: GameMap,
+        modePrueba: Boolean,
         publicId: String,
         remainingCodeAttempts: Int
     ) {
@@ -281,7 +326,7 @@ class OnlineModeActivity : BaseActivity() {
             .orEmpty()
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         OnlineDebugLog.i(
-            "create_room_requested hostId=$uidTemporal map=${selectedMap.key} expected=$expectedPlayers player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
+            "create_room_requested hostId=$uidTemporal map=${selectedMap.key} expected=$expectedPlayers testMode=$modePrueba player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
         )
         val candidateCode = OnlineRoomFirestore.generateRoomCode()
         firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
@@ -297,6 +342,7 @@ class OnlineModeActivity : BaseActivity() {
                         createOnlineRoomWithPublicId(
                             expectedPlayers = expectedPlayers,
                             selectedMap = selectedMap,
+                            modePrueba = modePrueba,
                             publicId = publicId,
                             remainingCodeAttempts = remainingCodeAttempts - 1
                         )
@@ -313,6 +359,7 @@ class OnlineModeActivity : BaseActivity() {
                 }
                 commitOnlineRoomCreation(
                     expectedPlayers = expectedPlayers,
+                    modePrueba = modePrueba,
                     publicId = publicId,
                     playerName = playerName,
                     uidTemporal = uidTemporal,
@@ -334,6 +381,7 @@ class OnlineModeActivity : BaseActivity() {
 
     private fun commitOnlineRoomCreation(
         expectedPlayers: Int,
+        modePrueba: Boolean,
         publicId: String,
         playerName: String,
         uidTemporal: String,
@@ -349,13 +397,14 @@ class OnlineModeActivity : BaseActivity() {
             map = selectedMap,
             origin = "android-online-create",
             expectedPlayers = expectedPlayers,
+            modePrueba = modePrueba,
             roomCode = roomCode
         )
 
         creation.commitTask
             .addOnSuccessListener {
                 OnlineDebugLog.i(
-                    "create_room_success roomId=${creation.roomReference.id} code=${creation.roomCode} hostId=$uidTemporal map=${creation.map.key} expected=${creation.expectedPlayers}"
+                    "create_room_success roomId=${creation.roomReference.id} code=${creation.roomCode} hostId=$uidTemporal map=${creation.map.key} expected=${creation.expectedPlayers} testMode=$modePrueba"
                 )
                 btnCreate.isEnabled = true
                 btnCreate.text = "CREAR PARTIDA"
@@ -831,6 +880,7 @@ class OnlineModeActivity : BaseActivity() {
             val connectedData = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName) + mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
+                "listo" to false,
                 "uidTemporal" to uidTemporal,
                 OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
                 OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),

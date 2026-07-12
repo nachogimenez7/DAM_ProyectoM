@@ -73,6 +73,7 @@ class LobbyActivity : BaseActivity() {
     private var leavingOnlineLobby = false
     private var enteringOnlineMatch = false
     private var onlineHostHandoffInProgress = false
+    private var onlineRematchResetInProgress = false
     private var roomListener: ListenerRegistration? = null
     private var playersListener: ListenerRegistration? = null
     private var onlinePlayers = emptyList<OnlineLobbyPlayer>()
@@ -236,6 +237,7 @@ class LobbyActivity : BaseActivity() {
     override fun onStart() {
         super.onStart()
         if (isFirestoreOnlineLobby()) {
+            enteringOnlineMatch = false
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
@@ -721,6 +723,7 @@ class LobbyActivity : BaseActivity() {
                     playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
                 ))
                 maybeClaimOnlineLobbyHostHandoff()
+                maybeResetFinishedOnlineRoomForRematch()
                 renderLobby()
             }
     }
@@ -735,10 +738,15 @@ class LobbyActivity : BaseActivity() {
             ?.toInt()
             ?.coerceIn(1, LocalGameFactory.MAX_PLAYERS)
             ?: LocalGameFactory.MAX_PLAYERS
+        val onlineMinimumPlayers = if (onlineRoomModePrueba) {
+            LocalGameFactory.TEST_MIN_PLAYERS
+        } else {
+            LocalGameFactory.MIN_PLAYERS
+        }
         onlineExpectedPlayers = snapshot.getLong(FIELD_EXPECTED_PLAYERS)
             ?.toInt()
-            ?.coerceIn(LocalGameFactory.MIN_PLAYERS, LocalGameFactory.MAX_PLAYERS)
-            ?: onlineRoomMaxPlayers.coerceIn(LocalGameFactory.MIN_PLAYERS, LocalGameFactory.MAX_PLAYERS)
+            ?.coerceIn(onlineMinimumPlayers, LocalGameFactory.MAX_PLAYERS)
+            ?: onlineRoomMaxPlayers.coerceIn(onlineMinimumPlayers, LocalGameFactory.MAX_PLAYERS)
         onlineHostId = snapshot.getString(FIELD_HOST_ID).orEmpty()
         onlineActiveHostId = snapshot.getString(FIELD_ACTIVE_HOST_ID)
             ?.takeIf { it.isNotBlank() }
@@ -764,6 +772,8 @@ class LobbyActivity : BaseActivity() {
             OnlineRoomRecovery.clearIf(this, onlinePartidaId)
         }
 
+        maybeResetFinishedOnlineRoomForRematch()
+
         if (onlineRoomState == ONLINE_ROOM_STATE_IN_GAME && !onlineStartedNoticeShown) {
             onlineStartedNoticeShown = true
             startOnlineMatch()
@@ -776,6 +786,7 @@ class LobbyActivity : BaseActivity() {
         val name = (document.getString(PlayerPublicIdentity.FIELD_ROOM_NAME)
             ?: document.getString(FIELD_NAME))
             ?.trim()
+            ?.let(RoomDisplayNames::withoutPublicId)
             ?.take(18)
             ?.takeIf { it.isNotBlank() }
             ?: return null
@@ -1335,6 +1346,7 @@ class LobbyActivity : BaseActivity() {
             timingConfig = session.timingConfig.normalized(),
             revealRolesOnDeath = session.revealRolesOnDeath,
             showIndividualVotes = session.showIndividualVotes,
+            onlineTestMode = onlineRoomModePrueba,
             roleComposition = LocalGameFactory.onlineSafeRoleComposition(realPlayers.size)
         )
     }
@@ -1377,9 +1389,6 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun onlineMatchEntryProblem(session: GameSession): String? {
-        if (session.players.size < LocalGameFactory.MIN_PLAYERS) {
-            return "La partida online quedo incompleta. Creen una sala nueva."
-        }
         if (onlineExpectedPlayers > 0 && session.players.size != onlineExpectedPlayers) {
             return "La sala no coincide con la cantidad esperada de jugadores."
         }
@@ -1472,6 +1481,90 @@ class LobbyActivity : BaseActivity() {
 
     private fun currentOnlinePlayer(): OnlineLobbyPlayer? {
         return activeOnlinePlayers().firstOrNull { it.id == onlineTempUid }
+    }
+
+    private fun maybeResetFinishedOnlineRoomForRematch() {
+        if (
+            onlineRoomState != OnlineRoomFirestore.STATE_FINISHED ||
+            !currentUserIsOnlineHost() ||
+            onlineRematchResetInProgress ||
+            onlinePlayers.isEmpty()
+        ) {
+            return
+        }
+        onlineRematchResetInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val playersToReset = onlinePlayers.filter { it.activeInMatch }
+        OnlineDebugLog.i(
+            "rematch_reset_requested roomId=$onlinePartidaId hostId=$onlineTempUid players=${playersToReset.size}"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            if (!room.exists()) {
+                throw IllegalStateException("La sala ya no existe.")
+            }
+            if (room.getString(FIELD_STATE) != OnlineRoomFirestore.STATE_FINISHED) {
+                return@runTransaction false
+            }
+            val activeHostId = room.getString(FIELD_ACTIVE_HOST_ID).orEmpty()
+            if (activeHostId != onlineTempUid) {
+                throw IllegalStateException("Solo el anfitrion puede preparar la revancha.")
+            }
+            transaction.update(
+                roomReference,
+                mapOf(
+                    FIELD_STATE to ONLINE_ROOM_STATE_WAITING,
+                    FIELD_INITIAL_MATCH_CREATED to false,
+                    FIELD_INITIAL_MATCH to FieldValue.delete(),
+                    FIELD_MATCH_STATE to FieldValue.delete(),
+                    "estadoClientes" to FieldValue.delete(),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp(),
+                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
+                )
+            )
+            playersToReset.forEach { player ->
+                transaction.update(
+                    roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id),
+                    mapOf(
+                        FIELD_PLAYER_READY to false,
+                        "listoParaVotar" to false,
+                        "listoParaVotarRonda" to 0,
+                        "listoParaVotarPhaseIndex" to 0
+                    )
+                )
+            }
+            true
+        }.addOnSuccessListener { reset ->
+            onlineRematchResetInProgress = false
+            if (reset == true) {
+                onlineInitialMatchCreated = false
+                onlineInitialMatch = null
+                onlineMatchState = null
+                onlineStartedNoticeShown = false
+                recoveringOnlineMatch = false
+                OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+                OnlineDebugLog.i(
+                    "rematch_reset_success roomId=$onlinePartidaId hostId=$onlineTempUid players=${playersToReset.size}"
+                )
+                Toast.makeText(
+                    this,
+                    "Sala preparada. Todos deben marcarse listos otra vez.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }.addOnFailureListener { error ->
+            onlineRematchResetInProgress = false
+            OnlineDebugLog.e(
+                "rematch_reset_failure roomId=$onlinePartidaId hostId=$onlineTempUid",
+                error
+            )
+            Toast.makeText(
+                this,
+                OnlineErrorMessages.forAction("No se pudo preparar otra partida", error),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun allOnlinePlayersReady(): Boolean {

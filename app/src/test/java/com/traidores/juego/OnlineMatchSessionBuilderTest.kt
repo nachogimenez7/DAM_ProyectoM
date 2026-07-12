@@ -45,6 +45,27 @@ class OnlineMatchSessionBuilderTest {
     }
 
     @Test
+    fun buildRestoresThreePlayerTestRoom() {
+        val result = OnlineMatchSessionBuilder.build(
+            initialMatchRaw = initialMatch(players = defaultPlayers().take(3)),
+            matchStateRaw = initialState(),
+            uidTemporal = "uid_1",
+            expectedPlayers = 3,
+            fallbackRoomId = "room",
+            fallbackRoomCode = "",
+            fallbackMapKey = "grecia",
+            fallbackMapName = "Grecia",
+            revealRolesOnDeath = false,
+            showIndividualVotes = true
+        )
+
+        val session = (result as OnlineMatchSessionResult.Success).session
+        assertEquals(true, session.onlineTestMode)
+        assertEquals(3, session.players.size)
+        assertEquals(0, session.roleComposition.counts[RoleCatalog.ALDEANO])
+    }
+
+    @Test
     fun buildNormalizesSerializedTimingAndFallsBackForOldRooms() {
         val invalidConfig = initialMatch(players = defaultPlayers()) + mapOf(
             "config" to mapOf(

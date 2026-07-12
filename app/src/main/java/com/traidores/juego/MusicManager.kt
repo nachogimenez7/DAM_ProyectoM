@@ -15,6 +15,8 @@ object MusicManager {
     private var currentVictoryTrackRes = 0
     private var player: MediaPlayer? = null
     private var victoryPlayer: MediaPlayer? = null
+    private var playerStarted = false
+    private var victoryPlayerStarted = false
     private var transitionPaused = false
 
     private val pauseIfBackground = Runnable {
@@ -129,6 +131,7 @@ object MusicManager {
             setOnErrorListener { errored, _, _ ->
                 if (victoryPlayer === errored) {
                     victoryPlayer = null
+                    victoryPlayerStarted = false
                 }
                 errored.runCatching { release() }
                 true
@@ -136,13 +139,18 @@ object MusicManager {
             setOnCompletionListener { completed ->
                 if (victoryPlayer === completed) {
                     victoryPlayer = null
+                    victoryPlayerStarted = false
                 }
                 completed.runCatching { release() }
             }
-            runCatching { start() }.onFailure {
+            runCatching {
+                start()
+                victoryPlayerStarted = true
+            }.onFailure {
                 if (victoryPlayer === this) {
                     victoryPlayer = null
                 }
+                victoryPlayerStarted = false
                 runCatching { release() }
             }
         }
@@ -164,6 +172,7 @@ object MusicManager {
             release()
         }
         victoryPlayer = null
+        victoryPlayerStarted = false
         currentVictoryTrackRes = 0
     }
 
@@ -207,6 +216,7 @@ object MusicManager {
         currentTrackRes = trackRes
         player?.release()
         player = null
+        playerStarted = false
         refresh(context)
     }
 
@@ -217,6 +227,7 @@ object MusicManager {
             setOnErrorListener { errored, _, _ ->
                 if (player === errored) {
                     player = null
+                    playerStarted = false
                 }
                 errored.runCatching { release() }
                 true
@@ -227,37 +238,50 @@ object MusicManager {
     private fun startPlayer() {
         val current = player ?: return
         runCatching {
-            if (!current.isPlaying) current.start()
+            if (!playerStarted) {
+                current.start()
+                playerStarted = true
+            }
         }.onFailure {
             if (player === current) {
                 player = null
             }
+            playerStarted = false
             current.runCatching { release() }
         }
     }
 
     private fun pausePlayer() {
-        player.runCatchingIfPresent { pause() }
+        if (!playerStarted) return
+        player?.runCatching { pause() }
+        playerStarted = false
     }
 
     private fun releasePlayer() {
         player.runCatchingIfPresent { release() }
+        playerStarted = false
     }
 
     private fun startVictoryPlayer() {
         val current = victoryPlayer ?: return
         runCatching {
-            if (!current.isPlaying) current.start()
+            if (!victoryPlayerStarted) {
+                current.start()
+                victoryPlayerStarted = true
+            }
         }.onFailure {
             if (victoryPlayer === current) {
                 victoryPlayer = null
             }
+            victoryPlayerStarted = false
             current.runCatching { release() }
         }
     }
 
     private fun pauseVictoryPlayer() {
-        victoryPlayer.runCatchingIfPresent { pause() }
+        if (!victoryPlayerStarted) return
+        victoryPlayer?.runCatching { pause() }
+        victoryPlayerStarted = false
     }
 
     private inline fun MediaPlayer?.runCatchingIfPresent(block: MediaPlayer.() -> Unit) {

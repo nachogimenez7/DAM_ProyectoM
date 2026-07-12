@@ -7,10 +7,11 @@ Objetivo: que 5 amigos con Android puedan **crear sala, unirse, jugar una partid
 - Personalización del host en v1: **mapa al crear** + **tiempos de fase** + **reglas de partida** (revelar roles al morir, votos individuales). Nombre de sala sigue automático.
 - **PARTIDA RAPIDA se saca** del menú online (era un lobby simulado con bots, confunde).
 - El lobby online **no** tiene agregar/quitar jugadores ni elegir rol (elegir rol ya era solo debug local; agregar/quitar hoy aparecen grisados — pasan a ocultos).
+- **Modo prueba de pocos jugadores** (§E): herramienta de desarrollo para poder testear el online **solo**, con salas de 3-4 en vez de 5 (mínimo 3: con 2 la partida termina al arrancar). Es la forma de iterar sin juntar 5 personas/dispositivos.
 
 **Diagnóstico del "ya no deja crear sala":** el commit `8c0bbd7` (seguridad online) hizo que el cliente exija **Firebase Auth anónima** antes de crear/unirse/buscar (`OnlineTempIdentity.ensureAuthenticated` → `signInAnonymously()`), y endureció `firestore.rules` para exigir `request.auth`. Pero en la consola de Firebase: (a) el proveedor **Anónimo no está habilitado** → el sign-in falla → toast "No se pudo preparar la sala online" **antes de tocar Firestore** (síntoma confirmado); (b) las **reglas publicadas son las viejas** (sin auth, sin `chat_traidores`, sin `listoParaVotar*`). Además, las reglas nuevas del repo tienen **un bug bloqueante** (§0): no permiten que los invitados publiquen `estadoClientes.{uid}`, lo que trabaría el arranque sincronizado de cada partida.
 
-Orden recomendado: **§0 (parche de reglas) → PARTE 1 (consola) → A–C (código)**. Con §0 + PARTE 1 solos ya se puede jugar con el build actual; A–C son el pulido del lobby.
+Orden recomendado: **§0 (parche de reglas) → PARTE 1 (consola) → §E (modo prueba, para testear solo) → §A–C (pulido del lobby)**. Con §0 + PARTE 1 ya se puede jugar con el build actual; §E desbloquea el testeo en solitario; §A–C es el pulido. §E depende de §0 (sin el parche, ni una sala de 3 arranca la primera noche).
 
 ---
 
@@ -118,6 +119,37 @@ Cambios:
 4. Documentar el bloque `config` en `docs/firebase-online-schema.md` (sección `partidaInicial`).
 
 No requiere cambios de reglas (ver §0, nota final). No tocar el countdown/gates online: al reconstruir todos con la misma `timingConfig`, los timers quedan alineados solos.
+
+## §E. Modo prueba de pocos jugadores (herramienta de desarrollo) — **prioridad para testear solo**
+
+**Motivación:** el mínimo online es 5 (`LocalGameFactory.MIN_PLAYERS`, replicado en `firestore.rules` como `jugadoresEsperados >= 5`). Sin 5 dispositivos/personas no se puede probar el flujo completo. Este modo permite crear salas de **3 o 4** para ejercitar toda la sincronización online (entrar, listos, reparto, noche, votación, victoria, reingreso) con 3 Android que maneja una sola persona. **No es una feature de producto** — es andamiaje de testeo; queda detrás de un toggle explícito.
+
+**Por qué 3 y no 2:** con 2 jugadores el reparto sería 1 asesino + 1 no-asesino → la condición de victoria (`GameEngine`/`GameRules.winnerFor`: `traitors >= town` → ganan traidores) se cumple en el arranque y la partida termina sin jugarse. Con 3 (1 asesino + 1 médico + 1 detective) hay `town=2, traitors=1`: la partida corre al menos una noche + una votación y se ejercitan las 3 acciones nocturnas.
+
+Cambios (todos puntuales, sin reescrituras; **no bajar `MIN_PLAYERS` global** — rompería el modo local y el balance):
+
+1. **`LocalGameFactory`**: agregar `const val TEST_MIN_PLAYERS = 3`. En `onlineSafeRoleComposition(playerCount)`, cambiar el `playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)` inicial por `coerceIn(TEST_MIN_PLAYERS, MAX_PLAYERS)`. Con eso, count=3 → 1 asesino + 1 médico + 1 detective + 0 aldeanos; count=4 → +1 aldeano; count≥5 → sin cambios respecto de hoy. **No toca** el reparto de 5+.
+
+2. **`OnlineModeActivity.showCreateRoomDialog()`**: agregar un `Switch` "SALA DE PRUEBA (POCOS JUGADORES)" (estilo `TraidoresSwitchStyle`, texto secundario aclarando "solo para testeo, 3-4 jugadores"). Cuando está ON, el selector `-`/`+` permite bajar hasta `TEST_MIN_PLAYERS` (3); cuando está OFF, el mínimo sigue en `MIN_PLAYERS` (5). Al confirmar CREAR, pasar el estado del toggle hacia `createRoom(...)` como el parámetro `modePrueba` (hoy es `true` por default; que refleje el toggle). El `expectedPlayers` inicial por default sigue en 5.
+
+3. **`OnlineRoomFirestore.createRoom()`**: el `expectedPlayers.coerceIn(MIN_PLAYERS, MAX_PLAYERS)` (líneas ~83-86) debe usar el piso según modo: `coerceIn(if (modePrueba) LocalGameFactory.TEST_MIN_PLAYERS else LocalGameFactory.MIN_PLAYERS, MAX_PLAYERS)`.
+
+4. **`LobbyActivity`**: dos puntos que hoy asumen 5.
+   - `applyOnlineRoomSnapshot()` (~742-745): `onlineExpectedPlayers` se hace `coerceIn(MIN_PLAYERS, MAX_PLAYERS)`. Bajar el piso a `TEST_MIN_PLAYERS` cuando `onlineRoomModePrueba == true` (ese flag ya se lee del snapshot en la línea 737).
+   - `onlineMatchEntryProblem()` (~1358): la guarda `if (session.players.size < LocalGameFactory.MIN_PLAYERS)` es redundante con la línea siguiente que compara contra `onlineExpectedPlayers`. Reemplazar el piso duro de 5 por comparar contra `onlineExpectedPlayers` (o quitar la primera guarda y dejar la de `!= onlineExpectedPlayers`), para no bloquear salas de 3-4.
+
+5. **`firestore.rules`** — `validRoomBase(data)`: cambiar los pisos duros a condicionales por `modoPrueba`:
+   ```
+   && data.jugadoresEsperados >= (data.modoPrueba == true ? 3 : 5)
+   && data.jugadoresEsperados <= 15
+   && data.maxJugadores >= (data.modoPrueba == true ? 3 : 5)
+   && data.maxJugadores <= 15
+   ```
+   (el resto de `validRoomBase` intacto). Nota de seguridad: `modoPrueba` lo controla el cliente, así que técnicamente se pueden crear salas de 3 marcándolo; es aceptable para el online experimental entre amigos y se cierra con App Check en producción — documentarlo junto a los otros límites en `docs/firebase-online-schema.md`.
+
+6. **Verificar (no romper), sin cambios esperados**: (a) `GameplayMockActivity` startup gate — `expectedOnlineStartupPlayers()` debe salir de la sala, no de una constante 5; confirmar que con 3 el gate se satisface cuando los 3 tocaron EMPEZAR. (b) El layout de la mesa (`renderPlayerColumns`, ~3910) usa `coerceAtLeast(MIN_PLAYERS)` **solo** para calcular el tamaño de carta; con 3 dibuja 3 cartas un poco más chicas de lo óptimo, no rompe — dejarlo así en v1.
+
+**Criterio de aceptación §E:** con el toggle ON, crear una sala de 3; unirse desde 2 instancias; los 3 marcan LISTO; el host inicia; los 3 tocan EMPEZAR; arranca la noche sin FORZAR NOCHE; se juega noche + día + votación hasta una victoria; sin `*_failure` en Logcat. Con el toggle OFF, el selector no baja de 5 (el modo normal queda intacto).
 
 ## §D. Criterios de aceptación (QA con 5 celulares)
 

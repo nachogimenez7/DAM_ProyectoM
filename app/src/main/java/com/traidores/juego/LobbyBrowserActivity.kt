@@ -81,6 +81,10 @@ class LobbyBrowserActivity : BaseActivity() {
     private fun parseLobby(document: DocumentSnapshot): OnlineLobby? {
         val status = document.getString(FIELD_STATE) ?: return null
         if (status != ONLINE_ROOM_STATE_WAITING) return null
+        val updatedAtMs = document.getTimestamp(FIELD_UPDATED_AT)?.toDate()?.time ?: 0L
+        if (!OnlineLobbyRules.isRoomFresh(updatedAtMs, System.currentTimeMillis(), ROOM_VISIBILITY_MS)) {
+            return null
+        }
         val mapKey = document.getString(FIELD_MAP_KEY) ?: DEFAULT_MAP_KEY
         val mapName = document.getString(FIELD_MAP_NAME)
             ?: LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name
@@ -98,7 +102,7 @@ class LobbyBrowserActivity : BaseActivity() {
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
             mapKey = mapKey,
-            canJoin = players < limit
+            canJoin = true
         )
     }
 
@@ -124,7 +128,7 @@ class LobbyBrowserActivity : BaseActivity() {
             alpha = if (isEnabled) 1f else 0.42f
             text = lobbyActionLabel(lobby)
             contentDescription = when {
-                lobby.players >= lobby.limit -> "Sala ${lobby.name} llena"
+                lobby.players >= lobby.limit -> "Intentar reingresar a la sala ${lobby.name}"
                 !lobby.canJoin -> "Sala ${lobby.name} en partida"
                 else -> "Entrar a la sala ${lobby.name}"
             }
@@ -138,12 +142,12 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     private fun canJoinLobby(lobby: OnlineLobby): Boolean {
-        return lobby.canJoin && lobby.players < lobby.limit
+        return lobby.canJoin
     }
 
     private fun lobbyActionLabel(lobby: OnlineLobby): String {
         return when {
-            lobby.players >= lobby.limit -> "LLENA"
+            lobby.players >= lobby.limit -> "REINGRESAR"
             !lobby.canJoin -> "EN PARTIDA"
             else -> "ENTRAR"
         }
@@ -222,6 +226,7 @@ class LobbyBrowserActivity : BaseActivity() {
                 PlayerPublicIdentity.FIELD_PROFILE_NAME to playerName,
                 PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(playerName, existingPublicId),
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
+                "listo" to false,
                 "uidTemporal" to uidTemporal,
                 OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
                 OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
@@ -327,5 +332,6 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val DEFAULT_MAP_KEY = "pampa"
         private const val DEFAULT_MAX_PLAYERS = 10
         private const val BROWSER_ROOM_LIMIT = 30L
+        private const val ROOM_VISIBILITY_MS = 30L * 60L * 1000L
     }
 }

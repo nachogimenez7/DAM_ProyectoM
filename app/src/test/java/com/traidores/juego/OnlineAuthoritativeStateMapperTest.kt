@@ -1,9 +1,31 @@
 package com.traidores.juego
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnlineAuthoritativeStateMapperTest {
+
+    @Test
+    fun publicPresentationFieldsAreReadFromAuthoritativeState() {
+        val state = mapOf(
+            "nocheSinVictima" to true,
+            "presentacionVotacion" to "expulsion|2|1|18|Ana"
+        )
+
+        assertTrue(OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(state))
+        assertEquals(
+            "expulsion|2|1|18|Ana",
+            OnlineAuthoritativeStateMapper.votePresentationFromState(state)
+        )
+    }
+
+    @Test
+    fun missingPublicPresentationFieldsUseSafeDefaults() {
+        assertFalse(OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(emptyMap()))
+        assertEquals("", OnlineAuthoritativeStateMapper.votePresentationFromState(emptyMap()))
+    }
 
     @Test
     fun playersFromStateUsesOrderForDuplicateNames() {

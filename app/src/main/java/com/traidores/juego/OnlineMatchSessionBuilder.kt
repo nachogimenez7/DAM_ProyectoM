@@ -108,13 +108,15 @@ object OnlineMatchSessionBuilder {
                     code = sessionCode,
                     mapKey = selectedMap.key,
                     mapName = selectedMap.name,
-                    players = players
+                    players = players,
+                    onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS
                 )
             ),
             revealRolesOnDeath = (config?.get("revelarRolesAlMorir") as? Boolean)
                 ?: revealRolesOnDeath,
             showIndividualVotes = (config?.get("votosIndividuales") as? Boolean)
                 ?: showIndividualVotes,
+            onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS,
             initialPlayerCount = players.size,
             startedAtEpochMs = System.currentTimeMillis()
         )

@@ -614,6 +614,40 @@ class GameEngineTest {
     }
 
     @Test
+    fun onlineSafeRoleCompositionForThreePlayersUsesOnlyTheThreeCoreRoles() {
+        val composition = LocalGameFactory.onlineSafeRoleComposition(3)
+
+        assertEquals(1, composition.counts[RoleCatalog.ASESINO])
+        assertEquals(1, composition.counts[RoleCatalog.MEDICO])
+        assertEquals(1, composition.counts[RoleCatalog.POLICIA])
+        assertEquals(0, composition.counts[RoleCatalog.ALDEANO])
+        assertEquals(3, composition.counts.values.sum())
+    }
+
+    @Test
+    fun onlineTestMatchWithThreePlayersAssignsTheThreeCoreRoles() {
+        val session = GameSession(
+            code = "TEST-3",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            players = listOf(
+                GamePlayer("Ana", "A", isHuman = true),
+                GamePlayer("Beto", "B"),
+                GamePlayer("Ciro", "C")
+            ),
+            onlineTestMode = true,
+            roleComposition = LocalGameFactory.onlineSafeRoleComposition(3)
+        )
+
+        val assigned = LocalGameFactory.assignRoles(session)
+
+        assertEquals(
+            setOf(RoleCatalog.ASESINO, RoleCatalog.MEDICO, RoleCatalog.POLICIA),
+            assigned.players.mapNotNull { it.role?.key }.toSet()
+        )
+    }
+
+    @Test
     fun onlineRecordedNightMissingActionsAdvanceAsNoAction() {
         val session = baseSession().copy(phase = GamePhase.NOCHE_ASESINO)
 

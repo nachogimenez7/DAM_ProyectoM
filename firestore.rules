@@ -58,16 +58,18 @@ service cloud.firestore {
         && data.hostVersion is int
         && data.hostVersion >= 0
         && data.partidaInicialCreada is bool
+        && data.modoPrueba is bool
         && data.jugadoresEsperados is int
-        && data.jugadoresEsperados >= 5
+        && ((data.modoPrueba == true && data.jugadoresEsperados >= 3)
+          || (data.modoPrueba == false && data.jugadoresEsperados >= 5))
         && data.jugadoresEsperados <= 15
         && data.maxJugadores is int
-        && data.maxJugadores >= 5
+        && ((data.modoPrueba == true && data.maxJugadores >= 3)
+          || (data.modoPrueba == false && data.maxJugadores >= 5))
         && data.maxJugadores <= 15
         && data.jugadoresActuales is int
         && data.jugadoresActuales >= 0
         && data.jugadoresActuales <= data.jugadoresEsperados
-        && data.modoPrueba is bool
         && isString(data.origen, 1, 40);
     }
 

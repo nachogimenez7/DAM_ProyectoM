@@ -8,6 +8,33 @@ import org.junit.Test
 class OnlineLobbyRulesTest {
 
     @Test
+    fun staleWaitingRoomIsHiddenFromBrowser() {
+        val now = 10_000_000L
+
+        assertFalse(
+            OnlineLobbyRules.isRoomFresh(
+                updatedAtMs = now - 31 * 60 * 1000L,
+                nowMs = now,
+                maxAgeMs = 30 * 60 * 1000L
+            )
+        )
+    }
+
+    @Test
+    fun recentOrPendingServerTimestampRoomRemainsVisible() {
+        val now = 10_000_000L
+
+        assertTrue(
+            OnlineLobbyRules.isRoomFresh(
+                updatedAtMs = now - 5 * 60 * 1000L,
+                nowMs = now,
+                maxAgeMs = 30 * 60 * 1000L
+            )
+        )
+        assertTrue(OnlineLobbyRules.isRoomFresh(0L, now, 30 * 60 * 1000L))
+    }
+
+    @Test
     fun activePlayersExcludeReleasedDisconnectedSlots() {
         val players = listOf(
             participant("host", connected = true, ready = true, active = true, order = 0),

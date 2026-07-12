@@ -57,10 +57,10 @@ Campos base:
 - `hostActivoId`: jugador que resuelve fases en ese momento.
 - `hostVersion`: contador de handoff de host.
 - `partidaInicialCreada`: `true` cuando ya se repartieron roles una vez.
-- `jugadoresEsperados`: cantidad fija definida por el host, de 5 a 15.
+- `jugadoresEsperados`: cantidad fija definida por el host, de 5 a 15; en una sala de prueba, de 3 a 15.
 - `maxJugadores`: mismo limite visible que `jugadoresEsperados`.
 - `jugadoresActuales`: contador visible de jugadores registrados en la sala.
-- `modoPrueba`: booleano para marcar salas experimentales.
+- `modoPrueba`: habilita explicitamente salas experimentales con un minimo de 3 jugadores. El cliente lo controla, por lo que este limite es solo para pruebas entre amigos; App Check debera protegerlo antes de produccion.
 - `origen`: origen tecnico, por ejemplo `android-online-create`.
 - `creadaEn`: timestamp de servidor.
 - `actualizadaEn`: timestamp de servidor.
@@ -71,6 +71,12 @@ Campos agregados durante la partida:
 - `estadoPartida`: estado autoritativo publicado por el host.
 - `estadoClientes`: estado resumido publicado por cada cliente.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
+
+Dentro de `estadoPartida`, ademas de fase, ronda, jugadores y votos, se publican dos
+datos de presentacion compartida:
+
+- `nocheSinVictima`: permite que todos los clientes muestren la revelacion de amanecer sin muertes.
+- `presentacionVotacion`: identificador durable de `expulsion` o `sin_expulsion`; evita que un invitado pierda la ventana si el host avanza de fase despues de presentarla.
 
 `partidaInicial.config` conserva la configuracion elegida por el host para que todos los
 celulares, incluido un reingreso, reconstruyan la misma partida:
@@ -147,6 +153,8 @@ Regla de producto actual:
 
 El online de prueba usa un preset seguro:
 
+- 3 jugadores de prueba: 1 asesino, 1 medico y 1 comisario/detective.
+- 4 jugadores de prueba: la composicion anterior mas 1 aldeano.
 - 5 a 15 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
 
 No se agregan por defecto Alcalde, Mercenario, Desertor, Espia, Bufon, Oraculo ni Payador en online. Siguen disponibles para local/IA y fases futuras.
@@ -194,6 +202,13 @@ Regla de sincronizacion por fase:
 - En online, los invitados no avanzan fases localmente.
 - Si el timer de un invitado termina antes de recibir `estadoPartida`, queda sincronizando.
 - El host activo publica `estadoPartida`; los invitados aplican estados nuevos e ignoran estados viejos o duplicados.
+
+Regla de cierre y revancha:
+
+- Al terminar una partida, la sala pasa a `finalizada`.
+- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida` y `estadoClientes`, y pone a todos los jugadores en no listos.
+- El navegador oculta salas `esperando` cuya `actualizadaEn` tenga mas de 30 minutos, para no mostrar salas huerfanas tras el cierre abrupto de un emulador o proceso.
+- Una sala llena permite intentar reingreso; la transaccion valida si el UID ya pertenecia a ella antes de rechazar por falta de cupo.
 
 ### `partidas/{partidaId}/acciones/{accionId}`
 

@@ -10,6 +10,11 @@ data class OnlineLobbyParticipant(
 )
 
 object OnlineLobbyRules {
+    fun isRoomFresh(updatedAtMs: Long, nowMs: Long, maxAgeMs: Long): Boolean {
+        if (updatedAtMs <= 0L) return true
+        return nowMs - updatedAtMs <= maxAgeMs
+    }
+
     fun activePlayers(players: List<OnlineLobbyParticipant>): List<OnlineLobbyParticipant> {
         return players.filter { it.activeInMatch }
     }

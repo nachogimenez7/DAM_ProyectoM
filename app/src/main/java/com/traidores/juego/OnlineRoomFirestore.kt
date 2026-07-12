@@ -73,7 +73,7 @@ object OnlineRoomFirestore {
         map: GameMap,
         origin: String,
         expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
-        modePrueba: Boolean = true,
+        modePrueba: Boolean = false,
         roomCode: String = generateRoomCode()
     ): OnlineRoomCreation {
         val roomReference = firestore.collection(ROOMS_COLLECTION).document()
@@ -81,10 +81,7 @@ object OnlineRoomFirestore {
             .document(uidTemporal)
         val roomNumber = (System.currentTimeMillis() % 10000).toString().padStart(4, '0')
         val safePlayerName = normalizedPlayerName(playerName)
-        val safeExpectedPlayers = expectedPlayers.coerceIn(
-            LocalGameFactory.MIN_PLAYERS,
-            LocalGameFactory.MAX_PLAYERS
-        )
+        val safeExpectedPlayers = normalizedExpectedPlayers(expectedPlayers, modePrueba)
         val roomName = "Sala de $safePlayerName $roomNumber"
         val roomData = hashMapOf<String, Any>(
             FIELD_NAME to roomName,
@@ -143,5 +140,14 @@ object OnlineRoomFirestore {
                 append(alphabet[Random.nextInt(alphabet.length)])
             }
         }
+    }
+
+    fun normalizedExpectedPlayers(expectedPlayers: Int, modePrueba: Boolean): Int {
+        val minimum = if (modePrueba) {
+            LocalGameFactory.TEST_MIN_PLAYERS
+        } else {
+            LocalGameFactory.MIN_PLAYERS
+        }
+        return expectedPlayers.coerceIn(minimum, LocalGameFactory.MAX_PLAYERS)
     }
 }

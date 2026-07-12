@@ -13,6 +13,7 @@ data class GameSession(
     val roleComposition: RoleCompositionConfig = RoleCompositionConfig(),
     val revealRolesOnDeath: Boolean = false,
     val showIndividualVotes: Boolean = true,
+    val onlineTestMode: Boolean = false,
     val quickTestMode: Boolean = false,
     val afkExpulsionEnabled: Boolean = false,
     val botDifficulty: BotDifficulty = BotDifficulty.NORMAL,
@@ -451,6 +452,7 @@ object GameRules {
 }
 
 object LocalGameFactory {
+    const val TEST_MIN_PLAYERS = 3
     const val MIN_PLAYERS = 5
     const val MAX_PLAYERS = 15
 
@@ -568,7 +570,10 @@ object LocalGameFactory {
         val effectiveForcedRole = forcedHumanRoleKey.takeIf {
             it.isBlank() || RoleCatalog.isAvailableOnMap(it, roleMap)
         }.orEmpty()
-        val normalizedComposition = normalizedRoleComposition(session)
+        val normalizedComposition = normalizedRoleComposition(
+            session,
+            minimumPlayers = if (session.onlineTestMode) TEST_MIN_PLAYERS else MIN_PLAYERS
+        )
         val roles = roleDeckFor(
             session.players.size,
             suffix,
@@ -681,7 +686,7 @@ object LocalGameFactory {
     }
 
     fun onlineSafeRoleComposition(playerCount: Int): RoleCompositionConfig {
-        val count = playerCount.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+        val count = playerCount.coerceIn(TEST_MIN_PLAYERS, MAX_PLAYERS)
         val counts = linkedMapOf(
             RoleCatalog.POLICIA to 1,
             RoleCatalog.MEDICO to 1,
@@ -712,8 +717,11 @@ object LocalGameFactory {
         return editableRoleKeys().filterNot { it == RoleCatalog.MERCENARIO }
     }
 
-    fun normalizedRoleComposition(session: GameSession): RoleCompositionConfig {
-        val playerCount = session.players.size.coerceIn(MIN_PLAYERS, MAX_PLAYERS)
+    fun normalizedRoleComposition(
+        session: GameSession,
+        minimumPlayers: Int = if (session.onlineTestMode) TEST_MIN_PLAYERS else MIN_PLAYERS
+    ): RoleCompositionConfig {
+        val playerCount = session.players.size.coerceIn(minimumPlayers, MAX_PLAYERS)
         val map = RoleMap.fromSessionKey(session.mapKey)
         val source = if (session.roleComposition.customized) {
             session.roleComposition

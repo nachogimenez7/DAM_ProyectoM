@@ -1,6 +1,14 @@
 package com.traidores.juego
 
 object OnlineAuthoritativeStateMapper {
+    fun nightHadNoVictimFromState(state: Map<String, Any?>): Boolean {
+        return (state["nocheSinVictima"] as? Boolean) ?: false
+    }
+
+    fun votePresentationFromState(state: Map<String, Any?>): String {
+        return (state["presentacionVotacion"] as? String).orEmpty()
+    }
+
     fun playersFromState(
         players: List<GamePlayer>,
         state: Map<String, Any?>

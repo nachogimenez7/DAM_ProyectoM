@@ -13,4 +13,16 @@ class OnlineRoomFirestoreTest {
         assertEquals(OnlineRoomFirestore.ROOM_CODE_LENGTH, code.length)
         assertTrue(code.matches(Regex("^[A-HJ-NP-Z2-9]{6}$")))
     }
+
+    @Test
+    fun testModeAllowsThreePlayersButNormalModeDoesNot() {
+        assertEquals(
+            LocalGameFactory.TEST_MIN_PLAYERS,
+            OnlineRoomFirestore.normalizedExpectedPlayers(1, modePrueba = true)
+        )
+        assertEquals(
+            LocalGameFactory.MIN_PLAYERS,
+            OnlineRoomFirestore.normalizedExpectedPlayers(3, modePrueba = false)
+        )
+    }
 }

@@ -2,18 +2,18 @@ package com.traidores.juego
 
 object RoomDisplayNames {
     private const val MAX_ROOM_DISPLAY_NAME = 18
+    private val LEGACY_PUBLIC_ID_SUFFIX = Regex("\\s+#\\d{1,12}$")
 
+    @Suppress("UNUSED_PARAMETER")
     fun withPublicId(profileName: String, publicId: String): String {
-        val safeName = OnlineRoomFirestore.normalizedPlayerName(profileName)
-        val numericId = publicId.trim().removePrefix("#").takeIf { it.isNotBlank() }
-            ?: return safeName.take(MAX_ROOM_DISPLAY_NAME)
-        val suffix = " #$numericId"
-        val availableNameLength = (MAX_ROOM_DISPLAY_NAME - suffix.length).coerceAtLeast(1)
-        val visibleName = if (safeName.length + suffix.length <= MAX_ROOM_DISPLAY_NAME) {
-            safeName
-        } else {
-            safeName.take(availableNameLength).trimEnd()
-        }
-        return "$visibleName$suffix"
+        return OnlineRoomFirestore.normalizedPlayerName(profileName)
+            .take(MAX_ROOM_DISPLAY_NAME)
+    }
+
+    fun withoutPublicId(storedName: String): String {
+        return storedName.trim()
+            .replace(LEGACY_PUBLIC_ID_SUFFIX, "")
+            .trim()
+            .take(MAX_ROOM_DISPLAY_NAME)
     }
 }

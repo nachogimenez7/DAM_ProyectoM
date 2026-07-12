@@ -18,11 +18,16 @@ const {
   orderBy,
   limit,
   getDocs,
+  deleteField,
 } = require("firebase/firestore");
 
 const projectId = "traidores-local";
 
-const roomData = (hostUid = "host_uid") => ({
+const roomData = (
+  hostUid = "host_uid",
+  expectedPlayers = 5,
+  modePrueba = false
+) => ({
   nombre: "Sala de Nacho 0001",
   codigoSala: "ABC234",
   estado: "esperando",
@@ -33,10 +38,10 @@ const roomData = (hostUid = "host_uid") => ({
   hostActivoId: hostUid,
   hostVersion: 0,
   partidaInicialCreada: false,
-  jugadoresEsperados: 5,
-  maxJugadores: 5,
+  jugadoresEsperados: expectedPlayers,
+  maxJugadores: expectedPlayers,
   jugadoresActuales: 1,
-  modoPrueba: true,
+  modoPrueba: modePrueba,
   origen: "rules-test",
   creadaEn: serverTimestamp(),
   actualizadaEn: serverTimestamp(),
@@ -89,6 +94,14 @@ async function main() {
     await assertFails(setDoc(doc(anon, "partidas", "room_no_auth"), roomData("host_uid")));
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create"), roomData("host_uid")));
     await assertFails(setDoc(doc(guest, "partidas", "room_spoof"), roomData("host_uid")));
+    await assertSucceeds(setDoc(
+      doc(host, "partidas", "room_test_three"),
+      roomData("host_uid", 3, true)
+    ));
+    await assertFails(setDoc(
+      doc(host, "partidas", "room_normal_three"),
+      roomData("host_uid", 3, false)
+    ));
 
     await seedRoom(testEnv);
 
@@ -193,6 +206,22 @@ async function main() {
       "estadoClientes.guest_uid.rolLeido": false,
       estado: "finalizada",
       ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
+      estado: "finalizada",
+      partidaInicialCreada: true,
+      partidaInicial: { fase: "REPARTO" },
+      estadoPartida: { fase: "RESULTADO" },
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
+      estado: "esperando",
+      partidaInicialCreada: false,
+      partidaInicial: deleteField(),
+      estadoPartida: deleteField(),
+      estadoClientes: deleteField(),
+      ultimaActividadOnline: serverTimestamp(),
+      actualizadaEn: serverTimestamp(),
     }));
 
     await seedRoom(testEnv, "room_handoff", "old_host_uid");

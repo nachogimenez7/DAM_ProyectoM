@@ -88,6 +88,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isTieVoteVisible = false
     private var voteExpulsionComplete = false
     private var voteNoExpulsionPresented = false
+    private var onlineVotePresentation = ""
+    private var lastAppliedOnlineVotePresentation = ""
     private var spectatorChoiceOffered = false
     private var isTraitorRevealDismissing = false
     private var isTraitorRevealRunning = false
@@ -1355,10 +1357,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     actionHistory = resolved.actionHistory
                 )
                 clearSelection()
+                val feedbackPresentation = feedbackState.submit(feedback)
+                blockingFeedbackPeriod = if (
+                    feedbackPresentation == GameplayFeedbackState.Presentation.PRIVATE
+                ) {
+                    GameplayTableUi.transitionSpec(before).period
+                } else {
+                    null
+                }
                 renderGame()
-                if (feedback?.blocksGameplay == true) {
-                    Toast.makeText(this, feedback.message, Toast.LENGTH_LONG).show()
-                } else if (feedback != null) {
+                if (
+                    feedbackPresentation == GameplayFeedbackState.Presentation.BANNER &&
+                    feedback != null
+                ) {
                     showActionFeedbackBanner(feedback)
                 }
             },
@@ -1582,6 +1593,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.nightKillTarget,
             session.nightSilenceTarget,
             session.dayEliminationTarget,
+            session.nightHadNoVictim,
+            onlineVotePresentation,
             session.votes.entries.sortedBy { it.key }.joinToString("#") { "${it.key}:${it.value}" },
             session.voteRound,
             session.tieVoteCandidates.joinToString("#"),
@@ -1601,6 +1614,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "victimaNoche" to session.nightKillTarget,
                 "silenciado" to session.nightSilenceTarget,
                 "expulsadoDia" to session.dayEliminationTarget,
+                "nocheSinVictima" to session.nightHadNoVictim,
+                "presentacionVotacion" to onlineVotePresentation,
                 "votos" to session.votes,
                 "rondaVoto" to session.voteRound,
                 "candidatosDesempate" to session.tieVoteCandidates,
@@ -1856,6 +1871,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             (state["victimaNoche"] as? String).orEmpty(),
             (state["silenciado"] as? String).orEmpty(),
             (state["expulsadoDia"] as? String).orEmpty(),
+            OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(state),
+            OnlineAuthoritativeStateMapper.votePresentationFromState(state),
             (state["rondaVoto"] as? Number)?.toInt() ?: session.voteRound,
             votesFromAuthoritativeState(state).entries.sortedBy { it.key }.joinToString("#") { "${it.key}:${it.value}" },
             stringListFromAuthoritativeState(state, "candidatosDesempate").joinToString("#"),
@@ -1885,6 +1902,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val previousPhaseIndex = session.phaseIndex
         val previousPrivateHint = session.privateHint
+        val incomingVotePresentation =
+            OnlineAuthoritativeStateMapper.votePresentationFromState(state)
+        onlineVotePresentation = incomingVotePresentation
         val updatedPlayers = playersFromAuthoritativeState(state) ?: session.players
         OnlineDebugLog.i(
             "phase_apply_authoritative roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} round=${(state["ronda"] as? Number)?.toInt() ?: session.round} phaseIndex=$phaseIndex"
@@ -1904,6 +1924,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ),
             winner = (state["ganador"] as? String).orEmpty(),
             nightKillTarget = (state["victimaNoche"] as? String).orEmpty(),
+            nightHadNoVictim = OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(state),
             nightSilenceTarget = (state["silenciado"] as? String).orEmpty(),
             dayEliminationTarget = (state["expulsadoDia"] as? String).orEmpty(),
             votes = votesFromAuthoritativeState(state),
@@ -1928,6 +1949,39 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             submittedOnlineNightActions.removeAll { it.startsWith("$onlinePartidaId:$onlinePlayerId:${session.round - 1}:") }
         }
         renderGame()
+        applyOnlineVotePresentation(incomingVotePresentation)
+    }
+
+    private fun applyOnlineVotePresentation(presentation: String) {
+        if (
+            onlineIsHost ||
+            presentation.isBlank() ||
+            presentation == lastAppliedOnlineVotePresentation
+        ) {
+            return
+        }
+        lastAppliedOnlineVotePresentation = presentation
+        dismissActionFeedbackBannerNow()
+        hideCentralPublicEventBanner(immediate = true)
+        when {
+            presentation.startsWith("expulsion|") -> {
+                if (!isVoteResultVisible) {
+                    isVoteResultVisible = true
+                    voteResultAnimator.show(session)
+                }
+                voteResultAnimator.playExpulsion(session) {
+                    voteExpulsionComplete = true
+                }
+            }
+            presentation.startsWith("sin_expulsion|") -> {
+                voteNoExpulsionPresented = true
+                if (!isVoteResultVisible) {
+                    isVoteResultVisible = true
+                    voteResultAnimator.show(session)
+                }
+                voteResultAnimator.showNoExpulsion()
+            }
+        }
     }
 
     private fun authoritativeStateAppliedLocally(): Boolean {
@@ -1996,6 +2050,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun recordOnlinePhaseAdvance(before: GameSession, after: GameSession) {
         if (!isOnlineGameplay()) return
         if (before.phase == after.phase && before.phaseIndex == after.phaseIndex) return
+        if (after.phase == GamePhase.RECUENTO_VOTOS && before.phase != GamePhase.RECUENTO_VOTOS) {
+            onlineVotePresentation = ""
+            lastAppliedOnlineVotePresentation = ""
+        }
         recordOnlineAction(
             type = "fase_avanzada",
             targetName = "",
@@ -4573,6 +4631,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             clearCountdown()
             return
         }
+        // El arranque de la primera noche online lo decide el gate de sincronizacion
+        // (startOnlineFirstNight cuando todos leyeron el rol, o FORZAR NOCHE del host), NO el
+        // countdown. REPARTO no tiene timer (activePhaseSeconds == null), asi que sin esta
+        // guarda el countdown expira al instante y el host arranca la noche por la via
+        // generica (when(REPARTO) -> startNight), salteando el gate y sin limpiar
+        // onlineAwaitingHostAdvance. Ese flag queda en true y hace que activePhaseSeconds
+        // devuelva null en todas las fases, resolviendolas sin esperar el reloj.
+        if (isOnlineGameplay() && isOnlineStartupPhase()) {
+            clearCountdown()
+            return
+        }
+        // El invitado online que espera al host no corre countdown: se queda quieto hasta
+        // recibir estadoPartida. Sin esta guarda, en fases sin timer (AMANECER/RECUENTO) un
+        // countdown de duracion 0 expira apenas arranca, onCountdownExpired vuelve a renderizar,
+        // y el ciclo renderGame -> startCountdown -> onCountdownExpired se realimenta en bucle,
+        // satura el hilo principal y ahoga el listener de Firestore. El host avanza por timer.
+        if (
+            isOnlineGameplay() &&
+            !onlineIsHost &&
+            (onlineAwaitingHostAdvance || activePhaseSeconds() == null)
+        ) {
+            clearCountdown()
+            return
+        }
         countdown.ensurePhase(
             phaseIndex = session.phaseIndex,
             transitionDurationMs = 0L
@@ -4657,6 +4739,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun onCountdownExpired() {
+        // DIAG temporal: entender por que el host resuelve fases sin esperar el timer.
+        OnlineDebugLog.i(
+            "diag_cd_expired phase=${session.phase.name} pIdx=${session.phaseIndex} cIdx=${countdown.phaseIndex} stage=${countdown.stage} active=${activePhaseSeconds()} awaiting=$onlineAwaitingHostAdvance host=$onlineIsHost timing=${session.timingConfig.summary()}"
+        )
         if (session.winner.isNotBlank() || countdown.phaseIndex != session.phaseIndex) {
             clearCountdown()
             return
@@ -5067,7 +5153,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun activePhaseSeconds(): Int? {
-        if (onlineAwaitingHostAdvance) return null
+        // onlineAwaitingHostAdvance significa "invitado esperando el estado del host": solo
+        // suprime el reloj local del invitado. El host nunca espera a nadie, asi que su reloj
+        // no debe anularse aunque el flag quede en true por algun camino de arranque.
+        if (!onlineIsHost && onlineAwaitingHostAdvance) return null
         val timing = session.timingConfig.normalized()
         return when (session.phase) {
             GamePhase.NOCHE_ASESINO,
@@ -6173,6 +6262,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 renderGame()
                 return
             }
+            onlineVotePresentation = listOf(
+                "expulsion",
+                session.round,
+                session.voteRound,
+                session.phaseIndex,
+                session.dayEliminationTarget
+            ).joinToString("|")
+            lastPublishedAuthoritativeOnlineStateKey = ""
+            publishAuthoritativeOnlineState()
             voteResultAnimator.playExpulsion(session) {
                 voteExpulsionComplete = true
             }
@@ -6188,6 +6286,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             dismissActionFeedbackBannerNow()
             hideCentralPublicEventBanner(immediate = true)
             voteNoExpulsionPresented = true
+            onlineVotePresentation = listOf(
+                "sin_expulsion",
+                session.round,
+                session.voteRound,
+                session.phaseIndex
+            ).joinToString("|")
+            lastPublishedAuthoritativeOnlineStateKey = ""
+            publishAuthoritativeOnlineState()
             voteResultAnimator.showNoExpulsion()
             return
         }
