@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Tamaños de los carteles/overlays de gameplay, centralizados acá para poder
+      calibrarlos en un solo lugar (antes estaban hardcodeados en cada overlay del
+      activity_gameplay_mock.xml, calibrados para pantallas anchas tipo BlueStacks).
+
+      Estos valores están pensados para TELÉFONOS reales (que son más angostos en dp
+      que BlueStacks). Ajustá los números de acá mirando el preview / el A56 hasta que
+      el tamaño te guste; el cambio se refleja en todos los carteles que usen estos dimens.
+    -->
+
+    <!-- Carta que aparece en los reveals (muerte, etc.) -->
+    <dimen name="reveal_card_stage">124dp</dimen>
+    <dimen name="reveal_card_width">78dp</dimen>
+    <dimen name="reveal_card_height">104dp</dimen>
+    <dimen name="reveal_blood_large">58dp</dimen>
+    <dimen name="reveal_blood_small">52dp</dimen>
+
+    <!-- Panel del reveal del Oráculo (imagen de fondo con proporción ~1.74:1).
+         Antes era 540x310dp fijo, más ancho que un teléfono. -->
+    <dimen name="reveal_oracle_panel_width">336dp</dimen>
+    <dimen name="reveal_oracle_panel_height">193dp</dimen>
+</resources>
