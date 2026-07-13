@@ -17,6 +17,7 @@ object MusicManager {
     private var victoryPlayer: MediaPlayer? = null
     private var playerStarted = false
     private var victoryPlayerStarted = false
+    private var victoryCompletionListener: (() -> Unit)? = null
     private var transitionPaused = false
 
     private val pauseIfBackground = Runnable {
@@ -108,9 +109,14 @@ object MusicManager {
         }
     }
 
-    fun playVictoryMusic(context: Context, winnerKey: String) {
+    fun playVictoryMusic(
+        context: Context,
+        winnerKey: String,
+        onCompletion: (() -> Unit)? = null
+    ) {
         val trackRes = victoryTrackForWinner(winnerKey)
         if (victoryPlayer != null && currentVictoryTrackRes == trackRes) {
+            victoryCompletionListener = onCompletion
             refresh(context)
             return
         }
@@ -118,6 +124,7 @@ object MusicManager {
         transitionPaused = true
         pausePlayer()
         stopVictoryMusic()
+        victoryCompletionListener = onCompletion
         currentVictoryTrackRes = trackRes
         val appContext = context.applicationContext
         val sharedPref = AudioPreferences.preferences(appContext)
@@ -137,11 +144,14 @@ object MusicManager {
                 true
             }
             setOnCompletionListener { completed ->
+                val completionListener = victoryCompletionListener
                 if (victoryPlayer === completed) {
                     victoryPlayer = null
                     victoryPlayerStarted = false
+                    victoryCompletionListener = null
                 }
                 completed.runCatching { release() }
+                completionListener?.invoke()
             }
             runCatching {
                 start()
@@ -173,6 +183,7 @@ object MusicManager {
         }
         victoryPlayer = null
         victoryPlayerStarted = false
+        victoryCompletionListener = null
         currentVictoryTrackRes = 0
     }
 

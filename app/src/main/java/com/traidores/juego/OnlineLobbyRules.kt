@@ -6,7 +6,8 @@ data class OnlineLobbyParticipant(
     val ready: Boolean,
     val activeInMatch: Boolean,
     val order: Int,
-    val lastSeenLocalMs: Long = 0L
+    val lastSeenLocalMs: Long = 0L,
+    val alive: Boolean = true
 )
 
 object OnlineLobbyRules {
@@ -30,9 +31,9 @@ object OnlineLobbyRules {
         if (activeHostId.isBlank()) return null
         val activePlayers = activePlayers(players)
         val activeHost = activePlayers.firstOrNull { it.id == activeHostId }
-        if (activeHost?.connected == true) return null
+        if (activeHost?.connected == true && activeHost.alive) return null
         return activePlayers
-            .filter { it.connected }
+            .filter { it.connected && it.alive }
             .minWithOrNull(compareBy<OnlineLobbyParticipant> { it.order }.thenBy { it.id })
     }
 

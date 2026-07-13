@@ -123,6 +123,20 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
+    fun deadConnectedHostHandsOffToFirstLivingConnectedPlayer() {
+        val players = listOf(
+            participant("host", connected = true, ready = true, active = true, order = 0, alive = false),
+            participant("dead", connected = true, ready = true, active = true, order = 1, alive = false),
+            participant("living-b", connected = true, ready = true, active = true, order = 3),
+            participant("living-a", connected = true, ready = true, active = true, order = 2)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(players, activeHostId = "host")
+
+        assertEquals("living-a", candidate?.id)
+    }
+
+    @Test
     fun connectedHostIsNotReplacedEvenWhenLocalTimestampLooksStale() {
         val players = listOf(
             participant(
@@ -170,7 +184,8 @@ class OnlineLobbyRulesTest {
         ready: Boolean,
         active: Boolean,
         order: Int,
-        lastSeenLocalMs: Long = 0L
+        lastSeenLocalMs: Long = 0L,
+        alive: Boolean = true
     ): OnlineLobbyParticipant {
         return OnlineLobbyParticipant(
             id = id,
@@ -178,7 +193,8 @@ class OnlineLobbyRulesTest {
             ready = ready,
             activeInMatch = active,
             order = order,
-            lastSeenLocalMs = lastSeenLocalMs
+            lastSeenLocalMs = lastSeenLocalMs,
+            alive = alive
         )
     }
 }

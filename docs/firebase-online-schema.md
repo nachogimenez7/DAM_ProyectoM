@@ -172,8 +172,11 @@ Reglas importantes:
 - Si la sala esta `en_juego`, el reingreso abre gameplay directo con la misma carta, fase y estado vivo/muerto.
 - El reingreso nunca debe llamar al reparto local como fallback. Si faltan `partidaInicial`, `estadoPartida`, `fase` o el jugador por `uidTemporal`, se muestra error y se limpia la recuperacion local.
 - Si un jugador esta desconectado durante noche o votacion, su accion cuenta como ausente.
-- Si el host activo cae, el primer jugador conectado segun `orden` puede tomar `hostActivoId`.
+- Si el host activo se desconecta o su personaje muere, el primer jugador vivo y conectado segun `orden` puede tomar `hostActivoId`. El cambio es tecnico e invisible; `hostId` sigue identificando al creador de la sala.
 - En gameplay online, los clientes solo registran acciones/votos; el host activo publica el resultado en `estadoPartida`.
+- Los carteles compartidos de amanecer y votacion no dependen de un boton exclusivo del host. Cada jugador vivo publica `presentacionConfirmada`; el coordinador avanza cuando todos confirmaron despues de 3 segundos o al cumplirse un maximo de 10 segundos.
+- Los eliminados siguen viendo carteles y chat publico en modo solo lectura, pero no cuentan en `LISTOS n/total`.
+- La pantalla ganadora vuelve al lobby al terminar la musica de victoria; 45 segundos quedan como respaldo si el audio esta desactivado o falla.
 - La noche y la votacion esperan el timer completo. No hay avance temprano aunque todos hayan actuado.
 - En noche, si un jugador envia mas de una accion valida para la misma ronda, se toma la ultima por `creadaEnLocal`.
 - En votacion/desempate, si un jugador vota mas de una vez en la misma fase, se toma el ultimo voto por `creadaEnLocal`.
@@ -194,6 +197,7 @@ Campos actuales dentro de `estadoClientes.{uidTemporal}`:
 - `estadoArranque`: `sincronizando`, `leyendo_rol`, `rol_leido` o `en_partida`.
 - `aplicoEstadoPartida`: `true` cuando el cliente ya aplico al menos un estado autoritativo o es el host activo.
 - `sincronizando`: `true` cuando el cliente esta esperando una fase publicada por el host.
+- `presentacionConfirmada`: identificador de la ultima presentacion compartida cuyo boton `CONTINUAR` pulso ese cliente.
 - `ultimaFaseAplicadaEnLocal`: fase e indice que el cliente tiene aplicada localmente, por ejemplo `NOCHE_ASESINO:1`.
 - `jugador`, `rolKey`: datos de depuracion para Logcat/Firebase Console.
 
