@@ -692,6 +692,7 @@ object LocalGameFactory {
             RoleCatalog.MEDICO to 1,
             RoleCatalog.ASESINO to 1
         )
+        if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
         val specialCount = counts.values.sum()
         counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
         return RoleCompositionConfig(counts = counts, customized = true)

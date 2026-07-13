@@ -12,7 +12,7 @@ Detectadas a partir del código y de [`../../ESTADO_ACTUAL.md`](../../ESTADO_ACT
 | F2 | **Bufón** | Parcial | Tiene victoria especial por expulsión y el bot ya provoca/acepta acusaciones para perseguirla. Sigue **sin acción nocturna propia**, por diseño. |
 | F3 | **Modo online** | Parcial / Experimental | Crear/buscar sala, presencia, reconstrucción y sync por fases funcionan, con **Auth anónima** (las reglas usan `request.auth.uid`), pero sin App Check, Cloud Functions, Auth con cuentas reales ni limpieza automática. Ver `firebase-online-schema.md` → "Límites actuales". |
 | F4 | **Selector de idioma** | Parcial | Persiste `language` en preferencias pero **no cambia los textos** (no hay i18n real). |
-| F5 | **Reparto online** | Parcial | Usa preset seguro reducido (sólo Policía/Médico/Asesino/Aldeanos). Roles especiales no disponibles online. |
+| F5 | **Reparto online** | Parcial | Usa preset seguro reducido (Policía/Médico/Asesino/Aldeanos) y suma 1 Mercenario desde 7 jugadores. Los demás roles especiales siguen pendientes. |
 
 ## Deuda técnica
 

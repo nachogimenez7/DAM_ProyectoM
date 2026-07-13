@@ -95,7 +95,7 @@ Tres presets (`RoleCompositionPreset`):
 
 Máximo de asesinos según jugadores: 1 (hasta 8), 2 (9–12), 3 (13+).
 
-**Online:** usa un preset seguro reducido (`onlineSafeRoleComposition`): solo 1 Policía, 1 Médico, 1 Asesino y el resto Aldeanos, sin roles especiales.
+**Online:** usa un preset seguro reducido (`onlineSafeRoleComposition`): 1 Policía, 1 Médico, 1 Asesino y el resto Aldeanos; desde 7 jugadores suma 1 Mercenario.
 
 ## Tiempos (`GameTimingPreset`)
 

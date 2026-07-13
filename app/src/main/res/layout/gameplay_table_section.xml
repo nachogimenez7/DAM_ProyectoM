@@ -178,7 +178,11 @@
                     android:text="Mira tu rol. La noche empieza enseguida."
                     android:textColor="@color/text_primary"
                     android:textSize="10.5sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="10.5sp"
+                    app:autoSizeMinTextSize="8sp"
+                    app:autoSizeStepGranularity="0.5sp"
+                    app:autoSizeTextType="uniform" />
 
                 <FrameLayout
                     android:id="@+id/phaseProgressTrack"
@@ -610,10 +614,15 @@
                         android:fontFamily="sans-serif"
                         android:gravity="center"
                         android:includeFontPadding="false"
+                        android:maxLines="1"
                         android:text="ESTAS ELIMINADO"
                         android:textColor="@color/accent_red"
                         android:textSize="19sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="19sp"
+                        app:autoSizeMinTextSize="13sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
 
                     <TextView
                         android:layout_width="match_parent"
@@ -626,7 +635,11 @@
                         android:text="Puedes abrir el chat para seguir observando la partida."
                         android:textColor="@color/text_primary"
                         android:textSize="11.5sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="11.5sp"
+                        app:autoSizeMinTextSize="8sp"
+                        app:autoSizeStepGranularity="0.5sp"
+                        app:autoSizeTextType="uniform" />
                 </LinearLayout>
             </LinearLayout>
 

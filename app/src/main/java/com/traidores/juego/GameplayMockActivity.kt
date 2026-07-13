@@ -24,6 +24,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.FrameLayout
@@ -352,6 +353,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var oracleRevealPanel: FrameLayout
     private lateinit var oracleRevealPlayer: TextView
     private lateinit var btnContinueOracleReveal: Button
+    private lateinit var traitorRevealCardsScroll: HorizontalScrollView
     private lateinit var traitorRevealCards: LinearLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
@@ -761,6 +763,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         btnTieRevealMayor.setOnClickListener { revealMayorFromTieVote() }
         btnConfirmTieVote.setOnClickListener { confirmTieVoteSelection() }
+        traitorRevealCardsScroll = findViewById(R.id.traitorRevealCardsScroll)
         traitorRevealCards = findViewById(R.id.traitorRevealCards)
         traitorRevealContent = findViewById(R.id.traitorRevealContent)
         traitorRevealOverlay = findViewById(R.id.traitorRevealOverlay)
@@ -4196,8 +4199,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val measuredHeightPx = listOf(leftPlayersScroll.height, rightPlayersScroll.height)
             .filter { it > 0 }
             .minOrNull()
-        val availableHeightDp = measuredHeightPx?.let(::pxToDp)
-            ?: (resources.configuration.screenHeightDp - 16).coerceAtLeast(240)
+        val bottomPanelInsetDp = if (portrait) BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12 else 0
+        val availableHeightDp = measuredHeightPx
+            ?.let { (pxToDp(it) - bottomPanelInsetDp).coerceAtLeast(1) }
+            ?: (resources.configuration.screenHeightDp - 16 - bottomPanelInsetDp)
+                .coerceAtLeast(240)
         val metrics = GameplayTableUi.companionCardMetrics(
             totalPlayers,
             availableHeightDp,
@@ -4244,7 +4250,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             rightPlayersContainer.gravity = verticalGravity or Gravity.END
             leftPlayersContainer.setPadding(dp(2), 0, 0, 0)
             rightPlayersContainer.setPadding(0, 0, dp(2), 0)
-            val bottomScrollInset = if (metrics.scrollEnabled) BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12 else 0
+            val bottomScrollInset = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
             leftPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
             rightPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
             bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
@@ -6936,6 +6942,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         isTraitorRevealDismissing = false
         isTraitorRevealRunning = true
         traitorRevealCards.removeAllViews()
+        val cardsViewportWidthDp = (
+            resources.configuration.screenWidthDp -
+                32 -
+                pxToDp(traitorRevealContent.paddingLeft + traitorRevealContent.paddingRight)
+        ).coerceAtLeast(220)
+        traitorRevealCardsScroll.layoutParams =
+            (traitorRevealCardsScroll.layoutParams as LinearLayout.LayoutParams).apply {
+                width = if (teammates.size >= 3) {
+                    dp(cardsViewportWidthDp)
+                } else {
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                }
+            }
+        traitorRevealCards.minimumWidth = if (teammates.size >= 3) {
+            dp(cardsViewportWidthDp)
+        } else {
+            0
+        }
+        traitorRevealCardsScroll.scrollTo(0, 0)
 
         val cardViews = teammates.map { teammate ->
             createTraitorRevealCard(teammate)
@@ -7154,6 +7179,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.winner.isNotBlank()) return false
         val human = GameEngine.humanPlayer(session)
         if (human.alive) return false
+        if (hasPendingDawnRevealSequence()) return false
         if (isBlockingGameplayUiActive()) return false
         spectatorChoiceOffered = true
         showSpectatorChoiceDialog(human)
@@ -7166,25 +7192,100 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val wonAsJester = session.specialVictories.any {
             it.playerName == human.name && it.roleKey == RoleCatalog.BUFON
         }
-        val title = if (wonAsJester) "¡Ganaste como Bufón!" else "Te eliminaron"
+        val title = if (wonAsJester) "¡GANASTE COMO BUFÓN!" else "TE ELIMINARON"
         val message = if (wonAsJester) {
             "El pueblo te expulsó y cumpliste tu objetivo. Podés quedarte a ver cómo termina la partida o volver al menú."
         } else {
             "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver al menú."
         }
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(22), dp(24), dp(18))
+            setBackgroundResource(R.drawable.bg_dialog_game_panel)
+        }
+        content.addView(
+            TextView(this).apply {
+                text = title
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 24f
+                gravity = Gravity.CENTER
+                typeface = Typeface.DEFAULT_BOLD
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        content.addView(
+            TextView(this).apply {
+                text = message
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 16f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(10), 0, dp(18))
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        fun dialogButton(label: String, gold: Boolean): Button {
+            return Button(this).apply {
+                text = label
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                minHeight = 0
+                minWidth = 0
+                setPadding(dp(6), 0, dp(6), 0)
+                setTextColor(getColor(if (gold) R.color.bg_dark else R.color.text_primary))
+                setBackgroundResource(if (gold) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
+            }
+        }
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val continueButton = dialogButton("SEGUIR MIRANDO", gold = true)
+        val menuButton = dialogButton("VOLVER AL MENÚ", gold = false)
+        val availableButtonRowWidthDp = resources.configuration.screenWidthDp - 32 - 48 - 12
+        val buttonWidth = (availableButtonRowWidthDp / 2).coerceIn(112, 138)
+        buttonRow.addView(
+            continueButton,
+            LinearLayout.LayoutParams(dp(buttonWidth), dp(44)).apply { rightMargin = dp(6) }
+        )
+        buttonRow.addView(
+            menuButton,
+            LinearLayout.LayoutParams(dp(buttonWidth), dp(44)).apply { leftMargin = dp(6) }
+        )
+        content.addView(buttonRow)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
             .setCancelable(false)
-            .setPositiveButton("SEGUIR MIRANDO") { dialog, _ ->
-                dialog.dismiss()
-                enterSpectatorFastForward()
-            }
-            .setNegativeButton("VOLVER AL MENÚ") { dialog, _ ->
-                dialog.dismiss()
-                returnToLobby()
-            }
-            .show()
+            .create()
+        continueButton.setOnClickListener {
+            dialog.dismiss()
+            enterSpectatorFastForward()
+        }
+        menuButton.setOnClickListener {
+            dialog.dismiss()
+            returnToLobby()
+        }
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(
+                minOf(resources.displayMetrics.widthPixels - dp(32), dp(430)),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+            setDimAmount(0.58f)
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
     }
 
     private fun enterSpectatorFastForward() {

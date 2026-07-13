@@ -53,6 +53,19 @@ class OnlineActionResolverTest {
     }
 
     @Test
+    fun nightActionsKeepLatestMercenarySilence() {
+        val actions = listOf(
+            record("silenciar", actor = "Mercenario", target = "Aldeano1", createdAt = 10),
+            record("silenciar", actor = "Mercenario", target = "Aldeano2", createdAt = 20)
+        )
+
+        val resolved = OnlineActionResolver.nightActions(actions, round = 1)
+
+        assertEquals("Mercenario", resolved.mercenaryAction?.actorName)
+        assertEquals("Aldeano2", resolved.mercenaryAction?.targetName)
+    }
+
+    @Test
     fun votesKeepLatestVotePerActor() {
         val actions = listOf(
             record("votar", actor = "A", target = "B", phase = GamePhase.VOTACION.name, createdAt = 10),

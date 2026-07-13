@@ -598,19 +598,32 @@ class GameEngineTest {
     }
 
     @Test
-    fun onlineSafeRoleCompositionForFivePlayersUsesBasicStableRoles() {
-        val composition = LocalGameFactory.onlineSafeRoleComposition(5)
-        val largerComposition = LocalGameFactory.onlineSafeRoleComposition(8)
+    fun onlineSafeRoleCompositionAddsMercenaryFromSevenPlayers() {
+        val fivePlayers = LocalGameFactory.onlineSafeRoleComposition(5)
+        val sixPlayers = LocalGameFactory.onlineSafeRoleComposition(6)
+        val sevenPlayers = LocalGameFactory.onlineSafeRoleComposition(7)
+        val eightPlayers = LocalGameFactory.onlineSafeRoleComposition(8)
 
-        assertEquals(1, composition.counts[RoleCatalog.ASESINO])
-        assertEquals(1, composition.counts[RoleCatalog.MEDICO])
-        assertEquals(1, composition.counts[RoleCatalog.POLICIA])
-        assertEquals(2, composition.counts[RoleCatalog.ALDEANO])
-        assertEquals(0, composition.counts[RoleCatalog.ALCALDE] ?: 0)
-        assertEquals(5, composition.counts.values.sum())
-        assertEquals(0, largerComposition.counts[RoleCatalog.ALCALDE] ?: 0)
-        assertEquals(5, largerComposition.counts[RoleCatalog.ALDEANO])
-        assertEquals(8, largerComposition.counts.values.sum())
+        assertEquals(1, fivePlayers.counts[RoleCatalog.ASESINO])
+        assertEquals(1, fivePlayers.counts[RoleCatalog.MEDICO])
+        assertEquals(1, fivePlayers.counts[RoleCatalog.POLICIA])
+        assertEquals(0, fivePlayers.counts[RoleCatalog.MERCENARIO] ?: 0)
+        assertEquals(2, fivePlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(5, fivePlayers.counts.values.sum())
+
+        assertEquals(0, sixPlayers.counts[RoleCatalog.MERCENARIO] ?: 0)
+        assertEquals(3, sixPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(6, sixPlayers.counts.values.sum())
+
+        assertEquals(1, sevenPlayers.counts[RoleCatalog.MERCENARIO])
+        assertEquals(3, sevenPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(0, sevenPlayers.counts[RoleCatalog.ALCALDE] ?: 0)
+        assertEquals(7, sevenPlayers.counts.values.sum())
+
+        assertEquals(1, eightPlayers.counts[RoleCatalog.MERCENARIO])
+        assertEquals(4, eightPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(0, eightPlayers.counts[RoleCatalog.ALCALDE] ?: 0)
+        assertEquals(8, eightPlayers.counts.values.sum())
     }
 
     @Test

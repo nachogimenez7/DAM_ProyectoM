@@ -184,6 +184,14 @@ El inicio online usa roles basicos seguros:
 - 1 Asesino
 - 1 Medico
 - 1 Detective/Comisario
+- 1 Mercenario desde 7 jugadores
 - resto Aldeanos
 
-No se usan por defecto Alcalde, Mercenario, Desertor, Espia, Bufon, Oraculo ni Payador en online durante esta prueba.
+Con 5-6 jugadores no hay Mercenario. Desde 7 jugadores se agrega uno y los demas cupos siguen siendo Aldeanos. No se usan por defecto Alcalde, Desertor, Espia, Bufon, Oraculo ni Payador en online durante esta prueba.
+
+Para validar al Mercenario desde 7 jugadores:
+
+1. Confirmar que comparte el chat de Traidores con el Asesino.
+2. Durante la noche, elegir un objetivo y verificar `action_record_success` con `accion=silenciar`.
+3. Al amanecer, confirmar que todos los dispositivos muestran el reveal de silencio.
+4. Verificar que el jugador silenciado puede leer el chat, pero no escribir ni votar durante ese dia.

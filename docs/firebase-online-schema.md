@@ -155,9 +155,10 @@ El online de prueba usa un preset seguro:
 
 - 3 jugadores de prueba: 1 asesino, 1 medico y 1 comisario/detective.
 - 4 jugadores de prueba: la composicion anterior mas 1 aldeano.
-- 5 a 15 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
+- 5 y 6 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
+- 7 a 15 jugadores: la composicion anterior suma 1 mercenario y completa con aldeanos.
 
-No se agregan por defecto Alcalde, Mercenario, Desertor, Espia, Bufon, Oraculo ni Payador en online. Siguen disponibles para local/IA y fases futuras.
+No se agregan por defecto Alcalde, Desertor, Espia, Bufon, Oraculo ni Payador en online. Siguen disponibles para local/IA y fases futuras.
 
 Reglas importantes:
 

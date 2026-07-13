@@ -81,7 +81,7 @@
         android:layout_width="match_parent"
         android:layout_height="132dp"
         android:layout_centerInParent="true"
-        android:layout_marginHorizontal="82dp"
+        android:layout_marginHorizontal="48dp"
         android:background="@drawable/bg_central_public_event"
         android:clickable="false"
         android:clipChildren="false"
@@ -146,7 +146,11 @@
                     android:text="EVENTO DEL PUEBLO"
                     android:textColor="@color/bg_dark"
                     android:textSize="10sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="10sp"
+                    app:autoSizeMinTextSize="8sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
             </LinearLayout>
 
             <View
@@ -923,13 +927,26 @@
                 app:autoSizeStepGranularity="1sp"
                 app:autoSizeTextType="uniform" />
 
-            <LinearLayout
-                android:id="@+id/traitorRevealCards"
+            <HorizontalScrollView
+                android:id="@+id/traitorRevealCardsScroll"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:gravity="center"
-                android:orientation="horizontal" />
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:fillViewport="true"
+                android:overScrollMode="ifContentScrolls"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/traitorRevealCards"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:gravity="center"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -1018,7 +1035,7 @@
         <FrameLayout
             android:id="@+id/oracleRevealPanel"
             android:layout_width="@dimen/reveal_oracle_panel_width"
-            android:layout_height="@dimen/reveal_oracle_panel_height"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:background="@drawable/bg_oracle_reveal_panel"
             android:padding="5dp">
@@ -1037,7 +1054,7 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
                 android:paddingHorizontal="36dp"
