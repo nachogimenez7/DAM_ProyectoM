@@ -35,6 +35,7 @@ object OnlineRoomFirestore {
     const val FIELD_ACTIVE_HOST_ID = "hostActivoId"
     const val FIELD_HOST_VERSION = "hostVersion"
     const val FIELD_INITIAL_MATCH_CREATED = "partidaInicialCreada"
+    const val FIELD_CLEANUP_PENDING = "limpiezaPendiente"
     const val FIELD_ROOM_CODE = "codigoSala"
     const val FIELD_MAP_KEY = "mapa"
     const val FIELD_MAP_NAME = "mapaNombre"
@@ -94,6 +95,7 @@ object OnlineRoomFirestore {
             FIELD_ACTIVE_HOST_ID to uidTemporal,
             FIELD_HOST_VERSION to 0,
             FIELD_INITIAL_MATCH_CREATED to false,
+            FIELD_CLEANUP_PENDING to false,
             FIELD_EXPECTED_PLAYERS to safeExpectedPlayers,
             FIELD_MAX_PLAYERS to safeExpectedPlayers,
             FIELD_CURRENT_PLAYERS to 1,

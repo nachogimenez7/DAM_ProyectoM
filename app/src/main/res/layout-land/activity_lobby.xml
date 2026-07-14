@@ -14,12 +14,12 @@
 
     <ImageButton
         android:id="@+id/btnBack"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_margin="10dp"
         android:background="@drawable/bg_btn_dark_ripple"
         android:contentDescription="Volver"
-        android:padding="8dp"
+        android:padding="11dp"
         android:src="@android:drawable/ic_media_previous"
         app:tint="@color/text_secondary" />
 
@@ -180,6 +180,69 @@
                         android:text="MAPA"
                         android:textColor="@color/accent_gold"
                         android:textSize="15sp" />
+
+                    <LinearLayout
+                        android:id="@+id/onlinePlayerTargetPanel"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="7dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:orientation="vertical"
+                        android:padding="5dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:gravity="center"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btnDecreaseExpectedPlayers"
+                                style="@style/BtnDark"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:minWidth="48dp"
+                                android:minHeight="48dp"
+                                android:text="−"
+                                android:textSize="18sp" />
+
+                            <TextView
+                                android:id="@+id/onlineExpectedPlayersText"
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="5 JUGADORES"
+                                android:textColor="@color/accent_gold"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <Button
+                                android:id="@+id/btnIncreaseExpectedPlayers"
+                                style="@style/BtnDark"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:minWidth="48dp"
+                                android:minHeight="48dp"
+                                android:text="+"
+                                android:textSize="18sp" />
+                        </LinearLayout>
+
+                        <Button
+                            android:id="@+id/btnPlayWithPresent"
+                            style="@style/BtnDark"
+                            android:layout_width="match_parent"
+                            android:layout_height="48dp"
+                            android:layout_marginTop="4dp"
+                            android:maxLines="1"
+                            android:text="JUGAR CON LOS PRESENTES"
+                            app:autoSizeMaxTextSize="11sp"
+                            app:autoSizeMinTextSize="7sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/onlineCodePanel"

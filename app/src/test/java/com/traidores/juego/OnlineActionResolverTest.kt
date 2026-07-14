@@ -7,7 +7,7 @@ import org.junit.Test
 class OnlineActionResolverTest {
 
     @Test
-    fun nightActionsKeepLatestAssassinVotePerActor() {
+    fun nightActionsKeepFirstConfirmedAssassinVotePerActor() {
         val actions = listOf(
             record("matar", actor = "Asesino1", target = "Aldeano1", createdAt = 10),
             record("matar", actor = "Asesino1", target = "Aldeano2", createdAt = 20),
@@ -18,7 +18,7 @@ class OnlineActionResolverTest {
 
         assertEquals(
             mapOf(
-                "Asesino1" to "Aldeano2",
+                "Asesino1" to "Aldeano1",
                 "Asesino2" to "Aldeano3"
             ),
             resolved.assassinVotes
@@ -41,7 +41,7 @@ class OnlineActionResolverTest {
     }
 
     @Test
-    fun nightActionsKeepLatestSingleRoleAction() {
+    fun nightActionsKeepFirstConfirmedSingleRoleAction() {
         val actions = listOf(
             record("salvar", actor = "Medico", target = "Aldeano1", createdAt = 10),
             record("salvar", actor = "Medico", target = "Aldeano2", createdAt = 20)
@@ -49,11 +49,11 @@ class OnlineActionResolverTest {
 
         val resolved = OnlineActionResolver.nightActions(actions, round = 1)
 
-        assertEquals("Aldeano2", resolved.medicAction?.targetName)
+        assertEquals("Aldeano1", resolved.medicAction?.targetName)
     }
 
     @Test
-    fun nightActionsKeepLatestMercenarySilence() {
+    fun nightActionsKeepFirstConfirmedMercenarySilence() {
         val actions = listOf(
             record("silenciar", actor = "Mercenario", target = "Aldeano1", createdAt = 10),
             record("silenciar", actor = "Mercenario", target = "Aldeano2", createdAt = 20)
@@ -62,7 +62,7 @@ class OnlineActionResolverTest {
         val resolved = OnlineActionResolver.nightActions(actions, round = 1)
 
         assertEquals("Mercenario", resolved.mercenaryAction?.actorName)
-        assertEquals("Aldeano2", resolved.mercenaryAction?.targetName)
+        assertEquals("Aldeano1", resolved.mercenaryAction?.targetName)
     }
 
     @Test
@@ -127,6 +127,24 @@ class OnlineActionResolverTest {
         assertEquals(4, action.targetOrder)
     }
 
+    @Test
+    fun actionsFromAnotherMatchOrPhaseIndexAreIgnored() {
+        val actions = listOf(
+            record("matar", actor = "Asesino", target = "A", matchId = "actual", phaseIndex = 3),
+            record("matar", actor = "Asesino", target = "B", matchId = "anterior", phaseIndex = 3),
+            record("matar", actor = "Asesino", target = "C", matchId = "actual", phaseIndex = 2)
+        )
+
+        val resolved = OnlineActionResolver.nightActions(
+            records = actions,
+            matchId = "actual",
+            round = 1,
+            phaseIndex = 3
+        )
+
+        assertEquals(mapOf("Asesino" to "A"), resolved.assassinVotes)
+    }
+
     private fun record(
         action: String,
         actor: String,
@@ -136,9 +154,11 @@ class OnlineActionResolverTest {
         phaseIndex: Int = 1,
         createdAt: Long = 1,
         actorOrder: Int = -1,
-        targetOrder: Int = -1
+        targetOrder: Int = -1,
+        matchId: String = ""
     ): OnlineActionRecord {
         return OnlineActionRecord(
+            matchId = matchId,
             action = action,
             actorName = actor,
             targetName = target,

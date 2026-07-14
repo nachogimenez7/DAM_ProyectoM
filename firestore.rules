@@ -58,6 +58,7 @@ service cloud.firestore {
         && data.hostVersion is int
         && data.hostVersion >= 0
         && data.partidaInicialCreada is bool
+        && (!('limpiezaPendiente' in data) || data.limpiezaPendiente is bool)
         && data.modoPrueba is bool
         && data.jugadoresEsperados is int
         && ((data.modoPrueba == true && data.jugadoresEsperados >= 3)
@@ -85,6 +86,7 @@ service cloud.firestore {
           'hostActivoId',
           'hostVersion',
           'partidaInicialCreada',
+          'limpiezaPendiente',
           'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
@@ -104,6 +106,33 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/partidas/$(partidaId)).data.hostActivoId;
     }
 
+    function roomStableHostAfter(partidaId) {
+      return getAfter(/databases/$(database)/documents/partidas/$(partidaId)).data.hostId;
+    }
+
+    function isRoomStableHostAfter(partidaId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/partidas/$(partidaId))
+        && roomStableHostAfter(partidaId) == request.auth.uid;
+    }
+
+    function cleanupDeleteAllowed(partidaId) {
+      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return signedIn()
+        && room.hostId == request.auth.uid
+        && room.estado == 'esperando'
+        && room.limpiezaPendiente == true;
+    }
+
+    function validCurrentMatchId(partidaId, matchId) {
+      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return matchId is string
+        && matchId.size() >= 8
+        && matchId.size() <= 80
+        && room.partidaInicialCreada == true
+        && room.partidaInicial.matchId == matchId;
+    }
+
     function isRoomActiveHost(partidaId) {
       return signedIn()
         && exists(/databases/$(database)/documents/partidas/$(partidaId))
@@ -119,6 +148,8 @@ service cloud.firestore {
         && request.resource.data.hostNombre == resource.data.hostNombre
         && request.resource.data.jugadoresEsperados == resource.data.jugadoresEsperados
         && request.resource.data.maxJugadores == resource.data.maxJugadores
+        && request.resource.data.get('limpiezaPendiente', false)
+          == resource.data.get('limpiezaPendiente', false)
         && request.resource.data.modoPrueba == resource.data.modoPrueba
         && request.resource.data.origen == resource.data.origen;
     }
@@ -126,16 +157,15 @@ service cloud.firestore {
     function activeHostCanUpdateRoom() {
       return signedIn()
         && request.auth.uid == resource.data.hostActivoId
-        && validRoomPostUpdate(request.resource.data)
-        && immutableRoomFieldsUnchanged();
+        && immutableRoomFieldsUnchanged()
+        && !(request.resource.data.estado == 'esperando'
+          && resource.data.estado != 'esperando');
     }
 
     function waitingPlayerCountUpdate() {
       return signedIn()
         && resource.data.estado == 'esperando'
         && request.resource.data.estado == 'esperando'
-        && validRoomPostUpdate(request.resource.data)
-        && immutableRoomFieldsUnchanged()
         && changedOnly(['jugadoresActuales', 'actualizadaEn'])
         && request.resource.data.hostActivoId == resource.data.hostActivoId
         && request.resource.data.hostVersion == resource.data.hostVersion
@@ -146,8 +176,6 @@ service cloud.firestore {
 
     function handoffUpdate() {
       return signedIn()
-        && validRoomPostUpdate(request.resource.data)
-        && immutableRoomFieldsUnchanged()
         && changedOnly(['hostActivoId', 'hostVersion', 'actualizadaEn'])
         && request.resource.data.hostActivoId == request.auth.uid
         && request.resource.data.hostActivoId != resource.data.hostActivoId
@@ -157,6 +185,106 @@ service cloud.firestore {
         && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales;
     }
 
+    function lobbyPlayerTargetUpdate() {
+      return signedIn()
+        && request.auth.uid == resource.data.hostId
+        && resource.data.estado == 'esperando'
+        && request.resource.data.estado == 'esperando'
+        && resource.data.partidaInicialCreada == false
+        && resource.data.get('limpiezaPendiente', false) == false
+        && request.resource.data.get('limpiezaPendiente', false) == false
+        && changedOnly(['jugadoresEsperados', 'maxJugadores', 'actualizadaEn'])
+        && request.resource.data.jugadoresEsperados == request.resource.data.maxJugadores
+        && request.resource.data.jugadoresEsperados >= resource.data.jugadoresActuales;
+    }
+
+    function rematchResetUpdate() {
+      return signedIn()
+        && request.auth.uid == resource.data.hostId
+        && resource.data.estado in ['finalizada', 'en_juego']
+        && request.resource.data.estado == 'esperando'
+        && changedOnly([
+          'estado',
+          'hostActivoId',
+          'partidaInicialCreada',
+          'limpiezaPendiente',
+          'partidaInicial',
+          'estadoPartida',
+          'estadoClientes',
+          'actualizadaEn',
+          'ultimaActividadOnline'
+        ])
+        && request.resource.data.hostId == resource.data.hostId
+        && request.resource.data.hostNombre == resource.data.hostNombre
+        && request.resource.data.hostActivoId == resource.data.hostId
+        && request.resource.data.hostVersion == resource.data.hostVersion
+        && request.resource.data.partidaInicialCreada == false
+        && request.resource.data.limpiezaPendiente == true
+        && !('partidaInicial' in request.resource.data)
+        && !('estadoPartida' in request.resource.data)
+        && !('estadoClientes' in request.resource.data)
+        && request.resource.data.jugadoresEsperados == resource.data.jugadoresEsperados
+        && request.resource.data.maxJugadores == resource.data.maxJugadores
+        && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales;
+    }
+
+    function cleanupCompletionUpdate() {
+      return signedIn()
+        && request.auth.uid == resource.data.hostId
+        && resource.data.estado == 'esperando'
+        && request.resource.data.estado == 'esperando'
+        && resource.data.limpiezaPendiente == true
+        && request.resource.data.limpiezaPendiente == false
+        && changedOnly(['limpiezaPendiente', 'actualizadaEn']);
+    }
+
+    function creatorIsStale(partidaId) {
+      let path = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(resource.data.hostId);
+      return !exists(path)
+        || get(path).data.activoEnPartida == false
+        || (
+          get(path).data.estado == 'desconectado'
+          && get(path).data.ultimaConexion is timestamp
+          && get(path).data.ultimaConexion <= request.time - duration.value(60, 's')
+        );
+    }
+
+    function stableLobbyHostTransfer(partidaId) {
+      let candidatePath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.resource.data.hostId);
+      return signedIn()
+        && resource.data.estado in ['esperando', 'finalizada']
+        && request.resource.data.estado == resource.data.estado
+        && changedOnly([
+          'hostId',
+          'hostNombre',
+          'hostActivoId',
+          'hostVersion',
+          'jugadoresActuales',
+          'actualizadaEn'
+        ])
+        && request.resource.data.hostId != resource.data.hostId
+        && request.resource.data.hostActivoId == request.resource.data.hostId
+        && request.resource.data.hostVersion == resource.data.hostVersion + 1
+        && request.resource.data.partidaInicialCreada == resource.data.partidaInicialCreada
+        && request.resource.data.get('limpiezaPendiente', false)
+          == resource.data.get('limpiezaPendiente', false)
+        && request.resource.data.jugadoresEsperados == resource.data.jugadoresEsperados
+        && request.resource.data.maxJugadores == resource.data.maxJugadores
+        && request.resource.data.jugadoresActuales >= resource.data.jugadoresActuales - 1
+        && request.resource.data.jugadoresActuales <= resource.data.jugadoresActuales
+        && exists(candidatePath)
+        && get(candidatePath).data.estado == 'conectado'
+        && get(candidatePath).data.activoEnPartida != false
+        && request.resource.data.hostNombre == get(candidatePath).data.nombre
+        && (
+          request.auth.uid == resource.data.hostId
+          || (
+            request.auth.uid == request.resource.data.hostId
+            && creatorIsStale(partidaId)
+          )
+        );
+    }
+
     function clientStateSelfPublish(partidaId) {
       return signedIn()
         && changedOnly(['estadoClientes', 'ultimaActividadOnline'])
@@ -164,9 +292,7 @@ service cloud.firestore {
           .diff(resource.data.get('estadoClientes', {}))
           .affectedKeys()
           .hasOnly([request.auth.uid])
-        && exists(/databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid))
-        && validRoomPostUpdate(request.resource.data)
-        && immutableRoomFieldsUnchanged();
+        && exists(/databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid));
     }
 
     function validPlayerDocument(data, uidTemporal) {
@@ -241,6 +367,7 @@ service cloud.firestore {
           'hostActivoId',
           'hostVersion',
           'partidaInicialCreada',
+          'limpiezaPendiente',
           'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
@@ -260,6 +387,7 @@ service cloud.firestore {
           'hostActivoId',
           'hostVersion',
           'partidaInicialCreada',
+          'limpiezaPendiente',
           'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
@@ -268,12 +396,20 @@ service cloud.firestore {
         ])
         && validRoomBase(request.resource.data)
         && request.resource.data.hostId == request.auth.uid
-        && request.resource.data.hostActivoId == request.auth.uid;
+        && request.resource.data.hostActivoId == request.auth.uid
+        && request.resource.data.limpiezaPendiente == false;
 
-      allow update: if activeHostCanUpdateRoom()
-        || waitingPlayerCountUpdate()
-        || handoffUpdate()
-        || clientStateSelfPublish(partidaId);
+      allow update: if validRoomPostUpdate(request.resource.data)
+        && (
+          activeHostCanUpdateRoom()
+          || waitingPlayerCountUpdate()
+          || handoffUpdate()
+          || lobbyPlayerTargetUpdate()
+          || rematchResetUpdate()
+          || cleanupCompletionUpdate()
+          || stableLobbyHostTransfer(partidaId)
+          || clientStateSelfPublish(partidaId)
+        );
       allow delete: if false;
 
       match /jugadores/{uidTemporal} {
@@ -282,7 +418,9 @@ service cloud.firestore {
         allow create: if isSelf(uidTemporal)
           && validPlayerDocument(request.resource.data, uidTemporal);
 
-        allow update: if (isSelf(uidTemporal) || isRoomActiveHost(partidaId))
+        allow update: if (isSelf(uidTemporal)
+          || isRoomActiveHost(partidaId)
+          || isRoomStableHostAfter(partidaId))
           && validPlayerDocument(request.resource.data, uidTemporal);
 
         allow delete: if false;
@@ -293,6 +431,7 @@ service cloud.firestore {
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
+            'matchId',
             'tipo',
             'actorId',
             'actorNombre',
@@ -306,6 +445,7 @@ service cloud.firestore {
             'creadaEn',
             'creadaEnLocal'
           ])
+          && validCurrentMatchId(partidaId, request.resource.data.matchId)
           && request.resource.data.actorId == request.auth.uid
           && request.resource.data.tipo in ['accion_jugador', 'fase_avanzada']
           && isString(request.resource.data.actorNombre, 1, 18)
@@ -322,7 +462,8 @@ service cloud.firestore {
           && request.resource.data.detalles is map
           && request.resource.data.creadaEnLocal is int;
 
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if cleanupDeleteAllowed(partidaId);
       }
 
       match /chat/{mensajeId} {
@@ -330,6 +471,7 @@ service cloud.firestore {
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
+            'matchId',
             'actorId',
             'speaker',
             'mensaje',
@@ -339,6 +481,7 @@ service cloud.firestore {
             'creadaEn',
             'creadaEnLocal'
           ])
+          && validCurrentMatchId(partidaId, request.resource.data.matchId)
           && request.resource.data.actorId == request.auth.uid
           && isString(request.resource.data.speaker, 1, 18)
           && isString(request.resource.data.mensaje, 1, 140)
@@ -349,7 +492,8 @@ service cloud.firestore {
           && request.resource.data.isGod == false
           && request.resource.data.creadaEnLocal is int;
 
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if cleanupDeleteAllowed(partidaId);
       }
 
       match /chat_traidores/{mensajeId} {
@@ -362,6 +506,7 @@ service cloud.firestore {
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
+            'matchId',
             'actorId',
             'speaker',
             'mensaje',
@@ -372,6 +517,7 @@ service cloud.firestore {
             'creadaEn',
             'creadaEnLocal'
           ])
+          && validCurrentMatchId(partidaId, request.resource.data.matchId)
           && request.resource.data.actorId == request.auth.uid
           && isString(request.resource.data.speaker, 1, 18)
           && isString(request.resource.data.mensaje, 1, 140)
@@ -383,7 +529,8 @@ service cloud.firestore {
           && request.resource.data.canal == 'traidores'
           && request.resource.data.creadaEnLocal is int;
 
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if cleanupDeleteAllowed(partidaId);
       }
     }
 

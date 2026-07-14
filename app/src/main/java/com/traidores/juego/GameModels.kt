@@ -56,6 +56,8 @@ data class GameSession(
     val desertorChangedTeam: Boolean = false,
     val initialPlayerCount: Int = players.size,
     val startedAtEpochMs: Long = System.currentTimeMillis(),
+    val onlineMatchId: String = "",
+    val onlinePlayerUids: List<String> = emptyList(),
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0

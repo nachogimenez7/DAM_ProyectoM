@@ -17,7 +17,7 @@ data class OnlinePresentationProgress(
 
 object OnlinePresentationGate {
     const val MINIMUM_DISPLAY_MS = 3_000L
-    const val MAXIMUM_DISPLAY_MS = 10_000L
+    const val MAXIMUM_DISPLAY_MS = 6_000L
 
     fun progress(
         presentationKey: String,

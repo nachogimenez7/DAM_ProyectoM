@@ -19,6 +19,8 @@ const {
   limit,
   getDocs,
   deleteField,
+  deleteDoc,
+  runTransaction,
 } = require("firebase/firestore");
 
 const projectId = "traidores-local";
@@ -38,6 +40,7 @@ const roomData = (
   hostActivoId: hostUid,
   hostVersion: 0,
   partidaInicialCreada: false,
+  limpiezaPendiente: false,
   jugadoresEsperados: expectedPlayers,
   maxJugadores: expectedPlayers,
   jugadoresActuales: 1,
@@ -81,7 +84,7 @@ async function main() {
     firestore: {
       rules: fs.readFileSync("firestore.rules", "utf8"),
       host: "127.0.0.1",
-      port: 8080,
+      port: 8081,
     },
   });
 
@@ -105,10 +108,36 @@ async function main() {
 
     await seedRoom(testEnv);
 
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      const legacyRoom = roomData("host_uid");
+      delete legacyRoom.limpiezaPendiente;
+      await setDoc(doc(db, "partidas", "room_legacy"), legacyRoom);
+      await setDoc(
+        doc(db, "partidas", "room_legacy", "jugadores", "host_uid"),
+        playerData("host_uid", "Host", 0, true)
+      );
+    });
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_legacy"), {
+      estado: "en_juego",
+      partidaInicialCreada: true,
+      partidaInicial: { matchId: "legacy_match_1", fase: "REPARTO" },
+      actualizadaEn: serverTimestamp(),
+    }));
+
     await assertSucceeds(setDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), playerData("guest_uid", "Guest", 1)));
     await assertFails(setDoc(doc(guest, "partidas", "room_auth", "jugadores", "other_uid"), playerData("other_uid", "Other", 2)));
 
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_auth"), {
+        estado: "en_juego",
+        partidaInicialCreada: true,
+        partidaInicial: { matchId: "match_rules_1", fase: "REPARTO" },
+      });
+    });
+
     await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
       tipo: "accion_jugador",
       actorId: "guest_uid",
       actorNombre: "Guest",
@@ -123,6 +152,7 @@ async function main() {
       creadaEnLocal: Date.now(),
     }));
     await assertFails(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
       tipo: "accion_jugador",
       actorId: "host_uid",
       actorNombre: "Host",
@@ -137,7 +167,8 @@ async function main() {
       creadaEnLocal: Date.now(),
     }));
 
-    await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "chat"), {
+    const oldChatRef = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "chat"), {
+      matchId: "match_rules_1",
       actorId: "guest_uid",
       speaker: "Guest",
       mensaje: "hola pueblo",
@@ -148,6 +179,7 @@ async function main() {
       creadaEnLocal: Date.now(),
     }));
     await assertFails(addDoc(collection(guest, "partidas", "room_auth", "chat"), {
+      matchId: "match_rules_1",
       actorId: "guest_uid",
       speaker: "Dios",
       mensaje: "evento falso",
@@ -216,11 +248,23 @@ async function main() {
     }));
     await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
       estado: "esperando",
+      hostActivoId: "host_uid",
       partidaInicialCreada: false,
+      limpiezaPendiente: true,
       partidaInicial: deleteField(),
       estadoPartida: deleteField(),
       estadoClientes: deleteField(),
       ultimaActividadOnline: serverTimestamp(),
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(deleteDoc(doc(host, oldChatRef.path)));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
+      limpiezaPendiente: false,
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
+      jugadoresEsperados: 6,
+      maxJugadores: 6,
       actualizadaEn: serverTimestamp(),
     }));
 
@@ -230,6 +274,36 @@ async function main() {
       hostActivoId: "guest_uid",
       hostVersion: increment(1),
       actualizadaEn: serverTimestamp(),
+    }));
+
+    await seedRoom(testEnv, "room_stable_transfer", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_stable_transfer", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_stable_transfer"), {
+        jugadoresActuales: 2,
+      });
+    });
+    await assertSucceeds(runTransaction(host, async (transaction) => {
+      transaction.update(doc(host, "partidas", "room_stable_transfer"), {
+        hostId: "guest_uid",
+        hostNombre: "Guest",
+        hostActivoId: "guest_uid",
+        hostVersion: increment(1),
+        jugadoresActuales: 1,
+        actualizadaEn: serverTimestamp(),
+      });
+      transaction.update(doc(host, "partidas", "room_stable_transfer", "jugadores", "host_uid"), {
+        esHost: false,
+        activoEnPartida: false,
+        listo: false,
+        estado: "desconectado",
+      });
+      transaction.update(doc(host, "partidas", "room_stable_transfer", "jugadores", "guest_uid"), {
+        esHost: true,
+      });
     }));
 
     await assertSucceeds(setDoc(doc(guest, "perfiles_publicos", "guest_uid"), {

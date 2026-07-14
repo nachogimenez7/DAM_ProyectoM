@@ -34,10 +34,10 @@ object OnlineMatchSessionBuilder {
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_MATCH_STATE)
         val playerPayloads = initialMatch["jugadores"] as? List<*>
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_PLAYERS)
-        val players = playerPayloads
+        val sortedPlayerPayloads = playerPayloads
             .mapNotNull { it.asStringAnyMap() }
             .sortedBy { (it["orden"] as? Number)?.toInt() ?: Int.MAX_VALUE }
-            .mapNotNull { playerMap ->
+        val players = sortedPlayerPayloads.mapNotNull { playerMap ->
                 val name = (playerMap["nombre"] as? String)
                     ?.takeIf { it.isNotBlank() }
                     ?: return@mapNotNull null
@@ -118,7 +118,9 @@ object OnlineMatchSessionBuilder {
                 ?: showIndividualVotes,
             onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS,
             initialPlayerCount = players.size,
-            startedAtEpochMs = System.currentTimeMillis()
+            startedAtEpochMs = System.currentTimeMillis(),
+            onlineMatchId = (initialMatch["matchId"] as? String).orEmpty(),
+            onlinePlayerUids = sortedPlayerPayloads.map { (it["uidTemporal"] as? String).orEmpty() }
         )
         val human = players.first { it.isHuman }
         val publicStart = "Dios preparo una partida online con roles ocultos."

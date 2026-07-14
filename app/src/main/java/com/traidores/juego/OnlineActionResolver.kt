@@ -1,6 +1,8 @@
 package com.traidores.juego
 
 data class OnlineActionRecord(
+    val matchId: String = "",
+    val actorId: String = "",
     val action: String,
     val actorName: String,
     val targetName: String,
@@ -22,9 +24,16 @@ data class OnlineNightResolutionActions(
 )
 
 object OnlineActionResolver {
-    fun nightActions(records: List<OnlineActionRecord>, round: Int): OnlineNightResolutionActions {
+    fun nightActions(
+        records: List<OnlineActionRecord>,
+        matchId: String = "",
+        round: Int,
+        phaseIndex: Int? = null
+    ): OnlineNightResolutionActions {
         val validNightRecords = records
+            .filter { it.matchId == matchId }
             .filter { it.round == round }
+            .filter { phaseIndex == null || it.phaseIndex == phaseIndex }
             .filter { it.actorName.isNotBlank() && it.targetName.isNotBlank() }
             .filter { it.action in NIGHT_ACTIONS }
             .sortedBy { it.createdAtLocal }
@@ -42,11 +51,15 @@ object OnlineActionResolver {
 
     fun votes(
         records: List<OnlineActionRecord>,
+        matchId: String = "",
         round: Int,
-        expectedPhaseName: String
+        expectedPhaseName: String,
+        phaseIndex: Int? = null
     ): Map<String, String> {
         return records
+            .filter { it.matchId == matchId }
             .filter { it.round == round }
+            .filter { phaseIndex == null || it.phaseIndex == phaseIndex }
             .filter { it.phaseName == expectedPhaseName }
             .filter { it.action == "votar" }
             .filter { it.actorName.isNotBlank() && it.targetName.isNotBlank() }
@@ -60,14 +73,15 @@ object OnlineActionResolver {
     ): Map<String, OnlineActionRecord> {
         return records
             .filter { it.action == action }
-            .associateBy { it.actorName }
+            .groupBy { it.actorName }
+            .mapValues { (_, actorRecords) -> actorRecords.first() }
     }
 
     private fun latestAction(
         records: List<OnlineActionRecord>,
         action: String
     ): OnlineActionRecord? {
-        return records.lastOrNull { it.action == action }
+        return records.firstOrNull { it.action == action }
     }
 
     private val NIGHT_ACTIONS = setOf(
@@ -75,6 +89,7 @@ object OnlineActionResolver {
         "silenciar",
         "investigar",
         "salvar",
-        "invitar_muerto"
+        "invitar_muerto",
+        "guardar_poder"
     )
 }

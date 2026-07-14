@@ -30,6 +30,7 @@ import androidx.core.widget.doAfterTextChanged
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 
 class GameplayChatController(
     private val host: ChatHost,
@@ -1366,6 +1367,7 @@ class GameplayChatController(
             .collection("chat")
             .add(
                 mapOf(
+                    "matchId" to session.onlineMatchId,
                     "actorId" to host.onlinePlayerUid,
                     "speaker" to human.name,
                     "mensaje" to message,
@@ -1425,6 +1427,7 @@ class GameplayChatController(
             .collection("chat_traidores")
             .add(
                 mapOf(
+                    "matchId" to session.onlineMatchId,
                     "actorId" to host.onlinePlayerUid,
                     "speaker" to human.name,
                     "mensaje" to message,
@@ -1461,11 +1464,15 @@ class GameplayChatController(
     private fun startOnlineChatListener() {
         if (!host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        onlineChatListener = FirebaseFirestore.getInstance()
+        var query: Query = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(host.onlineRoomId)
             .collection("chat")
-            .orderBy("creadaEnLocal")
+        if (host.currentSession.onlineMatchId.isNotBlank()) {
+            query = query.whereEqualTo("matchId", host.currentSession.onlineMatchId)
+        }
+        onlineChatListener = query
+            .orderBy("creadaEnLocal", Query.Direction.DESCENDING)
             .limit(40)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -1473,7 +1480,7 @@ class GameplayChatController(
                     return@addSnapshotListener
                 }
                 if (snapshot == null) return@addSnapshotListener
-                val entries = snapshot.documents.map { document ->
+                val entries = snapshot.documents.asReversed().map { document ->
                     OnlineChatEntry(
                         id = document.id,
                         speaker = document.getString("speaker").orEmpty(),
@@ -1513,11 +1520,15 @@ class GameplayChatController(
             return
         }
         OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        onlineTraitorChatListener = FirebaseFirestore.getInstance()
+        var query: Query = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(host.onlineRoomId)
             .collection("chat_traidores")
-            .orderBy("creadaEnLocal")
+        if (host.currentSession.onlineMatchId.isNotBlank()) {
+            query = query.whereEqualTo("matchId", host.currentSession.onlineMatchId)
+        }
+        onlineTraitorChatListener = query
+            .orderBy("creadaEnLocal", Query.Direction.DESCENDING)
             .limit(40)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -1525,7 +1536,7 @@ class GameplayChatController(
                     return@addSnapshotListener
                 }
                 if (snapshot == null) return@addSnapshotListener
-                val entries = snapshot.documents.map { document ->
+                val entries = snapshot.documents.asReversed().map { document ->
                     OnlineChatEntry(
                         id = document.id,
                         speaker = document.getString("speaker").orEmpty(),

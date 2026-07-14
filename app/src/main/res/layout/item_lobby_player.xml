@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="52dp"
+    android:layout_height="58dp"
     android:layout_marginBottom="8dp"
     android:background="@drawable/bg_player_chip"
     android:gravity="center_vertical"
@@ -31,35 +31,43 @@
         android:fontFamily="sans-serif"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="17sp" />
+        android:textSize="17sp"
+        app:autoSizeMaxTextSize="17sp"
+        app:autoSizeMinTextSize="11sp"
+        app:autoSizeStepGranularity="1sp"
+        app:autoSizeTextType="uniform" />
 
     <TextView
         android:id="@+id/playerStatus"
-        android:layout_width="wrap_content"
+        android:layout_width="76dp"
         android:layout_height="wrap_content"
+        android:ellipsize="end"
         android:fontFamily="sans-serif"
+        android:gravity="center"
+        android:maxLines="2"
         android:textColor="@color/accent_green"
-        android:textSize="13sp" />
+        android:textSize="11sp"
+        android:textStyle="bold" />
 
     <ImageButton
         android:id="@+id/btnPlayerProfile"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginStart="8dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="4dp"
         android:background="@drawable/bg_btn_dark_ripple"
         android:contentDescription="Ver perfil"
-        android:padding="7dp"
+        android:padding="14dp"
         android:src="@drawable/ic_person_profile"
         app:tint="@color/text_secondary" />
 
     <ImageButton
         android:id="@+id/btnKickPlayer"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginStart="5dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="2dp"
         android:background="@drawable/bg_btn_dark_ripple"
         android:contentDescription="Expulsar participante"
-        android:padding="8dp"
+        android:padding="15dp"
         android:src="@drawable/ic_remove_player"
         app:tint="@color/accent_red" />
 </LinearLayout>
