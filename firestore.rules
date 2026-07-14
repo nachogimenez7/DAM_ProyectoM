@@ -387,7 +387,6 @@ service cloud.firestore {
           'hostActivoId',
           'hostVersion',
           'partidaInicialCreada',
-          'limpiezaPendiente',
           'jugadoresEsperados',
           'maxJugadores',
           'jugadoresActuales',
@@ -397,7 +396,7 @@ service cloud.firestore {
         && validRoomBase(request.resource.data)
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.hostActivoId == request.auth.uid
-        && request.resource.data.limpiezaPendiente == false;
+        && request.resource.data.get('limpiezaPendiente', false) == false;
 
       allow update: if validRoomPostUpdate(request.resource.data)
         && (

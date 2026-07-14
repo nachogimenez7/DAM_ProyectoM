@@ -96,6 +96,9 @@ async function main() {
 
     await assertFails(setDoc(doc(anon, "partidas", "room_no_auth"), roomData("host_uid")));
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create"), roomData("host_uid")));
+    const legacyCreate = roomData("host_uid");
+    delete legacyCreate.limpiezaPendiente;
+    await assertSucceeds(setDoc(doc(host, "partidas", "room_create_legacy"), legacyCreate));
     await assertFails(setDoc(doc(guest, "partidas", "room_spoof"), roomData("host_uid")));
     await assertSucceeds(setDoc(
       doc(host, "partidas", "room_test_three"),
