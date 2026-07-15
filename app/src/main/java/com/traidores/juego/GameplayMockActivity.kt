@@ -51,6 +51,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.database.FirebaseDatabase
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -167,6 +168,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineActiveHostId = ""
     private var onlineHostHandoffInProgress = false
     private var onlinePresencePlayers = emptyList<OnlinePresencePlayer>()
+    private var realtimePresence: RealtimeRoomPresence? = null
+    private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
+    private var realtimePresenceBaselineReady = false
+    private var lastLegacyPresenceState = ""
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineNightGateKey = ""
     private var onlineNightGateStartedAtMs = 0L
@@ -905,6 +910,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onStart() {
         super.onStart()
+        startRealtimeGameplayPresence()
         markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
         startOnlinePlayersPresenceListener()
         startOnlineActionsListener()
@@ -913,7 +919,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onStop() {
         stopOnlineSyncWatchdog()
-        markOnlineGameplayPresence(PLAYER_STATE_DISCONNECTED)
+        // Lobby and gameplay share the same online session. Keep the server-side
+        // onDisconnect armed while Android switches activities; the lobby will
+        // publish an explicit disconnect only when the player actually leaves.
+        realtimePresence?.stop(markDisconnected = false)
+        realtimePresence = null
         super.onStop()
     }
 
@@ -1845,6 +1855,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.winner.isNotBlank()) {
             roomUpdate["estado"] = OnlineRoomFirestore.STATE_FINISHED
             roomUpdate["actualizadaEn"] = FieldValue.serverTimestamp()
+            val resultMatchId = session.onlineMatchId
+                .takeIf { it.length in 8..80 }
+                ?: onlinePartidaId.take(80)
+            roomUpdate["ultimoResultado"] = mapOf(
+                "ganador" to session.winner,
+                "ronda" to session.round,
+                "mapa" to session.mapKey,
+                "matchId" to resultMatchId,
+                "finalizadaEnLocal" to System.currentTimeMillis()
+            )
         }
 
         FirebaseFirestore.getInstance()
@@ -2407,9 +2427,59 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         showTieVoteWindow()
     }
 
+    private fun startRealtimeGameplayPresence() {
+        if (!isOnlineGameplay() || realtimePresence != null) return
+        realtimePresence = RealtimeRoomPresence(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            uid = onlinePlayerId,
+            onPresenceChanged = { states ->
+                realtimePresenceStates = states
+                realtimePresenceBaselineReady = true
+                refreshGameplayPresenceFromRealtime()
+            },
+            onError = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_gameplay_presence_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+            }
+        ).also { it.start() }
+    }
+
+    private fun refreshGameplayPresenceFromRealtime() {
+        if (onlinePresencePlayers.isEmpty()) return
+        onlinePresencePlayers = onlinePresencePlayers.map { player ->
+            player.copy(
+                state = if (isOnlineUidConnected(player.id, player.state == PLAYER_STATE_CONNECTED)) {
+                    PLAYER_STATE_CONNECTED
+                } else {
+                    PLAYER_STATE_DISCONNECTED
+                },
+                lastSeenLocalMs = realtimePresenceStates[player.id]
+                    ?.changedAtMs
+                    ?.takeIf { it > 0L }
+                    ?: player.lastSeenLocalMs
+            )
+        }
+        handleOnlineHostHandoff(onlinePresencePlayers)
+        maybeResolveOnlineNightEarly()
+        refreshOnlinePresentationGate()
+        renderReadyToVoteButton()
+        maybeAdvanceOnlineReadyVote()
+    }
+
+    private fun isOnlineUidConnected(uid: String, legacyConnected: Boolean): Boolean {
+        return realtimePresenceStates[uid]?.connected
+            ?: (!realtimePresenceBaselineReady && legacyConnected)
+    }
+
     private fun markOnlineGameplayPresence(state: String) {
         if (!isOnlineGameplay() || !::session.isInitialized) return
         lastOnlinePresencePulseAtMs = SystemClock.elapsedRealtime()
+        realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
+        if (lastLegacyPresenceState == state) return
+        lastLegacyPresenceState = state
         val human = GameEngine.humanPlayer(session)
         FirebaseFirestore.getInstance()
             .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
@@ -2515,15 +2585,24 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 }
                 val players = documents
                     .map { document ->
+                        val legacyConnected = document.getString(
+                            OnlineRoomFirestore.FIELD_PLAYER_STATE
+                        ) == PLAYER_STATE_CONNECTED
+                        val presence = realtimePresenceStates[document.id]
                         OnlinePresencePlayer(
                             id = document.id,
                             name = document.getString(OnlineRoomFirestore.FIELD_NAME).orEmpty(),
                             order = document.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt()
                                 ?: Int.MAX_VALUE,
-                            state = document.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE)
-                                ?: PLAYER_STATE_CONNECTED,
+                            state = if (isOnlineUidConnected(document.id, legacyConnected)) {
+                                PLAYER_STATE_CONNECTED
+                            } else {
+                                PLAYER_STATE_DISCONNECTED
+                            },
                             activeInMatch = document.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false,
-                            lastSeenLocalMs = document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L
+                            lastSeenLocalMs = presence?.changedAtMs?.takeIf { it > 0L }
+                                ?: document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL)
+                                ?: 0L
                         )
                     }
                     .filter { it.activeInMatch }
@@ -2676,7 +2755,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             val previousHostParticipant = OnlineLobbyParticipant(
                 id = previousHostId,
-                connected = previousHost.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED,
+                connected = isOnlineUidConnected(
+                    previousHostId,
+                    previousHost.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) ==
+                        PLAYER_STATE_CONNECTED
+                ),
                 ready = true,
                 activeInMatch = previousHost.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false,
                 order = previousHost.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
@@ -2689,7 +2772,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             if (previousHostParticipant.connected && previousHostAlive) {
                 return@runTransaction false
             }
-            if (candidate.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+            if (!isOnlineUidConnected(
+                    onlinePlayerId,
+                    candidate.getString(OnlineRoomFirestore.FIELD_PLAYER_STATE) ==
+                        PLAYER_STATE_CONNECTED
+                )
+            ) {
                 return@runTransaction false
             }
             val candidateOrder = candidate.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt()

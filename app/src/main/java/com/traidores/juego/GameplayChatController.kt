@@ -27,10 +27,12 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.Query
+import com.google.firebase.database.ServerValue
+import com.google.firebase.database.ValueEventListener
 
 class GameplayChatController(
     private val host: ChatHost,
@@ -72,10 +74,12 @@ class GameplayChatController(
     private var showOnlyEvents = false
     private var selectedChatChannel = ChatChannel.PUBLICO
     private var unreadChatCount = 0
-    private var onlineChatListener: ListenerRegistration? = null
+    private var onlineChatQuery: Query? = null
+    private var onlineChatListener: ValueEventListener? = null
     private var lastOnlineChatSentAtMs = 0L
     private var lastOnlineChatMessage = ""
-    private var onlineTraitorChatListener: ListenerRegistration? = null
+    private var onlineTraitorChatQuery: Query? = null
+    private var onlineTraitorChatListener: ValueEventListener? = null
     private var lastOnlineTraitorChatSentAtMs = 0L
     private var lastOnlineTraitorChatMessage = ""
     private var stagedEventReactionKey = ""
@@ -194,10 +198,14 @@ class GameplayChatController(
     }
 
     fun onDestroy() {
-        onlineChatListener?.remove()
+        onlineChatListener?.let { listener -> onlineChatQuery?.removeEventListener(listener) }
         onlineChatListener = null
-        onlineTraitorChatListener?.remove()
+        onlineChatQuery = null
+        onlineTraitorChatListener?.let { listener ->
+            onlineTraitorChatQuery?.removeEventListener(listener)
+        }
         onlineTraitorChatListener = null
+        onlineTraitorChatQuery = null
         cancelPendingBotChat()
         handler.removeCallbacksAndMessages(null)
     }
@@ -1361,11 +1369,10 @@ class GameplayChatController(
             return
         }
         val human = GameEngine.humanPlayer(session)
-        FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(host.onlineRoomId)
-            .collection("chat")
-            .add(
+        FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_PUBLIC_CHAT_NODE")
+            .push()
+            .setValue(
                 mapOf(
                     "matchId" to session.onlineMatchId,
                     "actorId" to host.onlinePlayerUid,
@@ -1374,8 +1381,7 @@ class GameplayChatController(
                     "fase" to session.phase.name,
                     "ronda" to session.round,
                     "isGod" to false,
-                    "creadaEn" to FieldValue.serverTimestamp(),
-                    "creadaEnLocal" to System.currentTimeMillis()
+                    "ts" to ServerValue.TIMESTAMP
                 )
             )
             .addOnSuccessListener {
@@ -1421,11 +1427,10 @@ class GameplayChatController(
             return
         }
         val human = GameEngine.humanPlayer(session)
-        FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(host.onlineRoomId)
-            .collection("chat_traidores")
-            .add(
+        FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_TRAITOR_CHAT_NODE")
+            .push()
+            .setValue(
                 mapOf(
                     "matchId" to session.onlineMatchId,
                     "actorId" to host.onlinePlayerUid,
@@ -1435,8 +1440,7 @@ class GameplayChatController(
                     "ronda" to session.round,
                     "isGod" to false,
                     "canal" to "traidores",
-                    "creadaEn" to FieldValue.serverTimestamp(),
-                    "creadaEnLocal" to System.currentTimeMillis()
+                    "ts" to ServerValue.TIMESTAMP
                 )
             )
             .addOnSuccessListener {
@@ -1464,33 +1468,39 @@ class GameplayChatController(
     private fun startOnlineChatListener() {
         if (!host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        var query: Query = FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(host.onlineRoomId)
-            .collection("chat")
-        if (host.currentSession.onlineMatchId.isNotBlank()) {
-            query = query.whereEqualTo("matchId", host.currentSession.onlineMatchId)
-        }
-        onlineChatListener = query
-            .orderBy("creadaEnLocal", Query.Direction.DESCENDING)
-            .limit(40)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    OnlineDebugLog.e("chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}", error)
-                    return@addSnapshotListener
-                }
-                if (snapshot == null) return@addSnapshotListener
-                val entries = snapshot.documents.asReversed().map { document ->
+        val query = FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_PUBLIC_CHAT_NODE")
+            .orderByKey()
+            .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val currentMatchId = host.currentSession.onlineMatchId
+                val entries = snapshot.children.mapNotNull { child ->
+                    val matchId = child.child("matchId").getValue(String::class.java).orEmpty()
+                    if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
                     OnlineChatEntry(
-                        id = document.id,
-                        speaker = document.getString("speaker").orEmpty(),
-                        message = document.getString("mensaje").orEmpty(),
-                        isGod = document.getBoolean("isGod") ?: false
-                    )
-                }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
-                OnlineDebugLog.i("chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}")
+                        id = child.key.orEmpty(),
+                        speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
+                        message = child.child("mensaje").getValue(String::class.java).orEmpty(),
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                    ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                }
+                OnlineDebugLog.i(
+                    "chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}"
+                )
                 applyOnlineChatEntries(entries)
             }
+
+            override fun onCancelled(error: DatabaseError) {
+                OnlineDebugLog.e(
+                    "chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
+                    error.toException()
+                )
+            }
+        }
+        onlineChatQuery = query
+        onlineChatListener = listener
+        query.addValueEventListener(listener)
     }
 
     private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
@@ -1520,33 +1530,39 @@ class GameplayChatController(
             return
         }
         OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        var query: Query = FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(host.onlineRoomId)
-            .collection("chat_traidores")
-        if (host.currentSession.onlineMatchId.isNotBlank()) {
-            query = query.whereEqualTo("matchId", host.currentSession.onlineMatchId)
-        }
-        onlineTraitorChatListener = query
-            .orderBy("creadaEnLocal", Query.Direction.DESCENDING)
-            .limit(40)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    OnlineDebugLog.e("traitor_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}", error)
-                    return@addSnapshotListener
-                }
-                if (snapshot == null) return@addSnapshotListener
-                val entries = snapshot.documents.asReversed().map { document ->
+        val query = FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_TRAITOR_CHAT_NODE")
+            .orderByKey()
+            .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val currentMatchId = host.currentSession.onlineMatchId
+                val entries = snapshot.children.mapNotNull { child ->
+                    val matchId = child.child("matchId").getValue(String::class.java).orEmpty()
+                    if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
                     OnlineChatEntry(
-                        id = document.id,
-                        speaker = document.getString("speaker").orEmpty(),
-                        message = document.getString("mensaje").orEmpty(),
-                        isGod = document.getBoolean("isGod") ?: false
-                    )
-                }.filter { it.speaker.isNotBlank() && it.message.isNotBlank() }
-                OnlineDebugLog.i("traitor_chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}")
+                        id = child.key.orEmpty(),
+                        speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
+                        message = child.child("mensaje").getValue(String::class.java).orEmpty(),
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                    ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                }
+                OnlineDebugLog.i(
+                    "traitor_chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}"
+                )
                 applyOnlineTraitorChatEntries(entries)
             }
+
+            override fun onCancelled(error: DatabaseError) {
+                OnlineDebugLog.e(
+                    "traitor_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
+                    error.toException()
+                )
+            }
+        }
+        onlineTraitorChatQuery = query
+        onlineTraitorChatListener = listener
+        query.addValueEventListener(listener)
     }
 
     private fun applyOnlineTraitorChatEntries(entries: List<OnlineChatEntry>) {
@@ -2112,6 +2128,9 @@ class GameplayChatController(
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
+        private const val ONLINE_CHAT_MAX_MESSAGES = 40
+        private const val RTDB_PUBLIC_CHAT_NODE = "chat"
+        private const val RTDB_TRAITOR_CHAT_NODE = "chat_traidores"
         private const val MAX_STAGGERED_BOT_REACTIONS = 3
         private const val MAX_EVENT_BOT_REACTIONS = 3
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L

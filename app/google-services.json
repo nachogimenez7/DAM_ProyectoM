@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "99323018581",
+    "firebase_url": "https://traidores-default-rtdb.firebaseio.com",
     "project_id": "traidores",
     "storage_bucket": "traidores.firebasestorage.app"
   },

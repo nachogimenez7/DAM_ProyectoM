@@ -6,7 +6,7 @@ El modo online de Traidores sigue siendo experimental. Esta documentacion define
 
 - Crear y buscar salas online desde Android.
 - Unirse a una sala por codigo de 6 caracteres.
-- Mantener presencia basica de jugadores.
+- Mantener presencia en RTDB con deteccion de desconexion y reconexion.
 - Iniciar partidas online solo con cantidad esperada completa.
 - Reconstruir partidas desde `partidaInicial` y `estadoPartida` al reingresar.
 - Registrar acciones de gameplay y mensajes de chat.
@@ -17,14 +17,16 @@ El modo confiable para demo sigue siendo `Jugar vs IA` mientras el online madura
 
 ## Configuracion del repo
 
-- `firebase.json`: apunta a `firestore.rules`.
+- `firebase.json`: apunta a `firestore.rules` y `database.rules.json`.
 - `firestore.rules`: reglas de Firestore para pruebas online.
+- `database.rules.json`: reglas de Realtime Database para chat y presencia.
 - `app/google-services.json`: configuracion local de la app Android.
 
 Para publicar reglas desde una maquina con Firebase CLI:
 
 ```bash
 firebase deploy --only firestore:rules
+firebase deploy --only database
 ```
 
 ## Rutas
@@ -61,6 +63,7 @@ Campos base:
 - `maxJugadores`: mismo limite visible que `jugadoresEsperados`.
 - `jugadoresActuales`: contador visible de jugadores registrados en la sala.
 - `modoPrueba`: habilita explicitamente salas experimentales con un minimo de 3 jugadores. El cliente lo controla, por lo que este limite es solo para pruebas entre amigos; App Check debera protegerlo antes de produccion.
+- `configLobby`: configuracion visible y sincronizada antes de iniciar (`transicionSeg`, `nocheSeg`, `discusionSeg`, `votacionSeg`, `revelarRolesAlMorir` y `votosIndividuales`). Sobrevive al traspaso de anfitrion.
 - `origen`: origen tecnico, por ejemplo `android-online-create`.
 - `creadaEn`: timestamp de servidor.
 - `actualizadaEn`: timestamp de servidor.
@@ -71,6 +74,7 @@ Campos agregados durante la partida:
 - `estadoPartida`: estado autoritativo publicado por el host.
 - `estadoClientes`: estado resumido publicado por cada cliente.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
+- `ultimoResultado`: resumen durable de la ultima partida (`ganador`, `ronda`, `mapa`, `matchId` y `finalizadaEnLocal`). No se elimina al preparar la revancha y permite mostrar el resumen en el lobby.
 
 Dentro de `estadoPartida`, ademas de fase, ronda, jugadores y votos, se publican dos
 datos de presentacion compartida:
@@ -106,7 +110,7 @@ Campos:
 - `bannerPerfil`: clave de banner publico del perfil.
 - `rolFavoritoPerfil`: clave del rol favorito elegido.
 - `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
-- `estado`: `conectado`, `desconectado` o `listo`.
+- `estado`: campo legacy para clientes anteriores. La fuente de verdad de conectado/desconectado vive en RTDB.
 - `esHost`: booleano opcional.
 - `listo`: booleano opcional.
 - `orden`: posicion estable del jugador dentro de la sala.
@@ -114,6 +118,12 @@ Campos:
 - `unidoEn`: timestamp de servidor.
 - `ultimaConexion`: timestamp de servidor.
 - `ultimaConexionLocal`: timestamp local del dispositivo.
+- `votoMapa`: voto opcional del jugador (`pampa`, `grecia` o `medieval`). Se limpia al preparar una revancha.
+
+La eleccion de mapa online se resuelve dentro de la misma transaccion que crea
+`partidaInicial`: sin votos se conserva el mapa actual, con un lider unico gana ese mapa y,
+si hay empate, el anfitrion elige solamente entre los empatados. Su voto previo cuenta como
+un voto normal, sin peso extra.
 
 ### `meta/public_ids`
 
@@ -163,7 +173,7 @@ No se agregan por defecto Alcalde, Desertor, Espia, Bufon, Oraculo ni Payador en
 Reglas importantes:
 
 - La sala no inicia hasta que `jugadoresActuales == jugadoresEsperados` y todos esos jugadores esten `listo`.
-- Si un jugador se desconecta antes de iniciar, el host puede liberar su cupo marcando `activoEnPartida = false`; el documento queda como historial y `jugadoresActuales` se recalcula.
+- Si un jugador se desconecta antes de iniciar, RTDB actualiza su presencia con `onDisconnect()` y el host puede liberar su cupo marcando `activoEnPartida = false`; el documento Firestore queda como historial y `jugadoresActuales` se recalcula.
 - `partidaInicial` se crea una sola vez.
 - El inicio online debe escribirse por transaccion: si `partidaInicialCreada` ya es `true`, no se reparten roles de nuevo.
 - Al crear sala, la app verifica que el `codigoSala` generado no exista ya en Firestore; si colisiona, reintenta con otro codigo.
@@ -211,7 +221,8 @@ Regla de sincronizacion por fase:
 Regla de cierre y revancha:
 
 - Al terminar una partida, la sala pasa a `finalizada`.
-- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida` y `estadoClientes`, y pone a todos los jugadores en no listos.
+- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida`, `estadoClientes`, los tres chats de RTDB y las acciones; tambien pone a todos los jugadores en no listos y limpia `votoMapa`.
+- `ultimoResultado` sobrevive a la revancha. `chat`, `chat_traidores` y `chat_lobby` se vacian para no conservar basura de partidas anteriores.
 - El navegador oculta salas `esperando` cuya `actualizadaEn` tenga mas de 30 minutos, para no mostrar salas huerfanas tras el cierre abrupto de un emulador o proceso.
 - Una sala llena permite intentar reingreso; la transaccion valida si el UID ya pertenecia a ella antes de rechazar por falta de cupo.
 
@@ -234,9 +245,9 @@ Campos:
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
 
-### `partidas/{partidaId}/chat/{mensajeId}`
+### `partidas/{partidaId}/chat/{mensajeId}` (legacy)
 
-Mensajes de chat de gameplay.
+Ruta Firestore conservada solamente para compatibilidad con APK anteriores. La aplicacion actual no escribe ni escucha mensajes aqui.
 
 Campos:
 
@@ -249,9 +260,27 @@ Campos:
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
 
-### `partidas/{partidaId}/chat_traidores/{mensajeId}`
+### `partidas/{partidaId}/chat_lobby/{mensajeId}` (legacy)
 
-Canal secreto del equipo asesino ("Plan de los Asesinos"). En online es humano contra humano: no hay bots, asi que solo transporta mensajes escritos por jugadores traidores. La UI (piel roja, toggle PUEBLO/PLAN) es la misma que en local; solo cambia la fuente de los mensajes (Firestore en vez del motor local). El cliente solo se suscribe si su rol es traidor.
+Ruta Firestore conservada solamente para compatibilidad con APK anteriores. La aplicacion actual usa `salas/{roomId}/chat_lobby` en RTDB.
+
+Campos:
+
+- `actorId`: id temporal del autor; debe coincidir con `request.auth.uid`.
+- `speaker`: nombre visible, maximo 18 caracteres.
+- `mensaje`: texto o etiqueta legible del emote, entre 1 y 140 caracteres.
+- `tipo`: `texto` o `emote`.
+- `emoteId`: id del emote del perfil; obligatorio solo cuando `tipo == emote`.
+- `creadaEn`: timestamp de servidor.
+- `creadaEnLocal`: timestamp local de fallback. El orden principal usa `creadaEn` del servidor.
+
+Los avisos de sistema derivados de snapshots (entradas, salidas, listos, cambios de mapa y
+host) son locales y no crean documentos. Los resultados importantes salen de
+`ultimoResultado`, por lo que sobreviven a cierres y reingresos.
+
+### `partidas/{partidaId}/chat_traidores/{mensajeId}` (legacy)
+
+Ruta Firestore conservada solamente para compatibilidad con APK anteriores. La aplicacion actual usa `salas/{roomId}/chat_traidores` en RTDB y el cliente solo se suscribe si su rol es traidor.
 
 Campos:
 
@@ -276,10 +305,43 @@ Diseno futuro para 2+ killers online:
 
 Seguridad actual del canal:
 
-- **Integridad de autoria garantizada** por reglas: `actorId == request.auth.uid`, o sea nadie puede escribir en nombre de otro.
-- **Secreto de lectura honor-system**, igual que el secreto de roles en online: como `partidas/{id}` y `partidaInicial` son `allow read: if true`, un cliente puede leer los roles de todos con o sin este chat. El chat de traidores no agrega una clase nueva de vulnerabilidad; hereda la que ya existe.
-- Para cerrar la lectura del canal a nivel servidor: reemplazar `allow read: if true` en `chat_traidores` por una funcion que haga `get()` sobre `partidaInicial` y verifique que el `request.auth.uid` tiene rol traidor. Requiere que el reparto guarde el rol por uid en un shape navegable por reglas. Como todos los documentos del canal exigen la misma condicion, el listener de la subcoleccion pasa entero para un traidor y es rechazado entero para un no-traidor.
-- Cierre real del secreto general de roles requiere backend autoritativo (Cloud Functions) que reparta y guarde roles sin exponerlos world-readable, o payloads de rol cifrados por jugador.
+- **Integridad de autoria garantizada** por RTDB: `actorId == auth.uid`, o sea nadie puede escribir en nombre de otro.
+- **Secreto de lectura honor-system**: RTDB no puede consultar los documentos de Firestore donde hoy viven membresia y roles. Por eso cualquier usuario autenticado que conozca el id de sala podria leer el nodo.
+- Cerrar de verdad el canal exige reflejar membresia y rol en RTDB mediante un backend confiable, o repartir los mensajes desde Cloud Functions a nodos privados por jugador.
+- El secreto general de roles tambien requiere un backend autoritativo que no exponga el reparto completo a los clientes.
+
+## Realtime Database: datos vivos
+
+El chat online y la presencia usan la base `traidores-default-rtdb`:
+
+```text
+/salas/{roomId}
+    /chat/{pushId}
+    /chat_traidores/{pushId}
+    /chat_lobby/{pushId}
+    /presencia/{uid}
+```
+
+Los tres chats usan claves generadas por `push()`, timestamp de servidor `ts` y listeners
+limitados a los mensajes recientes. `chat` y `chat_traidores` conservan tambien `matchId`,
+`fase` y `ronda`; `chat_lobby` permite `tipo = texto|emote` y `emoteId` opcional.
+Los eventos de Dios se siguen derivando de `estadoPartida` y no se duplican en RTDB.
+
+`presencia/{uid}` contiene:
+
+- `estado`: `conectado` o `desconectado`.
+- `ts`: timestamp del servidor del ultimo cambio.
+
+Cada cliente escucha `/.info/connected`. Primero registra el `onDisconnect()` que publicara
+`desconectado` y despues publica `conectado`; el procedimiento se rearma automaticamente en
+cada reconexion. Lobby, listos, acciones nocturnas, presentaciones y handoff de host consumen
+esta presencia. Los campos `estado` y `ultimaConexion*` de Firestore quedan como fallback
+legacy y no reciben heartbeats repetidos.
+
+Las reglas garantizan autenticacion, autoria y tamanos. La lectura del canal de traidores y
+el borrado completo de chats durante una revancha siguen siendo controles de confianza entre
+clientes autenticados. Para cerrar esos dos puntos en produccion hace falta un backend que
+refleje membresia, roles y autoridad del host.
 
 ## Limites actuales
 
@@ -305,6 +367,7 @@ Limpieza manual recomendada durante pruebas:
 2. Abrir `partidas`.
 3. Borrar documentos viejos con `estado` `abandonada` o `finalizada`.
 4. Si quedan subcolecciones visibles, borrarlas desde el mismo documento.
+5. En Realtime Database, borrar tambien `salas/{partidaId}` si quedo un nodo huerfano de una prueba interrumpida.
 
 Limpieza futura:
 
@@ -315,6 +378,7 @@ Limpieza futura:
 
 - Crear sala desde Android y ver `partidas/{partidaId}`.
 - Unirse por codigo y ver `jugadores/{uidTemporal}`.
-- Enviar chat y ver `chat/{mensajeId}`.
+- Enviar chat y ver `Realtime Database/salas/{partidaId}/chat/{pushId}`.
+- Forzar el cierre de un cliente y ver `presencia/{uid}/estado = desconectado`.
 - Hacer una accion nocturna o voto y ver `acciones/{accionId}`.
 - Intentar escribir un mensaje vacio o demasiado largo desde consola y verificar que falle al desplegar reglas.

@@ -238,6 +238,7 @@
                             android:layout_marginTop="4dp"
                             android:maxLines="1"
                             android:text="JUGAR CON LOS PRESENTES"
+                            android:visibility="gone"
                             app:autoSizeMaxTextSize="11sp"
                             app:autoSizeMinTextSize="7sp"
                             app:autoSizeStepGranularity="1sp"

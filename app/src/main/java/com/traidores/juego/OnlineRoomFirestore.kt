@@ -100,6 +100,7 @@ object OnlineRoomFirestore {
             FIELD_MAX_PLAYERS to safeExpectedPlayers,
             FIELD_CURRENT_PLAYERS to 1,
             FIELD_TEST_MODE to modePrueba,
+            OnlineLobbyConfig.FIELD_ROOM_CONFIG to OnlineLobbyConfig().toFirestore(),
             "origen" to origin,
             FIELD_CREATED_AT to FieldValue.serverTimestamp(),
             FIELD_UPDATED_AT to FieldValue.serverTimestamp()

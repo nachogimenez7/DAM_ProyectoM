@@ -102,6 +102,7 @@
             android:orientation="vertical">
 
             <LinearLayout
+                android:id="@+id/lobbyConfigurationPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_game_panel"
@@ -191,6 +192,7 @@
                         android:layout_marginTop="5dp"
                         android:maxLines="1"
                         android:text="JUGAR CON LOS PRESENTES"
+                        android:visibility="gone"
                         app:autoSizeMaxTextSize="12sp"
                         app:autoSizeMinTextSize="8sp"
                         app:autoSizeStepGranularity="1sp"
@@ -351,50 +353,252 @@
                 </FrameLayout>
 
                 <LinearLayout
+                    android:id="@+id/onlineMapVoteHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="sans-serif"
+                        android:text="VOTACION DE MAPA"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Toca el que quieras"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/mapVoteCardsRow"
                     android:layout_width="match_parent"
                     android:layout_height="54dp"
                     android:layout_marginBottom="8dp"
                     android:gravity="center"
                     android:orientation="horizontal">
 
-                    <ImageView
-                        android:id="@+id/mapPampa"
+                    <FrameLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginEnd="7dp"
                         android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Pampa"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
+                        android:background="@drawable/bg_btn_dark"
+                        android:padding="2dp">
 
-                    <ImageView
-                        android:id="@+id/mapGrecia"
+                        <ImageView
+                            android:id="@+id/mapPampa"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Pampa"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:scaleType="centerCrop" />
+
+                        <View
+                            android:id="@+id/mapPampaShade"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#99000000"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:id="@+id/mapPampaVoteOverlay"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="4dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/mapPampaVoteTitle"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="Pampa"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/mapPampaVoteCount"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="0 votos"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+
+                            <TextView
+                                android:id="@+id/mapPampaVoteVoters"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:textColor="@color/accent_gold"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </FrameLayout>
+
+                    <FrameLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_marginEnd="7dp"
                         android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Grecia"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
+                        android:background="@drawable/bg_btn_dark"
+                        android:padding="2dp">
 
-                    <ImageView
-                        android:id="@+id/mapMedieval"
+                        <ImageView
+                            android:id="@+id/mapGrecia"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Grecia"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:scaleType="centerCrop" />
+
+                        <View
+                            android:id="@+id/mapGreciaShade"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#99000000"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:id="@+id/mapGreciaVoteOverlay"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="4dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/mapGreciaVoteTitle"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="Grecia"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/mapGreciaVoteCount"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="0 votos"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+
+                            <TextView
+                                android:id="@+id/mapGreciaVoteVoters"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:textColor="@color/accent_gold"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </FrameLayout>
+
+                    <FrameLayout
                         android:layout_width="0dp"
                         android:layout_height="match_parent"
                         android:layout_weight="1"
-                        android:clickable="true"
-                        android:contentDescription="Mapa Medieval"
-                        android:focusable="true"
-                        android:foreground="?attr/selectableItemBackground"
-                        android:padding="2dp"
-                        android:scaleType="centerCrop" />
+                        android:background="@drawable/bg_btn_dark"
+                        android:padding="2dp">
+
+                        <ImageView
+                            android:id="@+id/mapMedieval"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:clickable="true"
+                            android:contentDescription="Mapa Medieval"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground"
+                            android:scaleType="centerCrop" />
+
+                        <View
+                            android:id="@+id/mapMedievalShade"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#99000000"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:id="@+id/mapMedievalVoteOverlay"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="4dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:id="@+id/mapMedievalVoteTitle"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="Medieval"
+                                android:textColor="@color/text_primary"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/mapMedievalVoteCount"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:text="0 votos"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="10sp" />
+
+                            <TextView
+                                android:id="@+id/mapMedievalVoteVoters"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center"
+                                android:maxLines="1"
+                                android:textColor="@color/accent_gold"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+                    </FrameLayout>
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/mapVoteResultHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="7dp"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/mapDescription"
@@ -407,6 +611,25 @@
                     android:text="Usa el perfil o la X de cada participante. Inicia con cinco o mas jugadores."
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
+
+                <HorizontalScrollView
+                    android:id="@+id/onlinePlayersScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="96dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_game_panel"
+                    android:fillViewport="true"
+                    android:padding="8dp"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/onlinePlayersContainer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
 
                 <LinearLayout
                     android:id="@+id/debugRoleSection"
@@ -495,6 +718,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="5dp"
                     android:fontFamily="sans-serif"
+                    android:id="@+id/lobbyPlayersLabel"
                     android:letterSpacing="0.08"
                     android:text="JUGADORES"
                     android:textColor="@color/text_muted"
@@ -541,6 +765,7 @@
             </LinearLayout>
 
             <ScrollView
+                android:id="@+id/playersListPanel"
                 android:layout_width="match_parent"
                 android:layout_height="360dp"
                 android:layout_marginTop="10dp"
@@ -556,4 +781,68 @@
             </ScrollView>
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/lobbyChatDock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_game_panel"
+        android:clickable="true"
+        android:elevation="8dp"
+        android:focusable="true"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="9dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/bree_serif"
+                android:text="Qué se dice en la sala"
+                android:textColor="@color/accent_gold"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/lobbyChatActionText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Toca para hablar"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp" />
+
+            <ImageButton
+                android:id="@+id/btnToggleLobbyChat"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/bg_btn_dark_ripple"
+                android:contentDescription="Ocultar vista previa del chat"
+                android:padding="10dp"
+                android:src="@drawable/ic_close"
+                app:tint="@color/accent_gold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/lobbyChatPreview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="4"
+            android:text="Todavia no hay mensajes."
+            android:textColor="@color/text_primary"
+            android:textSize="12sp" />
+    </LinearLayout>
 </RelativeLayout>

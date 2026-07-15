@@ -9,10 +9,15 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -27,6 +32,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.database.FirebaseDatabase
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.util.UUID
 
 class LobbyActivity : BaseActivity() {
@@ -58,6 +65,20 @@ class LobbyActivity : BaseActivity() {
     private lateinit var btnIncreaseExpectedPlayers: Button
     private lateinit var btnPlayWithPresent: Button
     private lateinit var mapDescription: TextView
+    private lateinit var selectedMapCard: View
+    private lateinit var onlineMapVoteHeader: View
+    private lateinit var mapVoteCardsRow: LinearLayout
+    private lateinit var mapVoteResultHint: TextView
+    private lateinit var onlinePlayersScroll: HorizontalScrollView
+    private lateinit var onlinePlayersContainer: LinearLayout
+    private lateinit var playersListPanel: ScrollView
+    private lateinit var lobbyPlayersLabel: TextView
+    private lateinit var lobbyBodyScroll: ScrollView
+    private lateinit var lobbyChatDock: LinearLayout
+    private lateinit var lobbyChatActionText: TextView
+    private lateinit var lobbyChatPreview: TextView
+    private lateinit var btnToggleLobbyChat: ImageButton
+    private lateinit var mapVoteViews: Map<String, MapVoteViews>
     private var lobbyMode = MODE_LOCAL
     private var onlineLobbyName = ""
     private var onlinePartidaId = ""
@@ -88,6 +109,18 @@ class LobbyActivity : BaseActivity() {
     private var roomListener: ListenerRegistration? = null
     private var playersListener: ListenerRegistration? = null
     private var onlinePlayers = emptyList<OnlineLobbyPlayer>()
+    private var onlineLobbyConfig = OnlineLobbyConfig()
+    private var lobbyChatController: LobbyChatController? = null
+    private var lobbyChatMessages = emptyList<LobbyChatMessage>()
+    private val lobbySystemNotices = ArrayDeque<LobbyChatMessage>()
+    private var lobbyChatExpandedMessages: LinearLayout? = null
+    private var lobbyPlayersBaselineReady = false
+    private var lastMapVoteLeaderKey: String? = null
+    private var lastOnlineResultKey = ""
+    private var lobbyRoomBaselineReady = false
+    private var realtimePresence: RealtimeRoomPresence? = null
+    private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
+    private var realtimePresenceBaselineReady = false
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
     private var debugRoleIndex = 0
@@ -112,6 +145,7 @@ class LobbyActivity : BaseActivity() {
         setContentView(R.layout.activity_lobby)
 
         session = PlayerProfileStore.withProfiles(this, readSession() ?: LocalGameFactory.createSession())
+        onlineLobbyConfig = OnlineLobbyConfig.fromSession(session)
         lobbyMode = intent.getStringExtra(EXTRA_LOBBY_MODE) ?: MODE_LOCAL
         onlineLobbyName = intent.getStringExtra(EXTRA_LOBBY_NAME).orEmpty()
         onlinePartidaId = intent.getStringExtra(EXTRA_PARTIDA_ID).orEmpty()
@@ -147,6 +181,19 @@ class LobbyActivity : BaseActivity() {
         btnIncreaseExpectedPlayers = findViewById(R.id.btnIncreaseExpectedPlayers)
         btnPlayWithPresent = findViewById(R.id.btnPlayWithPresent)
         mapDescription = findViewById(R.id.mapDescription)
+        selectedMapCard = findViewById(R.id.selectedMapCard)
+        onlineMapVoteHeader = findViewById(R.id.onlineMapVoteHeader)
+        mapVoteCardsRow = findViewById(R.id.mapVoteCardsRow)
+        mapVoteResultHint = findViewById(R.id.mapVoteResultHint)
+        onlinePlayersScroll = findViewById(R.id.onlinePlayersScroll)
+        onlinePlayersContainer = findViewById(R.id.onlinePlayersContainer)
+        playersListPanel = findViewById(R.id.playersListPanel)
+        lobbyPlayersLabel = findViewById(R.id.lobbyPlayersLabel)
+        lobbyBodyScroll = findViewById(R.id.lobbyBodyScroll)
+        lobbyChatDock = findViewById(R.id.lobbyChatDock)
+        lobbyChatActionText = findViewById(R.id.lobbyChatActionText)
+        lobbyChatPreview = findViewById(R.id.lobbyChatPreview)
+        btnToggleLobbyChat = findViewById(R.id.btnToggleLobbyChat)
         lobbyMapBackground = findViewById(R.id.lobbyMapBackground)
         selectedMapImage = findViewById(R.id.selectedMapImage)
         selectedMapName = findViewById(R.id.selectedMapName)
@@ -159,6 +206,26 @@ class LobbyActivity : BaseActivity() {
             findViewById(R.id.mapGrecia),
             findViewById(R.id.mapMedieval)
         )
+        mapVoteViews = mapOf(
+            "pampa" to MapVoteViews(
+                findViewById(R.id.mapPampaShade),
+                findViewById(R.id.mapPampaVoteOverlay),
+                findViewById(R.id.mapPampaVoteCount),
+                findViewById(R.id.mapPampaVoteVoters)
+            ),
+            "grecia" to MapVoteViews(
+                findViewById(R.id.mapGreciaShade),
+                findViewById(R.id.mapGreciaVoteOverlay),
+                findViewById(R.id.mapGreciaVoteCount),
+                findViewById(R.id.mapGreciaVoteVoters)
+            ),
+            "medieval" to MapVoteViews(
+                findViewById(R.id.mapMedievalShade),
+                findViewById(R.id.mapMedievalVoteOverlay),
+                findViewById(R.id.mapMedievalVoteCount),
+                findViewById(R.id.mapMedievalVoteVoters)
+            )
+        )
 
         btnBack.setOnClickListener { requestLobbyExit() }
         btnLobbySettings.setOnClickListener { showLobbyOptionsDialog() }
@@ -168,17 +235,12 @@ class LobbyActivity : BaseActivity() {
             }
         })
         setupMapSelector()
-        val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        debugRoleSection.visibility = if (isDebugBuild && lobbyMode == MODE_LOCAL) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        debugRoleSection.visibility = View.GONE
         debugRoleButton.setOnClickListener {
             debugRoleIndex = (debugRoleIndex + 1) % debugRoles.size
             renderDebugRole()
         }
-        timingOptionsButton.setOnClickListener { showTimingDialog() }
+        timingOptionsButton.setOnClickListener { showTestOptionsDialog() }
         btnAdvancedOptions.setOnClickListener { showAdvancedOptionsDialog() }
         btnCopyRoomCode.setOnClickListener { copyOnlineRoomCode() }
         btnShareRoomCode.setOnClickListener { shareOnlineRoomCode() }
@@ -186,6 +248,16 @@ class LobbyActivity : BaseActivity() {
         btnDecreaseExpectedPlayers.setOnClickListener { updateOnlineExpectedPlayers(onlineExpectedPlayers - 1) }
         btnIncreaseExpectedPlayers.setOnClickListener { updateOnlineExpectedPlayers(onlineExpectedPlayers + 1) }
         btnPlayWithPresent.setOnClickListener { playOnlineWithPresentPlayers() }
+        lobbyChatDock.setOnClickListener {
+            if (isLobbyChatPreviewHidden()) {
+                setLobbyChatPreviewHidden(false)
+            } else {
+                showLobbyChatSheet()
+            }
+        }
+        btnToggleLobbyChat.setOnClickListener {
+            setLobbyChatPreviewHidden(!isLobbyChatPreviewHidden())
+        }
 
         updateOnlineControlState()
 
@@ -257,20 +329,28 @@ class LobbyActivity : BaseActivity() {
         super.onStart()
         if (isFirestoreOnlineLobby()) {
             enteringOnlineMatch = false
+            startRealtimePresence()
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
+            startLobbyChat()
         }
     }
 
     override fun onStop() {
         if (isFirestoreOnlineLobby()) {
-            if (!enteringOnlineMatch && !onlineRemovalHandled) {
+            val shouldStopRealtimeAsDisconnected = !enteringOnlineMatch &&
+                (leavingOnlineLobby || onlineRemovalHandled || isFinishing)
+            val shouldWriteLegacyDisconnected = shouldStopRealtimeAsDisconnected && !onlineRemovalHandled
+            realtimePresence?.stop(markDisconnected = shouldStopRealtimeAsDisconnected)
+            realtimePresence = null
+            if (shouldWriteLegacyDisconnected) {
                 markOnlinePresence(PLAYER_STATE_DISCONNECTED)
             }
         }
         roomListener?.remove()
         playersListener?.remove()
+        lobbyChatController?.stop()
         roomListener = null
         playersListener = null
         super.onStop()
@@ -283,17 +363,34 @@ class LobbyActivity : BaseActivity() {
 
     private fun renderLobby() {
         updateOnlineControlState()
-        playerCount.text = "${currentVisiblePlayerCount()}/${currentMaxPlayers()} JUGADORES"
+        val onlineLobby = isFirestoreOnlineLobby()
+        playerCount.text = if (onlineLobby) {
+            val visible = currentVisiblePlayerCount()
+            val missingPlayers = (onlineExpectedPlayers - visible).coerceAtLeast(0)
+            val missingReady = activeOnlinePlayers().count {
+                !isOnlinePlayerConnected(it) || !it.ready
+            }
+            buildString {
+                append("$visible/$onlineExpectedPlayers jugadores")
+                when {
+                    missingPlayers > 0 -> append(" - faltan $missingPlayers")
+                    missingReady > 0 -> append(" - faltan $missingReady listos")
+                    else -> append(" - todos listos")
+                }
+            }
+        } else {
+            "${currentVisiblePlayerCount()}/${currentMaxPlayers()} jugadores"
+        }
         lobbyTitle.text = when (lobbyMode) {
             MODE_ONLINE_CREATE -> onlineLobbyName
                 .takeIf { it.isNotBlank() }
-                ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
-                ?: "LOBBY ONLINE - TU SALA"
+                ?.let { "Lobby online - $it" }
+                ?: "Lobby online - Tu sala"
             MODE_ONLINE_SEARCH -> onlineLobbyName
                 .takeIf { it.isNotBlank() }
-                ?.let { "LOBBY ONLINE - ${it.uppercase()}" }
-                ?: "LOBBY ONLINE - SALA ENCONTRADA"
-            else -> "JUGAR vs IA"
+                ?.let { "Lobby online - $it" }
+                ?: "Lobby online - Sala encontrada"
+            else -> "Modo local"
         }
         lobbyModeHint.text = when (lobbyMode) {
             MODE_ONLINE_CREATE, MODE_ONLINE_SEARCH -> onlineLobbyHint()
@@ -306,7 +403,7 @@ class LobbyActivity : BaseActivity() {
         renderOnlineCodePanel()
         renderReleaseDisconnectedButton()
         renderOnlinePlayerTargetControls()
-        mapDescription.text = mapDescriptionFor(session.mapKey)
+        renderLobbyStructure(onlineLobby)
         renderStartButtonState()
         val currentMap = currentMap()
         selectedMapName.text = currentMap.name.uppercase()
@@ -315,23 +412,46 @@ class LobbyActivity : BaseActivity() {
         lobbyMapBackground.setImageResource(currentMap.imageRes)
         mapCards.forEachIndexed { index, imageView ->
             val selected = LocalGameFactory.maps[index].key == session.mapKey
-            imageView.alpha = if (selected) 1f else 0.55f
-            imageView.setBackgroundResource(if (selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark)
+            imageView.alpha = if (onlineLobby || selected) 1f else 0.55f
+            (imageView.parent as? FrameLayout)?.setBackgroundResource(
+                if (!onlineLobby && selected) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
+            )
             val map = LocalGameFactory.maps[index]
-            imageView.contentDescription = if (selected) {
+            imageView.contentDescription = if (onlineLobby) {
+                "Votar por ${map.name}"
+            } else if (selected) {
                 "${map.name}, mapa seleccionado"
-            } else if (isOnlineGuest() || isFirestoreOnlineLobby()) {
-                "${map.name}, el mapa lo administra la sala online"
             } else {
                 "Elegir ${map.name}"
             }
         }
+        renderOnlineMapVoting()
         playersContainer.removeAllViews()
+        onlinePlayersContainer.removeAllViews()
         renderDebugRole()
-        timingOptionsButton.text = "TIEMPOS"
+        timingOptionsButton.text = "Opciones de testeo"
+        btnAdvancedOptions.text = "Opciones avanzadas"
 
         val visibleOnlinePlayers = activeOnlinePlayers()
+        val onlineChipWidth = if (session.players.isEmpty()) {
+            dp(64)
+        } else {
+            val availableWidth = resources.displayMetrics.widthPixels - dp(64)
+            val totalGaps = dp(5) * (session.players.size - 1).coerceAtLeast(0)
+            ((availableWidth - totalGaps) / session.players.size).coerceIn(dp(62), dp(70))
+        }
+        onlinePlayersScroll.isHorizontalScrollBarEnabled = session.players.size > 6
+        onlinePlayersScroll.isScrollbarFadingEnabled = session.players.size <= 6
         session.players.forEachIndexed { index, player ->
+            if (onlineLobby) {
+                onlinePlayersContainer.addView(
+                    createOnlinePlayerChip(player, visibleOnlinePlayers.getOrNull(index)),
+                    LinearLayout.LayoutParams(onlineChipWidth, LinearLayout.LayoutParams.MATCH_PARENT).apply {
+                        if (index > 0) marginStart = dp(5)
+                    }
+                )
+                return@forEachIndexed
+            }
             val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
             val onlinePlayer = visibleOnlinePlayers.getOrNull(index)
             row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
@@ -369,6 +489,349 @@ class LobbyActivity : BaseActivity() {
             }
             playersContainer.addView(row)
         }
+        renderLobbyChatDock()
+    }
+
+    private fun renderLobbyStructure(onlineLobby: Boolean) {
+        selectedMapCard.visibility = if (onlineLobby) View.GONE else View.VISIBLE
+        onlineMapVoteHeader.visibility = if (onlineLobby) View.VISIBLE else View.GONE
+        mapVoteResultHint.visibility = if (onlineLobby) View.VISIBLE else View.GONE
+        mapDescription.visibility = if (onlineLobby) View.GONE else View.VISIBLE
+        mapDescription.text = mapDescriptionFor(session.mapKey)
+        onlinePlayersScroll.visibility = if (onlineLobby) View.VISIBLE else View.GONE
+        playersListPanel.visibility = if (onlineLobby) View.GONE else View.VISIBLE
+        lobbyPlayersLabel.visibility = if (onlineLobby) View.GONE else View.VISIBLE
+        mapVoteCardsRow.layoutParams = mapVoteCardsRow.layoutParams.apply {
+            height = dp(if (onlineLobby) 112 else 54)
+        }
+        val bodyParams = lobbyBodyScroll.layoutParams as RelativeLayout.LayoutParams
+        if (onlineLobby) {
+            bodyParams.addRule(RelativeLayout.ABOVE, R.id.lobbyChatDock)
+        } else {
+            bodyParams.removeRule(RelativeLayout.ABOVE)
+        }
+        lobbyBodyScroll.layoutParams = bodyParams
+    }
+
+    private fun renderOnlineMapVoting() {
+        if (!isFirestoreOnlineLobby()) {
+            mapVoteViews.values.forEach { views ->
+                views.shade.visibility = View.GONE
+                views.overlay.visibility = View.GONE
+            }
+            return
+        }
+        val summary = OnlineMapVoteResolver.summarize(
+            activeOnlinePlayers().map { player ->
+                OnlineMapVote(player.id, player.initial, player.mapVote)
+            }
+        )
+        val currentVote = currentOnlinePlayer()?.mapVote
+        LocalGameFactory.maps.forEachIndexed { index, map ->
+            val views = mapVoteViews.getValue(map.key)
+            val count = summary.counts[map.key] ?: 0
+            val initials = summary.voterInitials[map.key].orEmpty()
+            val selectedByCurrentPlayer = currentVote == map.key
+            val leading = map.key in summary.leaders
+            views.shade.visibility = View.VISIBLE
+            views.overlay.visibility = View.VISIBLE
+            views.count.text = "$count ${if (count == 1) "voto" else "votos"}"
+            views.voters.text = compactVoterInitials(initials)
+            (mapCards[index].parent as? FrameLayout)?.setBackgroundResource(
+                if (selectedByCurrentPlayer || leading) R.drawable.bg_btn_gold else R.drawable.bg_btn_dark
+            )
+        }
+        mapVoteResultHint.text = when {
+            summary.totalVotes == 0 ->
+                "Sin votos: al iniciar se mantiene ${currentMap().name}."
+            summary.uniqueLeader != null ->
+                "${mapName(summary.uniqueLeader)} va ganando - " +
+                    "${selectedMapRoleLabel(summary.uniqueLeader)}. Se fija al iniciar."
+            else ->
+                "Empate entre ${summary.leaders.joinToString(" y ") { mapName(it) }}. Decide el anfitrion al iniciar."
+        }
+        val leaderKey = when {
+            summary.totalVotes == 0 -> "none"
+            summary.uniqueLeader != null -> summary.uniqueLeader
+            else -> "tie:${summary.leaders.joinToString(",")}"
+        }
+        if (lastMapVoteLeaderKey != null && lastMapVoteLeaderKey != leaderKey) {
+            addLobbySystemNotice(
+                if (summary.uniqueLeader != null) {
+                    "${mapName(summary.uniqueLeader)} paso a liderar la votacion de mapa."
+                } else {
+                    "La votacion de mapa quedo empatada."
+                }
+            )
+        }
+        lastMapVoteLeaderKey = leaderKey
+    }
+
+    private fun compactVoterInitials(initials: List<String>): String {
+        if (initials.isEmpty()) return "-"
+        val visible = initials.take(3).joinToString("  ")
+        val remaining = initials.size - 3
+        return if (remaining > 0) "$visible  +$remaining" else visible
+    }
+
+    private fun mapName(mapKey: String): String {
+        return LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name ?: mapKey
+    }
+
+    private fun createOnlinePlayerChip(player: GamePlayer, onlinePlayer: OnlineLobbyPlayer?): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundResource(R.drawable.bg_btn_dark)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Ver perfil de ${player.name}"
+            addView(TextView(this@LobbyActivity).apply {
+                text = buildString {
+                    append(player.initial)
+                    if (onlinePlayer?.ready == true) append("  ✓")
+                }
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 17f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setBackgroundResource(R.drawable.bg_btn_dark_ripple)
+            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+            addView(TextView(this@LobbyActivity).apply {
+                text = if (onlinePlayer?.id == onlineTempUid) "Vos" else player.name
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 10f
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24)))
+            setOnClickListener { showPlayerProfile(player) }
+            if (onlinePlayer != null && canCurrentHostRemoveOnlinePlayer(onlinePlayer)) {
+                setOnLongClickListener {
+                    confirmPlayerRemoval(session.players.indexOf(player), player, onlinePlayer)
+                    true
+                }
+            }
+        }
+    }
+
+    private fun startLobbyChat() {
+        if (!isFirestoreOnlineLobby() || onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        if (lobbyChatController == null) {
+            lobbyChatController = LobbyChatController(
+                database = FirebaseDatabase.getInstance(),
+                roomId = onlinePartidaId,
+                actorId = onlineTempUid,
+                speaker = onlinePlayerName,
+                onMessagesChanged = { messages ->
+                    lobbyChatMessages = messages
+                    renderLobbyChatDock()
+                    lobbyChatExpandedMessages?.let(::renderLobbyChatMessages)
+                },
+                onError = { error ->
+                    OnlineDebugLog.e("lobby_chat_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
+                }
+            )
+        }
+        lobbyChatController?.start()
+    }
+
+    private fun renderLobbyChatDock() {
+        if (!::lobbyChatDock.isInitialized) return
+        val visible = isFirestoreOnlineLobby()
+        lobbyChatDock.visibility = if (visible) View.VISIBLE else View.GONE
+        if (!visible) return
+        val hidden = isLobbyChatPreviewHidden()
+        lobbyChatPreview.visibility = if (hidden) View.GONE else View.VISIBLE
+        lobbyChatActionText.text = if (hidden) "Mostrar chat" else "Toca para hablar"
+        btnToggleLobbyChat.contentDescription = if (hidden) {
+            "Mostrar vista previa del chat"
+        } else {
+            "Ocultar vista previa del chat"
+        }
+        btnToggleLobbyChat.setImageResource(
+            if (hidden) R.drawable.ic_chat_speaking else R.drawable.ic_close
+        )
+        if (!hidden) {
+            val recent = allLobbyChatMessages().takeLast(LOBBY_CHAT_PREVIEW_LINES)
+            lobbyChatPreview.text = if (recent.isEmpty()) {
+                "Todavia no hay mensajes."
+            } else {
+                recent.joinToString("\n") { message ->
+                    when {
+                        message.isSystem -> message.message
+                        message.emoteId != null -> "${message.speaker} envio ${message.message}"
+                        else -> "${message.speaker}: ${message.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isLobbyChatPreviewHidden(): Boolean {
+        return getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(PREF_LOBBY_CHAT_PREVIEW_HIDDEN, false)
+    }
+
+    private fun setLobbyChatPreviewHidden(hidden: Boolean) {
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .edit()
+            .putBoolean(PREF_LOBBY_CHAT_PREVIEW_HIDDEN, hidden)
+            .apply()
+        renderLobbyChatDock()
+    }
+
+    private fun addLobbySystemNotice(message: String) {
+        if (message.isBlank()) return
+        lobbySystemNotices.addLast(
+            LobbyChatMessage(
+                id = "system-${System.nanoTime()}",
+                actorId = "system",
+                speaker = "Sistema",
+                message = message,
+                emoteId = null,
+                createdAtLocal = System.currentTimeMillis(),
+                isSystem = true
+            )
+        )
+        while (lobbySystemNotices.size > MAX_LOCAL_LOBBY_NOTICES) lobbySystemNotices.removeFirst()
+        renderLobbyChatDock()
+        lobbyChatExpandedMessages?.let(::renderLobbyChatMessages)
+    }
+
+    private fun allLobbyChatMessages(): List<LobbyChatMessage> {
+        return (lobbyChatMessages + lobbySystemNotices)
+            .sortedBy { it.createdAtLocal }
+            .takeLast(LobbyChatController.MAX_MESSAGES)
+    }
+
+    private fun showLobbyChatSheet() {
+        if (!isFirestoreOnlineLobby()) return
+        val dialog = BottomSheetDialog(this)
+        val content = dialogColumn().apply {
+            setPadding(dp(14), dp(12), dp(14), dp(14))
+        }
+        content.addView(dialogTitle("CHAT DE LA SALA"))
+        content.addView(TextView(this).apply {
+            text = "Se conservan los ultimos 30 mensajes de esta sala."
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(0, 0, 0, dp(7))
+        })
+        val messageScroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundResource(R.drawable.bg_btn_dark)
+        }
+        val messageContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(7), dp(8), dp(7))
+        }
+        lobbyChatExpandedMessages = messageContainer
+        messageScroll.addView(messageContainer)
+        val messageAreaHeight = (resources.displayMetrics.heightPixels * 0.36f)
+            .toInt()
+            .coerceIn(dp(220), dp(320))
+        content.addView(
+            messageScroll,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, messageAreaHeight)
+        )
+
+        val input = EditText(this).apply {
+            hint = "Escribí un mensaje..."
+            setHintTextColor(getColor(R.color.text_muted))
+            setTextColor(getColor(R.color.text_primary))
+            textSize = 14f
+            maxLines = 3
+            setBackgroundResource(R.drawable.bg_btn_dark)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        val sendButton = compactDialogButton("Enviar").apply {
+            setOnClickListener {
+                val message = input.text?.toString().orEmpty()
+                if (message.isBlank()) return@setOnClickListener
+                lobbyChatController?.sendText(message) { input.setText("") }
+            }
+        }
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+            setPadding(0, dp(8), 0, dp(7))
+            addView(input, LinearLayout.LayoutParams(0, dp(52), 1f))
+            addView(sendButton, LinearLayout.LayoutParams(dp(88), dp(52)).apply {
+                marginStart = dp(7)
+            })
+        }
+        content.addView(inputRow)
+
+        content.addView(TextView(this).apply {
+            text = "EMOTES DEL PERFIL"
+            setTextColor(getColor(R.color.accent_gold))
+            textSize = 11f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        })
+        val emoteRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
+        }
+        EmoteLoadout.selectedSpecs(this).forEachIndexed { index, emote ->
+            emoteRow.addView(ImageButton(this).apply {
+                setImageResource(emote.imageRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundResource(R.drawable.bg_btn_dark_ripple)
+                contentDescription = "Enviar emote ${emote.label}"
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                setOnClickListener { lobbyChatController?.sendEmote(emote) }
+            }, LinearLayout.LayoutParams(dp(50), dp(50)).apply {
+                if (index > 0) marginStart = dp(9)
+            })
+        }
+        content.addView(emoteRow)
+        dialog.setContentView(content)
+        dialog.setOnDismissListener { lobbyChatExpandedMessages = null }
+        dialog.show()
+        renderLobbyChatMessages(messageContainer)
+        messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun renderLobbyChatMessages(container: LinearLayout) {
+        container.removeAllViews()
+        allLobbyChatMessages().forEach { message ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(7), dp(5), dp(7), dp(5))
+            }
+            val emote = message.emoteId?.let(EmoteCatalog::byId)
+            if (emote != null) {
+                row.addView(ImageView(this).apply {
+                    setImageResource(emote.imageRes)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = emote.label
+                }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(8) })
+            }
+            row.addView(TextView(this).apply {
+                text = when {
+                    message.isSystem -> message.message
+                    emote != null -> "${message.speaker} envio ${emote.label}"
+                    else -> "${message.speaker}: ${message.message}"
+                }
+                setTextColor(getColor(if (message.isSystem) R.color.accent_gold else R.color.text_primary))
+                textSize = 12f
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            container.addView(row)
+        }
+        if (container.childCount == 0) {
+            container.addView(TextView(this).apply {
+                text = "Todavia no hay mensajes."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 12f
+                setPadding(0, dp(24), 0, dp(24))
+            })
+        }
     }
 
     private fun listenToOnlineRoom() {
@@ -396,8 +859,32 @@ class LobbyActivity : BaseActivity() {
             }
     }
 
+    private fun startRealtimePresence() {
+        if (onlinePartidaId.isBlank() || onlineTempUid.isBlank() || realtimePresence != null) return
+        realtimePresence = RealtimeRoomPresence(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            uid = onlineTempUid,
+            onPresenceChanged = { states ->
+                realtimePresenceStates = states
+                realtimePresenceBaselineReady = true
+                if (::startButton.isInitialized) {
+                    maybeClaimOnlineLobbyHostHandoff()
+                    renderLobby()
+                }
+            },
+            onError = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_lobby_presence_failure roomId=$onlinePartidaId uid=$onlineTempUid",
+                    error
+                )
+            }
+        ).also { it.start() }
+    }
+
     private fun markOnlinePresence(state: String) {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
         OnlineDebugLog.i("presence_update roomId=$onlinePartidaId uid=$onlineTempUid state=$state")
         val firestore = FirebaseFirestore.getInstance()
         val currentlyReleased = onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false
@@ -441,6 +928,14 @@ class LobbyActivity : BaseActivity() {
                 )
                 .addOnSuccessListener {
                     OnlineDebugLog.i("room_marked_abandoned roomId=$onlinePartidaId hostId=$onlineTempUid")
+                    cleanupRealtimeChatNodes(
+                        onComplete = {
+                            OnlineDebugLog.i("rtdb_abandoned_chat_cleanup_success roomId=$onlinePartidaId")
+                        },
+                        onFailure = { error ->
+                            OnlineDebugLog.e("rtdb_abandoned_chat_cleanup_failure roomId=$onlinePartidaId", error)
+                        }
+                    )
                 }
                 .addOnFailureListener { error ->
                     OnlineDebugLog.e("room_mark_abandoned_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
@@ -488,6 +983,7 @@ class LobbyActivity : BaseActivity() {
         btnDecreaseExpectedPlayers.isEnabled = enabled && onlineExpectedPlayers > minimum
         btnIncreaseExpectedPlayers.isEnabled = enabled && onlineExpectedPlayers < LocalGameFactory.MAX_PLAYERS
         btnPlayWithPresent.isEnabled = enabled && activeOnlinePlayers().size >= minimumOnlinePlayerLimit()
+        btnPlayWithPresent.visibility = View.GONE
         listOf(btnDecreaseExpectedPlayers, btnIncreaseExpectedPlayers, btnPlayWithPresent).forEach { button ->
             button.alpha = if (button.isEnabled) 1f else 0.45f
         }
@@ -552,7 +1048,7 @@ class LobbyActivity : BaseActivity() {
             Toast.makeText(this, "Faltan jugadores para el minimo de $minimum.", Toast.LENGTH_SHORT).show()
             return
         }
-        val unavailable = players.count { it.status != PLAYER_STATE_CONNECTED || !it.ready }
+        val unavailable = players.count { !isOnlinePlayerConnected(it) || !it.ready }
         if (unavailable > 0) {
             Toast.makeText(this, "Todavia faltan $unavailable jugador(es) listos.", Toast.LENGTH_SHORT).show()
             return
@@ -802,7 +1298,7 @@ class LobbyActivity : BaseActivity() {
                     ).show()
                     return@addSnapshotListener
                 }
-                onlinePlayers = snapshot?.documents
+                val updatedPlayers = snapshot?.documents
                     ?.mapNotNull(::parseOnlinePlayer)
                     ?.sortedWith(
                         compareBy<OnlineLobbyPlayer> { it.order }
@@ -810,12 +1306,14 @@ class LobbyActivity : BaseActivity() {
                             .thenBy { it.id }
                     )
                     .orEmpty()
+                trackLobbyPlayerNotices(onlinePlayers, updatedPlayers)
+                onlinePlayers = updatedPlayers
                 if (onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false) {
                     handleRemovedFromOnlineLobby()
                     return@addSnapshotListener
                 }
                 OnlineDebugLog.i(
-                    "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} active=${activeOnlinePlayers().size} connected=${activeOnlinePlayers().count { it.status == PLAYER_STATE_CONNECTED }}"
+                    "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} active=${activeOnlinePlayers().size} connected=${activeOnlinePlayers().count(::isOnlinePlayerConnected)}"
                 )
                 val visiblePlayers = activeOnlinePlayers()
                 session = PlayerProfileStore.withProfiles(this, session.copy(
@@ -836,6 +1334,8 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun applyOnlineRoomSnapshot(snapshot: DocumentSnapshot) {
+        val previousActiveHostId = onlineActiveHostId
+        val previousLobbyConfig = onlineLobbyConfig
         onlineLobbyName = snapshot.getString(FIELD_NAME)
             ?.takeIf { it.isNotBlank() }
             ?: onlineLobbyName
@@ -862,8 +1362,30 @@ class LobbyActivity : BaseActivity() {
         onlineRoomCode = snapshot.getString(FIELD_ROOM_CODE).orEmpty()
         onlineInitialMatchCreated = snapshot.getBoolean(FIELD_INITIAL_MATCH_CREATED) == true
         onlineCleanupPending = snapshot.getBoolean(FIELD_CLEANUP_PENDING) == true
+        onlineLobbyConfig = OnlineLobbyConfig.fromFirestore(
+            snapshot.get(OnlineLobbyConfig.FIELD_ROOM_CONFIG),
+            onlineLobbyConfig
+        )
         onlineInitialMatch = snapshot.get(FIELD_INITIAL_MATCH).asStringAnyMap()
         onlineMatchState = snapshot.get(FIELD_MATCH_STATE).asStringAnyMap()
+        session = session.copy(
+            timingConfig = onlineLobbyConfig.timing,
+            revealRolesOnDeath = onlineLobbyConfig.revealRolesOnDeath,
+            showIndividualVotes = onlineLobbyConfig.showIndividualVotes
+        )
+        if (lobbyRoomBaselineReady) {
+            if (previousActiveHostId.isNotBlank() && previousActiveHostId != onlineActiveHostId) {
+                val newHostName = onlinePlayers.firstOrNull { it.id == onlineActiveHostId }?.name
+                    ?: snapshot.getString(FIELD_HOST_NAME).orEmpty()
+                addLobbySystemNotice("$newHostName ahora es el anfitrion.")
+            }
+            if (previousLobbyConfig != onlineLobbyConfig) {
+                addLobbySystemNotice("Se actualizaron las opciones de partida.")
+            }
+        } else {
+            lobbyRoomBaselineReady = true
+        }
+        trackLastOnlineResult(snapshot.get(FIELD_LAST_RESULT).asStringAnyMap())
         OnlineDebugLog.i(
             "lobby_room_snapshot roomId=$onlinePartidaId state=$onlineRoomState players=${onlinePlayers.size}/$onlineExpectedPlayers host=$onlineHostId activeHost=$onlineActiveHostId code=$onlineRoomCode initial=$onlineInitialMatchCreated"
         )
@@ -929,6 +1451,7 @@ class LobbyActivity : BaseActivity() {
             ready = document.getBoolean(FIELD_PLAYER_READY) == true,
             order = document.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
             activeInMatch = document.getBoolean(FIELD_ACTIVE_IN_MATCH) != false,
+            mapVote = document.getString(FIELD_MAP_VOTE)?.takeIf { it in OnlineMapVoteResolver.mapKeys },
             lastSeenLocalMs = document.getTimestamp(OnlineRoomFirestore.FIELD_LAST_SEEN_AT)
                 ?.toDate()
                 ?.time
@@ -937,6 +1460,47 @@ class LobbyActivity : BaseActivity() {
             publicId = profile.publicId,
             profile = profile
         )
+    }
+
+    private fun trackLobbyPlayerNotices(
+        previous: List<OnlineLobbyPlayer>,
+        updated: List<OnlineLobbyPlayer>
+    ) {
+        if (!lobbyPlayersBaselineReady) {
+            lobbyPlayersBaselineReady = true
+            lastMapVoteLeaderKey = null
+            return
+        }
+        val previousActive = previous.filter { it.activeInMatch }.associateBy { it.id }
+        val updatedActive = updated.filter { it.activeInMatch }.associateBy { it.id }
+        updatedActive.keys.minus(previousActive.keys).forEach { id ->
+            addLobbySystemNotice("${updatedActive.getValue(id).name} entro a la sala.")
+        }
+        previousActive.keys.minus(updatedActive.keys).forEach { id ->
+            addLobbySystemNotice("${previousActive.getValue(id).name} dejo la sala.")
+        }
+        previousActive.keys.intersect(updatedActive.keys).forEach { id ->
+            val before = previousActive.getValue(id)
+            val after = updatedActive.getValue(id)
+            if (before.ready != after.ready) {
+                addLobbySystemNotice(
+                    if (after.ready) "${after.name} esta listo." else "${after.name} ya no esta listo."
+                )
+            }
+        }
+    }
+
+    private fun trackLastOnlineResult(result: Map<String, Any?>?) {
+        val winner = (result?.get("ganador") as? String).orEmpty()
+        if (winner.isBlank()) return
+        val resultKey = listOf(
+            winner,
+            (result?.get("ronda") as? Number)?.toInt() ?: 0,
+            (result?.get("matchId") as? String).orEmpty()
+        ).joinToString("|")
+        if (resultKey == lastOnlineResultKey) return
+        lastOnlineResultKey = resultKey
+        addLobbySystemNotice("Ultima partida: $winner gano la partida.")
     }
 
     private fun onlineProfileFromDocument(document: DocumentSnapshot, fallbackName: String): PlayerProfile {
@@ -972,15 +1536,32 @@ class LobbyActivity : BaseActivity() {
 
     private fun onlineParticipants(): List<OnlineLobbyParticipant> {
         return onlinePlayers.map { player ->
+            val presence = realtimePresenceStates[player.id]
             OnlineLobbyParticipant(
                 id = player.id,
-                connected = player.status == PLAYER_STATE_CONNECTED,
+                connected = presence?.connected
+                    ?: (!realtimePresenceBaselineReady && player.status == PLAYER_STATE_CONNECTED),
                 ready = player.ready,
                 activeInMatch = player.activeInMatch,
                 order = player.order,
-                lastSeenLocalMs = player.lastSeenLocalMs
+                lastSeenLocalMs = presence?.changedAtMs?.takeIf { it > 0L }
+                    ?: player.lastSeenLocalMs
             )
         }
+    }
+
+    private fun isOnlinePlayerConnected(player: OnlineLobbyPlayer): Boolean {
+        return isOnlineUidConnected(player.id, player.status == PLAYER_STATE_CONNECTED)
+    }
+
+    private fun isOnlineUidConnected(uid: String, legacyConnected: Boolean): Boolean {
+        return realtimePresenceStates[uid]?.connected
+            ?: (!realtimePresenceBaselineReady && legacyConnected)
+    }
+
+    private fun onlinePlayerLastSeenMs(player: OnlineLobbyPlayer): Long {
+        return realtimePresenceStates[player.id]?.changedAtMs?.takeIf { it > 0L }
+            ?: player.lastSeenLocalMs
     }
 
     private fun activeOnlinePlayers(): List<OnlineLobbyPlayer> {
@@ -1002,6 +1583,12 @@ class LobbyActivity : BaseActivity() {
     private fun handleDeletedOnlineRoom() {
         if (onlineRoomDeletedHandled) return
         onlineRoomDeletedHandled = true
+        cleanupRealtimeChatNodes(
+            onComplete = {},
+            onFailure = { error ->
+                OnlineDebugLog.e("rtdb_deleted_room_chat_cleanup_failure roomId=$onlinePartidaId", error)
+            }
+        )
         Toast.makeText(this, "La sala fue eliminada. Volviendo a buscar partida.", Toast.LENGTH_LONG).show()
         finish()
     }
@@ -1057,15 +1644,16 @@ class LobbyActivity : BaseActivity() {
         val creator = onlinePlayers.firstOrNull {
             it.id == onlineHostId && it.activeInMatch
         } ?: return false
-        return creator.status == PLAYER_STATE_CONNECTED ||
-            creator.lastSeenLocalMs <= 0L ||
-            nowMs - creator.lastSeenLocalMs < LOBBY_HOST_DISCONNECT_GRACE_MS
+        val lastSeenMs = onlinePlayerLastSeenMs(creator)
+        return isOnlinePlayerConnected(creator) ||
+            lastSeenMs <= 0L ||
+            nowMs - lastSeenMs < LOBBY_HOST_DISCONNECT_GRACE_MS
     }
 
     private fun onlineLobbyHostFallbackId(): String {
         return activeOnlinePlayers()
             .asSequence()
-            .filter { it.status == PLAYER_STATE_CONNECTED }
+            .filter(::isOnlinePlayerConnected)
             .sortedWith(compareBy<OnlineLobbyPlayer> { it.order }.thenBy { it.id })
             .firstOrNull()
             ?.id
@@ -1075,7 +1663,7 @@ class LobbyActivity : BaseActivity() {
     private fun onlineLobbyHostHandoffCandidate(excludeCurrent: Boolean = false): OnlineLobbyPlayer? {
         if (excludeCurrent) {
             return activeOnlinePlayers()
-                .filter { it.id != onlineTempUid && it.status == PLAYER_STATE_CONNECTED }
+                .filter { it.id != onlineTempUid && isOnlinePlayerConnected(it) }
                 .minWithOrNull(compareBy<OnlineLobbyPlayer> { it.order }.thenBy { it.id })
         }
         val candidateId = onlineLobbyHostFallbackId().takeIf { it.isNotBlank() } ?: return null
@@ -1130,13 +1718,19 @@ class LobbyActivity : BaseActivity() {
             val candidate = transaction.get(candidateReference)
             val previousHostParticipant = OnlineLobbyParticipant(
                 id = previousHostId,
-                connected = previousHost.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED,
+                connected = isOnlineUidConnected(
+                    previousHostId,
+                    previousHost.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED
+                ),
                 ready = previousHost.getBoolean(FIELD_PLAYER_READY) == true,
                 activeInMatch = previousHost.getBoolean(FIELD_ACTIVE_IN_MATCH) != false,
                 order = previousHost.getLong(FIELD_PLAYER_ORDER)?.toInt() ?: Int.MAX_VALUE,
                 lastSeenLocalMs = previousHost.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL) ?: 0L
             )
-            val lastSeenAtMs = previousHost.getTimestamp(OnlineRoomFirestore.FIELD_LAST_SEEN_AT)
+            val lastSeenAtMs = realtimePresenceStates[previousHostId]
+                ?.changedAtMs
+                ?.takeIf { it > 0L }
+                ?: previousHost.getTimestamp(OnlineRoomFirestore.FIELD_LAST_SEEN_AT)
                 ?.toDate()
                 ?.time
                 ?: previousHostParticipant.lastSeenLocalMs
@@ -1150,7 +1744,11 @@ class LobbyActivity : BaseActivity() {
             if (creatorStillProtected) {
                 return@runTransaction false
             }
-            if (candidate.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+            if (!isOnlineUidConnected(
+                    onlineTempUid,
+                    candidate.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED
+                )
+            ) {
                 return@runTransaction false
             }
             if (candidate.getBoolean(FIELD_ACTIVE_IN_MATCH) == false) {
@@ -1230,7 +1828,11 @@ class LobbyActivity : BaseActivity() {
                 throw IllegalStateException("Ya no sos el anfitrion activo.")
             }
             val candidateSnapshot = transaction.get(candidateReference)
-            if (candidateSnapshot.getString(FIELD_PLAYER_STATE) != PLAYER_STATE_CONNECTED) {
+            if (!isOnlineUidConnected(
+                    candidate.id,
+                    candidateSnapshot.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED
+                )
+            ) {
                 throw IllegalStateException("El nuevo anfitrion ya no esta conectado.")
             }
             if (candidateSnapshot.getBoolean(FIELD_ACTIVE_IN_MATCH) == false) {
@@ -1304,10 +1906,16 @@ class LobbyActivity : BaseActivity() {
         val canStart = currentUserIsOnlineHost() && onlineRoomCanStart()
         val activePlayers = activeOnlinePlayers()
         val missingPlayers = (onlineExpectedPlayers - activePlayers.size).coerceAtLeast(0)
-        val disconnectedPlayers = activePlayers.count { it.status != PLAYER_STATE_CONNECTED }
+        val disconnectedPlayers = activePlayers.count { !isOnlinePlayerConnected(it) }
         val missingReady = activePlayers.count {
-            it.status == PLAYER_STATE_CONNECTED && !it.ready
+            isOnlinePlayerConnected(it) && !it.ready
         }
+        val canStartWithPresent = currentUserIsOnlineHost() &&
+            activePlayers.size >= minimumOnlinePlayerLimit() &&
+            missingPlayers > 0 &&
+            disconnectedPlayers == 0 &&
+            missingReady == 0 &&
+            !onlineInitialMatchCreated
         startButton.isEnabled = onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
             !onlineCleanupPending &&
             activePlayers.isNotEmpty() &&
@@ -1316,6 +1924,7 @@ class LobbyActivity : BaseActivity() {
         startButton.text = when {
             onlineCleanupPending -> "LIMPIANDO..."
             canStart -> "INICIAR ONLINE"
+            canStartWithPresent -> "JUGAR CON ${activePlayers.size} PRESENTES"
             currentUserIsOnlineHost() && missingPlayers > 0 -> "FALTAN $missingPlayers"
             currentUserIsOnlineHost() && disconnectedPlayers > 0 -> "SINCRONIZANDO"
             currentUserIsOnlineHost() && missingReady > 0 -> "FALTAN LISTOS"
@@ -1327,6 +1936,7 @@ class LobbyActivity : BaseActivity() {
         startButton.contentDescription = when {
             onlineCleanupPending -> "Limpiando datos de la partida anterior"
             canStart -> "Iniciar partida online para todos los jugadores"
+            canStartWithPresent -> "Ajustar la sala e iniciar con ${activePlayers.size} jugadores presentes"
             currentUserIsOnlineHost() && missingPlayers > 0 ->
                 "Faltan jugadores para iniciar la partida online"
             currentUserIsOnlineHost() && missingReady > 0 ->
@@ -1347,8 +1957,15 @@ class LobbyActivity : BaseActivity() {
             Toast.makeText(this, "Terminando de limpiar la partida anterior...", Toast.LENGTH_SHORT).show()
             return
         }
+        val activePlayers = activeOnlinePlayers()
+        val canStartWithPresent = currentUserIsOnlineHost() &&
+            activePlayers.size >= minimumOnlinePlayerLimit() &&
+            activePlayers.size < onlineExpectedPlayers &&
+            activePlayers.all { isOnlinePlayerConnected(it) && it.ready }
         if (currentUserIsOnlineHost() && onlineRoomCanStart()) {
             startOnlineRoomForEveryone()
+        } else if (canStartWithPresent) {
+            playOnlineWithPresentPlayers()
         } else {
             toggleCurrentOnlineReady()
         }
@@ -1389,7 +2006,7 @@ class LobbyActivity : BaseActivity() {
             }
     }
 
-    private fun startOnlineRoomForEveryone() {
+    private fun startOnlineRoomForEveryone(hostTieBreakChoice: String? = null) {
         if (!currentUserIsOnlineHost()) {
             Toast.makeText(this, "Solo el anfitrion puede iniciar.", Toast.LENGTH_SHORT).show()
             return
@@ -1409,16 +2026,11 @@ class LobbyActivity : BaseActivity() {
         }
         startButton.isEnabled = false
         startButton.text = "INICIANDO..."
-        val initialSession = buildOnlineBaseSession().copy(
-            onlineMatchId = UUID.randomUUID().toString()
-        )
-        val assignedSession = LocalGameFactory.assignRoles(initialSession)
+        val onlineMatchId = UUID.randomUUID().toString()
         val activePlayersAtStart = activeOnlinePlayers()
         OnlineDebugLog.i(
-            "online_start_requested roomId=$onlinePartidaId code=${onlineRoomCode.ifBlank { "-" }} hostId=$onlineTempUid expected=$onlineExpectedPlayers active=${activePlayersAtStart.size} players=${assignedSession.players.size} roles=${onlineRoleSummary(assignedSession)}"
+            "online_start_requested roomId=$onlinePartidaId code=${onlineRoomCode.ifBlank { "-" }} hostId=$onlineTempUid expected=$onlineExpectedPlayers active=${activePlayersAtStart.size} tieBreak=${hostTieBreakChoice ?: "-"}"
         )
-        val initialMatch = initialMatchPayload(assignedSession)
-        val matchState = matchStatePayload(assignedSession)
         val firestore = FirebaseFirestore.getInstance()
         val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
         firestore.runTransaction { transaction ->
@@ -1427,7 +2039,7 @@ class LobbyActivity : BaseActivity() {
                 throw IllegalStateException("La sala ya no existe.")
             }
             if (room.getBoolean(FIELD_INITIAL_MATCH_CREATED) == true || room.get(FIELD_INITIAL_MATCH) != null) {
-                return@runTransaction OnlineStartTransactionResult.ALREADY_STARTED
+                return@runTransaction OnlineStartTransactionResult.AlreadyStarted
             }
             if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta esperando jugadores.")
@@ -1444,20 +2056,55 @@ class LobbyActivity : BaseActivity() {
             if (activePlayersAtStart.size != expectedPlayers) {
                 throw IllegalStateException("Faltan jugadores para iniciar.")
             }
+            val currentVotes = mutableListOf<OnlineMapVote>()
             activePlayersAtStart.forEach { player ->
                 val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id)
                 val snapshot = transaction.get(playerReference)
                 val stillActive = snapshot.getBoolean(FIELD_ACTIVE_IN_MATCH) != false
-                val connected = snapshot.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED
+                val connected = isOnlineUidConnected(
+                    player.id,
+                    snapshot.getString(FIELD_PLAYER_STATE) == PLAYER_STATE_CONNECTED
+                )
                 val ready = snapshot.getBoolean(FIELD_PLAYER_READY) == true
                 if (!snapshot.exists() || !stillActive || !connected || !ready) {
                     throw IllegalStateException("Todavia faltan jugadores listos.")
                 }
+                currentVotes += OnlineMapVote(
+                    playerId = player.id,
+                    playerInitial = player.initial,
+                    mapKey = snapshot.getString(FIELD_MAP_VOTE)
+                )
             }
+            val selectedMapKey = when (
+                val resolution = OnlineMapVoteResolver.resolveAtStart(
+                    votes = currentVotes,
+                    currentMapKey = room.getString(FIELD_MAP_KEY).orEmpty(),
+                    hostTieBreakChoice = hostTieBreakChoice
+                )
+            ) {
+                is OnlineMapResolution.Selected -> resolution.mapKey
+                is OnlineMapResolution.HostTieBreakRequired -> {
+                    return@runTransaction OnlineStartTransactionResult.MapTieBreakRequired(
+                        resolution.mapKeys
+                    )
+                }
+            }
+            val selectedMap = LocalGameFactory.maps.first { it.key == selectedMapKey }
+            val roomConfig = OnlineLobbyConfig.fromFirestore(
+                room.get(OnlineLobbyConfig.FIELD_ROOM_CONFIG),
+                onlineLobbyConfig
+            )
+            val assignedSession = LocalGameFactory.assignRoles(
+                buildOnlineBaseSession(selectedMapKey, roomConfig).copy(onlineMatchId = onlineMatchId)
+            )
+            val initialMatch = initialMatchPayload(assignedSession)
+            val matchState = matchStatePayload(assignedSession)
             transaction.update(
                 roomReference,
                 mapOf(
                     FIELD_STATE to ONLINE_ROOM_STATE_IN_GAME,
+                    FIELD_MAP_KEY to selectedMap.key,
+                    OnlineRoomFirestore.FIELD_MAP_NAME to selectedMap.name,
                     FIELD_INITIAL_MATCH to initialMatch,
                     FIELD_MATCH_STATE to matchState,
                     FIELD_INITIAL_MATCH_CREATED to true,
@@ -1468,15 +2115,25 @@ class LobbyActivity : BaseActivity() {
                     OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
                 )
             )
-            OnlineStartTransactionResult.STARTED
+            OnlineStartTransactionResult.Started(selectedMap.key, onlineRoleSummary(assignedSession))
         }.addOnSuccessListener { result ->
-            if (result == OnlineStartTransactionResult.ALREADY_STARTED) {
-                OnlineDebugLog.w("online_start_already_created roomId=$onlinePartidaId hostId=$onlineTempUid")
-                Toast.makeText(this, "La partida ya fue iniciada. Sincronizando...", Toast.LENGTH_SHORT).show()
-                startOnlineMatch()
-                return@addOnSuccessListener
+            when (result) {
+                OnlineStartTransactionResult.AlreadyStarted -> {
+                    OnlineDebugLog.w("online_start_already_created roomId=$onlinePartidaId hostId=$onlineTempUid")
+                    Toast.makeText(this, "La partida ya fue iniciada. Sincronizando...", Toast.LENGTH_SHORT).show()
+                    startOnlineMatch()
+                }
+                is OnlineStartTransactionResult.MapTieBreakRequired -> {
+                    startButton.isEnabled = true
+                    renderStartButtonState()
+                    showMapTieBreakDialog(result.mapKeys)
+                }
+                is OnlineStartTransactionResult.Started -> {
+                    OnlineDebugLog.i(
+                        "online_start_success roomId=$onlinePartidaId hostId=$onlineTempUid map=${result.mapKey} roles=${result.roleSummary}"
+                    )
+                }
             }
-            OnlineDebugLog.i("online_start_success roomId=$onlinePartidaId hostId=$onlineTempUid")
         }.addOnFailureListener { error ->
             OnlineDebugLog.e("online_start_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
             startButton.isEnabled = true
@@ -1550,7 +2207,10 @@ class LobbyActivity : BaseActivity() {
         )
     }
 
-    private fun buildOnlineBaseSession(): GameSession {
+    private fun buildOnlineBaseSession(
+        mapKey: String = session.mapKey,
+        config: OnlineLobbyConfig = onlineLobbyConfig
+    ): GameSession {
         val realPlayers = activeOnlinePlayers().map { player ->
             GamePlayer(
                 name = player.name,
@@ -1558,15 +2218,15 @@ class LobbyActivity : BaseActivity() {
                 isHuman = player.id == onlineTempUid
             )
         }
-        val map = currentMap()
+        val map = LocalGameFactory.maps.firstOrNull { it.key == mapKey } ?: currentMap()
         return GameSession(
             code = onlineRoomCode.ifBlank { onlinePartidaId.take(6) },
             mapKey = map.key,
             mapName = map.name,
             players = realPlayers,
-            timingConfig = session.timingConfig.normalized(),
-            revealRolesOnDeath = session.revealRolesOnDeath,
-            showIndividualVotes = session.showIndividualVotes,
+            timingConfig = config.timing.normalized(),
+            revealRolesOnDeath = config.revealRolesOnDeath,
+            showIndividualVotes = config.showIndividualVotes,
             onlineTestMode = onlineRoomModePrueba,
             onlinePlayerUids = activeOnlinePlayers().map { it.id },
             roleComposition = LocalGameFactory.onlineSafeRoleComposition(realPlayers.size)
@@ -1601,7 +2261,7 @@ class LobbyActivity : BaseActivity() {
         if (activePlayers.size != onlineExpectedPlayers) {
             return "La cantidad de jugadores no coincide con la sala."
         }
-        val disconnected = activePlayers.count { it.status != PLAYER_STATE_CONNECTED }
+        val disconnected = activePlayers.count { !isOnlinePlayerConnected(it) }
         if (disconnected > 0) {
             return "Hay $disconnected jugador(es) desconectado(s). Libera cupos o espera."
         }
@@ -1770,6 +2430,7 @@ class LobbyActivity : BaseActivity() {
                     mapOf(
                         FIELD_PLAYER_READY to false,
                         FIELD_IS_HOST to (player.id == stableHostId),
+                        FIELD_MAP_VOTE to FieldValue.delete(),
                         "listoParaVotar" to false,
                         "listoParaVotarRonda" to 0,
                         "listoParaVotarPhaseIndex" to 0
@@ -1811,13 +2472,27 @@ class LobbyActivity : BaseActivity() {
         }
     }
 
+    private fun showMapTieBreakDialog(mapKeys: List<String>) {
+        val validKeys = mapKeys.filter { it in OnlineMapVoteResolver.mapKeys }.distinct()
+        if (validKeys.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Empate en la votacion")
+            .setMessage("Tu voto ya conto como uno. Ahora elegi entre los mapas empatados para iniciar.")
+            .setItems(validKeys.map(::mapName).toTypedArray()) { _, index ->
+                startOnlineRoomForEveryone(validKeys[index])
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun scheduleOnlineLobbyHostHandoffCheck() {
         if (onlineHostHandoffCheckScheduled || !::startButton.isInitialized) return
         val creator = onlinePlayers.firstOrNull {
-            it.id == onlineHostId && it.activeInMatch && it.status != PLAYER_STATE_CONNECTED
+            it.id == onlineHostId && it.activeInMatch && !isOnlinePlayerConnected(it)
         } ?: return
-        if (creator.lastSeenLocalMs <= 0L) return
-        val elapsedMs = System.currentTimeMillis() - creator.lastSeenLocalMs
+        val lastSeenMs = onlinePlayerLastSeenMs(creator)
+        if (lastSeenMs <= 0L) return
+        val elapsedMs = System.currentTimeMillis() - lastSeenMs
         val remainingMs = (LOBBY_HOST_DISCONNECT_GRACE_MS - elapsedMs).coerceAtLeast(250L)
         onlineHostHandoffCheckScheduled = true
         startButton.postDelayed(
@@ -1839,34 +2514,69 @@ class LobbyActivity : BaseActivity() {
             return
         }
         onlineCleanupInProgress = true
-        cleanupOnlineMatchCollections(
-            collectionNames = listOf("chat", "chat_traidores", "acciones"),
-            index = 0,
-            onComplete = {
-                FirebaseFirestore.getInstance()
-                    .collection(ONLINE_ROOMS_COLLECTION)
-                    .document(onlinePartidaId)
-                    .update(
-                        mapOf(
-                            FIELD_CLEANUP_PENDING to false,
-                            OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
-                        )
-                    )
-                    .addOnSuccessListener {
-                        onlineCleanupInProgress = false
-                        onlineCleanupPending = false
-                        OnlineDebugLog.i("rematch_cleanup_success roomId=$onlinePartidaId hostId=$onlineTempUid")
-                        Toast.makeText(
-                            this,
-                            "Sala lista. Todos deben marcarse listos otra vez.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        renderLobby()
-                    }
-                    .addOnFailureListener(::handleOnlineCleanupFailure)
-            },
-            onFailure = ::handleOnlineCleanupFailure
+        // La limpieza es housekeeping y es best-effort: nunca debe trabar volver a jugar.
+        // Si borrar el chat o las acciones falla, se loguea y se sigue; lo unico
+        // imprescindible es bajar limpiezaPendiente para desbloquear la sala. Ademas el
+        // matchId ya aisla los datos viejos, asi que borrarlos es cosmetico.
+        cleanupRealtimeChatNodes(
+            onComplete = { cleanupOnlineActionsThenFinish() },
+            onFailure = { error ->
+                OnlineDebugLog.e("rtdb_chat_cleanup_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
+                cleanupOnlineActionsThenFinish()
+            }
         )
+    }
+
+    private fun cleanupOnlineActionsThenFinish() {
+        cleanupOnlineMatchCollections(
+            collectionNames = listOf("acciones"),
+            index = 0,
+            onComplete = { finishOnlineCleanup() },
+            onFailure = { error ->
+                OnlineDebugLog.e("acciones_cleanup_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
+                finishOnlineCleanup()
+            }
+        )
+    }
+
+    private fun finishOnlineCleanup() {
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    FIELD_CLEANUP_PENDING to false,
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineCleanupInProgress = false
+                onlineCleanupPending = false
+                OnlineDebugLog.i("rematch_cleanup_done roomId=$onlinePartidaId hostId=$onlineTempUid")
+                Toast.makeText(
+                    this,
+                    "Sala lista. Todos deben marcarse listos otra vez.",
+                    Toast.LENGTH_LONG
+                ).show()
+                renderLobby()
+            }
+            .addOnFailureListener(::handleOnlineCleanupFailure)
+    }
+
+    private fun cleanupRealtimeChatNodes(
+        onComplete: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val updates = mapOf<String, Any?>(
+            LobbyChatController.NODE to null,
+            RTDB_PUBLIC_CHAT_NODE to null,
+            RTDB_TRAITOR_CHAT_NODE to null
+        )
+        FirebaseDatabase.getInstance()
+            .getReference("salas/$onlinePartidaId")
+            .updateChildren(updates)
+            .addOnSuccessListener { onComplete() }
+            .addOnFailureListener(onFailure)
     }
 
     private fun cleanupOnlineMatchCollections(
@@ -1902,12 +2612,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun handleOnlineCleanupFailure(error: Exception) {
         onlineCleanupInProgress = false
-        OnlineDebugLog.e("rematch_cleanup_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
-        Toast.makeText(
-            this,
-            "No se pudo terminar la limpieza. Reintentando...",
-            Toast.LENGTH_SHORT
-        ).show()
+        OnlineDebugLog.e("rematch_cleanup_flag_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
         if (::startButton.isInitialized) {
             startButton.postDelayed({ maybeContinuePendingOnlineCleanup() }, CLEANUP_RETRY_DELAY_MS)
         }
@@ -1915,7 +2620,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun allOnlinePlayersReady(): Boolean {
         return activeOnlinePlayers().isNotEmpty() &&
-            activeOnlinePlayers().all { it.status == PLAYER_STATE_CONNECTED && it.ready }
+            activeOnlinePlayers().all { isOnlinePlayerConnected(it) && it.ready }
     }
 
     private fun onlineRoomCanStart(): Boolean {
@@ -1938,12 +2643,11 @@ class LobbyActivity : BaseActivity() {
         btnAddPlayer.visibility = localPlayerControlsVisibility
         btnRemovePlayer.visibility = localPlayerControlsVisibility
 
-        val hostOptionsVisible = !firestoreLobby || currentUserIsOnlineHost()
-        listOf(timingOptionsButton, btnAdvancedOptions).forEach { button ->
-            button.visibility = if (hostOptionsVisible) View.VISIBLE else View.GONE
-            button.isEnabled = hostOptionsVisible
-            button.alpha = if (hostOptionsVisible) 1f else 0.55f
-        }
+        timingOptionsButton.visibility = if (firestoreLobby) View.GONE else View.VISIBLE
+        timingOptionsButton.isEnabled = !firestoreLobby
+        btnAdvancedOptions.visibility = View.VISIBLE
+        btnAdvancedOptions.isEnabled = true
+        btnAdvancedOptions.alpha = 1f
     }
 
     private fun setupMapSelector() {
@@ -1951,12 +2655,12 @@ class LobbyActivity : BaseActivity() {
             val map = LocalGameFactory.maps[index]
             imageView.setImageResource(map.imageRes)
             imageView.setOnClickListener {
-                if (isOnlineGuest() || isFirestoreOnlineLobby()) {
-                    Toast.makeText(
-                        this,
-                        "El mapa lo administra la sala online.",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                if (isFirestoreOnlineLobby()) {
+                    updateOnlineMapVote(map.key)
+                    return@setOnClickListener
+                }
+                if (isOnlineGuest()) {
+                    Toast.makeText(this, "El mapa lo administra la sala online.", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 session = PlayerProfileStore.withProfiles(this, LocalGameFactory.selectMap(session, map.key).let {
@@ -1974,6 +2678,34 @@ class LobbyActivity : BaseActivity() {
                 renderLobby()
             }
         }
+    }
+
+    private fun updateOnlineMapVote(mapKey: String) {
+        if (onlineRoomState != ONLINE_ROOM_STATE_WAITING || onlineInitialMatchCreated) {
+            Toast.makeText(this, "La votacion de mapa ya termino.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (mapKey !in OnlineMapVoteResolver.mapKeys || onlineTempUid.isBlank()) return
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(ONLINE_PLAYERS_COLLECTION)
+            .document(onlineTempUid)
+            .update(
+                mapOf(
+                    FIELD_MAP_VOTE to mapKey,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("map_vote_failure roomId=$onlinePartidaId uid=$onlineTempUid map=$mapKey", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo votar el mapa", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private fun renderDebugRole() {
@@ -2163,6 +2895,182 @@ class LobbyActivity : BaseActivity() {
         showLandscapeDialog(dialog, widthDp = 620)
     }
 
+    private fun buildTimingEditor(initial: GameTimingConfig): TimingEditor {
+        var draft = initial.normalized()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(3), 0, dp(8))
+        }
+        val presetButtons = linkedMapOf<GameTimingPreset, Button>()
+        val valueViews = linkedMapOf<TimingField, TextView>()
+        val minusButtons = linkedMapOf<TimingField, Button>()
+        val plusButtons = linkedMapOf<TimingField, Button>()
+        var customMode = draft.preset() == null
+
+        fun refresh() {
+            val selectedPreset = draft.preset()
+            presetButtons.forEach { (preset, button) ->
+                val selected = !customMode && preset == selectedPreset
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+            }
+            valueViews.forEach { (field, view) ->
+                val value = field.value(draft)
+                view.text = "$value s"
+                updateTimingStepButton(minusButtons.getValue(field), value > field.minimum)
+                updateTimingStepButton(plusButtons.getValue(field), value < field.maximum)
+            }
+        }
+
+        val presetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        GameTimingPreset.entries.forEachIndexed { index, preset ->
+            val button = compactDialogButton(preset.label).apply {
+                setOnClickListener {
+                    draft = preset.config
+                    customMode = false
+                    refresh()
+                }
+            }
+            presetButtons[preset] = button
+            presetRow.addView(button, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                if (index > 0) marginStart = dp(6)
+            })
+        }
+        container.addView(presetRow)
+
+        TimingField.entries.forEach { field ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(2), 0, dp(2))
+            }
+            row.addView(TextView(this).apply {
+                text = field.label.lowercase().replaceFirstChar { it.uppercase() }
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 13f
+                maxLines = 1
+            }, LinearLayout.LayoutParams(0, dp(38), 1f))
+            val minus = compactDialogButton("-")
+            val value = TextView(this).apply {
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 14f
+            }
+            val plus = compactDialogButton("+")
+            minusButtons[field] = minus
+            valueViews[field] = value
+            plusButtons[field] = plus
+            minus.setOnClickListener {
+                customMode = true
+                draft = field.update(draft, field.value(draft) - field.step)
+                refresh()
+            }
+            plus.setOnClickListener {
+                customMode = true
+                draft = field.update(draft, field.value(draft) + field.step)
+                refresh()
+            }
+            row.addView(minus, LinearLayout.LayoutParams(dp(40), dp(36)))
+            row.addView(value, LinearLayout.LayoutParams(dp(62), dp(36)))
+            row.addView(plus, LinearLayout.LayoutParams(dp(40), dp(36)))
+            container.addView(row)
+        }
+        refresh()
+        return TimingEditor(container) { draft.normalized() }
+    }
+
+    private fun showTestOptionsDialog() {
+        var quickTestMode = session.quickTestMode
+        var botsObeyVotes = session.debugBotsObeyVoteCommands
+        var forceTies = session.debugForceVoteTies
+        var botsNeverKill = session.debugBotsNeverKillHuman
+        var botsNeverVote = session.debugBotsNeverVoteHuman
+        var forcedRoleIndex = debugRoleIndex
+        val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val content = dialogColumn()
+        content.addView(dialogTitle("OPCIONES DE TESTEO"))
+        content.addView(dialogSectionTitle("PRUEBA RAPIDA"))
+
+        fun addTestSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+            content.addView(SwitchCompat(this).apply {
+                applyTraidoresSwitchStyle()
+                text = label
+                isChecked = checked
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 14f
+                minHeight = dp(46)
+                setPadding(dp(6), dp(7), dp(6), dp(7))
+                setOnCheckedChangeListener { _, value -> onChange(value) }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(2)
+            })
+        }
+
+        addTestSwitch("Modo test rapido", quickTestMode) { quickTestMode = it }
+        content.addView(TextView(this).apply {
+            text = "Permite saltear fases sin accion humana y acelera las votaciones."
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        })
+        if (isDebugBuild) {
+            content.addView(dialogSectionTitle("HERRAMIENTAS DEBUG"))
+            addTestSwitch("IA obedece votos del chat", botsObeyVotes) { botsObeyVotes = it }
+            addTestSwitch("Forzar empates", forceTies) { forceTies = it }
+            addTestSwitch("Bots no te matan de noche", botsNeverKill) { botsNeverKill = it }
+            addTestSwitch("Bots no te votan", botsNeverVote) { botsNeverVote = it }
+            val roleButton = compactDialogButton("")
+            fun refreshForcedRole() {
+                val (_, label) = debugRoles[forcedRoleIndex]
+                roleButton.text = "Forzar tu rol: $label"
+            }
+            roleButton.setOnClickListener {
+                forcedRoleIndex = (forcedRoleIndex + 1) % debugRoles.size
+                refreshForcedRole()
+            }
+            refreshForcedRole()
+            content.addView(
+                roleButton,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply {
+                    topMargin = dp(6)
+                }
+            )
+        } else {
+            content.addView(TextView(this).apply {
+                text = "Las herramientas debug solo aparecen en compilaciones de prueba."
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+            })
+        }
+        val scroll = ScrollView(this).apply { addView(content) }
+        val dialog = AlertDialog.Builder(this)
+            .setView(scroll)
+            .setNegativeButton("CANCELAR", null)
+            .setPositiveButton("APLICAR") { _, _ ->
+                debugRoleIndex = forcedRoleIndex
+                session = session.copy(
+                    quickTestMode = quickTestMode,
+                    debugBotsObeyVoteCommands = botsObeyVotes,
+                    debugForceVoteTies = forceTies,
+                    debugBotsNeverKillHuman = botsNeverKill,
+                    debugBotsNeverVoteHuman = botsNeverVote
+                )
+                renderLobby()
+            }
+            .create()
+        showLandscapeDialog(dialog, widthDp = 560)
+    }
+
     private fun showAdvancedOptionsDialog() {
         if (isFirestoreOnlineLobby()) {
             showOnlineAdvancedOptionsDialog()
@@ -2170,11 +3078,6 @@ class LobbyActivity : BaseActivity() {
         }
         var revealRolesOnDeath = session.revealRolesOnDeath
         var showIndividualVotes = session.showIndividualVotes
-        var quickTestMode = session.quickTestMode
-        var debugBotsObeyVoteCommands = session.debugBotsObeyVoteCommands
-        var debugForceVoteTies = session.debugForceVoteTies
-        var debugBotsNeverKillHuman = session.debugBotsNeverKillHuman
-        var debugBotsNeverVoteHuman = session.debugBotsNeverVoteHuman
         val preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         var roleReadingSeconds = preferences
             .getInt(PREF_ROLE_READING_SECONDS, DEFAULT_ROLE_READING_SECONDS)
@@ -2187,6 +3090,7 @@ class LobbyActivity : BaseActivity() {
             }
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
+        content.addView(dialogSectionTitle("REGLAS DE LA PARTIDA"))
         val revealRolesSwitch = SwitchCompat(this).apply {
             applyTraidoresSwitchStyle()
             text = "Mostrar roles al morir"
@@ -2221,26 +3125,6 @@ class LobbyActivity : BaseActivity() {
         content.addView(TextView(this).apply {
             text = "Activado por defecto: muestra quien voto a cada jugador. " +
                 "Desactivado: solo muestra los votos recibidos."
-            gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 11f
-            setPadding(dp(4), 0, dp(4), dp(8))
-        })
-        val quickTestSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "MODO TEST RAPIDO"
-            isChecked = quickTestMode
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(2), dp(4), dp(4))
-            setOnCheckedChangeListener { _, checked ->
-                quickTestMode = checked
-            }
-        }
-        content.addView(quickTestSwitch)
-        content.addView(TextView(this).apply {
-            text = "Activado: permite saltear fases sin acción humana y acelera votaciones. " +
-                "Desactivado: respeta los tiempos del lobby para mostrar una partida real."
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.text_secondary))
             textSize = 11f
@@ -2300,81 +3184,9 @@ class LobbyActivity : BaseActivity() {
                 bottomMargin = dp(8)
             }
         )
-        val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        if (isDebugBuild && lobbyMode == MODE_LOCAL) {
-            content.addView(SwitchCompat(this).apply {
-                applyTraidoresSwitchStyle()
-                text = "IA DE PRUEBA: OBEDECER VOTOS"
-                isChecked = debugBotsObeyVoteCommands
-                setTextColor(getColor(R.color.text_primary))
-                textSize = 14f
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-                setOnCheckedChangeListener { _, checked ->
-                    debugBotsObeyVoteCommands = checked
-                }
-            })
-            content.addView(TextView(this).apply {
-                text = "Reconoce ordenes del chat como \"votenme\" o \"voten a Nombre\"."
-                gravity = Gravity.CENTER
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 11f
-                setPadding(dp(4), 0, dp(4), dp(8))
-            })
-            content.addView(SwitchCompat(this).apply {
-                applyTraidoresSwitchStyle()
-                text = "PRUEBA: FORZAR EMPATES"
-                isChecked = debugForceVoteTies
-                setTextColor(getColor(R.color.text_primary))
-                textSize = 14f
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-                setOnCheckedChangeListener { _, checked ->
-                    debugForceVoteTies = checked
-                }
-            })
-            content.addView(TextView(this).apply {
-                text = "Fuerza un empate en la votación inicial y vuelve a empatar el desempate."
-                gravity = Gravity.CENTER
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 11f
-                setPadding(dp(4), 0, dp(4), dp(8))
-            })
-            content.addView(SwitchCompat(this).apply {
-                applyTraidoresSwitchStyle()
-                text = "LOS BOTS NO ME MATAN"
-                isChecked = debugBotsNeverKillHuman
-                setTextColor(getColor(R.color.text_primary))
-                textSize = 14f
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-                setOnCheckedChangeListener { _, checked ->
-                    debugBotsNeverKillHuman = checked
-                }
-            })
-            content.addView(TextView(this).apply {
-                text = "Debug local: los asesinos evitan matarte de noche si hay otro objetivo valido."
-                gravity = Gravity.CENTER
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 11f
-                setPadding(dp(4), 0, dp(4), dp(8))
-            })
-            content.addView(SwitchCompat(this).apply {
-                applyTraidoresSwitchStyle()
-                text = "LOS BOTS NO ME VOTAN"
-                isChecked = debugBotsNeverVoteHuman
-                setTextColor(getColor(R.color.text_primary))
-                textSize = 14f
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-                setOnCheckedChangeListener { _, checked ->
-                    debugBotsNeverVoteHuman = checked
-                }
-            })
-            content.addView(TextView(this).apply {
-                text = "Debug local: los votos bot evitan al humano si queda otro candidato valido."
-                gravity = Gravity.CENTER
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 11f
-                setPadding(dp(4), 0, dp(4), dp(8))
-            })
-        }
+        val timingEditor = buildTimingEditor(session.timingConfig)
+        content.addView(dialogSectionTitle("TIEMPOS DE PARTIDA"))
+        content.addView(timingEditor.view)
         content.addView(TextView(this).apply {
             text = "COMPOSICION DE ROLES"
             gravity = Gravity.CENTER
@@ -2601,12 +3413,9 @@ class LobbyActivity : BaseActivity() {
                     ),
                     revealRolesOnDeath = revealRolesOnDeath,
                     showIndividualVotes = showIndividualVotes,
-                    quickTestMode = quickTestMode,
-                    debugBotsObeyVoteCommands = debugBotsObeyVoteCommands,
-                    debugForceVoteTies = debugForceVoteTies,
-                    debugBotsNeverKillHuman = debugBotsNeverKillHuman,
-                    debugBotsNeverVoteHuman = debugBotsNeverVoteHuman
+                    timingConfig = timingEditor.currentConfig()
                 )
+                renderLobby()
             }
             .create()
         showLandscapeDialog(dialog, widthDp = 640)
@@ -2615,8 +3424,21 @@ class LobbyActivity : BaseActivity() {
     private fun showOnlineAdvancedOptionsDialog() {
         var revealRolesOnDeath = session.revealRolesOnDeath
         var showIndividualVotes = session.showIndividualVotes
+        val canEdit = currentUserIsOnlineHost() &&
+            onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
+            !onlineInitialMatchCreated
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES DE PARTIDA"))
+        if (!canEdit) {
+            content.addView(TextView(this).apply {
+                text = "Configuracion sincronizada por el anfitrion."
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 11f
+                setPadding(dp(4), 0, dp(4), dp(7))
+            })
+        }
+        content.addView(dialogSectionTitle("REGLAS"))
         content.addView(SwitchCompat(this).apply {
             applyTraidoresSwitchStyle()
             text = "Mostrar roles al morir"
@@ -2624,6 +3446,7 @@ class LobbyActivity : BaseActivity() {
             setTextColor(getColor(R.color.text_primary))
             textSize = 14f
             setPadding(dp(4), dp(8), dp(4), dp(8))
+            isEnabled = canEdit
             setOnCheckedChangeListener { _, checked -> revealRolesOnDeath = checked }
         })
         content.addView(SwitchCompat(this).apply {
@@ -2633,20 +3456,67 @@ class LobbyActivity : BaseActivity() {
             setTextColor(getColor(R.color.text_primary))
             textSize = 14f
             setPadding(dp(4), dp(8), dp(4), dp(8))
+            isEnabled = canEdit
             setOnCheckedChangeListener { _, checked -> showIndividualVotes = checked }
         })
-        val dialog = AlertDialog.Builder(this)
-            .setView(content)
-            .setNegativeButton("CANCELAR", null)
-            .setPositiveButton("APLICAR") { _, _ ->
+        content.addView(dialogSectionTitle("TIEMPOS"))
+        val timingEditor = buildTimingEditor(session.timingConfig)
+        content.addView(timingEditor.view)
+        if (!canEdit) setViewTreeEnabled(timingEditor.view, false)
+        val scroll = ScrollView(this).apply { addView(content) }
+        val builder = AlertDialog.Builder(this)
+            .setView(scroll)
+            .setNegativeButton(if (canEdit) "CANCELAR" else "CERRAR", null)
+        if (canEdit) {
+            builder.setPositiveButton("APLICAR") { _, _ ->
+                saveOnlineLobbyConfig(
+                    OnlineLobbyConfig(
+                        timing = timingEditor.currentConfig(),
+                        revealRolesOnDeath = revealRolesOnDeath,
+                        showIndividualVotes = showIndividualVotes
+                    )
+                )
+            }
+        }
+        showLandscapeDialog(builder.create(), widthDp = 560)
+    }
+
+    private fun saveOnlineLobbyConfig(config: OnlineLobbyConfig) {
+        val safe = config.normalized()
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    OnlineLobbyConfig.FIELD_ROOM_CONFIG to safe.toFirestore(),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineLobbyConfig = safe
                 session = session.copy(
-                    revealRolesOnDeath = revealRolesOnDeath,
-                    showIndividualVotes = showIndividualVotes
+                    timingConfig = safe.timing,
+                    revealRolesOnDeath = safe.revealRolesOnDeath,
+                    showIndividualVotes = safe.showIndividualVotes
                 )
                 renderLobby()
             }
-            .create()
-        showLandscapeDialog(dialog, widthDp = 480)
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("lobby_config_update_failure roomId=$onlinePartidaId", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudieron guardar las opciones", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    private fun setViewTreeEnabled(view: View, enabled: Boolean) {
+        view.isEnabled = enabled
+        view.alpha = if (enabled) 1f else 0.68f
+        if (view is ViewGroup) {
+            repeat(view.childCount) { index -> setViewTreeEnabled(view.getChildAt(index), enabled) }
+        }
     }
 
     private fun showLobbyOptionsDialog() {
@@ -2705,7 +3575,7 @@ class LobbyActivity : BaseActivity() {
     private fun dialogColumn(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(10), dp(18), dp(4))
+            setPadding(dp(18), dp(16), dp(18), dp(10))
             setBackgroundResource(R.drawable.bg_dialog_game_panel)
         }
     }
@@ -2716,7 +3586,17 @@ class LobbyActivity : BaseActivity() {
             gravity = Gravity.CENTER
             setTextColor(getColor(R.color.accent_gold))
             textSize = 20f
-            setPadding(0, 0, 0, dp(8))
+            setPadding(0, dp(2), 0, dp(10))
+        }
+    }
+
+    private fun dialogSectionTitle(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            setTextColor(getColor(R.color.accent_gold))
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(4), dp(10), dp(4), dp(5))
         }
     }
 
@@ -2755,7 +3635,7 @@ class LobbyActivity : BaseActivity() {
     private fun showLandscapeDialog(dialog: AlertDialog, widthDp: Int) {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val availableWidth = resources.displayMetrics.widthPixels - dp(24)
+        val availableWidth = resources.displayMetrics.widthPixels - dp(32)
         dialog.window?.setLayout(
             dp(widthDp).coerceAtMost(availableWidth),
             WindowManager.LayoutParams.WRAP_CONTENT
@@ -2778,6 +3658,16 @@ class LobbyActivity : BaseActivity() {
                     14,
                     1,
                     TypedValue.COMPLEX_UNIT_SP
+                )
+            }
+        }
+        dialog.window?.decorView?.post {
+            val availableHeight = resources.displayMetrics.heightPixels - dp(32)
+            val measuredHeight = dialog.window?.decorView?.measuredHeight ?: return@post
+            if (measuredHeight > availableHeight) {
+                dialog.window?.setLayout(
+                    dp(widthDp).coerceAtMost(availableWidth),
+                    availableHeight
                 )
             }
         }
@@ -2892,6 +3782,8 @@ class LobbyActivity : BaseActivity() {
         private const val ONLINE_ROOM_STATE_WAITING = "esperando"
         private const val ONLINE_ROOM_STATE_IN_GAME = "en_juego"
         private const val ONLINE_ROOM_STATE_ABANDONED = "abandonada"
+        private const val RTDB_PUBLIC_CHAT_NODE = "chat"
+        private const val RTDB_TRAITOR_CHAT_NODE = "chat_traidores"
         private const val FIELD_NAME = "nombre"
         private const val FIELD_STATE = "estado"
         private const val FIELD_TEST_MODE = "modoPrueba"
@@ -2905,8 +3797,10 @@ class LobbyActivity : BaseActivity() {
         private const val FIELD_CLEANUP_PENDING = "limpiezaPendiente"
         private const val FIELD_ROOM_CODE = "codigoSala"
         private const val FIELD_MAP_KEY = "mapa"
+        private const val FIELD_MAP_VOTE = "votoMapa"
         private const val FIELD_INITIAL_MATCH = "partidaInicial"
         private const val FIELD_MATCH_STATE = "estadoPartida"
+        private const val FIELD_LAST_RESULT = "ultimoResultado"
         private const val FIELD_IS_HOST = "esHost"
         private const val FIELD_PLAYER_STATE = "estado"
         private const val FIELD_PLAYER_READY = "listo"
@@ -2916,10 +3810,13 @@ class LobbyActivity : BaseActivity() {
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
+        private const val PREF_LOBBY_CHAT_PREVIEW_HIDDEN = "lobby_chat_preview_hidden"
         private const val DEFAULT_ROLE_READING_SECONDS = 0
+        private const val MAX_LOCAL_LOBBY_NOTICES = 12
         private const val LOBBY_HOST_DISCONNECT_GRACE_MS = 60_000L
         private const val CLEANUP_BATCH_SIZE = 400L
         private const val CLEANUP_RETRY_DELAY_MS = 5_000L
+        private const val LOBBY_CHAT_PREVIEW_LINES = 3
     }
 
     private data class OnlineLobbyPlayer(
@@ -2930,6 +3827,7 @@ class LobbyActivity : BaseActivity() {
         val ready: Boolean,
         val order: Int,
         val activeInMatch: Boolean,
+        val mapVote: String?,
         val publicId: String,
         val profile: PlayerProfile,
         val lastSeenLocalMs: Long
@@ -2952,10 +3850,23 @@ class LobbyActivity : BaseActivity() {
         }
     }
 
-    private enum class OnlineStartTransactionResult {
-        STARTED,
-        ALREADY_STARTED
+    private sealed interface OnlineStartTransactionResult {
+        object AlreadyStarted : OnlineStartTransactionResult
+        data class MapTieBreakRequired(val mapKeys: List<String>) : OnlineStartTransactionResult
+        data class Started(val mapKey: String, val roleSummary: String) : OnlineStartTransactionResult
     }
+
+    private data class MapVoteViews(
+        val shade: View,
+        val overlay: View,
+        val count: TextView,
+        val voters: TextView
+    )
+
+    private data class TimingEditor(
+        val view: View,
+        val currentConfig: () -> GameTimingConfig
+    )
 
     private enum class TimingField(
         val label: String,
