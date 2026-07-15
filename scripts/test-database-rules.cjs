@@ -92,6 +92,23 @@ async function main() {
       })
     );
 
+    // Cierre completo de sala vacia: RTDB no puede validar el estado/host de Firestore,
+    // asi que cualquier autenticado puede borrar el nodo entero de una sala (chat +
+    // chat_lobby + chat_traidores + presencia de una), pero NO sobrescribirlo con
+    // contenido arbitrario, y un invitado sin sesion no puede borrar nada.
+    const roomId2 = "room_rules_teardown";
+    await assertSucceeds(
+      alice.ref(`salas/${roomId2}/chat/message-a`).set(chatMessage("alice"))
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId2}/presencia/alice`).set({ estado: "conectado", ts: Date.now() })
+    );
+    await assertFails(guest.ref(`salas/${roomId2}`).remove());
+    await assertFails(
+      bob.ref(`salas/${roomId2}`).set({ chat: { intruso: chatMessage("bob") } })
+    );
+    await assertSucceeds(bob.ref(`salas/${roomId2}`).remove());
+
     console.log("Realtime Database rules: OK");
   } finally {
     await testEnv.cleanup();

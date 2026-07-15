@@ -4,6 +4,7 @@
     ".write": false,
     "salas": {
       "$roomId": {
+        ".write": "auth != null && !newData.exists()",
         "chat": {
           ".read": "auth != null",
           ".write": "auth != null && !newData.exists()",
