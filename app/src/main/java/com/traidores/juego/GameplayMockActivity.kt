@@ -56,6 +56,7 @@ import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import java.util.ArrayDeque
+import java.util.concurrent.Executors
 import kotlin.math.ceil
 
 private data class RevealPanelTheme(
@@ -70,6 +71,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isEventLogExpanded = false
     private var lastRenderedAnnouncement = ""
     private var lastRenderedPhase: GamePhase? = null
+    private var lastMapBackgroundRes = 0
+    private var lastEventLogBackgroundRes = 0
+    private var lastRoleCardImageRes = 0
     private var selectedTarget = ""
     private var lastCompanionCardMetrics: CompanionCardMetrics? = null
     private var desertorDialogOpen = false
@@ -186,6 +190,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private val pendingOnlineActionSubmissions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
+    private val localVoteExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "local-vote-resolution").apply {
+            priority = Thread.NORM_PRIORITY - 1
+        }
+    }
+    private var localVoteResolutionInProgress = false
+    private var localVoteResolutionToken = 0
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val winnerAutoReturnRunnable = Runnable {
         if (isWinnerRevealVisible && ::session.isInitialized && session.winner.isNotBlank()) {
@@ -417,6 +428,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
     private val playerCardViews = linkedMapOf<String, SidePlayerCardHolder>()
+    private val tieVoteCardViews = linkedMapOf<String, TieVoteCardHolder>()
     private lateinit var winnerRevealAnimator: WinnerRevealAnimator
     private lateinit var winnerResultsRenderer: WinnerResultsRenderer
 
@@ -430,7 +442,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val name: TextView,
         var selected: Boolean = false,
         var actionPulseKey: String? = null,
-        var actionBadgeAnimator: AnimatorSet? = null
+        var actionBadgeAnimator: AnimatorSet? = null,
+        var renderKey: String? = null
+    )
+
+    private data class TieVoteCardHolder(
+        val root: LinearLayout,
+        val name: TextView,
+        val status: TextView
     )
 
     private data class ReactionSpec(
@@ -928,6 +947,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     override fun onDestroy() {
+        localVoteResolutionToken += 1
+        localVoteResolutionInProgress = false
+        localVoteExecutor.shutdownNow()
         autoAdvanceHandler.removeCallbacks(roleReadingTickRunnable)
         cancelReadyVoteBotCascade()
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
@@ -1146,6 +1168,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun handleCurrentPhase() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        if (localVoteResolutionInProgress) return
         if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "La siguiente fase comienza enseguida.", Toast.LENGTH_SHORT).show()
@@ -1492,11 +1515,103 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val before = actionSession
         selectedTarget = targetName
+        if (isOnlineVotingActionWindow()) {
+            recordOnlineDeferredPlayerAction(
+                before = before,
+                resolved = previewOnlineVoteAction(before, targetName),
+                targetName = targetName
+            )
+            return
+        }
+        if (shouldResolveLocalVoteOffMainThread(actionSession)) {
+            resolveLocalVoteOffMainThread(before, targetName)
+            return
+        }
         val resolved = GameEngine.resolveHumanTargetAction(actionSession, targetName)
         if (isOnlineDeferredActionWindow()) {
             recordOnlineDeferredPlayerAction(before, resolved, targetName)
             return
         }
+        completeResolvedTargetAction(before, resolved, targetName)
+    }
+
+    private fun shouldResolveLocalVoteOffMainThread(actionSession: GameSession): Boolean {
+        return !isOnlineGameplay() && (
+            actionSession.phase == GamePhase.VOTACION ||
+                actionSession.phase == GamePhase.DESEMPATE_VOTACION
+            )
+    }
+
+    private fun previewOnlineVoteAction(before: GameSession, targetName: String): GameSession {
+        // El servidor/host resuelve el recuento real. El cliente solo necesita una vista
+        // previa para el feedback; simular aqui los votos de los demas jugadores bloqueaba UI.
+        val human = GameEngine.humanPlayer(before)
+        val action = GameAction(
+            type = GameActionType.VOTE,
+            actor = human.name,
+            target = targetName,
+            round = before.round,
+            phase = before.phase,
+            publiclyKnown = true
+        )
+        return before.copy(
+            phase = GamePhase.RECUENTO_VOTOS,
+            phaseIndex = before.phaseIndex + 1,
+            actionHistory = (before.actionHistory + action)
+                .takeLast(ONLINE_PREVIEW_ACTION_HISTORY_LIMIT)
+        )
+    }
+
+    private fun resolveLocalVoteOffMainThread(before: GameSession, targetName: String) {
+        val token = ++localVoteResolutionToken
+        val startedAtMs = SystemClock.elapsedRealtime()
+        localVoteResolutionInProgress = true
+        currentPlayerHint.text = "Contando los votos del pueblo..."
+        renderAdvanceButton()
+
+        localVoteExecutor.execute {
+            val result = runCatching {
+                GameEngine.resolveHumanTargetAction(before, targetName)
+            }
+            val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+            autoAdvanceHandler.post {
+                if (token != localVoteResolutionToken || isFinishing || isDestroyed) {
+                    return@post
+                }
+                localVoteResolutionInProgress = false
+                val resolved = result.getOrElse { error ->
+                    OnlineDebugLog.e(
+                        "local_vote_resolution_failure phase=${before.phase.name} phaseIndex=${before.phaseIndex}",
+                        error
+                    )
+                    Toast.makeText(
+                        this,
+                        "No se pudo contar la votacion. Intenta nuevamente.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    renderGame()
+                    return@post
+                }
+                if (session.phaseIndex != before.phaseIndex || session.phase != before.phase) {
+                    OnlineDebugLog.w(
+                        "local_vote_resolution_discarded expected=${before.phase.name}:${before.phaseIndex} actual=${session.phase.name}:${session.phaseIndex}"
+                    )
+                    renderGame()
+                    return@post
+                }
+                OnlineDebugLog.i(
+                    "local_vote_resolution_complete phase=${before.phase.name} players=${before.players.size} durationMs=$elapsedMs"
+                )
+                completeResolvedTargetAction(before, resolved, targetName)
+            }
+        }
+    }
+
+    private fun completeResolvedTargetAction(
+        before: GameSession,
+        resolved: GameSession,
+        targetName: String
+    ) {
         recordOnlinePlayerAction(before, resolved, targetName)
         playResolvedActionSound(before, resolved)
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
@@ -1531,8 +1646,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val actionKey = onlineDeferredActionKey()
         pendingOnlineActionSubmissions.add(actionKey)
         session = session.copy(privateHint = "Enviando accion...")
+        val previousTarget = selectedTarget
         clearSelection()
-        renderGame()
+        currentPlayerHint.text = privateHintText()
+        renderAdvanceButton()
+        refreshPlayerTargetSelection(previousTarget, "")
         val feedback = GameplayTableUi.feedbackForResolvedAction(before, resolved, targetName)
         val waitingMessage = if (
             session.phase == GamePhase.VOTACION ||
@@ -1634,6 +1752,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun renderGame() {
+        val renderStartedAtMs = SystemClock.elapsedRealtime()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         syncReactionRound()
         if (
@@ -3874,6 +3993,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             (actionSession().phase == GamePhase.NOCHE_ORACULO &&
                 isHumanRoleTurn(RoleCatalog.ORACULO))
         val label = when {
+            localVoteResolutionInProgress -> "CONTANDO VOTOS"
             session.winner.isNotBlank() -> "FINAL"
             isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
             isOnlineStartupPhase() -> "ESPERANDO"
@@ -3899,7 +4019,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val requiresAttention = session.winner.isBlank() &&
             (selectedAction != null || canSelfProtect || specialDecision)
         val actionReadyDuringTimer = selectedAction != null || canSelfProtect || specialDecision
-        btnAction.isEnabled = !transitionLocked &&
+        btnAction.isEnabled = !localVoteResolutionInProgress &&
+            !transitionLocked &&
             session.winner.isBlank() &&
             (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
             !onlineAwaitingHostAdvance &&
@@ -4430,8 +4551,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             availableHeightDp,
             availableWidthDp = if (isPortrait()) availableSideColumnWidthDp() else null
         )
-        lastCompanionCardMetrics = metrics
-        applyAdaptiveGameplayLayout(metrics)
+        if (lastCompanionCardMetrics != metrics) {
+            lastCompanionCardMetrics = metrics
+            applyAdaptiveGameplayLayout(metrics)
+        }
 
         val desiredNames = (leftPlayers + rightPlayers).map { it.name }.toSet()
         playerCardViews.keys.toList()
@@ -4755,6 +4878,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val isActionable = actionLabel.isNotBlank() && !transitionLocked
         val isSelected = player.name == selectedTarget
+        val renderKey = listOf(
+            player.name,
+            player.initial,
+            isAlive,
+            player.muted,
+            isOracleGuest,
+            actionLabel,
+            transitionLocked,
+            isSelected,
+            isOnlineGameplay(),
+            session.phaseIndex,
+            metrics
+        ).joinToString("|")
+        if (holder.renderKey == renderKey) return
+        holder.renderKey = renderKey
 
         holder.root.minimumWidth = dp(metrics.minCardWidthDp)
         holder.root.layoutParams = LinearLayout.LayoutParams(
@@ -5725,12 +5863,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         roleName.setTextColor(getColor(if (showRole) R.color.text_primary else R.color.text_secondary))
         if (showRole) {
-            roleImage.setImageResource(roleImageFor(role))
+            val imageRes = roleImageFor(role)
+            if (lastRoleCardImageRes != imageRes) {
+                roleImage.setImageResource(imageRes)
+                lastRoleCardImageRes = imageRes
+            }
             roleName.text = role?.let {
                 "${it.name.uppercase()} - ${it.team.uppercase()}"
             } ?: "SIN ROL"
         } else {
-            roleImage.setImageResource(R.drawable.card_back_traidores)
+            if (lastRoleCardImageRes != R.drawable.card_back_traidores) {
+                roleImage.setImageResource(R.drawable.card_back_traidores)
+                lastRoleCardImageRes = R.drawable.card_back_traidores
+            }
             roleName.text = "CARTA OCULTA"
         }
         btnRevealCard.text = when {
@@ -6338,7 +6483,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
-        if (maybeOfferSpectatorChoice()) return
+        if (maybeOfferSpectatorChoice()) {
+            logSlowGameplayRender(renderStartedAtMs)
+            return
+        }
         maybeShowDesertorChoice()
         if (!desertorDialogOpen) {
             refreshOnlinePresentationGate()
@@ -6538,7 +6686,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val candidates = session.tieVoteCandidates.mapNotNull { candidate ->
             GameEngine.playerByName(session, candidate)
         }
-        tieVoteCards.removeAllViews()
         tieVoteCards.columnCount = candidates.size.coerceIn(1, 4)
         tieVoteCards.rowCount = 1
         val cardWidth = when {
@@ -6547,16 +6694,28 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else -> 102
         }
         val cardHeight = if (candidates.size <= 2) 156 else 140
-        candidates.forEach { player ->
-            val card = createTieVoteCard(player)
-            tieVoteCards.addView(
-                card,
-                GridLayout.LayoutParams().apply {
-                    width = dp(cardWidth)
-                    height = dp(cardHeight)
-                    setMargins(dp(7), dp(4), dp(7), dp(4))
-                }
-            )
+        val desiredNames = candidates.map { it.name }.toSet()
+        tieVoteCardViews.keys.toList()
+            .filterNot { it in desiredNames }
+            .forEach { name ->
+                tieVoteCardViews.remove(name)?.root?.let { tieVoteCards.removeView(it) }
+            }
+        candidates.forEachIndexed { index, player ->
+            val holder = tieVoteCardViews.getOrPut(player.name) { createTieVoteCard(player) }
+            val currentParent = holder.root.parent as? ViewGroup
+            if (currentParent !== tieVoteCards) {
+                currentParent?.removeView(holder.root)
+                tieVoteCards.addView(holder.root, index.coerceAtMost(tieVoteCards.childCount))
+            } else if (tieVoteCards.indexOfChild(holder.root) != index) {
+                tieVoteCards.removeView(holder.root)
+                tieVoteCards.addView(holder.root, index.coerceAtMost(tieVoteCards.childCount))
+            }
+            holder.root.layoutParams = GridLayout.LayoutParams().apply {
+                width = dp(cardWidth)
+                height = dp(cardHeight)
+                setMargins(dp(7), dp(4), dp(7), dp(4))
+            }
+            bindTieVoteCard(holder, player)
         }
 
         val human = GameEngine.humanPlayer(session)
@@ -6574,31 +6733,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderTieVoteSelection()
     }
 
-    private fun createTieVoteCard(player: GamePlayer): View {
-        val actionable = canActOnTarget(player.name)
-        val selected = selectedTarget == player.name
+    private fun createTieVoteCard(player: GamePlayer): TieVoteCardHolder {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(8), dp(9), dp(8), dp(6))
-            alpha = if (actionable) 1f else 0.5f
-            background = tieVoteCardBackground(selected, actionable)
-            isClickable = actionable
-            isFocusable = actionable
-            contentDescription = when {
-                player.isHuman -> "${player.name}, tu carta empatada"
-                actionable -> "${player.name}, tocar para votar"
-                else -> "${player.name}, no disponible"
-            }
-            setOnClickListener {
-                if (!actionable) {
-                    GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.ERROR)
-                    return@setOnClickListener
-                }
-                GameplayEffects.play(this@GameplayMockActivity, GameplayEffect.SELECT)
-                selectedTarget = player.name
-                renderTieVoteWindow()
-            }
         }
         val card = FrameLayout(this)
         card.addView(
@@ -6622,35 +6761,64 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         )
         container.addView(card, LinearLayout.LayoutParams(dp(66), dp(82)))
+        val name = TextView(this).apply {
+            text = player.name
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+        }
         container.addView(
-            TextView(this).apply {
-                text = player.name
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
-                textSize = 13f
-                typeface = Typeface.DEFAULT_BOLD
-            },
+            name,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(25))
         )
+        val status = TextView(this).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            textSize = 10f
+            setTypeface(null, Typeface.BOLD)
+        }
         container.addView(
-            TextView(this).apply {
-                text = when {
-                    player.isHuman -> "TU CARTA"
-                    selected -> "SELECCIONADO"
-                    else -> "TOCAR PARA VOTAR"
-                }
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_secondary))
-                textSize = 10f
-                setTypeface(null, Typeface.BOLD)
-            },
+            status,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(22))
         )
-        return container
+        return TieVoteCardHolder(container, name, status)
+    }
+
+    private fun bindTieVoteCard(holder: TieVoteCardHolder, player: GamePlayer) {
+        val actionable = canActOnTarget(player.name)
+        val selected = selectedTarget == player.name
+        holder.root.alpha = if (actionable) 1f else 0.5f
+        holder.root.background = tieVoteCardBackground(selected, actionable)
+        holder.root.isClickable = actionable
+        holder.root.isFocusable = actionable
+        holder.root.contentDescription = when {
+            player.isHuman -> "${player.name}, tu carta empatada"
+            actionable -> "${player.name}, tocar para votar"
+            else -> "${player.name}, no disponible"
+        }
+        holder.root.setOnClickListener {
+            if (!canActOnTarget(player.name)) {
+                GameplayEffects.play(this, GameplayEffect.ERROR)
+                return@setOnClickListener
+            }
+            GameplayEffects.play(this, GameplayEffect.SELECT)
+            selectedTarget = player.name
+            tieVoteCardViews.forEach { (name, cardHolder) ->
+                GameEngine.playerByName(session, name)?.let { bindTieVoteCard(cardHolder, it) }
+            }
+            renderTieVoteSelection()
+        }
+        holder.name.text = player.name
+        holder.name.setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
+        holder.status.text = when {
+            player.isHuman -> "TU CARTA"
+            selected -> "SELECCIONADO"
+            else -> "TOCAR PARA VOTAR"
+        }
+        holder.status.setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_secondary))
     }
 
     private fun tieVoteCardBackground(selected: Boolean, enabled: Boolean): GradientDrawable {
@@ -7305,6 +7473,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isTraitorRevealRunning = false
             resumeGameFlowAfterBlockingUi()
         }
+        logSlowGameplayRender(renderStartedAtMs)
+    }
+
+    private fun logSlowGameplayRender(startedAtMs: Long) {
+        val durationMs = SystemClock.elapsedRealtime() - startedAtMs
+        if (durationMs < 48L) return
+        OnlineDebugLog.w(
+            "gameplay_slow_render phase=${session.phase.name} phaseIndex=${session.phaseIndex} players=${session.players.size} durationMs=$durationMs"
+        )
     }
 
     private fun cancelTraitorReveal() {
@@ -7375,10 +7552,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun renderThemedBackground(period: GameplayPeriod) {
-        mapBackground.setImageResource(
-            backgroundDrawableFor(themeKey, period == GameplayPeriod.NIGHT)
-        )
-        eventLogBackground.setImageResource(logDrawableFor(themeKey))
+        val mapRes = backgroundDrawableFor(themeKey, period == GameplayPeriod.NIGHT)
+        if (lastMapBackgroundRes != mapRes) {
+            mapBackground.setImageResource(mapRes)
+            lastMapBackgroundRes = mapRes
+        }
+        val logRes = logDrawableFor(themeKey)
+        if (lastEventLogBackgroundRes != logRes) {
+            eventLogBackground.setImageResource(logRes)
+            lastEventLogBackgroundRes = logRes
+        }
     }
 
     private fun themeFromIntentOrSession(): String {
@@ -7696,6 +7879,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val NIGHT_SKIP_ARM_DELAY_MS = 3_500L
         private const val READY_VOTE_MINIMUM_DEBATE_MS = 10_000L
         private const val MAX_NIGHT_SKIP_STEPS = 8
+        private const val ONLINE_PREVIEW_ACTION_HISTORY_LIMIT = 60
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"

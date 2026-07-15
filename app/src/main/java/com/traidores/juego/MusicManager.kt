@@ -1,11 +1,13 @@
 package com.traidores.juego
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import kotlin.math.max
 
+/** Musica larga preparada de forma asincrona para no bloquear la interfaz. */
 object MusicManager {
     private const val PAUSE_DELAY_MS = 400L
 
@@ -15,6 +17,8 @@ object MusicManager {
     private var currentVictoryTrackRes = 0
     private var player: MediaPlayer? = null
     private var victoryPlayer: MediaPlayer? = null
+    private var playerPrepared = false
+    private var victoryPlayerPrepared = false
     private var playerStarted = false
     private var victoryPlayerStarted = false
     private var victoryCompletionListener: (() -> Unit)? = null
@@ -35,9 +39,7 @@ object MusicManager {
 
     fun onActivityStopped() {
         activeScreens = max(0, activeScreens - 1)
-        if (activeScreens == 0) {
-            handler.postDelayed(pauseIfBackground, PAUSE_DELAY_MS)
-        }
+        if (activeScreens == 0) handler.postDelayed(pauseIfBackground, PAUSE_DELAY_MS)
     }
 
     fun refresh(context: Context) {
@@ -47,7 +49,6 @@ object MusicManager {
         val volume = AudioPreferences.musicVolume(sharedPref)
 
         ensurePlayer(appContext)
-
         player.runCatchingIfPresent { setVolume(volume, volume) }
         victoryPlayer.runCatchingIfPresent { setVolume(volume, volume) }
 
@@ -105,7 +106,6 @@ object MusicManager {
         if (currentTrackRes != trackRes) {
             currentTrackRes = trackRes
             releasePlayer()
-            player = null
         }
     }
 
@@ -127,42 +127,27 @@ object MusicManager {
         victoryCompletionListener = onCompletion
         currentVictoryTrackRes = trackRes
         val appContext = context.applicationContext
-        val sharedPref = AudioPreferences.preferences(appContext)
-        val musicOn = AudioPreferences.isMusicEnabled(sharedPref)
-        val volume = AudioPreferences.musicVolume(sharedPref)
+        val preferences = AudioPreferences.preferences(appContext)
+        val musicOn = AudioPreferences.isMusicEnabled(preferences)
+        val volume = AudioPreferences.musicVolume(preferences)
         if (!musicOn || volume <= 0f) return
 
-        victoryPlayer = MediaPlayer.create(appContext, trackRes)?.apply {
-            isLooping = false
-            setVolume(volume, volume)
-            setOnErrorListener { errored, _, _ ->
-                if (victoryPlayer === errored) {
-                    victoryPlayer = null
-                    victoryPlayerStarted = false
-                }
-                errored.runCatching { release() }
-                true
-            }
-            setOnCompletionListener { completed ->
-                val completionListener = victoryCompletionListener
-                if (victoryPlayer === completed) {
-                    victoryPlayer = null
-                    victoryPlayerStarted = false
-                    victoryCompletionListener = null
-                }
-                completed.runCatching { release() }
-                completionListener?.invoke()
-            }
-            runCatching {
-                start()
-                victoryPlayerStarted = true
-            }.onFailure {
-                if (victoryPlayer === this) {
-                    victoryPlayer = null
-                }
-                victoryPlayerStarted = false
-                runCatching { release() }
-            }
+        val created = createAsyncPlayer(appContext, trackRes, looping = false) { prepared ->
+            if (victoryPlayer !== prepared) return@createAsyncPlayer
+            victoryPlayerPrepared = true
+            refresh(appContext)
+        } ?: return
+        victoryPlayer = created
+        created.setVolume(volume, volume)
+        created.setOnErrorListener { errored, _, _ ->
+            if (victoryPlayer === errored) releaseVictoryPlayer()
+            true
+        }
+        created.setOnCompletionListener { completed ->
+            if (victoryPlayer !== completed) return@setOnCompletionListener
+            val completion = victoryCompletionListener
+            releaseVictoryPlayer()
+            completion?.invoke()
         }
     }
 
@@ -172,42 +157,28 @@ object MusicManager {
         refresh(context)
     }
 
-    fun pauseVictoryMusic() {
-        pauseVictoryPlayer()
-    }
+    fun pauseVictoryMusic() = pauseVictoryPlayer()
 
     fun stopVictoryMusic() {
-        victoryPlayer?.runCatching {
-            stop()
-            release()
-        }
-        victoryPlayer = null
-        victoryPlayerStarted = false
-        victoryCompletionListener = null
+        releaseVictoryPlayer()
         currentVictoryTrackRes = 0
     }
 
-    private fun trackForSession(session: GameSession): Int {
-        return when {
-            session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
-            isNightPhase(session.phase) -> R.raw.night_phase_music
-            else -> dayTrackForMap(session.mapKey)
-        }
+    private fun trackForSession(session: GameSession): Int = when {
+        session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
+        isNightPhase(session.phase) -> R.raw.night_phase_music
+        else -> dayTrackForMap(session.mapKey)
     }
 
-    private fun dayTrackForMap(mapKey: String): Int {
-        return when (mapKey) {
-            "grecia" -> R.raw.day_music_greece
-            "medieval" -> R.raw.day_music_medieval
-            else -> R.raw.day_music_pampa
-        }
+    private fun dayTrackForMap(mapKey: String): Int = when (mapKey) {
+        "grecia" -> R.raw.day_music_greece
+        "medieval" -> R.raw.day_music_medieval
+        else -> R.raw.day_music_pampa
     }
 
-    private fun victoryTrackForWinner(winnerKey: String): Int {
-        return when (winnerKey) {
-            GameRules.TRAITOR_WINNER -> R.raw.victory_music_traitors
-            else -> R.raw.victory_music_town
-        }
+    private fun victoryTrackForWinner(winnerKey: String): Int = when (winnerKey) {
+        GameRules.TRAITOR_WINNER -> R.raw.victory_music_traitors
+        else -> R.raw.victory_music_town
     }
 
     private fun isNightPhase(phase: GamePhase): Boolean {
@@ -223,42 +194,65 @@ object MusicManager {
             refresh(context)
             return
         }
-
         currentTrackRes = trackRes
-        player?.release()
-        player = null
-        playerStarted = false
+        releasePlayer()
         refresh(context)
     }
 
     private fun ensurePlayer(context: Context) {
         if (player != null) return
-        player = MediaPlayer.create(context, currentTrackRes)?.apply {
-            isLooping = true
-            setOnErrorListener { errored, _, _ ->
-                if (player === errored) {
-                    player = null
-                    playerStarted = false
-                }
-                errored.runCatching { release() }
-                true
+        val created = createAsyncPlayer(context, currentTrackRes, looping = true) { prepared ->
+            if (player !== prepared) return@createAsyncPlayer
+            playerPrepared = true
+            refresh(context)
+        } ?: return
+        player = created
+        created.setOnErrorListener { errored, _, _ ->
+            if (player === errored) releasePlayer()
+            true
+        }
+    }
+
+    private fun createAsyncPlayer(
+        context: Context,
+        soundRes: Int,
+        looping: Boolean,
+        onPrepared: (MediaPlayer) -> Unit
+    ): MediaPlayer? {
+        val mediaPlayer = MediaPlayer()
+        return runCatching {
+            mediaPlayer.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_GAME)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            context.resources.openRawResourceFd(soundRes).use { descriptor ->
+                requireNotNull(descriptor) { "No se pudo abrir el recurso de audio $soundRes" }
+                mediaPlayer.setDataSource(
+                    descriptor.fileDescriptor,
+                    descriptor.startOffset,
+                    descriptor.length
+                )
             }
+            mediaPlayer.isLooping = looping
+            mediaPlayer.setOnPreparedListener { prepared -> onPrepared(prepared) }
+            mediaPlayer.prepareAsync()
+            mediaPlayer
+        }.getOrElse {
+            mediaPlayer.runCatching { release() }
+            null
         }
     }
 
     private fun startPlayer() {
         val current = player ?: return
+        if (!playerPrepared || playerStarted) return
         runCatching {
-            if (!playerStarted) {
-                current.start()
-                playerStarted = true
-            }
+            current.start()
+            playerStarted = true
         }.onFailure {
-            if (player === current) {
-                player = null
-            }
-            playerStarted = false
-            current.runCatching { release() }
+            if (player === current) releasePlayer()
         }
     }
 
@@ -269,23 +263,25 @@ object MusicManager {
     }
 
     private fun releasePlayer() {
-        player.runCatchingIfPresent { release() }
+        val current = player
+        player = null
+        playerPrepared = false
         playerStarted = false
+        current?.runCatching {
+            setOnPreparedListener(null)
+            setOnErrorListener(null)
+            release()
+        }
     }
 
     private fun startVictoryPlayer() {
         val current = victoryPlayer ?: return
+        if (!victoryPlayerPrepared || victoryPlayerStarted) return
         runCatching {
-            if (!victoryPlayerStarted) {
-                current.start()
-                victoryPlayerStarted = true
-            }
+            current.start()
+            victoryPlayerStarted = true
         }.onFailure {
-            if (victoryPlayer === current) {
-                victoryPlayer = null
-            }
-            victoryPlayerStarted = false
-            current.runCatching { release() }
+            if (victoryPlayer === current) releaseVictoryPlayer()
         }
     }
 
@@ -293,6 +289,20 @@ object MusicManager {
         if (!victoryPlayerStarted) return
         victoryPlayer?.runCatching { pause() }
         victoryPlayerStarted = false
+    }
+
+    private fun releaseVictoryPlayer() {
+        val current = victoryPlayer
+        victoryPlayer = null
+        victoryPlayerPrepared = false
+        victoryPlayerStarted = false
+        victoryCompletionListener = null
+        current?.runCatching {
+            setOnPreparedListener(null)
+            setOnCompletionListener(null)
+            setOnErrorListener(null)
+            release()
+        }
     }
 
     private inline fun MediaPlayer?.runCatchingIfPresent(block: MediaPlayer.() -> Unit) {

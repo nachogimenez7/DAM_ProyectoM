@@ -74,6 +74,9 @@ class GameplayChatController(
     private var showOnlyEvents = false
     private var selectedChatChannel = ChatChannel.PUBLICO
     private var unreadChatCount = 0
+    private var lastAmbientFeedRenderKey = ""
+    private var lastExpandedChatRenderKey = ""
+    private var lastChatBackgroundRenderKey = ""
     private var onlineChatQuery: Query? = null
     private var onlineChatListener: ValueEventListener? = null
     private var lastOnlineChatSentAtMs = 0L
@@ -616,14 +619,30 @@ class GameplayChatController(
         }
 
         val channel = activeChatChannel()
-        val entries = ChronicleFeedPresenter.entries(activeChannelMessages(channel))
+        val entries = ChronicleFeedPresenter.entries(
+            activeChannelMessages(channel).takeLast(CHAT_AMBIENT_SOURCE_LIMIT)
+        )
             .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
             .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
         val canChat = canHumanChatInChannel(channel)
+        val renderKey = listOf(
+            channel.name,
+            entries,
+            canChat,
+            host.currentSession.phase.name,
+            host.gameplayTextScale
+        ).joinToString("|")
         if (entries.isEmpty() && !canChat) {
             chatAmbientFeed.visibility = View.GONE
+            lastAmbientFeedRenderKey = renderKey
             return
         }
+
+        if (lastAmbientFeedRenderKey == renderKey && chatAmbientMessages.childCount > 0) {
+            chatAmbientFeed.visibility = View.VISIBLE
+            return
+        }
+        lastAmbientFeedRenderKey = renderKey
 
         renderChatBackgrounds()
         renderChatTitle()
@@ -944,9 +963,22 @@ class GameplayChatController(
     }
 
     private fun renderChatMessages(messages: List<GameChatMessage>, channel: ChatChannel) {
+        val recentMessages = messages.takeLast(CHAT_EXPANDED_SOURCE_LIMIT)
+        val renderKey = listOf(
+            channel.name,
+            recentMessages,
+            showOnlyEvents,
+            typingBotSpeakers.toList(),
+            host.gameplayTextScale,
+            chatPanel.width
+        ).joinToString("|")
+        if (lastExpandedChatRenderKey == renderKey && chatMessagesContainer.childCount > 0) {
+            return
+        }
+        lastExpandedChatRenderKey = renderKey
         chatMessagesContainer.removeAllViews()
         val entries = ChronicleFeedPresenter.entries(
-            messages,
+            recentMessages,
             showOnlyEvents && channel == ChatChannel.PUBLICO
         )
             .filterNot { channel == ChatChannel.TRAIDORES && it.kind == ChronicleEntryKind.DAY_DIVIDER }
@@ -1938,6 +1970,14 @@ class GameplayChatController(
     }
 
     private fun renderChatBackgrounds() {
+        val channel = activeChatChannel()
+        val renderKey = listOf(
+            host.currentSession.mapKey,
+            channel.name,
+            canHumanChatInChannel(channel)
+        ).joinToString("|")
+        if (lastChatBackgroundRenderKey == renderKey) return
+        lastChatBackgroundRenderKey = renderKey
         val logDrawable = host.chatLogDrawableRes()
         chatPanelBackground.setImageResource(logDrawable)
         chatAmbientBackground.setImageResource(logDrawable)
@@ -2123,6 +2163,8 @@ class GameplayChatController(
         private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
         private const val CHAT_AMBIENT_MAX_MESSAGES = 4
+        private const val CHAT_AMBIENT_SOURCE_LIMIT = 8
+        private const val CHAT_EXPANDED_SOURCE_LIMIT = 32
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140

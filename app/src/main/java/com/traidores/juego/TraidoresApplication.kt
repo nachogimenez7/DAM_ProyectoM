@@ -9,6 +9,8 @@ class TraidoresApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         configureFirestore()
+        GameplaySoundEffects.preload(this)
+        EmoteSoundEffects.preload(this)
     }
 
     private fun configureFirestore() {
