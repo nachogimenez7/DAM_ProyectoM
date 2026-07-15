@@ -7,6 +7,7 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
@@ -113,6 +114,8 @@ class LobbyActivity : BaseActivity() {
     private var lobbyChatController: LobbyChatController? = null
     private var lobbyChatMessages = emptyList<LobbyChatMessage>()
     private val lobbySystemNotices = ArrayDeque<LobbyChatMessage>()
+    private var lobbyChatKnownMessageIds: Set<String>? = null
+    private var lastLobbyEmoteSoundAtMs = 0L
     private var lobbyChatExpandedMessages: LinearLayout? = null
     private var lobbyPlayersBaselineReady = false
     private var lastMapVoteLeaderKey: String? = null
@@ -625,6 +628,7 @@ class LobbyActivity : BaseActivity() {
                 actorId = onlineTempUid,
                 speaker = onlinePlayerName,
                 onMessagesChanged = { messages ->
+                    playLobbyEmoteSoundForNewMessages(messages)
                     lobbyChatMessages = messages
                     renderLobbyChatDock()
                     lobbyChatExpandedMessages?.let(::renderLobbyChatMessages)
@@ -706,13 +710,30 @@ class LobbyActivity : BaseActivity() {
             .takeLast(LobbyChatController.MAX_MESSAGES)
     }
 
+    // Suena solo para emotes NUEVOS (diff contra el snapshot anterior), nunca para el
+    // historial que llega al abrir/reconectar. Ademas del throttle propio de
+    // EmoteSoundEffects, se aplica un cooldown mas largo para que una racha de emotes
+    // en el lobby no ametralle audio.
+    private fun playLobbyEmoteSoundForNewMessages(messages: List<LobbyChatMessage>) {
+        val currentIds = messages.mapTo(mutableSetOf()) { it.id }
+        val previousIds = lobbyChatKnownMessageIds
+        lobbyChatKnownMessageIds = currentIds
+        if (previousIds == null) return
+        val newEmote = messages.lastOrNull { it.id !in previousIds && it.emoteId != null } ?: return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLobbyEmoteSoundAtMs < LOBBY_EMOTE_SOUND_COOLDOWN_MS) return
+        val emotionKey = EmoteCatalog.byId(newEmote.emoteId.orEmpty())?.emotionKey ?: return
+        lastLobbyEmoteSoundAtMs = now
+        EmoteSoundEffects.play(this, emotionKey)
+    }
+
     private fun showLobbyChatSheet() {
         if (!isFirestoreOnlineLobby()) return
         val dialog = BottomSheetDialog(this)
         val content = dialogColumn().apply {
             setPadding(dp(14), dp(12), dp(14), dp(14))
         }
-        content.addView(dialogTitle("CHAT DE LA SALA"))
+        content.addView(dialogTitle("QUÉ SE DICE EN LA SALA"))
         content.addView(TextView(this).apply {
             text = "Se conservan los ultimos 30 mensajes de esta sala."
             gravity = Gravity.CENTER
@@ -3817,6 +3838,7 @@ class LobbyActivity : BaseActivity() {
         private const val CLEANUP_BATCH_SIZE = 400L
         private const val CLEANUP_RETRY_DELAY_MS = 5_000L
         private const val LOBBY_CHAT_PREVIEW_LINES = 3
+        private const val LOBBY_EMOTE_SOUND_COOLDOWN_MS = 900L
     }
 
     private data class OnlineLobbyPlayer(
