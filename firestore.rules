@@ -149,6 +149,13 @@ service cloud.firestore {
         && room.limpiezaPendiente == true;
     }
 
+    function roomTeardownAllowed(partidaId) {
+      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return signedIn()
+        && room.estado == 'esperando'
+        && request.auth.uid in [room.hostId, room.hostActivoId];
+    }
+
     function isActiveRoomMember(partidaId) {
       let playerPath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid);
       return signedIn()
@@ -360,7 +367,13 @@ service cloud.firestore {
           || handoffUpdate()
           || stableLobbyHostTransfer(partidaId)
         );
-      allow delete: if false;
+      // El anfitrion (activo o estable) puede borrar la sala por completo cuando queda
+      // vacia: esperando, y ya sin ningun otro jugador conectado (ese chequeo se hace en
+      // el cliente antes de dejar el lobby; el ultimo anfitrion en pie es siempre quien
+      // desencadena esto).
+      allow delete: if signedIn()
+        && resource.data.estado == 'esperando'
+        && request.auth.uid in [resource.data.hostId, resource.data.hostActivoId];
 
       match /jugadores/{uidTemporal} {
         allow read: if true;
@@ -373,7 +386,7 @@ service cloud.firestore {
           || isRoomStableHostAfter(partidaId))
           && validPlayerDocument(request.resource.data, uidTemporal);
 
-        allow delete: if false;
+        allow delete: if roomTeardownAllowed(partidaId);
       }
 
       match /acciones/{accionId} {
@@ -413,7 +426,7 @@ service cloud.firestore {
           && request.resource.data.creadaEnLocal is int;
 
         allow update: if false;
-        allow delete: if cleanupDeleteAllowed(partidaId);
+        allow delete: if cleanupDeleteAllowed(partidaId) || roomTeardownAllowed(partidaId);
       }
 
       match /chat/{mensajeId} {

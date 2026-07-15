@@ -937,31 +937,42 @@ class LobbyActivity : BaseActivity() {
             currentUserIsOnlineHost() &&
             (leavingOnlineLobby || isFinishing)
         ) {
-            firestore
-                .collection(ONLINE_ROOMS_COLLECTION)
-                .document(onlinePartidaId)
-                .set(
-                    mapOf(
-                        FIELD_STATE to ONLINE_ROOM_STATE_ABANDONED,
-                        OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
-                    ),
-                    SetOptions.merge()
-                )
-                .addOnSuccessListener {
-                    OnlineDebugLog.i("room_marked_abandoned roomId=$onlinePartidaId hostId=$onlineTempUid")
-                    cleanupRealtimeChatNodes(
-                        onComplete = {
-                            OnlineDebugLog.i("rtdb_abandoned_chat_cleanup_success roomId=$onlinePartidaId")
-                        },
-                        onFailure = { error ->
-                            OnlineDebugLog.e("rtdb_abandoned_chat_cleanup_failure roomId=$onlinePartidaId", error)
-                        }
-                    )
-                }
-                .addOnFailureListener { error ->
-                    OnlineDebugLog.e("room_mark_abandoned_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
-                }
+            // El ultimo anfitrion se va y no queda nadie mas conectado (si hubiera otro
+            // jugador conectado, este dispositivo ya habria transferido el host antes de
+            // salir y currentUserIsOnlineHost() daria false aca). La sala queda vacia:
+            // se borra por completo en vez de dejarla como "abandonada" para siempre.
+            teardownEmptyOnlineRoom()
         }
+    }
+
+    private fun teardownEmptyOnlineRoom() {
+        val roomId = onlinePartidaId
+        OnlineDebugLog.i("room_teardown_requested roomId=$roomId hostId=$onlineTempUid")
+        FirebaseDatabase.getInstance()
+            .getReference("salas/$roomId")
+            .removeValue()
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("rtdb_room_teardown_failure roomId=$roomId", error)
+            }
+        cleanupOnlineMatchCollections(
+            collectionNames = listOf(ONLINE_PLAYERS_COLLECTION, "acciones"),
+            index = 0,
+            onComplete = {
+                FirebaseFirestore.getInstance()
+                    .collection(ONLINE_ROOMS_COLLECTION)
+                    .document(roomId)
+                    .delete()
+                    .addOnSuccessListener {
+                        OnlineDebugLog.i("room_teardown_success roomId=$roomId hostId=$onlineTempUid")
+                    }
+                    .addOnFailureListener { error ->
+                        OnlineDebugLog.e("room_teardown_room_delete_failure roomId=$roomId hostId=$onlineTempUid", error)
+                    }
+            },
+            onFailure = { error ->
+                OnlineDebugLog.e("room_teardown_subcollection_failure roomId=$roomId hostId=$onlineTempUid", error)
+            }
+        )
     }
 
     private fun renderOnlineCodePanel() {

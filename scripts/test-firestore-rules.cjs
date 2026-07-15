@@ -454,6 +454,39 @@ async function main() {
       actualizadaEn: serverTimestamp(),
     }));
 
+    // --- Cierre completo de salas vacias (teardown) ---
+    await seedRoom(testEnv, "room_teardown_empty", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "partidas", "room_teardown_empty", "acciones", "accion_1"), {
+        matchId: "irrelevante",
+        tipo: "fase_avanzada",
+        actorId: "host_uid",
+        actorNombre: "Host",
+        actorEsHost: true,
+        fase: "REPARTO",
+        ronda: 0,
+        phaseIndex: 0,
+        modoCliente: "android",
+        detalles: {},
+        creadaEn: serverTimestamp(),
+        creadaEnLocal: Date.now(),
+      });
+    });
+    await assertFails(deleteDoc(doc(intruder, "partidas", "room_teardown_empty")));
+    await assertFails(deleteDoc(doc(guest, "partidas", "room_teardown_empty", "jugadores", "host_uid")));
+    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_teardown_empty", "jugadores", "host_uid")));
+    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_teardown_empty", "acciones", "accion_1")));
+    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_teardown_empty")));
+
+    await seedRoom(testEnv, "room_teardown_ingame", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_teardown_ingame"), { estado: "en_juego" });
+    });
+    await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame", "jugadores", "host_uid")));
+    await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame")));
+
     const browserQuery = query(
       collection(guest, "partidas"),
       where("estado", "==", "esperando"),
