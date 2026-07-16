@@ -1044,7 +1044,7 @@ object GameEngine {
     }
 
     fun isHumanRoleTurn(session: GameSession, roleKey: String): Boolean {
-        return alivePlayers(session).any { it.isHuman && canActAs(session, it, roleKey) }
+        return alivePlayers(session).any { it.isHuman && canActAs(it, roleKey) }
     }
 
     fun isValidHumanActionTarget(session: GameSession, selectedTarget: String): Boolean {
@@ -1072,15 +1072,15 @@ object GameEngine {
         val human = humanPlayer(session)
         if (!isAlive(human) || session.winner.isNotBlank()) return false
         return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> canActAs(session, human, "asesino") &&
+            GamePhase.NOCHE_ASESINO -> canActAs(human, "asesino") &&
                 isValidKillTarget(session, targetName, human)
-            GamePhase.NOCHE_MERCENARIO -> canActAs(session, human, "mercenario") &&
+            GamePhase.NOCHE_MERCENARIO -> canActAs(human, "mercenario") &&
                 isValidSilenceTarget(session, targetName, human)
-            GamePhase.NOCHE_POLICIA -> canActAs(session, human, "policia") &&
+            GamePhase.NOCHE_POLICIA -> canActAs(human, "policia") &&
                 isValidNightTarget(session, targetName, human, allowSelf = false)
-            GamePhase.NOCHE_MEDICO -> canActAs(session, human, "medico") &&
+            GamePhase.NOCHE_MEDICO -> canActAs(human, "medico") &&
                 isValidNightTarget(session, targetName, human, allowSelf = true)
-            GamePhase.NOCHE_ORACULO -> canActAs(session, human, RoleCatalog.ORACULO) &&
+            GamePhase.NOCHE_ORACULO -> canActAs(human, RoleCatalog.ORACULO) &&
                 isValidOracleTarget(session, targetName, human)
             GamePhase.DIA_DEBATE -> human.role?.key == "payador" &&
                 !session.payadorUsed &&
@@ -1219,7 +1219,7 @@ object GameEngine {
         return aliveTraitors(session).isNotEmpty()
     }
 
-    fun canSeeTraitorChat(session: GameSession, player: GamePlayer): Boolean {
+    fun canSeeTraitorChat(player: GamePlayer): Boolean {
         return player.alive && GameRules.isTraitorRole(player.role)
     }
 
@@ -1230,8 +1230,21 @@ object GameEngine {
     }
 
     fun canHumanChatTraitor(session: GameSession): Boolean {
-        return canSeeTraitorChat(session, humanPlayer(session)) &&
+        return canSeeTraitorChat(humanPlayer(session)) &&
             isTraitorChatWritable(session)
+    }
+
+    fun canSeeSpectatorChat(player: GamePlayer): Boolean {
+        return !player.alive
+    }
+
+    fun isSpectatorChatWritable(session: GameSession): Boolean {
+        return session.winner.isBlank()
+    }
+
+    fun canHumanChatSpectator(session: GameSession): Boolean {
+        return canSeeSpectatorChat(humanPlayer(session)) &&
+            isSpectatorChatWritable(session)
     }
 
     fun canParticipateInChat(session: GameSession, player: GamePlayer): Boolean {
@@ -1293,7 +1306,7 @@ object GameEngine {
         val bot = playerByName(session, speaker)
         if (message.isBlank() || bot == null || bot.isHuman) return session
         if (channel == ChatChannel.TRAIDORES) {
-            if (!canSeeTraitorChat(session, bot) || !isTraitorChatWritable(session)) return session
+            if (!canSeeTraitorChat(bot) || !isTraitorChatWritable(session)) return session
             return session.withChatMessage(bot.name, message, channel = ChatChannel.TRAIDORES)
         }
         if (!canParticipateInChat(session, bot)) return session
@@ -1311,7 +1324,7 @@ object GameEngine {
     fun requiresHumanInput(session: GameSession): Boolean {
         val human = humanPlayer(session)
         return when (session.phase) {
-            GamePhase.NOCHE_ASESINO -> isAlive(human) && canActAs(session, human, "asesino")
+            GamePhase.NOCHE_ASESINO -> isAlive(human) && canActAs(human, "asesino")
             GamePhase.NOCHE_MERCENARIO -> isHumanRoleTurn(session, "mercenario")
             GamePhase.NOCHE_POLICIA -> isHumanRoleTurn(session, "policia")
             GamePhase.NOCHE_MEDICO -> isHumanRoleTurn(session, "medico")
@@ -1970,7 +1983,7 @@ object GameEngine {
         return topVoteCandidates(weightedVotes)
     }
 
-    private fun canActAs(session: GameSession, player: GamePlayer, roleKey: String): Boolean {
+    private fun canActAs(player: GamePlayer, roleKey: String): Boolean {
         if (!isAlive(player)) return false
         return when (roleKey) {
             // El Espia es un ejecutor mas: elige la victima junto a los asesinos cada noche

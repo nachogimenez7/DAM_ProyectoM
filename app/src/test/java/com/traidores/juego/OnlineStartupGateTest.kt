@@ -22,6 +22,23 @@ class OnlineStartupGateTest {
     }
 
     @Test
+    fun tenLoadedPlayersCanStartWithoutChangingTheGate() {
+        val result = OnlineStartupGate.evaluate(
+            expectedPlayers = 10,
+            clientStates = (0 until 10).map {
+                state("p$it", visiblePlayers = 10, roleRead = true)
+            },
+            elapsedMs = 1_000L
+        )
+
+        assertTrue(result.canStart)
+        assertFalse(result.canForce)
+        assertEquals(10, result.loadedPlayers)
+        assertEquals(10, result.readyPlayers)
+        assertEquals(0, result.missingPlayers)
+    }
+
+    @Test
     fun missingPlayerBlocksStart() {
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,

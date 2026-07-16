@@ -32,6 +32,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.database.FirebaseDatabase
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -96,6 +97,15 @@ class LobbyActivity : BaseActivity() {
     private var onlineInitialMatch: Map<String, Any?>? = null
     private var onlineMatchState: Map<String, Any?>? = null
     private var onlineStartedNoticeShown = false
+    private var onlineClientStates: Map<String, Any?> = emptyMap()
+    private var onlineEntryReleasedMatchId = ""
+    private var onlineRoomSnapshotHasPendingWrites = false
+    private var onlineEntryBarrierMatchId = ""
+    private var onlineEntryBarrierStartedAtMs = 0L
+    private var onlineEntryAckMatchId = ""
+    private var onlineEntryAckInProgress = false
+    private var onlineEntryReleaseInProgress = false
+    private var onlineEntryReleaseTimeoutScheduled = false
     private var recoveringOnlineMatch = false
     private var onlineRoomDeletedHandled = false
     private var onlineRemovalHandled = false
@@ -127,6 +137,11 @@ class LobbyActivity : BaseActivity() {
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
     private var debugRoleIndex = 0
+
+    private val onlineEntryReleaseTimeoutRunnable = Runnable {
+        onlineEntryReleaseTimeoutScheduled = false
+        maybeReleaseOnlineMatchEntry(force = true)
+    }
 
     private val debugRoles = listOf(
         "" to "AZAR",
@@ -354,6 +369,10 @@ class LobbyActivity : BaseActivity() {
         roomListener?.remove()
         playersListener?.remove()
         lobbyChatController?.stop()
+        if (::startButton.isInitialized) {
+            startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
+        }
+        onlineEntryReleaseTimeoutScheduled = false
         roomListener = null
         playersListener = null
         super.onStop()
@@ -861,7 +880,7 @@ class LobbyActivity : BaseActivity() {
         roomListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) {
                     OnlineDebugLog.e("lobby_room_listen_failure roomId=$onlinePartidaId", error)
                     Toast.makeText(
@@ -1358,6 +1377,7 @@ class LobbyActivity : BaseActivity() {
                     },
                     playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
                 ))
+                coordinateOnlineMatchEntry()
                 maybeClaimOnlineLobbyHostHandoff()
                 maybeResetFinishedOnlineRoomForRematch()
                 maybeContinuePendingOnlineCleanup()
@@ -1400,6 +1420,9 @@ class LobbyActivity : BaseActivity() {
         )
         onlineInitialMatch = snapshot.get(FIELD_INITIAL_MATCH).asStringAnyMap()
         onlineMatchState = snapshot.get(FIELD_MATCH_STATE).asStringAnyMap()
+        onlineClientStates = snapshot.get(FIELD_CLIENT_STATES).asStringAnyMap().orEmpty()
+        onlineEntryReleasedMatchId = snapshot.getString(FIELD_ENTRY_RELEASED_MATCH_ID).orEmpty()
+        onlineRoomSnapshotHasPendingWrites = snapshot.metadata.hasPendingWrites()
         session = session.copy(
             timingConfig = onlineLobbyConfig.timing,
             revealRolesOnDeath = onlineLobbyConfig.revealRolesOnDeath,
@@ -1446,8 +1469,7 @@ class LobbyActivity : BaseActivity() {
             liveOnlineMatch &&
             !onlineStartedNoticeShown
         ) {
-            onlineStartedNoticeShown = true
-            startOnlineMatch()
+            coordinateOnlineMatchEntry()
         }
         maybeStartAfterExpectedPlayersUpdate()
         maybeClaimOnlineLobbyHostHandoff()
@@ -1933,6 +1955,18 @@ class LobbyActivity : BaseActivity() {
             return
         }
 
+        if (
+            onlineRoomState == ONLINE_ROOM_STATE_IN_GAME &&
+            onlineInitialMatchCreated &&
+            !onlineStartedNoticeShown
+        ) {
+            startButton.isEnabled = false
+            startButton.alpha = 0.72f
+            startButton.text = "SINCRONIZANDO ENTRADA..."
+            startButton.contentDescription = "Sincronizando el inicio con todos los jugadores"
+            return
+        }
+
         val currentPlayer = currentOnlinePlayer()
         val currentReady = currentPlayer?.ready == true
         val canStart = currentUserIsOnlineHost() && onlineRoomCanStart()
@@ -2053,7 +2087,7 @@ class LobbyActivity : BaseActivity() {
         }
         if (onlineInitialMatchCreated || onlineInitialMatch != null) {
             OnlineDebugLog.w("online_start_skipped_existing_initial_match roomId=$onlinePartidaId hostId=$onlineTempUid")
-            startOnlineMatch()
+            coordinateOnlineMatchEntry()
             return
         }
         startButton.isEnabled = false
@@ -2141,6 +2175,8 @@ class LobbyActivity : BaseActivity() {
                     FIELD_MATCH_STATE to matchState,
                     FIELD_INITIAL_MATCH_CREATED to true,
                     FIELD_CLEANUP_PENDING to false,
+                    FIELD_CLIENT_STATES to FieldValue.delete(),
+                    FIELD_ENTRY_RELEASED_MATCH_ID to FieldValue.delete(),
                     FIELD_ACTIVE_HOST_ID to onlineTempUid,
                     FIELD_HOST_VERSION to FieldValue.increment(1),
                     OnlineRoomFirestore.FIELD_CURRENT_PLAYERS to activePlayersAtStart.size,
@@ -2153,7 +2189,7 @@ class LobbyActivity : BaseActivity() {
                 OnlineStartTransactionResult.AlreadyStarted -> {
                     OnlineDebugLog.w("online_start_already_created roomId=$onlinePartidaId hostId=$onlineTempUid")
                     Toast.makeText(this, "La partida ya fue iniciada. Sincronizando...", Toast.LENGTH_SHORT).show()
-                    startOnlineMatch()
+                    coordinateOnlineMatchEntry()
                 }
                 is OnlineStartTransactionResult.MapTieBreakRequired -> {
                     startButton.isEnabled = true
@@ -2176,6 +2212,198 @@ class LobbyActivity : BaseActivity() {
                 Toast.LENGTH_LONG
             ).show()
         }
+    }
+
+    private fun coordinateOnlineMatchEntry() {
+        if (
+            onlineStartedNoticeShown ||
+            onlineRoomState != ONLINE_ROOM_STATE_IN_GAME ||
+            onlineInitialMatch == null ||
+            onlineMatchState == null
+        ) {
+            return
+        }
+        val rebuiltSession = onlineInitialMatch?.let(::sessionFromInitialMatch)
+        if (rebuiltSession == null || onlineMatchEntryProblem(rebuiltSession) != null) {
+            startOnlineMatch()
+            return
+        }
+        val matchId = rebuiltSession.onlineMatchId
+        if (matchId.isBlank()) {
+            startOnlineMatch()
+            return
+        }
+        if (recoveringOnlineMatch) {
+            onlineStartedNoticeShown = true
+            startOnlineMatch()
+            return
+        }
+        if (onlineEntryBarrierMatchId != matchId) {
+            if (::startButton.isInitialized) {
+                startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
+            }
+            onlineEntryReleaseTimeoutScheduled = false
+            onlineEntryBarrierMatchId = matchId
+            onlineEntryBarrierStartedAtMs = SystemClock.elapsedRealtime()
+            onlineEntryAckMatchId = ""
+            onlineEntryAckInProgress = false
+            onlineEntryReleaseInProgress = false
+        }
+        if (
+            onlineEntryReleasedMatchId == matchId &&
+            !onlineRoomSnapshotHasPendingWrites
+        ) {
+            enterReleasedOnlineMatch(matchId)
+            return
+        }
+        acknowledgeOnlineMatchEntry(matchId)
+        maybeReleaseOnlineMatchEntry()
+    }
+
+    private fun acknowledgeOnlineMatchEntry(matchId: String) {
+        if (activeOnlinePlayers().size != onlineExpectedPlayers) return
+        val acknowledgedIds = OnlineLobbyEntryGate.acknowledgedPlayerIds(matchId, onlineClientStates)
+        if (onlineTempUid in acknowledgedIds) {
+            onlineEntryAckMatchId = matchId
+            return
+        }
+        if (onlineEntryAckMatchId == matchId || onlineEntryAckInProgress) return
+        onlineEntryAckInProgress = true
+        OnlineDebugLog.i(
+            "online_entry_ack_requested roomId=$onlinePartidaId uid=$onlineTempUid match=$matchId"
+        )
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    "$FIELD_CLIENT_STATES.$onlineTempUid" to mapOf(
+                        "fase" to GamePhase.REPARTO.name,
+                        "ronda" to 0,
+                        "phaseIndex" to 0,
+                        "enGameplay" to false,
+                        "jugadoresVistos" to activeOnlinePlayers().size,
+                        "jugadoresEsperados" to onlineExpectedPlayers,
+                        "uidTemporal" to onlineTempUid,
+                        OnlineLobbyEntryGate.FIELD_MATCH_ID to matchId,
+                        OnlineLobbyEntryGate.FIELD_ENTRY_READY to true,
+                        "actualizadaEnLocal" to System.currentTimeMillis()
+                    ),
+                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineEntryAckInProgress = false
+                onlineEntryAckMatchId = matchId
+                OnlineDebugLog.i(
+                    "online_entry_ack_success roomId=$onlinePartidaId uid=$onlineTempUid match=$matchId"
+                )
+                maybeReleaseOnlineMatchEntry()
+            }
+            .addOnFailureListener { error ->
+                onlineEntryAckInProgress = false
+                OnlineDebugLog.e(
+                    "online_entry_ack_failure roomId=$onlinePartidaId uid=$onlineTempUid match=$matchId",
+                    error
+                )
+                if (::startButton.isInitialized && !isFinishing && !isDestroyed) {
+                    startButton.postDelayed(
+                        { coordinateOnlineMatchEntry() },
+                        ONLINE_ENTRY_RETRY_MS
+                    )
+                }
+            }
+    }
+
+    private fun maybeReleaseOnlineMatchEntry(force: Boolean = false) {
+        if (
+            onlineStartedNoticeShown ||
+            recoveringOnlineMatch ||
+            onlineRoomState != ONLINE_ROOM_STATE_IN_GAME ||
+            !currentUserIsOnlineHost() ||
+            onlineRoomSnapshotHasPendingWrites ||
+            onlineEntryReleaseInProgress
+        ) {
+            return
+        }
+        val matchId = onlineEntryBarrierMatchId
+        if (matchId.isBlank() || onlineEntryReleasedMatchId == matchId) return
+        val expectedPlayerIds = activeOnlinePlayers().mapTo(linkedSetOf()) { it.id }
+        if (expectedPlayerIds.size != onlineExpectedPlayers) {
+            scheduleOnlineEntryReleaseTimeout()
+            return
+        }
+        val elapsedMs = SystemClock.elapsedRealtime() - onlineEntryBarrierStartedAtMs
+        val timedOut = force && elapsedMs >= ONLINE_ENTRY_RELEASE_TIMEOUT_MS
+        val canRelease = OnlineLobbyEntryGate.canRelease(
+            expectedPlayerIds = expectedPlayerIds,
+            matchId = matchId,
+            clientStates = onlineClientStates,
+            force = timedOut
+        )
+        if (!canRelease) {
+            scheduleOnlineEntryReleaseTimeout()
+            return
+        }
+        val acknowledgedCount = OnlineLobbyEntryGate
+            .acknowledgedPlayerIds(matchId, onlineClientStates)
+            .count { it in expectedPlayerIds }
+        onlineEntryReleaseInProgress = true
+        OnlineDebugLog.i(
+            "online_entry_release_requested roomId=$onlinePartidaId host=$onlineTempUid match=$matchId acknowledged=$acknowledgedCount/${expectedPlayerIds.size} forced=$timedOut"
+        )
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    FIELD_ENTRY_RELEASED_MATCH_ID to matchId,
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineEntryReleaseInProgress = false
+                OnlineDebugLog.i(
+                    "online_entry_release_success roomId=$onlinePartidaId host=$onlineTempUid match=$matchId"
+                )
+            }
+            .addOnFailureListener { error ->
+                onlineEntryReleaseInProgress = false
+                OnlineDebugLog.e(
+                    "online_entry_release_failure roomId=$onlinePartidaId host=$onlineTempUid match=$matchId",
+                    error
+                )
+                scheduleOnlineEntryReleaseTimeout()
+            }
+    }
+
+    private fun scheduleOnlineEntryReleaseTimeout() {
+        if (
+            onlineEntryReleaseTimeoutScheduled ||
+            onlineStartedNoticeShown ||
+            !currentUserIsOnlineHost() ||
+            !::startButton.isInitialized
+        ) {
+            return
+        }
+        val elapsedMs = SystemClock.elapsedRealtime() - onlineEntryBarrierStartedAtMs
+        val remainingMs = ONLINE_ENTRY_RELEASE_TIMEOUT_MS - elapsedMs
+        val delayMs = if (remainingMs > 0L) remainingMs else ONLINE_ENTRY_RETRY_MS
+        onlineEntryReleaseTimeoutScheduled = true
+        startButton.postDelayed(onlineEntryReleaseTimeoutRunnable, delayMs)
+    }
+
+    private fun enterReleasedOnlineMatch(matchId: String) {
+        if (onlineStartedNoticeShown) return
+        onlineStartedNoticeShown = true
+        if (::startButton.isInitialized) {
+            startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
+        }
+        onlineEntryReleaseTimeoutScheduled = false
+        OnlineDebugLog.i(
+            "online_entry_released roomId=$onlinePartidaId uid=$onlineTempUid match=$matchId"
+        )
+        startOnlineMatch()
     }
 
     private fun startOnlineMatch() {
@@ -2451,7 +2679,8 @@ class LobbyActivity : BaseActivity() {
                     FIELD_CLEANUP_PENDING to true,
                     FIELD_INITIAL_MATCH to FieldValue.delete(),
                     FIELD_MATCH_STATE to FieldValue.delete(),
-                    "estadoClientes" to FieldValue.delete(),
+                    FIELD_CLIENT_STATES to FieldValue.delete(),
+                    FIELD_ENTRY_RELEASED_MATCH_ID to FieldValue.delete(),
                     OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp(),
                     "ultimaActividadOnline" to FieldValue.serverTimestamp()
                 )
@@ -2602,7 +2831,8 @@ class LobbyActivity : BaseActivity() {
         val updates = mapOf<String, Any?>(
             LobbyChatController.NODE to null,
             RTDB_PUBLIC_CHAT_NODE to null,
-            RTDB_TRAITOR_CHAT_NODE to null
+            RTDB_TRAITOR_CHAT_NODE to null,
+            RTDB_SPECTATOR_CHAT_NODE to null
         )
         FirebaseDatabase.getInstance()
             .getReference("salas/$onlinePartidaId")
@@ -3816,6 +4046,7 @@ class LobbyActivity : BaseActivity() {
         private const val ONLINE_ROOM_STATE_ABANDONED = "abandonada"
         private const val RTDB_PUBLIC_CHAT_NODE = "chat"
         private const val RTDB_TRAITOR_CHAT_NODE = "chat_traidores"
+        private const val RTDB_SPECTATOR_CHAT_NODE = "chat_espectadores"
         private const val FIELD_NAME = "nombre"
         private const val FIELD_STATE = "estado"
         private const val FIELD_TEST_MODE = "modoPrueba"
@@ -3832,6 +4063,8 @@ class LobbyActivity : BaseActivity() {
         private const val FIELD_MAP_VOTE = "votoMapa"
         private const val FIELD_INITIAL_MATCH = "partidaInicial"
         private const val FIELD_MATCH_STATE = "estadoPartida"
+        private const val FIELD_CLIENT_STATES = "estadoClientes"
+        private const val FIELD_ENTRY_RELEASED_MATCH_ID = "entradaLiberadaMatchId"
         private const val FIELD_LAST_RESULT = "ultimoResultado"
         private const val FIELD_IS_HOST = "esHost"
         private const val FIELD_PLAYER_STATE = "estado"
@@ -3850,6 +4083,8 @@ class LobbyActivity : BaseActivity() {
         private const val CLEANUP_RETRY_DELAY_MS = 5_000L
         private const val LOBBY_CHAT_PREVIEW_LINES = 3
         private const val LOBBY_EMOTE_SOUND_COOLDOWN_MS = 900L
+        private const val ONLINE_ENTRY_RELEASE_TIMEOUT_MS = 10_000L
+        private const val ONLINE_ENTRY_RETRY_MS = 1_500L
     }
 
     private data class OnlineLobbyPlayer(

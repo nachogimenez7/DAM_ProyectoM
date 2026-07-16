@@ -85,17 +85,30 @@ async function main() {
       })
     );
     await assertSucceeds(
+      bob.ref(`salas/${roomId}/chat_espectadores/message-spectator`).set({
+        ...chatMessage("bob"),
+        canal: "espectadores",
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat_espectadores/message-wrong-channel`).set({
+        ...chatMessage("bob"),
+        canal: "traidores",
+      })
+    );
+    await assertSucceeds(
       alice.ref(`salas/${roomId}`).update({
         chat: null,
         chat_lobby: null,
         chat_traidores: null,
+        chat_espectadores: null,
       })
     );
 
     // Cierre completo de sala vacia: RTDB no puede validar el estado/host de Firestore,
     // asi que cualquier autenticado puede borrar el nodo entero de una sala (chat +
-    // chat_lobby + chat_traidores + presencia de una), pero NO sobrescribirlo con
-    // contenido arbitrario, y un invitado sin sesion no puede borrar nada.
+    // chat_lobby + chat_traidores + chat_espectadores + presencia de una), pero NO
+    // sobrescribirlo con contenido arbitrario, y un invitado sin sesion no puede borrar nada.
     const roomId2 = "room_rules_teardown";
     await assertSucceeds(
       alice.ref(`salas/${roomId2}/chat/message-a`).set(chatMessage("alice"))

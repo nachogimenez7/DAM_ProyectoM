@@ -73,6 +73,7 @@ Campos agregados durante la partida:
 - `partidaInicial`: snapshot inicial generado una sola vez por el host. Cada jugador queda ligado por `uidTemporal`.
 - `estadoPartida`: estado autoritativo publicado por el host.
 - `estadoClientes`: estado resumido publicado por cada cliente.
+- `entradaLiberadaMatchId`: `matchId` que el host habilito para abandonar el lobby. Se escribe solo despues de que todos los clientes confirmaron haber recibido el reparto, o tras el timeout de seguridad.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
 - `ultimoResultado`: resumen durable de la ultima partida (`ganador`, `ronda`, `mapa`, `matchId` y `finalizadaEnLocal`). No se elimina al preparar la revancha y permite mostrar el resumen en el lobby.
 
@@ -176,6 +177,7 @@ Reglas importantes:
 - Si un jugador se desconecta antes de iniciar, RTDB actualiza su presencia con `onDisconnect()` y el host puede liberar su cupo marcando `activoEnPartida = false`; el documento Firestore queda como historial y `jugadoresActuales` se recalcula.
 - `partidaInicial` se crea una sola vez.
 - El inicio online debe escribirse por transaccion: si `partidaInicialCreada` ya es `true`, no se reparten roles de nuevo.
+- Antes de salir del lobby, cada cliente confirma el `matchId` recibido en `estadoClientes.{uidTemporal}` con `entradaLobbyLista = true`. El host publica ese mismo id en `entradaLiberadaMatchId` cuando todos confirmaron; los clientes ignoran el snapshot local pendiente del host y navegan al recibir la liberacion confirmada. A los 10 segundos el host puede liberar con las confirmaciones disponibles para evitar que una escritura perdida congele la sala.
 - Al crear sala, la app verifica que el `codigoSala` generado no exista ya en Firestore; si colisiona, reintenta con otro codigo.
 - Al unirse por codigo, la app usa solo salas `esperando`; si hubiera mas de una sala activa con el mismo codigo, bloquea el ingreso y pide crear una sala nueva.
 - Si un cliente reingresa, reconstruye desde `partidaInicial` y `estadoPartida`.
@@ -221,8 +223,8 @@ Regla de sincronizacion por fase:
 Regla de cierre y revancha:
 
 - Al terminar una partida, la sala pasa a `finalizada`.
-- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida`, `estadoClientes`, los tres chats de RTDB y las acciones; tambien pone a todos los jugadores en no listos y limpia `votoMapa`.
-- `ultimoResultado` sobrevive a la revancha. `chat`, `chat_traidores` y `chat_lobby` se vacian para no conservar basura de partidas anteriores.
+- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida`, `estadoClientes`, los cuatro chats de RTDB y las acciones; tambien pone a todos los jugadores en no listos y limpia `votoMapa`.
+- `ultimoResultado` sobrevive a la revancha. `chat`, `chat_traidores`, `chat_espectadores` y `chat_lobby` se vacian para no conservar basura de partidas anteriores.
 - El navegador oculta salas `esperando` cuya `actualizadaEn` tenga mas de 30 minutos, para no mostrar salas huerfanas tras el cierre abrupto de un emulador o proceso.
 - Una sala llena permite intentar reingreso; la transaccion valida si el UID ya pertenecia a ella antes de rechazar por falta de cupo.
 
@@ -310,6 +312,18 @@ Seguridad actual del canal:
 - Cerrar de verdad el canal exige reflejar membresia y rol en RTDB mediante un backend confiable, o repartir los mensajes desde Cloud Functions a nodos privados por jugador.
 - El secreto general de roles tambien requiere un backend autoritativo que no exponga el reparto completo a los clientes.
 
+### `salas/{roomId}/chat_espectadores/{pushId}`
+
+Canal RTDB del Chat de los Muertos, disponible en la interfaz solo para jugadores eliminados de una
+partida online. Los eliminados pueden leer el chat publico y escribir en este canal durante
+cualquier fase mientras no haya ganador. Los jugadores vivos no crean el listener ni ven el
+boton para acceder al canal.
+
+Usa los mismos campos que `chat_traidores`, con `canal = "espectadores"`. RTDB garantiza la
+integridad de autoria mediante `actorId == auth.uid`, pero la lectura sigue siendo
+**honor-system**: un cliente modificado y autenticado podria leer el nodo aun estando vivo.
+Cerrar esa lectura requiere el mismo backend autoritativo pendiente que el canal traidor.
+
 ## Realtime Database: datos vivos
 
 El chat online y la presencia usan la base `traidores-default-rtdb`:
@@ -318,13 +332,15 @@ El chat online y la presencia usan la base `traidores-default-rtdb`:
 /salas/{roomId}
     /chat/{pushId}
     /chat_traidores/{pushId}
+    /chat_espectadores/{pushId}
     /chat_lobby/{pushId}
     /presencia/{uid}
 ```
 
-Los tres chats usan claves generadas por `push()`, timestamp de servidor `ts` y listeners
-limitados a los mensajes recientes. `chat` y `chat_traidores` conservan tambien `matchId`,
-`fase` y `ronda`; `chat_lobby` permite `tipo = texto|emote` y `emoteId` opcional.
+Los cuatro chats usan claves generadas por `push()`, timestamp de servidor `ts` y listeners
+limitados a los mensajes recientes. `chat`, `chat_traidores` y `chat_espectadores` conservan
+tambien `matchId`, `fase` y `ronda`; `chat_lobby` permite `tipo = texto|emote` y `emoteId`
+opcional.
 Los eventos de Dios se siguen derivando de `estadoPartida` y no se duplican en RTDB.
 
 `presencia/{uid}` contiene:

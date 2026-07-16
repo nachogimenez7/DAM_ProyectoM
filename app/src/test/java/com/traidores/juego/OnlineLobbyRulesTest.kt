@@ -78,6 +78,28 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
+    fun tenConnectedReadyPlayersCanStart() {
+        val players = (0 until 10).map { index ->
+            participant(
+                id = if (index == 0) "host" else "p$index",
+                connected = true,
+                ready = true,
+                active = true,
+                order = index
+            )
+        }
+
+        assertTrue(
+            OnlineLobbyRules.canStart(
+                players = players,
+                expectedPlayers = 10,
+                roomWaiting = true,
+                initialMatchCreated = false
+            )
+        )
+    }
+
+    @Test
     fun activeDisconnectedPlayerBlocksStartUntilReleased() {
         val players = listOf(
             participant("host", connected = true, ready = true, active = true, order = 0),

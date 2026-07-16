@@ -358,7 +358,8 @@ data class GameRole(
 
 enum class ChatChannel : Serializable {
     PUBLICO,
-    TRAIDORES
+    TRAIDORES,
+    ESPECTADORES
 }
 
 data class GameChatMessage(

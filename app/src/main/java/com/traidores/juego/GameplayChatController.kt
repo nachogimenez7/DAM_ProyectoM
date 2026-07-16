@@ -85,6 +85,11 @@ class GameplayChatController(
     private var onlineTraitorChatListener: ValueEventListener? = null
     private var lastOnlineTraitorChatSentAtMs = 0L
     private var lastOnlineTraitorChatMessage = ""
+    private var onlineSpectatorChatQuery: Query? = null
+    private var onlineSpectatorChatListener: ValueEventListener? = null
+    private var lastOnlineSpectatorChatSentAtMs = 0L
+    private var lastOnlineSpectatorChatMessage = ""
+    private var wasHumanAlive: Boolean? = null
     private var stagedEventReactionKey = ""
     private var directorPhaseIndex = -1
     private var directorIdleLines = 0
@@ -138,10 +143,16 @@ class GameplayChatController(
 
     fun onCreate(savedState: Bundle?) {
         isChatOpen = savedState?.getBoolean(STATE_CHAT_OPEN) ?: false
+        val humanAlive = GameEngine.humanPlayer(host.currentSession).alive
         selectedChatChannel = savedState
             ?.getString(STATE_CHAT_CHANNEL)
             ?.let { savedChannel -> runCatching { ChatChannel.valueOf(savedChannel) }.getOrNull() }
-            ?: ChatChannel.PUBLICO
+            ?: if (host.isOnlineGameplay() && !humanAlive) {
+                ChatChannel.ESPECTADORES
+            } else {
+                ChatChannel.PUBLICO
+            }
+        wasHumanAlive = humanAlive
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
@@ -172,15 +183,24 @@ class GameplayChatController(
         if (host.isOnlineGameplay()) {
             startOnlineChatListener()
             startOnlineTraitorChatListener()
+            startOnlineSpectatorChatListener()
         }
     }
 
     fun onSessionUpdated() {
+        val humanAlive = GameEngine.humanPlayer(host.currentSession).alive
+        if (host.isOnlineGameplay() && wasHumanAlive == true && !humanAlive) {
+            selectedChatChannel = ChatChannel.ESPECTADORES
+            showOnlyEvents = false
+            host.showToast("Caíste. Ahora hablás en el Chat de los Muertos.")
+        }
+        wasHumanAlive = humanAlive
         if (host.isOnlineGameplay()) {
             // El rol del humano puede llegar despues de onCreate (reconstruccion online),
-            // asi que reintentamos arrancar el canal traidor cuando ya se conoce el rol.
-            // startOnlineTraitorChatListener() se auto-protege contra doble suscripcion.
+            // y la muerte puede llegar en una actualizacion posterior. Ambos listeners
+            // condicionales se auto-protegen contra una doble suscripcion.
             startOnlineTraitorChatListener()
+            startOnlineSpectatorChatListener()
         }
         updateUnreadChatCount()
         renderChatPanel()
@@ -209,6 +229,11 @@ class GameplayChatController(
         }
         onlineTraitorChatListener = null
         onlineTraitorChatQuery = null
+        onlineSpectatorChatListener?.let { listener ->
+            onlineSpectatorChatQuery?.removeEventListener(listener)
+        }
+        onlineSpectatorChatListener = null
+        onlineSpectatorChatQuery = null
         cancelPendingBotChat()
         handler.removeCallbacksAndMessages(null)
     }
@@ -655,7 +680,11 @@ class GameplayChatController(
             }
         }
         chatAmbientHint.text = if (canChat) {
-            if (channel == ChatChannel.TRAIDORES) "Toca para tramar" else "Toca para hablar"
+            when (channel) {
+                ChatChannel.PUBLICO -> "Toca para hablar"
+                ChatChannel.TRAIDORES -> "Toca para tramar"
+                ChatChannel.ESPECTADORES -> "Toca para hablar"
+            }
         } else {
             chatInputHint(canChat, channel)
         }
@@ -674,21 +703,22 @@ class GameplayChatController(
     }
 
     private fun createAmbientPlaceholderRow(): View {
+        val channel = activeChatChannel()
         return TextView(root.context).apply {
-            text = if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                "El plan aun no tiene notas"
-            } else {
-                "El pueblo aun no hablo"
+            text = when (channel) {
+                ChatChannel.PUBLICO -> "El pueblo aun no hablo"
+                ChatChannel.TRAIDORES -> "El plan aun no tiene notas"
+                ChatChannel.ESPECTADORES -> "Los muertos todavía no hablaron"
             }
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(
                 root.context.getColor(
-                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                        R.color.traitor_text
-                    } else {
-                        R.color.text_secondary
+                    when (channel) {
+                        ChatChannel.PUBLICO -> R.color.text_secondary
+                        ChatChannel.TRAIDORES -> R.color.traitor_text
+                        ChatChannel.ESPECTADORES -> R.color.espectro_muted
                     }
                 )
             )
@@ -700,6 +730,7 @@ class GameplayChatController(
 
     private fun createAmbientFeedRow(entry: ChronicleEntry): View {
         if (entry.kind != ChronicleEntryKind.PLAYER) return createAmbientEventRow(entry)
+        val channel = activeChatChannel()
         val row = LinearLayout(root.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -711,10 +742,10 @@ class GameplayChatController(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(
-                if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                    root.context.getColor(R.color.traitor_red_bright)
-                } else {
-                    PlayerChatColor.colorFor(speakerName, host.currentSession)
+                when (channel) {
+                    ChatChannel.PUBLICO -> PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    ChatChannel.TRAIDORES -> root.context.getColor(R.color.traitor_red_bright)
+                    ChatChannel.ESPECTADORES -> root.context.getColor(R.color.espectro_blue_bright)
                 }
             )
             textSize = 11.5f * host.gameplayTextScale
@@ -726,10 +757,10 @@ class GameplayChatController(
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(
                 root.context.getColor(
-                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                        R.color.traitor_text
-                    } else {
-                        R.color.text_primary
+                    when (channel) {
+                        ChatChannel.PUBLICO -> R.color.text_primary
+                        ChatChannel.TRAIDORES -> R.color.traitor_text
+                        ChatChannel.ESPECTADORES -> R.color.espectro_text
                     }
                 )
             )
@@ -797,16 +828,30 @@ class GameplayChatController(
     }
 
     private fun renderChatTitle() {
-        if (activeChatChannel() == ChatChannel.TRAIDORES) {
-            chatAmbientTitle.text = "CHAT DE LOS ASESINOS"
-            chatFeedTitle.text = "CHAT DE LOS ASESINOS"
-            chatFeedTitle.maxLines = 1
-            chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
-            chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            chatAmbientTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
-            chatFeedTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
-            renderTraitorHeaderChip()
-            return
+        when (activeChatChannel()) {
+            ChatChannel.TRAIDORES -> {
+                chatAmbientTitle.text = "CHAT DE LOS ASESINOS"
+                chatFeedTitle.text = "CHAT DE LOS ASESINOS"
+                chatFeedTitle.maxLines = 1
+                chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
+                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                chatAmbientTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
+                chatFeedTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
+                renderTraitorHeaderChip()
+                return
+            }
+            ChatChannel.ESPECTADORES -> {
+                chatAmbientTitle.text = "CHAT DE LOS MUERTOS"
+                chatFeedTitle.text = "CHAT DE LOS MUERTOS"
+                chatFeedTitle.maxLines = 1
+                chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
+                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                chatAmbientTitle.setTextColor(root.context.getColor(R.color.espectro_blue_bright))
+                chatFeedTitle.setTextColor(root.context.getColor(R.color.espectro_blue_bright))
+                renderSpectatorHeaderChip()
+                return
+            }
+            ChatChannel.PUBLICO -> Unit
         }
         val (compactTitle, expandedTitle) = when (host.currentSession.mapKey) {
             "grecia" -> "QUE SE DICE EN LA POLIS..." to "CRONISTA DE LA POLIS"
@@ -846,6 +891,23 @@ class GameplayChatController(
         )
     }
 
+    private fun renderSpectatorHeaderChip() {
+        val deadPlayers = host.currentSession.players.count { !it.alive }
+        chatRoleChip.visibility = View.VISIBLE
+        chatRoleChip.maxWidth = host.dp(112)
+        chatRoleChip.text = if (deadPlayers == 1) {
+            "1 MUERTO"
+        } else {
+            "$deadPlayers MUERTOS"
+        }
+        chatRoleChip.setTextColor(root.context.getColor(R.color.espectro_text))
+        chatRoleChip.background = roundedBackground(
+            fillColor = root.context.getColor(R.color.espectro_panel),
+            strokeColor = root.context.getColor(R.color.espectro_blue),
+            cornerRadiusDp = 8
+        )
+    }
+
     private fun cronistaTypeface(): Typeface {
         return ResourcesCompat.getFont(root.context, R.font.bree_serif) ?: Typeface.DEFAULT_BOLD
     }
@@ -859,7 +921,8 @@ class GameplayChatController(
     )
 
     private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
-        if (activeChatChannel() == ChatChannel.TRAIDORES) {
+        val channel = activeChatChannel()
+        if (channel == ChatChannel.TRAIDORES) {
             val bright = root.context.getColor(R.color.traitor_red_bright)
             val normalized = GameplayTextMarkers.normalize(entry.text)
             val isTarget = "objetivo del plan" in normalized || "cambio de plan" in normalized
@@ -869,6 +932,15 @@ class GameplayChatController(
                 backgroundColor = root.context.getColor(R.color.traitor_panel),
                 strokeColor = root.context.getColor(R.color.traitor_red),
                 iconColor = bright
+            )
+        }
+        if (channel == ChatChannel.ESPECTADORES) {
+            return EventPresentation(
+                icon = "~",
+                label = "MUERTOS",
+                backgroundColor = root.context.getColor(R.color.espectro_panel),
+                strokeColor = root.context.getColor(R.color.espectro_blue),
+                iconColor = root.context.getColor(R.color.espectro_blue_bright)
             )
         }
         val gold = root.context.getColor(R.color.accent_gold)
@@ -940,19 +1012,20 @@ class GameplayChatController(
     }
 
     private fun createDayDivider(entry: ChronicleEntry): View {
+        val channel = activeChatChannel()
         return TextView(root.context).apply {
-            text = if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                entry.text.replace("DIA", "NOCHE")
-            } else {
-                entry.text
+            text = when (channel) {
+                ChatChannel.TRAIDORES -> entry.text.replace("DIA", "NOCHE")
+                ChatChannel.PUBLICO,
+                ChatChannel.ESPECTADORES -> entry.text
             }
             gravity = Gravity.CENTER
             setTextColor(
                 root.context.getColor(
-                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                        R.color.traitor_red_bright
-                    } else {
-                        R.color.accent_gold
+                    when (channel) {
+                        ChatChannel.PUBLICO -> R.color.accent_gold
+                        ChatChannel.TRAIDORES -> R.color.traitor_red_bright
+                        ChatChannel.ESPECTADORES -> R.color.espectro_blue_bright
                     }
                 )
             )
@@ -988,21 +1061,20 @@ class GameplayChatController(
         }
         if (entries.isEmpty() && typingSpeakers.isEmpty()) {
             chatMessagesContainer.addView(TextView(root.context).apply {
-                text = if (channel == ChatChannel.TRAIDORES) {
-                    "Todavia no hay plan."
-                } else if (showOnlyEvents) {
-                    "Todavia no hay sucesos."
-                } else {
-                    "Todavia no hay mensajes."
+                text = when {
+                    channel == ChatChannel.TRAIDORES -> "Todavia no hay plan."
+                    channel == ChatChannel.ESPECTADORES -> "Los muertos todavía no hablaron"
+                    showOnlyEvents -> "Todavia no hay sucesos."
+                    else -> "Todavia no hay mensajes."
                 }
                 gravity = Gravity.CENTER
                 setPadding(host.dp(8), host.dp(16), host.dp(8), host.dp(16))
                 setTextColor(
                     root.context.getColor(
-                        if (channel == ChatChannel.TRAIDORES) {
-                            R.color.traitor_text
-                        } else {
-                            R.color.text_secondary
+                        when (channel) {
+                            ChatChannel.PUBLICO -> R.color.text_secondary
+                            ChatChannel.TRAIDORES -> R.color.traitor_text
+                            ChatChannel.ESPECTADORES -> R.color.espectro_muted
                         }
                     )
                 )
@@ -1033,17 +1105,17 @@ class GameplayChatController(
                 body = entry.text,
                 speakerColor = if (ownMessage) {
                     root.context.getColor(
-                        if (channel == ChatChannel.TRAIDORES) {
-                            R.color.traitor_text
-                        } else {
-                            R.color.bg_dark
+                        when (channel) {
+                            ChatChannel.PUBLICO -> R.color.bg_dark
+                            ChatChannel.TRAIDORES -> R.color.traitor_text
+                            ChatChannel.ESPECTADORES -> R.color.espectro_blue_bright
                         }
                     )
                 } else {
-                    if (channel == ChatChannel.TRAIDORES) {
-                        root.context.getColor(R.color.traitor_red_bright)
-                    } else {
-                        PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    when (channel) {
+                        ChatChannel.PUBLICO -> PlayerChatColor.colorFor(speakerName, host.currentSession)
+                        ChatChannel.TRAIDORES -> root.context.getColor(R.color.traitor_red_bright)
+                        ChatChannel.ESPECTADORES -> root.context.getColor(R.color.espectro_blue_bright)
                     }
                 },
                 ownMessage = ownMessage,
@@ -1068,11 +1140,24 @@ class GameplayChatController(
         return when (channel) {
             ChatChannel.PUBLICO -> !GameRules.isTraitorRole(player.role) ||
                 BotConversationDirector.canRun(host.currentSession)
-            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(host.currentSession, player)
+            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(player)
+            ChatChannel.ESPECTADORES -> false
         }
     }
 
     private fun toggleFeedFilter() {
+        if (canUseSpectatorChatUi(host.currentSession)) {
+            selectedChatChannel = if (activeChatChannel() == ChatChannel.ESPECTADORES) {
+                ChatChannel.PUBLICO
+            } else {
+                ChatChannel.ESPECTADORES
+            }
+            showOnlyEvents = false
+            renderFeedFilterButton()
+            renderChatPanel()
+            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+            return
+        }
         if (canToggleTraitorChannel()) {
             selectedChatChannel = if (activeChatChannel() == ChatChannel.TRAIDORES) {
                 ChatChannel.PUBLICO
@@ -1093,6 +1178,32 @@ class GameplayChatController(
 
     private fun renderFeedFilterButton() {
         val channel = activeChatChannel()
+        if (canUseSpectatorChatUi(host.currentSession)) {
+            btnChatFeedFilter.visibility = View.VISIBLE
+            btnChatFeedFilter.isEnabled = true
+            btnChatFeedFilter.text = if (channel == ChatChannel.ESPECTADORES) "PUEBLO" else "MUERTOS"
+            btnChatFeedFilter.contentDescription = if (channel == ChatChannel.ESPECTADORES) {
+                "Volver al chat del pueblo"
+            } else {
+                "Hablar con los muertos"
+            }
+            btnChatFeedFilter.alpha = 1f
+            btnChatFeedFilter.background = roundedBackground(
+                fillColor = root.context.getColor(
+                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_panel else R.color.btn_dark
+                ),
+                strokeColor = root.context.getColor(
+                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_blue else R.color.btn_dark_border
+                ),
+                cornerRadiusDp = 7
+            )
+            btnChatFeedFilter.setTextColor(
+                root.context.getColor(
+                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_text else R.color.text_primary
+                )
+            )
+            return
+        }
         if (canToggleTraitorChannel()) {
             btnChatFeedFilter.visibility = View.VISIBLE
             btnChatFeedFilter.isEnabled = true
@@ -1119,7 +1230,7 @@ class GameplayChatController(
             )
             return
         }
-        if (channel == ChatChannel.TRAIDORES) {
+        if (channel != ChatChannel.PUBLICO) {
             btnChatFeedFilter.visibility = View.GONE
             btnChatFeedFilter.isEnabled = false
             return
@@ -1197,6 +1308,7 @@ class GameplayChatController(
         bubbleMaxWidth: Int,
         muted: Boolean
     ) {
+        val channel = activeChatChannel()
         val row = LinearLayout(root.context).apply {
             gravity = if (ownMessage) Gravity.END else Gravity.START
             orientation = LinearLayout.HORIZONTAL
@@ -1205,21 +1317,23 @@ class GameplayChatController(
         val bubble = LinearLayout(root.context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(10), host.dp(7), host.dp(10), host.dp(8))
-            if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                background = roundedBackground(
+            when (channel) {
+                ChatChannel.PUBLICO -> setBackgroundResource(
+                    if (ownMessage) R.drawable.bg_chat_bubble_own else R.drawable.bg_chat_bubble_other
+                )
+                ChatChannel.TRAIDORES -> background = roundedBackground(
                     fillColor = root.context.getColor(
                         if (ownMessage) R.color.traitor_red else R.color.traitor_panel
                     ),
                     strokeColor = root.context.getColor(R.color.traitor_red_bright),
                     cornerRadiusDp = 10
                 )
-            } else {
-                setBackgroundResource(
-                    if (ownMessage) {
-                        R.drawable.bg_chat_bubble_own
-                    } else {
-                        R.drawable.bg_chat_bubble_other
-                    }
+                ChatChannel.ESPECTADORES -> background = roundedBackground(
+                    fillColor = root.context.getColor(
+                        if (ownMessage) R.color.espectro_blue else R.color.espectro_panel
+                    ),
+                    strokeColor = root.context.getColor(R.color.espectro_blue_bright),
+                    cornerRadiusDp = 10
                 )
             }
             alpha = if (muted) 0.78f else 1f
@@ -1236,12 +1350,10 @@ class GameplayChatController(
             maxWidth = bubbleMaxWidth
             setTextColor(
                 root.context.getColor(
-                    if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                        R.color.traitor_text
-                    } else if (ownMessage) {
-                        R.color.bg_dark
-                    } else {
-                        R.color.text_primary
+                    when (channel) {
+                        ChatChannel.TRAIDORES -> R.color.traitor_text
+                        ChatChannel.ESPECTADORES -> R.color.espectro_text
+                        ChatChannel.PUBLICO -> if (ownMessage) R.color.bg_dark else R.color.text_primary
                     }
                 )
             )
@@ -1346,10 +1458,10 @@ class GameplayChatController(
         }
         val rawMessage = chatInput.text.toString()
         if (host.isOnlineGameplay()) {
-            if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                sendOnlineTraitorChatMessage(rawMessage)
-            } else {
-                sendOnlineHumanChatMessage(rawMessage)
+            when (activeChatChannel()) {
+                ChatChannel.PUBLICO -> sendOnlineHumanChatMessage(rawMessage)
+                ChatChannel.TRAIDORES -> sendOnlineTraitorChatMessage(rawMessage)
+                ChatChannel.ESPECTADORES -> sendOnlineSpectatorChatMessage(rawMessage)
             }
             return
         }
@@ -1497,6 +1609,65 @@ class GameplayChatController(
             }
     }
 
+    private fun sendOnlineSpectatorChatMessage(rawMessage: String) {
+        val session = host.currentSession
+        val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
+        if (message.isBlank()) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastOnlineSpectatorChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast("Espera un momento antes de enviar otro mensaje.")
+            return
+        }
+        if (message.equals(lastOnlineSpectatorChatMessage, ignoreCase = true)) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast("Ese mensaje ya fue enviado.")
+            return
+        }
+        if (!GameEngine.canHumanChatSpectator(session)) {
+            GameplayEffects.play(root.context, GameplayEffect.ERROR)
+            host.showToast(blockedChatMessage(session, ChatChannel.ESPECTADORES))
+            return
+        }
+        val human = GameEngine.humanPlayer(session)
+        FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_SPECTATOR_CHAT_NODE")
+            .push()
+            .setValue(
+                mapOf(
+                    "matchId" to session.onlineMatchId,
+                    "actorId" to host.onlinePlayerUid,
+                    "speaker" to human.name,
+                    "mensaje" to message,
+                    "fase" to session.phase.name,
+                    "ronda" to session.round,
+                    "isGod" to false,
+                    "canal" to "espectadores",
+                    "ts" to ServerValue.TIMESTAMP
+                )
+            )
+            .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "spectator_chat_send_success roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} speaker=${human.name} phase=${session.phase.name}"
+                )
+                lastOnlineSpectatorChatSentAtMs = SystemClock.elapsedRealtime()
+                lastOnlineSpectatorChatMessage = message
+                GameplayEffects.play(root.context, GameplayEffect.CHAT)
+                clearChatComposerAfterSend()
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "spectator_chat_send_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} speaker=${human.name} phase=${session.phase.name}",
+                    error
+                )
+                GameplayEffects.play(root.context, GameplayEffect.ERROR)
+                host.showToast(
+                    OnlineErrorMessages.forAction("No se pudo enviar el mensaje", error),
+                    Toast.LENGTH_LONG
+                )
+            }
+    }
+
     private fun startOnlineChatListener() {
         if (!host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
@@ -1536,29 +1707,17 @@ class GameplayChatController(
     }
 
     private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
-        val session = host.currentSession
-        val previousCount = session.chatHistory.size
-        val godMessages = session.chatHistory.filter {
-            it.channel == ChatChannel.PUBLICO && it.isGod
-        }
-        val traitorMessages = session.chatHistory.filter {
-            it.channel == ChatChannel.TRAIDORES
-        }
         val onlineMessages = entries.map { GameChatMessage(it.speaker, it.message, it.isGod) }
-        host.currentSession = session.copy(
-            chatHistory = (godMessages + onlineMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES) +
-                traitorMessages.takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+        mergeOnlineChannelMessages(
+            channel = ChatChannel.PUBLICO,
+            onlineMessages = onlineMessages,
+            preserveGodOfChannel = true
         )
-        if (host.currentSession.chatHistory.size > previousCount) {
-            updateUnreadChatCount()
-        }
-        renderChatPanel()
-        renderChatBadge()
     }
 
     private fun startOnlineTraitorChatListener() {
         if (!host.isOnlineGameplay() || onlineTraitorChatListener != null) return
-        if (!GameEngine.canSeeTraitorChat(host.currentSession, GameEngine.humanPlayer(host.currentSession))) {
+        if (!GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(host.currentSession))) {
             return
         }
         OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
@@ -1598,20 +1757,82 @@ class GameplayChatController(
     }
 
     private fun applyOnlineTraitorChatEntries(entries: List<OnlineChatEntry>) {
-        val session = host.currentSession
-        val previousCount = session.chatHistory.size
-        val publicMessages = session.chatHistory.filter {
-            it.channel == ChatChannel.PUBLICO
-        }
-        val traitorGodMessages = session.chatHistory.filter {
-            it.channel == ChatChannel.TRAIDORES && it.isGod
-        }
         val onlineTraitorMessages = entries.map {
             GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.TRAIDORES)
         }
+        mergeOnlineChannelMessages(
+            channel = ChatChannel.TRAIDORES,
+            onlineMessages = onlineTraitorMessages,
+            preserveGodOfChannel = true
+        )
+    }
+
+    private fun startOnlineSpectatorChatListener() {
+        if (!host.isOnlineGameplay() || onlineSpectatorChatListener != null) return
+        if (GameEngine.humanPlayer(host.currentSession).alive) return
+        OnlineDebugLog.i("spectator_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
+        val query = FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_SPECTATOR_CHAT_NODE")
+            .orderByKey()
+            .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val currentMatchId = host.currentSession.onlineMatchId
+                val entries = snapshot.children.mapNotNull { child ->
+                    val matchId = child.child("matchId").getValue(String::class.java).orEmpty()
+                    if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
+                    OnlineChatEntry(
+                        id = child.key.orEmpty(),
+                        speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
+                        message = child.child("mensaje").getValue(String::class.java).orEmpty(),
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                    ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
+                }
+                OnlineDebugLog.i(
+                    "spectator_chat_snapshot roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} messages=${entries.size}"
+                )
+                applyOnlineSpectatorChatEntries(entries)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                OnlineDebugLog.e(
+                    "spectator_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
+                    error.toException()
+                )
+            }
+        }
+        onlineSpectatorChatQuery = query
+        onlineSpectatorChatListener = listener
+        query.addValueEventListener(listener)
+    }
+
+    private fun applyOnlineSpectatorChatEntries(entries: List<OnlineChatEntry>) {
+        val onlineSpectatorMessages = entries.map {
+            GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.ESPECTADORES)
+        }
+        mergeOnlineChannelMessages(
+            channel = ChatChannel.ESPECTADORES,
+            onlineMessages = onlineSpectatorMessages,
+            preserveGodOfChannel = false
+        )
+    }
+
+    private fun mergeOnlineChannelMessages(
+        channel: ChatChannel,
+        onlineMessages: List<GameChatMessage>,
+        preserveGodOfChannel: Boolean
+    ) {
+        val session = host.currentSession
+        val previousCount = session.chatHistory.size
+        val otherChannels = session.chatHistory.filter { it.channel != channel }
+        val keptGodMessages = if (preserveGodOfChannel) {
+            session.chatHistory.filter { it.channel == channel && it.isGod }
+        } else {
+            emptyList()
+        }
         host.currentSession = session.copy(
-            chatHistory = publicMessages.takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES) +
-                (traitorGodMessages + onlineTraitorMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
+            chatHistory = otherChannels +
+                (keptGodMessages + onlineMessages).takeLast(GameplayFeedMessages.MAX_FEED_MESSAGES)
         )
         if (host.currentSession.chatHistory.size > previousCount) {
             updateUnreadChatCount()
@@ -1898,8 +2119,9 @@ class GameplayChatController(
         if (player.isHuman) return false
         return when (channel) {
             ChatChannel.PUBLICO -> GameEngine.canParticipateInChat(session, player)
-            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(session, player) &&
+            ChatChannel.TRAIDORES -> GameEngine.canSeeTraitorChat(player) &&
                 GameEngine.isTraitorChatWritable(session)
+            ChatChannel.ESPECTADORES -> false
         }
     }
 
@@ -1921,15 +2143,22 @@ class GameplayChatController(
 
     private fun chatInputHint(canChat: Boolean, channel: ChatChannel = activeChatChannel()): String {
         if (canChat) {
-            return if (channel == ChatChannel.TRAIDORES) {
-                "Tramar en las sombras..."
-            } else {
-                "Escribir..."
+            return when (channel) {
+                ChatChannel.PUBLICO -> "Escribir..."
+                ChatChannel.TRAIDORES -> "Tramar en las sombras..."
+                ChatChannel.ESPECTADORES -> "Escribir en el Chat de los Muertos..."
             }
         }
         val session = host.currentSession
         val human = GameEngine.humanPlayer(session)
-        if (!human.alive) return "Eliminado: solo lectura"
+        if (canUseSpectatorChatUi(session) && session.winner.isNotBlank()) return "Solo lectura"
+        if (!human.alive) {
+            return if (canUseSpectatorChatUi(session) && channel == ChatChannel.PUBLICO) {
+                "Eliminado: hablá en el Chat de los Muertos"
+            } else {
+                "Eliminado: solo lectura"
+            }
+        }
         if (human.muted) return "Muteado: solo lectura"
         if (channel == ChatChannel.TRAIDORES) {
             return if (GameplayTableUi.isNightPhase(session.phase)) {
@@ -1957,9 +2186,13 @@ class GameplayChatController(
     ): String {
         val human = GameEngine.humanPlayer(session)
         return when {
+            channel == ChatChannel.ESPECTADORES && session.winner.isNotBlank() ->
+                "La partida terminó. El canal quedó en solo lectura."
+            !human.alive && canUseSpectatorChatUi(session) && channel == ChatChannel.PUBLICO ->
+                "Estás eliminado. Hablá en el Chat de los Muertos."
             !human.alive -> "Estás eliminado. Puedes mirar el chat, pero no escribir."
             human.muted -> "Estás silenciado. Puedes mirar el chat, pero no escribir."
-            channel == ChatChannel.TRAIDORES && !GameEngine.canSeeTraitorChat(session, human) ->
+            channel == ChatChannel.TRAIDORES && !GameEngine.canSeeTraitorChat(human) ->
                 "No formas parte del Plan de los Asesinos."
             channel == ChatChannel.TRAIDORES ->
                 "El plan descansa hasta la noche."
@@ -1981,9 +2214,16 @@ class GameplayChatController(
         val logDrawable = host.chatLogDrawableRes()
         chatPanelBackground.setImageResource(logDrawable)
         chatAmbientBackground.setImageResource(logDrawable)
-        if (activeChatChannel() == ChatChannel.TRAIDORES) {
-            renderTraitorChatBackgrounds()
-            return
+        when (channel) {
+            ChatChannel.TRAIDORES -> {
+                renderTraitorChatBackgrounds()
+                return
+            }
+            ChatChannel.ESPECTADORES -> {
+                renderSpectatorChatBackgrounds()
+                return
+            }
+            ChatChannel.PUBLICO -> Unit
         }
         chatPanel.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatAmbientFeed.setBackgroundResource(R.drawable.bg_reveal_text_shade)
@@ -2075,16 +2315,85 @@ class GameplayChatController(
         chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
     }
 
+    private fun renderSpectatorChatBackgrounds() {
+        val writable = GameEngine.canHumanChatSpectator(host.currentSession)
+        val blue = root.context.getColor(R.color.espectro_blue)
+        val bright = root.context.getColor(R.color.espectro_blue_bright)
+        val panel = root.context.getColor(R.color.espectro_panel)
+        val bg = root.context.getColor(R.color.espectro_bg)
+        val text = root.context.getColor(R.color.espectro_text)
+        val muted = root.context.getColor(R.color.espectro_muted)
+
+        chatPanel.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 238 else 220),
+            strokeColor = blue,
+            cornerRadiusDp = 12,
+            strokeWidthDp = 2
+        )
+        chatAmbientFeed.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 226 else 208),
+            strokeColor = blue,
+            cornerRadiusDp = 12,
+            strokeWidthDp = 1
+        )
+        applyChatFrameForegrounds(panelFrame = null, ambientFrame = null)
+        chatPanelShade.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(colorWithAlpha(panel, 236), colorWithAlpha(bg, 246))
+        )
+        chatAmbientShade.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(colorWithAlpha(panel, 220), colorWithAlpha(bg, 238))
+        )
+        chatHeader.background = roundedBackground(
+            fillColor = colorWithAlpha(panel, 226),
+            strokeColor = colorWithAlpha(blue, 180),
+            cornerRadiusDp = 9
+        )
+        chatComposer.background = roundedBackground(
+            fillColor = colorWithAlpha(panel, 220),
+            strokeColor = colorWithAlpha(blue, 170),
+            cornerRadiusDp = 10
+        )
+        chatInput.background = roundedBackground(
+            fillColor = colorWithAlpha(bg, 235),
+            strokeColor = colorWithAlpha(blue, 170),
+            cornerRadiusDp = 10
+        )
+        chatInput.setTextColor(text)
+        chatInput.setHintTextColor(muted)
+        btnSendChat.background = roundedBackground(
+            fillColor = blue,
+            strokeColor = bright,
+            cornerRadiusDp = 10
+        )
+        btnSendChat.setTextColor(text)
+        chatNewMessages.setTextColor(bright)
+        chatAmbientBackground.alpha = if (writable) 0.30f else 0.22f
+        chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
+    }
+
     private fun applyChatFrameForegrounds(
-        panelFrame: Int,
-        ambientFrame: Int
+        panelFrame: Int?,
+        ambientFrame: Int?
     ) {
-        chatPanel.foreground = ResourcesCompat.getDrawable(root.resources, panelFrame, root.context.theme)
-        chatAmbientFeed.foreground = ResourcesCompat.getDrawable(root.resources, ambientFrame, root.context.theme)
+        chatPanel.foreground = panelFrame?.let {
+            ResourcesCompat.getDrawable(root.resources, it, root.context.theme)
+        }
+        chatAmbientFeed.foreground = ambientFrame?.let {
+            ResourcesCompat.getDrawable(root.resources, it, root.context.theme)
+        }
     }
 
     private fun activeChatChannel(): ChatChannel {
         val session = host.currentSession
+        if (canUseSpectatorChatUi(session)) {
+            return if (selectedChatChannel == ChatChannel.PUBLICO) {
+                ChatChannel.PUBLICO
+            } else {
+                ChatChannel.ESPECTADORES
+            }
+        }
         if (!canUseTraitorChatUi(session)) return ChatChannel.PUBLICO
         if (GameplayTableUi.isNightPhase(session.phase)) return ChatChannel.TRAIDORES
         return selectedChatChannel
@@ -2101,6 +2410,8 @@ class GameplayChatController(
         return when (channel) {
             ChatChannel.PUBLICO -> GameEngine.canHumanChat(session)
             ChatChannel.TRAIDORES -> GameEngine.canHumanChatTraitor(session)
+            ChatChannel.ESPECTADORES -> host.isOnlineGameplay() &&
+                GameEngine.canHumanChatSpectator(session)
         }
     }
 
@@ -2113,7 +2424,12 @@ class GameplayChatController(
     }
 
     private fun canUseTraitorChatUi(session: GameSession): Boolean {
-        return GameEngine.canSeeTraitorChat(session, GameEngine.humanPlayer(session))
+        return GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(session))
+    }
+
+    private fun canUseSpectatorChatUi(session: GameSession): Boolean {
+        return host.isOnlineGameplay() &&
+            GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session))
     }
 
     private fun canRunVisibleTraitorNight(session: GameSession): Boolean {
@@ -2170,9 +2486,10 @@ class GameplayChatController(
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L
-        private const val ONLINE_CHAT_MAX_MESSAGES = 40
+        private const val ONLINE_CHAT_MAX_MESSAGES = 60
         private const val RTDB_PUBLIC_CHAT_NODE = "chat"
         private const val RTDB_TRAITOR_CHAT_NODE = "chat_traidores"
+        private const val RTDB_SPECTATOR_CHAT_NODE = "chat_espectadores"
         private const val MAX_STAGGERED_BOT_REACTIONS = 3
         private const val MAX_EVENT_BOT_REACTIONS = 3
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L

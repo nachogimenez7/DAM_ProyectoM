@@ -1170,7 +1170,7 @@
             android:layout_marginHorizontal="32dp"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="48dp"
+            android:paddingHorizontal="24dp"
             android:paddingTop="18dp"
             android:paddingBottom="14dp">
 
@@ -1226,17 +1226,27 @@
                 app:autoSizeStepGranularity="1sp"
                 app:autoSizeTextType="uniform" />
 
-            <GridLayout
-                android:id="@+id/tieVoteCards"
-                android:layout_width="wrap_content"
+            <ScrollView
+                android:id="@+id/tieVoteCardsScroll"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:alignmentMode="alignMargins"
-                android:columnCount="2"
-                android:gravity="center"
-                android:orientation="horizontal"
-                android:rowCount="2"
-                android:useDefaultMargins="false" />
+                android:fillViewport="false"
+                android:overScrollMode="never"
+                android:scrollbars="none">
+
+                <GridLayout
+                    android:id="@+id/tieVoteCards"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:alignmentMode="alignMargins"
+                    android:columnCount="2"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:rowCount="2"
+                    android:useDefaultMargins="false" />
+            </ScrollView>
 
             <TextView
                 android:id="@+id/tieVoteNotice"

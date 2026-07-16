@@ -15,6 +15,14 @@ data class CompanionCardMetrics(
     val scrollEnabled: Boolean
 )
 
+data class TieVoteGridMetrics(
+    val columns: Int,
+    val rows: Int,
+    val cardWidthDp: Int,
+    val cardHeightDp: Int,
+    val scrollEnabled: Boolean
+)
+
 enum class PublicEventType(val colorHex: String) {
     DEATH("#a83232"),
     VOTING("#d4a24e"),
@@ -836,6 +844,31 @@ object GameplayTableUi {
         }
 
         return fitted
+    }
+
+    fun tieVoteGridMetrics(candidateCount: Int, maxColumns: Int = 4): TieVoteGridMetrics {
+        val safeCount = candidateCount.coerceAtLeast(0)
+        val safeMaxColumns = maxColumns.coerceAtLeast(1)
+        val columns = safeCount.coerceIn(1, safeMaxColumns)
+        val rows = ((safeCount + columns - 1) / columns).coerceAtLeast(1)
+        val cardWidth = when {
+            safeCount <= 2 -> 136
+            safeCount == 3 -> 116
+            safeCount >= 5 -> 92
+            else -> 102
+        }
+        val cardHeight = when {
+            safeCount <= 2 -> 156
+            safeCount >= 5 -> 124
+            else -> 140
+        }
+        return TieVoteGridMetrics(
+            columns = columns,
+            rows = rows,
+            cardWidthDp = cardWidth,
+            cardHeightDp = cardHeight,
+            scrollEnabled = rows > 2
+        )
     }
 
     private fun CompanionCardMetrics.scaledBy(

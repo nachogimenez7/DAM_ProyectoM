@@ -394,7 +394,7 @@ internal object LocalBotAi {
 
     fun nextTraitorLine(session: GameSession, speaker: String): String? {
         val bot = GameEngine.playerByName(session, speaker)
-            ?.takeIf { !it.isHuman && GameEngine.canSeeTraitorChat(session, it) }
+            ?.takeIf { !it.isHuman && GameEngine.canSeeTraitorChat(it) }
             ?: return null
         val plan = session.traitorPlan
             ?.takeIf { it.round == session.round }

@@ -199,7 +199,7 @@ internal object BotConversationDirector {
 
     private fun eligibleTraitorSpeakers(session: GameSession): List<GamePlayer> {
         return session.players.filter {
-            !it.isHuman && GameEngine.canSeeTraitorChat(session, it)
+            !it.isHuman && GameEngine.canSeeTraitorChat(it)
         }
     }
 

@@ -14,7 +14,7 @@ class GameTableLayoutTest {
         val centerStage = TableRect(left = 720, top = 100, width = 660, height = 360)
         val chatArea = TableRect(left = 1840, top = 426, width = 260, height = 154)
 
-        listOf(5, 7, 8).forEach { totalPlayers ->
+        listOf(5, 7, 8, 10, 15).forEach { totalPlayers ->
             val companionCount = totalPlayers - 1
             val cardWidth = when {
                 totalPlayers <= 6 -> 70

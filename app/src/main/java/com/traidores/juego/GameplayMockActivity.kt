@@ -417,6 +417,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var voteKickDust: ImageView
     private lateinit var tieVoteOverlay: FrameLayout
     private lateinit var tieVotePanel: LinearLayout
+    private lateinit var tieVoteCardsScroll: ScrollView
     private lateinit var tieVoteCards: GridLayout
     private lateinit var tieVoteCountdown: TextView
     private lateinit var tieVoteSubtitle: TextView
@@ -778,6 +779,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         tieVoteOverlay = findViewById(R.id.tieVoteOverlay)
         tieVotePanel = findViewById(R.id.tieVotePanel)
         applyRevealOverlayTheme()
+        tieVoteCardsScroll = findViewById(R.id.tieVoteCardsScroll)
         tieVoteCards = findViewById(R.id.tieVoteCards)
         tieVoteCountdown = findViewById(R.id.tieVoteCountdown)
         tieVoteSubtitle = findViewById(R.id.tieVoteSubtitle)
@@ -1830,7 +1832,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
         publishAuthoritativeOnlineState()
-        if (maybeOfferSpectatorChoice()) return
+        if (maybeOfferSpectatorChoice()) {
+            logSlowGameplayRender(renderStartedAtMs)
+            return
+        }
         if (blockingFeedbackPending) {
             showPendingPrivateFeedback()
         } else if (shouldStartTransition) {
@@ -1838,6 +1843,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else if (!isDayNightTransitionRunning) {
             resumeGameFlowAfterBlockingUi()
         }
+        logSlowGameplayRender(renderStartedAtMs)
     }
 
     private fun publishOnlineClientState() {
@@ -6483,10 +6489,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (maybeShowJesterVictory()) return
         if (maybeShowWinnerReveal()) return
         if (maybeShowTraitorReveal()) return
-        if (maybeOfferSpectatorChoice()) {
-            logSlowGameplayRender(renderStartedAtMs)
-            return
-        }
+        if (maybeOfferSpectatorChoice()) return
         maybeShowDesertorChoice()
         if (!desertorDialogOpen) {
             refreshOnlinePresentationGate()
@@ -6676,6 +6679,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         tieVoteOverlay.alpha = 0f
         tieVotePanel.scaleX = 0.96f
         tieVotePanel.scaleY = 0.96f
+        tieVoteCardsScroll.scrollTo(0, 0)
         renderTieVoteWindow()
         tieVoteOverlay.animate().alpha(1f).setDuration(180L).start()
         tieVotePanel.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
@@ -6686,20 +6690,31 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val candidates = session.tieVoteCandidates.mapNotNull { candidate ->
             GameEngine.playerByName(session, candidate)
         }
-        tieVoteCards.columnCount = candidates.size.coerceIn(1, 4)
-        tieVoteCards.rowCount = 1
-        val cardWidth = when {
-            candidates.size <= 2 -> 136
-            candidates.size == 3 -> 116
-            else -> 102
-        }
-        val cardHeight = if (candidates.size <= 2) 156 else 140
         val desiredNames = candidates.map { it.name }.toSet()
         tieVoteCardViews.keys.toList()
             .filterNot { it in desiredNames }
             .forEach { name ->
                 tieVoteCardViews.remove(name)?.root?.let { tieVoteCards.removeView(it) }
             }
+        val gridMetrics = GameplayTableUi.tieVoteGridMetrics(
+            candidateCount = candidates.size,
+            maxColumns = if (isPortrait()) 2 else 4
+        )
+        tieVoteCards.columnCount = gridMetrics.columns
+        tieVoteCards.rowCount = gridMetrics.rows
+        tieVoteCardsScroll.layoutParams = tieVoteCardsScroll.layoutParams.apply {
+            height = if (gridMetrics.scrollEnabled) {
+                dp(TIE_VOTE_GRID_MAX_HEIGHT_DP)
+            } else {
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+        }
+        tieVoteCardsScroll.isVerticalScrollBarEnabled = gridMetrics.scrollEnabled
+        tieVoteCardsScroll.overScrollMode = if (gridMetrics.scrollEnabled) {
+            View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        } else {
+            View.OVER_SCROLL_NEVER
+        }
         candidates.forEachIndexed { index, player ->
             val holder = tieVoteCardViews.getOrPut(player.name) { createTieVoteCard(player) }
             val currentParent = holder.root.parent as? ViewGroup
@@ -6711,8 +6726,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 tieVoteCards.addView(holder.root, index.coerceAtMost(tieVoteCards.childCount))
             }
             holder.root.layoutParams = GridLayout.LayoutParams().apply {
-                width = dp(cardWidth)
-                height = dp(cardHeight)
+                width = dp(gridMetrics.cardWidthDp)
+                height = dp(gridMetrics.cardHeightDp)
                 setMargins(dp(7), dp(4), dp(7), dp(4))
             }
             bindTieVoteCard(holder, player)
@@ -7473,7 +7488,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isTraitorRevealRunning = false
             resumeGameFlowAfterBlockingUi()
         }
-        logSlowGameplayRender(renderStartedAtMs)
     }
 
     private fun logSlowGameplayRender(startedAtMs: Long) {
@@ -7835,6 +7849,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val PLAYER_STATE_CONNECTED = "conectado"
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
+        private const val TIE_VOTE_GRID_MAX_HEIGHT_DP = 264
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"

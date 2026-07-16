@@ -40,6 +40,24 @@
             "$other": { ".validate": false }
           }
         },
+        "chat_espectadores": {
+          ".read": "auth != null",
+          ".write": "auth != null && !newData.exists()",
+          "$messageId": {
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'ts'])",
+            "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
+            "actorId": { ".validate": "newData.val() === auth.uid" },
+            "speaker": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
+            "mensaje": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140" },
+            "fase": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+            "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
+            "isGod": { ".validate": "newData.val() === false" },
+            "canal": { ".validate": "newData.val() === 'espectadores'" },
+            "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "$other": { ".validate": false }
+          }
+        },
         "chat_lobby": {
           ".read": "auth != null",
           ".write": "auth != null && !newData.exists()",

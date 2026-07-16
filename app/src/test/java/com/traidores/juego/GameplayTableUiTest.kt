@@ -189,6 +189,47 @@ class GameplayTableUiTest {
     }
 
     @Test
+    fun tieVoteGridMetricsAdaptRowsAndScrollingToAvailableColumns() {
+        val two = GameplayTableUi.tieVoteGridMetrics(2)
+        val four = GameplayTableUi.tieVoteGridMetrics(4)
+        val five = GameplayTableUi.tieVoteGridMetrics(5)
+        val eight = GameplayTableUi.tieVoteGridMetrics(8)
+        val ten = GameplayTableUi.tieVoteGridMetrics(10)
+        val fivePortrait = GameplayTableUi.tieVoteGridMetrics(5, maxColumns = 2)
+        val tenPortrait = GameplayTableUi.tieVoteGridMetrics(10, maxColumns = 2)
+
+        assertEquals(2, two.columns)
+        assertEquals(1, two.rows)
+        assertEquals(136, two.cardWidthDp)
+        assertEquals(156, two.cardHeightDp)
+        assertFalse(two.scrollEnabled)
+
+        assertEquals(4, four.columns)
+        assertEquals(1, four.rows)
+        assertEquals(102, four.cardWidthDp)
+        assertEquals(140, four.cardHeightDp)
+
+        assertEquals(4, five.columns)
+        assertEquals(2, five.rows)
+        assertEquals(92, five.cardWidthDp)
+        assertEquals(124, five.cardHeightDp)
+        assertFalse(five.scrollEnabled)
+        assertEquals(2, eight.rows)
+        assertFalse(eight.scrollEnabled)
+
+        assertEquals(4, ten.columns)
+        assertEquals(3, ten.rows)
+        assertTrue(ten.scrollEnabled)
+
+        assertEquals(2, fivePortrait.columns)
+        assertEquals(3, fivePortrait.rows)
+        assertTrue(fivePortrait.scrollEnabled)
+        assertEquals(2, tenPortrait.columns)
+        assertEquals(5, tenPortrait.rows)
+        assertTrue(tenPortrait.scrollEnabled)
+    }
+
+    @Test
     fun deathRevealOnlyIncludesNewNightVictims() {
         val role = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
         val players = listOf(

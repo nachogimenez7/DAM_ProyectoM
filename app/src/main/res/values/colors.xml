@@ -18,6 +18,12 @@
     <color name="traitor_bg">#160B0B</color>
     <color name="traitor_text">#D8C3C6</color>
     <color name="traitor_muted">#8A5560</color>
+    <color name="espectro_bg">#0B1220</color>
+    <color name="espectro_panel">#16233A</color>
+    <color name="espectro_blue">#3E5C8C</color>
+    <color name="espectro_blue_bright">#7FA3D8</color>
+    <color name="espectro_text">#C7D4E8</color>
+    <color name="espectro_muted">#6B7E9C</color>
     <color name="accent_blue">#4a7fb5</color>
     <color name="accent_green">#5a8a3c</color>
     <color name="accent_purple">#8a5fbf</color>
