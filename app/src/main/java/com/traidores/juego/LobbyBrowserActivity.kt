@@ -115,7 +115,7 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     private fun createLobbyRow(lobby: OnlineLobby): View {
-        val row = layoutInflater.inflate(R.layout.item_online_lobby, null, false)
+        val row = layoutInflater.inflate(R.layout.item_online_lobby, lobbyList, false)
         row.findViewById<TextView>(R.id.lobbyName).text = lobby.name
         row.findViewById<TextView>(R.id.lobbyMap).text = "${lobby.mapName} - Argentina"
         row.findViewById<TextView>(R.id.lobbyPlayers).text = "${lobby.players}/${lobby.limit}"

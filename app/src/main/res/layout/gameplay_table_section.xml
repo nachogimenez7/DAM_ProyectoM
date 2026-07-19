@@ -546,7 +546,7 @@
 
                     <Button
                         android:id="@+id/btnRevealCard"
-                        style="@style/BtnGold"
+                        style="@style/BtnDark"
                         android:layout_width="0dp"
                         android:layout_height="30dp"
                         android:layout_marginEnd="4dp"
@@ -554,7 +554,7 @@
                         android:layout_weight="2"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:text="REVELAR"
+                        android:text="VER CARTA"
                         android:textSize="10sp"
                         app:autoSizeMaxTextSize="10sp"
                         app:autoSizeMinTextSize="8sp"

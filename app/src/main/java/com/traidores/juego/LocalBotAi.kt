@@ -430,8 +430,8 @@ internal object LocalBotAi {
             ?.takeIf { canUseBotVoteTarget(session, voter, it) }
             ?.let { return it }
         traitorPlanVotePlan(session, voter)?.let { return it.target }
-        conversationVotePlan(session, voter)?.let { return it.target }
         val ranked = rankedPublicSuspects(session, voter)
+        conversationVotePlan(session, voter, ranked)?.let { return it.target }
         val declaredTarget = declaredSuspicionTarget(session, voter)
         val coordinated = if (isTraitor(voter)) {
             val allies = GameEngine.alivePlayers(session)
@@ -453,8 +453,11 @@ internal object LocalBotAi {
         } else {
             ranked
         }
+        val usefulPublicReads = coordinated.associate { read ->
+            read.player.name to hasUsefulPublicRead(session, read.player.name)
+        }
         val voteOptions = coordinated.filterNot { read ->
-            hasUsefulPublicRead(session, read.player.name) &&
+            usefulPublicReads[read.player.name] == true &&
                 coordinated.any { other -> other.player.name != read.player.name && other.score >= 4 }
         }.ifEmpty { coordinated }
         return voteOptions
@@ -540,8 +543,8 @@ internal object LocalBotAi {
         val dawnVictim = eventTarget(session, session.publicAnnouncement, "murió")
         val expelled = latestExpelledTarget(session)
         return messageBots(session, limit).mapIndexed { index, bot ->
-            val read = rankedPublicSuspects(session, bot).getOrNull(index)
-                ?: rankedPublicSuspects(session, bot).firstOrNull()
+            val ranked = rankedPublicSuspects(session, bot)
+            val read = ranked.getOrNull(index) ?: ranked.firstOrNull()
             val target = speechTarget(session, bot, read)
             val contextSeed = "opening:$index:${session.phaseIndex}:${socialChatSize(session)}"
             val reason = informalReason(read?.reason(), contextSeed)
@@ -624,11 +627,12 @@ internal object LocalBotAi {
 
     fun votingIntentMessages(session: GameSession, limit: Int = 4): List<Pair<String, String>> {
         return messageBots(session, limit).mapIndexed { index, bot ->
-            val votePlan = traitorPlanVotePlan(session, bot) ?: conversationVotePlan(session, bot)
+            val ranked = rankedPublicSuspects(session, bot)
+            val votePlan = traitorPlanVotePlan(session, bot) ?: conversationVotePlan(session, bot, ranked)
             val read = votePlan
                 ?.target
-                ?.let { target -> rankedPublicSuspects(session, bot).firstOrNull { it.player.name == target } }
-                ?: rankedPublicSuspects(session, bot).firstOrNull()
+                ?.let { target -> ranked.firstOrNull { it.player.name == target } }
+                ?: ranked.firstOrNull()
             val target = votePlan?.target ?: speechTarget(session, bot, read)
             val role = conversationRole(index)
             val contextSeed = "vote:$index:${session.phaseIndex}:${socialChatSize(session)}"
@@ -1002,7 +1006,11 @@ private fun traitorPlanVoteConfidence(session: GameSession, plan: TraitorPlan): 
     }
 }
 
-internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): VotePlan? {
+internal fun conversationVotePlan(
+    session: GameSession,
+    voter: GamePlayer,
+    precomputedRanked: List<SuspectRead>? = null
+): VotePlan? {
     val aliveNames = voteCandidatesFor(session, voter)
         .filter { it.name != voter.name }
         .map { it.name }
@@ -1010,7 +1018,8 @@ internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): Vote
     if (aliveNames.isEmpty()) return null
 
     val social = socialRead(session, voter)
-    val ranked = rankedPublicSuspects(session, voter)
+    val ranked = precomputedRanked ?: rankedPublicSuspects(session, voter)
+    val usefulPublicReads = aliveNames.associateWith { name -> hasUsefulPublicRead(session, name) }
     val rawPlans = mutableListOf<VotePlan>()
 
     aliveNames.forEach { name ->
@@ -1036,7 +1045,7 @@ internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): Vote
     social.ignoredBy
         ?.takeIf { it in aliveNames }
         ?.let { target ->
-            if (hasUsefulPublicRead(session, target)) {
+            if (usefulPublicReads[target] == true) {
                 rawPlans += VotePlan(target, "respondió a medias pero dejó una pista", 5)
             } else {
                 rawPlans += VotePlan(target, "dejo una pregunta colgada", 12)
@@ -1084,7 +1093,7 @@ internal fun conversationVotePlan(session: GameSession, voter: GamePlayer): Vote
 
     val plans = rawPlans
         .map { plan ->
-            if (hasUsefulPublicRead(session, plan.target)) {
+            if (usefulPublicReads[plan.target] == true) {
                 plan.copy(
                     reason = "dejo una pista, aunque falta cerrar su explicacion",
                     confidence = (plan.confidence - 14).coerceIn(1, 3)

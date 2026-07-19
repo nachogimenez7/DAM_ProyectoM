@@ -1,5 +1,42 @@
 package com.traidores.juego
 
+private const val BOT_PARSE_CACHE_SIZE = 256
+private val parsingNonWordPattern = Regex("[^a-z0-9\\u00f1 ]")
+private val parsingWhitespacePattern = Regex("\\s+")
+
+private object ParsingNormalizationCache {
+    private val values = object : LinkedHashMap<String, String>(BOT_PARSE_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+            return size > BOT_PARSE_CACHE_SIZE
+        }
+    }
+
+    @Synchronized
+    fun normalize(value: String): String {
+        values[value]?.let { return it }
+        val normalized = stripSpanishAccents(value.lowercase())
+            .replace(parsingNonWordPattern, " ")
+            .replace(parsingWhitespacePattern, " ")
+            .trim()
+        values[value] = normalized
+        return normalized
+    }
+}
+
+private object MentionPatternCache {
+    private val patterns = object : LinkedHashMap<String, Regex>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex>?): Boolean {
+            return size > 64
+        }
+    }
+
+    @Synchronized
+    fun patternFor(normalizedName: String): Regex {
+        return patterns.getOrPut(normalizedName) {
+            Regex("(^|[^a-z0-9])${Regex.escape(normalizedName)}($|[^a-z0-9])")
+        }
+    }
+}
 
 internal fun humanMessageIntent(
     session: GameSession,
@@ -526,15 +563,18 @@ internal fun isBotSpeaker(session: GameSession, speaker: String): Boolean {
 internal fun mentionedPlayerNames(session: GameSession, message: String): List<String> {
     val alive = GameEngine.alivePlayers(session)
     val words = normalizedForParsing(message).split(" ").filter(String::isNotBlank).toSet()
-    return alive
-        .filter { player ->
-            mentionsName(message, player.name) || words.any { prefix ->
-                prefix.length >= 4 &&
-                    normalizedForParsing(player.name).startsWith(prefix) &&
-                    alive.count { other -> normalizedForParsing(other.name).startsWith(prefix) } == 1
+    val normalizedAlive = alive.map { player -> player to normalizedForParsing(player.name) }
+    val usefulPrefixes = words.filter { it.length >= 4 }
+    val prefixMatches = usefulPrefixes.associateWith { prefix ->
+        normalizedAlive.count { (_, normalizedName) -> normalizedName.startsWith(prefix) }
+    }
+    return normalizedAlive
+        .filter { (player, normalizedName) ->
+            mentionsName(message, player.name) || usefulPrefixes.any { prefix ->
+                normalizedName.startsWith(prefix) && prefixMatches[prefix] == 1
             }
         }
-        .map { it.name }
+        .map { (player, _) -> player.name }
 }
 
 internal fun recentPublicMessages(session: GameSession): List<GameChatMessage> {
@@ -592,8 +632,7 @@ internal fun mentionsName(message: String, name: String): Boolean {
     val normalizedMessage = normalizedForParsing(message)
     val normalizedName = normalizedForParsing(name)
     if (normalizedName.isBlank()) return false
-    return Regex("(^|[^a-z0-9])${Regex.escape(normalizedName)}($|[^a-z0-9])")
-        .containsMatchIn(normalizedMessage)
+    return MentionPatternCache.patternFor(normalizedName).containsMatchIn(normalizedMessage)
 }
 
 internal fun safeName(player: GamePlayer, session: GameSession): String {
@@ -612,10 +651,7 @@ internal fun normalized(value: String): String {
 }
 
 internal fun normalizedForParsing(value: String): String {
-    return stripSpanishAccents(normalized(value))
-        .replace(Regex("[^a-z0-9\\u00f1 ]"), " ")
-        .replace(Regex("\\s+"), " ")
-        .trim()
+    return ParsingNormalizationCache.normalize(value)
 }
 
 internal fun normalizedVoteCommand(value: String): String {

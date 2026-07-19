@@ -10,4 +10,35 @@
     <string name="btn_online">JUGAR EN LÍNEA</string>
     <string name="btn_back">VOLVER</string>
     <string name="version">v0.1.0-alpha</string>
+
+    <string name="lobby_section_invite">INVITAR</string>
+    <string name="lobby_section_players">EN LA SALA</string>
+    <string name="lobby_section_configuration">CONFIGURACIÓN</string>
+    <string name="lobby_room_code_label">CÓDIGO DE SALA</string>
+    <string name="lobby_empty_slot">Libre</string>
+    <string name="lobby_empty_slot_description">Plaza libre</string>
+    <string name="lobby_map_vote_empty">Toca para votar</string>
+    <string name="lobby_map_default_badge">POR DEFECTO</string>
+    <plurals name="lobby_map_vote_count">
+        <item quantity="one">%d voto</item>
+        <item quantity="other">%d votos</item>
+    </plurals>
+
+    <string name="lobby_hint_online_in_game">Partida online iniciada.</string>
+    <string name="lobby_hint_online_invite">Compartí el código para que se sumen.</string>
+    <string name="lobby_hint_online_ready">Sala completa. Toquen LISTO para arrancar.</string>
+
+    <string name="lobby_start_local">INICIAR PARTIDA</string>
+    <string name="lobby_start_waiting_host">ESPERANDO AL ANFITRIÓN</string>
+    <string name="lobby_start_sync_entry">SINCRONIZANDO ENTRADA…</string>
+    <string name="lobby_start_cleaning">LIMPIANDO…</string>
+    <string name="lobby_start_online">INICIAR ONLINE</string>
+    <string name="lobby_start_with_present">JUGAR CON %1$d PRESENTES</string>
+    <string name="lobby_start_waiting">ESPERANDO %1$d/%2$d</string>
+    <string name="lobby_start_syncing">SINCRONIZANDO</string>
+    <string name="lobby_start_not_ready">NO LISTO</string>
+    <string name="lobby_start_host_ready">LISTO HOST</string>
+    <string name="lobby_start_ready">LISTO</string>
+    <string name="lobby_start_progress_players">%1$d de %2$d jugadores</string>
+    <string name="lobby_start_progress_ready">%1$d de %2$d listos</string>
 </resources>

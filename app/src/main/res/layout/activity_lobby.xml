@@ -118,11 +118,41 @@
                     android:background="@drawable/bg_btn_gold_ripple"
                     android:maxLines="1"
                     android:singleLine="true"
-                    android:text="INICIAR"
+                    android:text="@string/lobby_start_local"
                     app:autoSizeMaxTextSize="15sp"
                     app:autoSizeMinTextSize="9sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
+
+                <LinearLayout
+                    android:id="@+id/onlineStartProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="10dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <ProgressBar
+                        android:id="@+id/onlineStartProgressBar"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="10dp"
+                        android:indeterminate="false"
+                        android:max="5"
+                        android:progress="1"
+                        android:progressDrawable="@drawable/bg_online_start_progress" />
+
+                    <TextView
+                        android:id="@+id/onlineStartProgressText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center"
+                        android:text="@string/lobby_start_progress_players"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/lobbyModeHint"
@@ -134,6 +164,161 @@
                     android:text="Modo normal: elige mapa, tiempos y participantes antes de iniciar."
                     android:textColor="@color/accent_gold"
                     android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/btnReleaseDisconnected"
+                    style="@style/BtnDark"
+                    android:layout_width="match_parent"
+                    android:layout_height="34dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_btn_dark_ripple"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="LIBERAR DESCONECTADOS"
+                    android:textSize="10sp"
+                    android:visibility="gone"
+                    app:autoSizeMaxTextSize="10sp"
+                    app:autoSizeMinTextSize="7sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+
+                <TextView
+                    android:id="@+id/onlineInviteLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:fontFamily="sans-serif"
+                    android:letterSpacing="0.08"
+                    android:text="@string/lobby_section_invite"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/onlineCodePanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="9dp"
+                    android:background="@drawable/bg_btn_dark"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="7dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif"
+                        android:gravity="center"
+                        android:letterSpacing="0.08"
+                        android:text="@string/lobby_room_code_label"
+                        android:textColor="@color/text_muted"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/onlineRoomCodeText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif"
+                        android:gravity="center"
+                        android:letterSpacing="0.16"
+                        android:maxLines="1"
+                        android:text="A7K2Q"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="23sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:layout_marginTop="5dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnCopyRoomCode"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="4dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_btn_dark_ripple"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:text="COPIAR"
+                            android:textSize="10sp"
+                            app:autoSizeMaxTextSize="10sp"
+                            app:autoSizeMinTextSize="8sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <Button
+                            android:id="@+id/btnShareRoomCode"
+                            style="@style/BtnGold"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="4dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_btn_gold_ripple"
+                            android:maxLines="1"
+                            android:singleLine="true"
+                            android:text="COMPARTIR"
+                            android:textSize="10sp"
+                            app:autoSizeMaxTextSize="10sp"
+                            app:autoSizeMinTextSize="7sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/onlinePlayersLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:fontFamily="sans-serif"
+                    android:letterSpacing="0.08"
+                    android:text="@string/lobby_section_players"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+
+                <HorizontalScrollView
+                    android:id="@+id/onlinePlayersScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="96dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_game_panel"
+                    android:fillViewport="true"
+                    android:padding="8dp"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/onlinePlayersContainer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <TextView
+                    android:id="@+id/lobbyConfigurationLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="5dp"
+                    android:fontFamily="sans-serif"
+                    android:letterSpacing="0.08"
+                    android:text="@string/lobby_section_configuration"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:id="@+id/onlinePlayerTargetPanel"
@@ -197,104 +382,6 @@
                         app:autoSizeMinTextSize="8sp"
                         app:autoSizeStepGranularity="1sp"
                         app:autoSizeTextType="uniform" />
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnReleaseDisconnected"
-                    style="@style/BtnDark"
-                    android:layout_width="match_parent"
-                    android:layout_height="34dp"
-                    android:layout_marginBottom="8dp"
-                    android:background="@drawable/bg_btn_dark_ripple"
-                    android:maxLines="1"
-                    android:singleLine="true"
-                    android:text="LIBERAR DESCONECTADOS"
-                    android:textSize="10sp"
-                    android:visibility="gone"
-                    app:autoSizeMaxTextSize="10sp"
-                    app:autoSizeMinTextSize="7sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
-
-                <LinearLayout
-                    android:id="@+id/onlineCodePanel"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="9dp"
-                    android:background="@drawable/bg_btn_dark"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="7dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
-                        android:gravity="center"
-                        android:letterSpacing="0.08"
-                        android:text="CODIGO DE SALA"
-                        android:textColor="@color/text_muted"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/onlineRoomCodeText"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
-                        android:gravity="center"
-                        android:letterSpacing="0.16"
-                        android:maxLines="1"
-                        android:text="A7K2Q"
-                        android:textColor="@color/accent_gold"
-                        android:textSize="23sp"
-                        android:textStyle="bold" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="36dp"
-                        android:layout_marginTop="5dp"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/btnCopyRoomCode"
-                            style="@style/BtnDark"
-                            android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_marginEnd="4dp"
-                            android:layout_marginBottom="0dp"
-                            android:layout_weight="1"
-                            android:background="@drawable/bg_btn_dark_ripple"
-                            android:maxLines="1"
-                            android:singleLine="true"
-                            android:text="COPIAR"
-                            android:textSize="10sp"
-                            app:autoSizeMaxTextSize="10sp"
-                            app:autoSizeMinTextSize="8sp"
-                            app:autoSizeStepGranularity="1sp"
-                            app:autoSizeTextType="uniform" />
-
-                        <Button
-                            android:id="@+id/btnShareRoomCode"
-                            style="@style/BtnGold"
-                            android:layout_width="0dp"
-                            android:layout_height="match_parent"
-                            android:layout_marginStart="4dp"
-                            android:layout_marginBottom="0dp"
-                            android:layout_weight="1"
-                            android:background="@drawable/bg_btn_gold_ripple"
-                            android:maxLines="1"
-                            android:singleLine="true"
-                            android:text="COMPARTIR"
-                            android:textSize="10sp"
-                            app:autoSizeMaxTextSize="10sp"
-                            app:autoSizeMinTextSize="7sp"
-                            app:autoSizeStepGranularity="1sp"
-                            app:autoSizeTextType="uniform" />
-                    </LinearLayout>
                 </LinearLayout>
 
                 <FrameLayout
@@ -438,7 +525,7 @@
                                 android:layout_height="wrap_content"
                                 android:gravity="center"
                                 android:maxLines="1"
-                                android:text="0 votos"
+                                android:text="@string/lobby_map_vote_empty"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="10sp" />
 
@@ -452,6 +539,21 @@
                                 android:textSize="10sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/mapPampaDefaultBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="5dp"
+                            android:background="@drawable/bg_map_default_badge"
+                            android:paddingHorizontal="5dp"
+                            android:paddingVertical="2dp"
+                            android:text="@string/lobby_map_default_badge"
+                            android:textColor="@color/bg_dark"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
                     </FrameLayout>
 
                     <FrameLayout
@@ -505,7 +607,7 @@
                                 android:layout_height="wrap_content"
                                 android:gravity="center"
                                 android:maxLines="1"
-                                android:text="0 votos"
+                                android:text="@string/lobby_map_vote_empty"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="10sp" />
 
@@ -519,6 +621,21 @@
                                 android:textSize="10sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/mapGreciaDefaultBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="5dp"
+                            android:background="@drawable/bg_map_default_badge"
+                            android:paddingHorizontal="5dp"
+                            android:paddingVertical="2dp"
+                            android:text="@string/lobby_map_default_badge"
+                            android:textColor="@color/bg_dark"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
                     </FrameLayout>
 
                     <FrameLayout
@@ -571,7 +688,7 @@
                                 android:layout_height="wrap_content"
                                 android:gravity="center"
                                 android:maxLines="1"
-                                android:text="0 votos"
+                                android:text="@string/lobby_map_vote_empty"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="10sp" />
 
@@ -585,6 +702,21 @@
                                 android:textSize="10sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/mapMedievalDefaultBadge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="top|end"
+                            android:layout_margin="5dp"
+                            android:background="@drawable/bg_map_default_badge"
+                            android:paddingHorizontal="5dp"
+                            android:paddingVertical="2dp"
+                            android:text="@string/lobby_map_default_badge"
+                            android:textColor="@color/bg_dark"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
                     </FrameLayout>
                 </LinearLayout>
 
@@ -611,25 +743,6 @@
                     android:text="Usa el perfil o la X de cada participante. Inicia con cinco o mas jugadores."
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
-
-                <HorizontalScrollView
-                    android:id="@+id/onlinePlayersScroll"
-                    android:layout_width="match_parent"
-                    android:layout_height="96dp"
-                    android:layout_marginBottom="8dp"
-                    android:background="@drawable/bg_game_panel"
-                    android:fillViewport="true"
-                    android:padding="8dp"
-                    android:scrollbars="none"
-                    android:visibility="gone">
-
-                    <LinearLayout
-                        android:id="@+id/onlinePlayersContainer"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal" />
-                </HorizontalScrollView>
 
                 <LinearLayout
                     android:id="@+id/debugRoleSection"
@@ -658,17 +771,6 @@
                         android:text="ROL: AZAR"
                         android:textSize="10sp" />
                 </LinearLayout>
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="5dp"
-                    android:fontFamily="sans-serif"
-                    android:letterSpacing="0.08"
-                    android:text="CONFIGURACION"
-                    android:textColor="@color/text_muted"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:layout_width="match_parent"

@@ -55,6 +55,7 @@ import com.google.firebase.database.FirebaseDatabase
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import kotlin.math.ceil
@@ -186,17 +187,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlinePresentationAdvanceInProgress = false
     private var onlineGameplayStartedAtMs = 0L
     private var lastOnlinePresencePulseAtMs = 0L
+    private var onlinePresencePulseIntervalMs = OnlineSyncWatchdog.PRESENCE_PULSE_MS
     private var lastOnlineWatchdogReason = ""
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private val pendingOnlineActionSubmissions = mutableSetOf<String>()
     private val autoAdvanceHandler = Handler(Looper.getMainLooper())
-    private val localVoteExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "local-vote-resolution").apply {
+    private val localPhaseExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "local-phase-resolution").apply {
             priority = Thread.NORM_PRIORITY - 1
         }
     }
-    private var localVoteResolutionInProgress = false
-    private var localVoteResolutionToken = 0
+    private var localPhaseResolutionInProgress = false
+    private var localPhaseResolutionToken = 0
+    private var localPhaseResolutionActionLabel = "RESOLVIENDO"
     private val autoAdvanceRunnable = Runnable { handleCurrentPhase() }
     private val winnerAutoReturnRunnable = Runnable {
         if (isWinnerRevealVisible && ::session.isInitialized && session.winner.isNotBlank()) {
@@ -949,9 +952,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     override fun onDestroy() {
-        localVoteResolutionToken += 1
-        localVoteResolutionInProgress = false
-        localVoteExecutor.shutdownNow()
+        localPhaseResolutionToken += 1
+        localPhaseResolutionInProgress = false
+        localPhaseExecutor.shutdownNow()
         autoAdvanceHandler.removeCallbacks(roleReadingTickRunnable)
         cancelReadyVoteBotCascade()
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
@@ -1170,7 +1173,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun handleCurrentPhase() {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
-        if (localVoteResolutionInProgress) return
+        if (localPhaseResolutionInProgress) return
         if (countdown.isTransitionLocked(session.phaseIndex)) {
             GameplayEffects.play(this, GameplayEffect.ERROR)
             Toast.makeText(this, "La siguiente fase comienza enseguida.", Toast.LENGTH_SHORT).show()
@@ -1476,26 +1479,49 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun advanceCurrentPhase() {
         chatController.cancelPendingBotChat()
         val before = session
-        session = when (session.phase) {
-            GamePhase.REPARTO -> GameEngine.startNight(session)
-            GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(session, "")
-            GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(session, "")
-            GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(session, "")
-            GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(session, "")
-            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(session, "")
-            GamePhase.AMANECER -> GameEngine.resolveDawn(session)
-            GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
-            GamePhase.CONTRAPUNTO -> GameEngine.resolveContrapunto(session, "")
-            GamePhase.VOTACION -> GameEngine.resolveVoting(session, "")
-            GamePhase.RECUENTO_VOTOS -> session
-            GamePhase.DESEMPATE_VOTACION -> GameEngine.resolveTieVoting(session, "")
-            GamePhase.ALCALDE_DESEMPATE -> session
-            GamePhase.RESULTADO -> GameEngine.resolveResult(session)
+        if (!isOnlineGameplay() && shouldResolveLocalPhaseOffMainThread(before.phase)) {
+            resolveLocalPhaseOffMainThread(
+                before = before,
+                operation = "advance",
+                progressMessage = localPhaseProgressMessage(before.phase),
+                resolver = ::advanceSessionForCurrentPhase
+            ) { resolved ->
+                session = resolved
+                recordOnlinePhaseAdvance(before, resolved)
+                chatController.onPhaseSettled()
+                clearSelection()
+                renderGame()
+            }
+            return
         }
+        session = advanceSessionForCurrentPhase(before)
         recordOnlinePhaseAdvance(before, session)
         chatController.onPhaseSettled()
         clearSelection()
         renderGame()
+    }
+
+    private fun advanceSessionForCurrentPhase(source: GameSession): GameSession {
+        return when (source.phase) {
+            GamePhase.REPARTO -> GameEngine.startNight(source)
+            GamePhase.NOCHE_ASESINO -> GameEngine.resolveAssassin(source, "")
+            GamePhase.NOCHE_MERCENARIO -> GameEngine.resolveMercenary(source, "")
+            GamePhase.NOCHE_POLICIA -> GameEngine.resolvePolice(source, "")
+            GamePhase.NOCHE_MEDICO -> GameEngine.resolveMedic(source, "")
+            GamePhase.NOCHE_ORACULO -> GameEngine.resolveOracle(source, "")
+            GamePhase.AMANECER -> GameEngine.resolveDawn(source)
+            GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(source)
+            GamePhase.CONTRAPUNTO -> GameEngine.resolveContrapunto(source, "")
+            GamePhase.VOTACION -> GameEngine.resolveVoting(source, "")
+            GamePhase.RECUENTO_VOTOS -> source
+            GamePhase.DESEMPATE_VOTACION -> GameEngine.resolveTieVoting(source, "")
+            GamePhase.ALCALDE_DESEMPATE -> source
+            GamePhase.RESULTADO -> GameEngine.resolveResult(source)
+        }
+    }
+
+    private fun shouldResolveLocalPhaseOffMainThread(phase: GamePhase): Boolean {
+        return phase != GamePhase.RECUENTO_VOTOS && phase != GamePhase.ALCALDE_DESEMPATE
     }
 
     private fun performTargetAction(targetName: String) {
@@ -1525,8 +1551,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
             return
         }
-        if (shouldResolveLocalVoteOffMainThread(actionSession)) {
-            resolveLocalVoteOffMainThread(before, targetName)
+        if (!isOnlineGameplay()) {
+            resolveLocalPhaseOffMainThread(
+                before = before,
+                operation = "target_action",
+                progressMessage = localPhaseProgressMessage(before.phase),
+                resolver = { source -> GameEngine.resolveHumanTargetAction(source, targetName) }
+            ) { resolved ->
+                completeResolvedTargetAction(before, resolved, targetName)
+            }
             return
         }
         val resolved = GameEngine.resolveHumanTargetAction(actionSession, targetName)
@@ -1535,13 +1568,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         completeResolvedTargetAction(before, resolved, targetName)
-    }
-
-    private fun shouldResolveLocalVoteOffMainThread(actionSession: GameSession): Boolean {
-        return !isOnlineGameplay() && (
-            actionSession.phase == GamePhase.VOTACION ||
-                actionSession.phase == GamePhase.DESEMPATE_VOTACION
-            )
     }
 
     private fun previewOnlineVoteAction(before: GameSession, targetName: String): GameSession {
@@ -1564,48 +1590,83 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
     }
 
-    private fun resolveLocalVoteOffMainThread(before: GameSession, targetName: String) {
-        val token = ++localVoteResolutionToken
+    private fun resolveLocalPhaseOffMainThread(
+        before: GameSession,
+        operation: String,
+        progressMessage: String,
+        resolver: (GameSession) -> GameSession,
+        onResolved: (GameSession) -> Unit
+    ) {
+        if (localPhaseResolutionInProgress) return
+        val token = ++localPhaseResolutionToken
+        // El guard de descarte compara contra la sesion REAL al momento del dispatch, NO contra
+        // `before`: en acciones de noche `before` es un preview hacia adelante (p. ej. el turno del
+        // Oraculo) mientras `session` sigue en NOCHE_ASESINO. Comparar con before descartaba por
+        // error toda accion de noche del medico/policia/mercenario/oraculo -> se trababa el poder.
+        val expectedPhase = session.phase
+        val expectedPhaseIndex = session.phaseIndex
         val startedAtMs = SystemClock.elapsedRealtime()
-        localVoteResolutionInProgress = true
-        currentPlayerHint.text = "Contando los votos del pueblo..."
+        localPhaseResolutionInProgress = true
+        val isVoteResolution =
+            before.phase == GamePhase.VOTACION || before.phase == GamePhase.DESEMPATE_VOTACION
+        val logName = if (isVoteResolution) "local_vote_resolution" else "local_phase_resolution"
+        localPhaseResolutionActionLabel = if (isVoteResolution) {
+            "CONTANDO VOTOS"
+        } else {
+            "RESOLVIENDO"
+        }
+        currentPlayerHint.text = progressMessage
         renderAdvanceButton()
 
-        localVoteExecutor.execute {
-            val result = runCatching {
-                GameEngine.resolveHumanTargetAction(before, targetName)
-            }
+        localPhaseExecutor.execute {
+            val result = runCatching { resolver(before) }
             val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
             autoAdvanceHandler.post {
-                if (token != localVoteResolutionToken || isFinishing || isDestroyed) {
+                if (token != localPhaseResolutionToken || isFinishing || isDestroyed) {
                     return@post
                 }
-                localVoteResolutionInProgress = false
+                localPhaseResolutionInProgress = false
+                localPhaseResolutionActionLabel = "RESOLVIENDO"
                 val resolved = result.getOrElse { error ->
                     OnlineDebugLog.e(
-                        "local_vote_resolution_failure phase=${before.phase.name} phaseIndex=${before.phaseIndex}",
+                        "${logName}_failure operation=$operation phase=${before.phase.name} phaseIndex=${before.phaseIndex}",
                         error
                     )
                     Toast.makeText(
                         this,
-                        "No se pudo contar la votacion. Intenta nuevamente.",
+                        "No se pudo resolver la fase. Intenta nuevamente.",
                         Toast.LENGTH_LONG
                     ).show()
+                    readyVoteAdvanceInProgress = false
                     renderGame()
                     return@post
                 }
-                if (session.phaseIndex != before.phaseIndex || session.phase != before.phase) {
+                if (session.phaseIndex != expectedPhaseIndex || session.phase != expectedPhase) {
                     OnlineDebugLog.w(
-                        "local_vote_resolution_discarded expected=${before.phase.name}:${before.phaseIndex} actual=${session.phase.name}:${session.phaseIndex}"
+                        "${logName}_discarded operation=$operation expected=${expectedPhase.name}:$expectedPhaseIndex actual=${session.phase.name}:${session.phaseIndex}"
                     )
+                    readyVoteAdvanceInProgress = false
                     renderGame()
                     return@post
                 }
                 OnlineDebugLog.i(
-                    "local_vote_resolution_complete phase=${before.phase.name} players=${before.players.size} durationMs=$elapsedMs"
+                    "${logName}_complete operation=$operation phase=${before.phase.name} players=${before.players.size} durationMs=$elapsedMs"
                 )
-                completeResolvedTargetAction(before, resolved, targetName)
+                onResolved(resolved)
             }
+        }
+    }
+
+    private fun localPhaseProgressMessage(phase: GamePhase): String {
+        return when (phase) {
+            GamePhase.VOTACION, GamePhase.DESEMPATE_VOTACION ->
+                "Contando los votos del pueblo..."
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO,
+            GamePhase.NOCHE_ORACULO -> "Resolviendo la noche..."
+            else -> "Resolviendo la fase..."
         }
     }
 
@@ -1904,6 +1965,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 )
             )
             .addOnFailureListener { error ->
+                if (lastPublishedOnlineStateKey == stateKey) {
+                    lastPublishedOnlineStateKey = ""
+                }
                 OnlineDebugLog.e(
                     "client_state_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round}",
                     error
@@ -2602,6 +2666,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun markOnlineGameplayPresence(state: String) {
         if (!isOnlineGameplay() || !::session.isInitialized) return
         lastOnlinePresencePulseAtMs = SystemClock.elapsedRealtime()
+        onlinePresencePulseIntervalMs = OnlineSyncWatchdog.jitteredPresencePulseMs(
+            "$onlinePlayerId:${System.currentTimeMillis()}".hashCode()
+        )
         realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
         if (lastLegacyPresenceState == state) return
         lastLegacyPresenceState = state
@@ -2662,7 +2729,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             hasAppliedAuthoritativeState = authoritativeStateAppliedLocally(),
             awaitingHostAdvance = onlineAwaitingHostAdvance,
             lastPresencePulseElapsedMs = now - lastOnlinePresencePulseAtMs,
-            elapsedSinceGameplayStartMs = now - onlineGameplayStartedAtMs
+            elapsedSinceGameplayStartMs = now - onlineGameplayStartedAtMs,
+            presencePulseIntervalMs = onlinePresencePulseIntervalMs
         )
         if (decision.reason != "ok" && decision.reason != lastOnlineWatchdogReason) {
             lastOnlineWatchdogReason = decision.reason
@@ -2675,7 +2743,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             lastPublishedOnlineStateKey = ""
             renderGame()
         } else if (decision.shouldPublishClientState) {
-            lastPublishedOnlineStateKey = ""
             publishOnlineClientState()
         }
         if (decision.shouldPublishPresence) {
@@ -3999,13 +4066,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             (actionSession().phase == GamePhase.NOCHE_ORACULO &&
                 isHumanRoleTurn(RoleCatalog.ORACULO))
         val label = when {
-            localVoteResolutionInProgress -> "CONTANDO VOTOS"
+            localPhaseResolutionInProgress -> localPhaseResolutionActionLabel
             session.winner.isNotBlank() -> "FINAL"
             isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
             isOnlineStartupPhase() -> "ESPERANDO"
             onlineAwaitingHostAdvance -> "SINCRONIZANDO"
             selectedAction != null -> primaryTargetActionLabel(selectedAction, selectedTarget)
-            canSelfProtect -> "PROTEGERME"
+            canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
             GameEngine.canDesertorReconsider(session) -> "REVISAR BANDO"
             actionSession().phase == GamePhase.NOCHE_ORACULO &&
@@ -4025,7 +4092,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val requiresAttention = session.winner.isBlank() &&
             (selectedAction != null || canSelfProtect || specialDecision)
         val actionReadyDuringTimer = selectedAction != null || canSelfProtect || specialDecision
-        btnAction.isEnabled = !localVoteResolutionInProgress &&
+        btnAction.isEnabled = !localPhaseResolutionInProgress &&
             !transitionLocked &&
             session.winner.isBlank() &&
             (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
@@ -4066,6 +4133,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         btnReadyToVote.isEnabled = unlockRemainingMs <= 0L &&
             !readyVoteAdvanceInProgress &&
+            !localPhaseResolutionInProgress &&
             !countdown.isTransitionLocked(session.phaseIndex) &&
             !onlineAwaitingHostAdvance
         btnReadyToVote.alpha = if (btnReadyToVote.isEnabled) 1f else 0.58f
@@ -4079,7 +4147,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (
             session.phase != GamePhase.DIA_DEBATE ||
             readyVoteUnlockRemainingMs() > 0L ||
-            readyVoteAdvanceInProgress
+            readyVoteAdvanceInProgress ||
+            localPhaseResolutionInProgress
         ) {
             return
         }
@@ -4166,7 +4235,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun scheduleReadyVoteBotCascade() {
-        if (isOnlineGameplay() || readyVoteBotCascadeScheduled) return
+        if (isOnlineGameplay() || readyVoteBotCascadeScheduled || localPhaseResolutionInProgress) return
         val human = GameEngine.humanPlayer(session)
         if (human.name !in readyToVote || session.phase != GamePhase.DIA_DEBATE) return
         readyVoteBotCascadeScheduled = true
@@ -4180,7 +4249,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     if (
                         session.phase == GamePhase.DIA_DEBATE &&
                         session.phaseIndex == readyVotePhaseIndex &&
-                        human.name in readyToVote
+                        human.name in readyToVote &&
+                        !localPhaseResolutionInProgress
                     ) {
                         readyToVote += bot.name
                         renderReadyToVoteButton()
@@ -4200,7 +4270,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun checkLocalReadyVoteCompletion() {
-        if (isOnlineGameplay() || session.phase != GamePhase.DIA_DEBATE) return
+        if (
+            isOnlineGameplay() ||
+            session.phase != GamePhase.DIA_DEBATE ||
+            localPhaseResolutionInProgress
+        ) return
         val eligibleNames = eligibleReadyVoters().map { it.name }.toSet()
         if (eligibleNames.isNotEmpty() && readyToVote.containsAll(eligibleNames)) {
             skipDebateToVoting("local_all_ready")
@@ -4274,6 +4348,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (
             session.phase != GamePhase.DIA_DEBATE ||
             readyVoteAdvanceInProgress ||
+            localPhaseResolutionInProgress ||
             readyVoteUnlockRemainingMs() > 0L ||
             (isOnlineGameplay() && !onlineIsHost)
         ) {
@@ -4285,7 +4360,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         clearCountdown()
         chatController.cancelPendingBotChat()
         val before = session
-        session = GameEngine.resolveDayDebate(session)
+        if (!isOnlineGameplay()) {
+            resolveLocalPhaseOffMainThread(
+                before = before,
+                operation = "all_ready",
+                progressMessage = "Preparando la votacion...",
+                resolver = { source -> GameEngine.resolveDayDebate(source) }
+            ) { resolved ->
+                session = resolved
+                OnlineDebugLog.i(
+                    "vote_ready_advance mode=local reason=$reason round=${before.round} phaseIndex=${before.phaseIndex}"
+                )
+                recordOnlinePhaseAdvance(before, resolved)
+                chatController.onPhaseSettled()
+                clearSelection()
+                renderGame()
+            }
+            return
+        }
+        session = GameEngine.resolveDayDebate(before)
         OnlineDebugLog.i(
             "vote_ready_advance mode=${if (isOnlineGameplay()) "online" else "local"} reason=$reason round=${before.round} phaseIndex=${before.phaseIndex}"
         )
@@ -4301,7 +4394,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "MATAR" -> "MATAR A $target"
             "SILENCIAR" -> "SILENCIAR A $target"
             "INVESTIGAR" -> "INVESTIGAR A $target"
-            "SALVAR" -> "PROTEGER A $target"
+            "SALVAR" -> "SALVAR A $target"
             "INVOCAR" -> "INVOCAR A $target"
             "SEÑALAR", "SENALAR" -> "SEÑALAR A $target"
             "DECIDIR" -> "EXPULSAR A $target"
@@ -4311,16 +4404,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun compactTargetActionLabel(actionLabel: String): String {
+        // El badge de la carta usa el mismo verbo que el boton de accion para no confundir
+        // (antes decia VICTIMA/PISTA/CALLAR, distinto a MATAR/INVESTIGAR/SILENCIAR).
         return when (actionLabel) {
-            "MATAR" -> "VICTIMA"
-            "SILENCIAR" -> "CALLAR"
-            "INVESTIGAR" -> "PISTA"
-            "SALVAR" -> "PROTEGER"
-            "INVOCAR" -> "INVOCAR"
-            "CONTRAPUNTO" -> "CONTRAPUNTO"
-            "SEÑALAR", "SENALAR" -> "SEÑALAR"
             "DECIDIR" -> "EXPULSAR"
-            "VOTAR" -> "VOTAR"
             else -> actionLabel
         }
     }
@@ -4453,17 +4540,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             GameplayActionTone.DEFAULT
         }
+        // El boton de accion es el CTA principal de la mesa: borde dorado siempre y, en
+        // reposo, un relleno bronce calido (en vez del casi-negro DEFAULT) para que pese
+        // mas que el boton secundario de "ver carta" que quedo a su izquierda.
+        val fillHex = if (emphasized) tone.colorHex else PRIMARY_ACTION_RESTING_FILL
         btnAction.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor(tone.colorHex))
-            setStroke(
-                dp(1),
-                if (emphasized) getColor(R.color.accent_gold) else getColor(R.color.btn_dark_border)
-            )
+            setColor(Color.parseColor(fillHex))
+            setStroke(dp(1), getColor(R.color.accent_gold))
             cornerRadius = dp(6).toFloat()
         }
         btnAction.setTextColor(
-            getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
+            getColor(if (emphasized && tone.darkText) R.color.bg_dark else R.color.text_primary)
         )
     }
 
@@ -4936,7 +5024,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         }
         holder.actionBadge.maxWidth = dp((metrics.minCardWidthDp - 6).coerceAtLeast(44))
-        holder.actionBadge.textSize = (metrics.nameTextSp - 1f).coerceIn(5.5f, 8.5f)
+        // Verbos completos (MATAR/INVESTIGAR/SILENCIAR...) pueden ser largos: autosize para
+        // que se achiquen en vez de cortarse en mesas de 8+ con cartas chicas.
+        val badgeMaxSp = ceil((metrics.nameTextSp - 1f).coerceIn(5.5f, 8.5f).toDouble())
+            .toInt().coerceAtLeast(6)
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            holder.actionBadge,
+            5,
+            badgeMaxSp,
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
         holder.actionBadge.visibility = if (isActionable) View.VISIBLE else View.GONE
         if (isActionable) {
             val tone = GameplayTableUi.actionToneFor(actionLabel)
@@ -5346,6 +5444,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.i(
             "diag_cd_expired phase=${session.phase.name} pIdx=${session.phaseIndex} cIdx=${countdown.phaseIndex} stage=${countdown.stage} active=${activePhaseSeconds()} awaiting=$onlineAwaitingHostAdvance host=$onlineIsHost timing=${session.timingConfig.summary()}"
         )
+        if (localPhaseResolutionInProgress) {
+            OnlineDebugLog.i(
+                "local_phase_timer_ignored phase=${session.phase.name} phaseIndex=${session.phaseIndex} reason=resolution_in_progress"
+            )
+            clearCountdown()
+            return
+        }
         if (session.winner.isNotBlank() || countdown.phaseIndex != session.phaseIndex) {
             clearCountdown()
             return
@@ -5390,20 +5495,29 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 return
             }
         }
+        if (!isOnlineGameplay()) {
+            val before = session
+            resolveLocalPhaseOffMainThread(
+                before = before,
+                operation = "timer_expired",
+                progressMessage = localPhaseProgressMessage(expiredPhase),
+                resolver = ::resolveExpiredLocalPhase
+            ) { resolved ->
+                session = resolved
+                if (expiredPhase == GamePhase.DESEMPATE_VOTACION) {
+                    hideTieVoteWindow(clearSelection = true)
+                }
+                clearSelection()
+                renderGame()
+            }
+            return
+        }
         session = when (session.phase) {
             GamePhase.NOCHE_ASESINO,
             GamePhase.NOCHE_MERCENARIO,
             GamePhase.NOCHE_POLICIA,
             GamePhase.NOCHE_MEDICO,
-            GamePhase.NOCHE_ORACULO -> {
-                if (isOnlineGameplay()) {
-                    resolveOnlineNightWindow()
-                } else if (GameEngine.requiresHumanInput(session)) {
-                    GameEngine.resolveHumanTimeout(session)
-                } else {
-                    resolveLocalNightWithoutHumanInput()
-                }
-            }
+            GamePhase.NOCHE_ORACULO -> resolveOnlineNightWindow()
             GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(session)
             GamePhase.CONTRAPUNTO -> {
                 if (GameEngine.requiresHumanInput(session)) {
@@ -5439,6 +5553,49 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderGame()
     }
 
+    private fun resolveExpiredLocalPhase(source: GameSession): GameSession {
+        return when (source.phase) {
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO,
+            GamePhase.NOCHE_ORACULO -> {
+                if (GameEngine.requiresHumanInput(source)) {
+                    GameEngine.resolveHumanTimeout(source)
+                } else {
+                    resolveLocalNightWithoutHumanInput(source)
+                }
+            }
+            GamePhase.DIA_DEBATE -> GameEngine.resolveDayDebate(source)
+            GamePhase.CONTRAPUNTO -> {
+                if (GameEngine.requiresHumanInput(source)) {
+                    GameEngine.resolveContrapuntoTimeout(source)
+                } else {
+                    GameEngine.resolveContrapunto(source, "")
+                }
+            }
+            GamePhase.VOTACION -> {
+                if (GameEngine.requiresHumanInput(source)) {
+                    GameEngine.resolveHumanTimeout(source)
+                } else {
+                    GameEngine.resolveVoting(source, "")
+                }
+            }
+            GamePhase.RECUENTO_VOTOS -> source
+            GamePhase.DESEMPATE_VOTACION -> {
+                if (GameEngine.requiresHumanInput(source)) {
+                    GameEngine.resolveHumanTimeout(source)
+                } else {
+                    GameEngine.resolveTieVoting(source, "")
+                }
+            }
+            GamePhase.ALCALDE_DESEMPATE -> GameEngine.resolveAlcaldeTieTimeout(source)
+            GamePhase.REPARTO -> GameEngine.startNight(source)
+            GamePhase.AMANECER -> GameEngine.resolveDawn(source)
+            GamePhase.RESULTADO -> GameEngine.resolveResult(source)
+        }
+    }
+
     private fun skipRemainingNight() {
         if (!canSkipRemainingNight()) return
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
@@ -5447,13 +5604,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         chatController.cancelPendingBotChat()
 
-        session = resolveLocalNightWithoutHumanInput()
-        clearSelection()
-        renderGame()
+        val before = session
+        resolveLocalPhaseOffMainThread(
+            before = before,
+            operation = "skip_night",
+            progressMessage = "Resolviendo la noche...",
+            resolver = ::resolveLocalNightWithoutHumanInput
+        ) { resolved ->
+            session = resolved
+            clearSelection()
+            renderGame()
+        }
     }
 
-    private fun resolveLocalNightWithoutHumanInput(): GameSession {
-        var advanced = session
+    private fun resolveLocalNightWithoutHumanInput(source: GameSession): GameSession {
+        var advanced = source
         var guard = 0
         while (
             isNightPhase(advanced.phase) &&
@@ -5885,9 +6050,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             roleName.text = "CARTA OCULTA"
         }
         btnRevealCard.text = when {
-            session.phase == GamePhase.REPARTO -> "ROL"
+            session.phase == GamePhase.REPARTO -> "MI CARTA"
             showRole -> "OCULTAR"
-            else -> "REVELAR"
+            else -> "VER CARTA"
         }
         btnRevealCard.isEnabled = session.phase != GamePhase.REPARTO
         btnRevealCard.alpha = if (btnRevealCard.isEnabled) 1f else 0.7f
@@ -6018,7 +6183,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         advicePhaseIndex = session.phaseIndex
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
         activePhaseAdvice = phaseAdvice()?.let { "Objetivo: $it" }
-        if (activePhaseAdvice != null && activePhaseAdvice != publicMessage) {
+        // Si es tu turno de actuar y todavia no elegiste objetivo, la guia queda fija
+        // (no se auto-borra a los 8s) para que siempre veas que tenes que hacer.
+        val keepUntilAction = requiresHumanInput() && selectedTarget.isBlank()
+        if (activePhaseAdvice != null && activePhaseAdvice != publicMessage && !keepUntilAction) {
             autoAdvanceHandler.postDelayed(clearPhaseAdviceRunnable, PHASE_ADVICE_DURATION_MS)
         }
     }
@@ -6275,6 +6443,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         currentPlayerStatus.setTextColor(color)
     }
 
+    private fun animateWindowRiseIn(
+        view: View,
+        fromDy: Int = 32,
+        durationMs: Long = 300L,
+        fade: Boolean = true
+    ) {
+        // Entrada "sube desde abajo + rebote": la ventana arranca corrida hacia abajo y sube
+        // a su lugar con un pequeno overshoot. Reutilizado por los overlays simples.
+        view.animate().cancel()
+        view.translationY = dp(fromDy).toFloat()
+        if (fade) view.alpha = 0f
+        val anim = view.animate()
+            .translationY(0f)
+            .setInterpolator(OvershootInterpolator(1.5f))
+            .setDuration(durationMs)
+        if (fade) anim.alpha(1f)
+        anim.start()
+    }
+
     private fun showActionFeedbackBanner(spec: GameplayFeedbackSpec) {
         if (
             isVoteResultVisible ||
@@ -6291,13 +6478,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         actionFeedbackBannerTone.setBackgroundColor(Color.parseColor(spec.tone.colorHex))
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         actionFeedbackBanner.visibility = View.VISIBLE
-        actionFeedbackBanner.alpha = 0f
-        actionFeedbackBanner.translationY = dp(8).toFloat()
-        actionFeedbackBanner.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(200L)
-            .start()
+        animateWindowRiseIn(actionFeedbackBanner, fromDy = 26, durationMs = 260L)
         autoAdvanceHandler.postDelayed(
             feedbackBannerDismissRunnable,
             spec.durationMs.coerceAtLeast(INFORMATION_FEEDBACK_DURATION_MS)
@@ -6346,19 +6527,37 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         privateFeedbackPanel.alpha = 0f
         privateFeedbackPanel.scaleX = 0.94f
         privateFeedbackPanel.scaleY = 0.94f
+        privateFeedbackPanel.translationY = dp(34).toFloat()
         hideCentralPublicEventBanner(immediate = true)
         privateFeedbackOverlay.visibility = View.VISIBLE
         feedbackState.markPrivateVisible()
 
+        // El fondo hace fade suave; el panel sube desde abajo con rebote (overshoot).
+        val riseOvershoot = OvershootInterpolator(1.25f)
         feedbackAnimator = AnimatorSet().apply {
             playTogether(
-                ObjectAnimator.ofFloat(privateFeedbackOverlay, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(privateFeedbackPanel, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_X, 0.94f, 1f),
-                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_Y, 0.94f, 1f)
+                ObjectAnimator.ofFloat(privateFeedbackOverlay, View.ALPHA, 0f, 1f).apply {
+                    interpolator = DecelerateInterpolator()
+                },
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.ALPHA, 0f, 1f).apply {
+                    interpolator = DecelerateInterpolator()
+                },
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_X, 0.94f, 1f).apply {
+                    interpolator = riseOvershoot
+                },
+                ObjectAnimator.ofFloat(privateFeedbackPanel, View.SCALE_Y, 0.94f, 1f).apply {
+                    interpolator = riseOvershoot
+                },
+                ObjectAnimator.ofFloat(
+                    privateFeedbackPanel,
+                    View.TRANSLATION_Y,
+                    dp(34).toFloat(),
+                    0f
+                ).apply {
+                    interpolator = riseOvershoot
+                }
             )
-            duration = 220L
-            interpolator = DecelerateInterpolator()
+            duration = 300L
             start()
         }
         autoAdvanceHandler.postDelayed(
@@ -6677,13 +6876,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         GameplayAudioDirector.play(this, GameSound.TIE_BREAK)
         tieVoteOverlay.visibility = View.VISIBLE
         tieVoteOverlay.alpha = 0f
-        tieVotePanel.scaleX = 0.96f
-        tieVotePanel.scaleY = 0.96f
         tieVoteCardsScroll.scrollTo(0, 0)
         renderTieVoteWindow()
         tieVoteOverlay.animate().alpha(1f).setDuration(180L).start()
-        tieVotePanel.animate().scaleX(1f).scaleY(1f).setDuration(220L).start()
+        // El backdrop hace fade; el panel sube desde abajo con rebote.
+        animateWindowRiseIn(tieVotePanel, fromDy = 40, fade = false)
         ensureCountdownForCurrentPhase()
+    }
+
+    private fun tieVotePanelAvailableWidthDp(): Int {
+        // Ancho util dentro del panel = ancho de pantalla menos margenes/padding del panel.
+        // Se calcula desde la pantalla porque el panel puede no estar medido aun al renderizar.
+        val metrics = resources.displayMetrics
+        val screenDp = metrics.widthPixels / metrics.density
+        return (screenDp - TIE_VOTE_PANEL_HORIZONTAL_INSET_DP).toInt().coerceAtLeast(160)
     }
 
     private fun renderTieVoteWindow() {
@@ -6698,7 +6904,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         val gridMetrics = GameplayTableUi.tieVoteGridMetrics(
             candidateCount = candidates.size,
-            maxColumns = if (isPortrait()) 2 else 4
+            maxColumns = if (isPortrait()) 2 else 4,
+            availableWidthDp = tieVotePanelAvailableWidthDp()
         )
         tieVoteCards.columnCount = gridMetrics.columns
         tieVoteCards.rowCount = gridMetrics.rows
@@ -7850,6 +8057,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val TIE_VOTE_GRID_MAX_HEIGHT_DP = 264
+        // Panel de desempate: margen horizontal (32*2) + padding (24*2) + un respiro = 120dp.
+        private const val TIE_VOTE_PANEL_HORIZONTAL_INSET_DP = 120f
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val STATE_SESSION = "gameplay_session"
         private const val STATE_EVENT_LOG_EXPANDED = "event_log_expanded"
@@ -7897,6 +8106,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val ONLINE_PREVIEW_ACTION_HISTORY_LIMIT = 60
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
+        private const val PRIMARY_ACTION_RESTING_FILL = "#4A3A1E"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 0
         private const val FIELD_READY_TO_VOTE = "listoParaVotar"

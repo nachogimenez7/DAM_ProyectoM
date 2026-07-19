@@ -36,7 +36,8 @@ enum class GameplayActionTone(val colorHex: String, val darkText: Boolean) {
     INVESTIGATE("#4A7FB5", false),
     SILENCE("#6E2632", false),
     CONTRAPUNTO("#D4A24E", true),
-    DECIDE("#5F4524", false),
+    DECIDE("#E0A838", true),
+    INVOKE("#8348C6", false),
     DEFAULT("#2A2318", false)
 }
 
@@ -188,10 +189,12 @@ object GameplayTableUi {
                 normalized == "VICTIMA" -> GameplayActionTone.KILL
             normalized == "SALVAR" || normalized == "SALVARME" ||
                 normalized == "PROTEGER" || normalized == "PROTEGERME" ||
+                normalized.startsWith("SALVAR A ") ||
                 normalized.startsWith("PROTEGER A ") -> GameplayActionTone.SAVE
             normalized == "INVESTIGAR" || normalized.startsWith("INVESTIGAR A ") ||
-                normalized == "PISTA" ||
-                normalized == "INVOCAR" || normalized.startsWith("INVOCAR A ") -> GameplayActionTone.INVESTIGATE
+                normalized == "PISTA" -> GameplayActionTone.INVESTIGATE
+            normalized == "INVOCAR" || normalized.startsWith("INVOCAR A ") ->
+                GameplayActionTone.INVOKE
             normalized == "SILENCIAR" || normalized.startsWith("SILENCIAR A ") ||
                 normalized == "CALLAR" -> GameplayActionTone.SILENCE
             normalized == "CONTRAPUNTO" ||
@@ -248,7 +251,7 @@ object GameplayTableUi {
                 title = "INVOCACIÓN REGISTRADA",
                 message = "$target regresará para discutir durante el próximo día.",
                 target = target,
-                tone = GameplayActionTone.INVESTIGATE
+                tone = GameplayActionTone.INVOKE
             )
             GamePhase.DIA_DEBATE -> actionConfirmation(
                 title = "CONTRAPUNTO",
@@ -846,12 +849,19 @@ object GameplayTableUi {
         return fitted
     }
 
-    fun tieVoteGridMetrics(candidateCount: Int, maxColumns: Int = 4): TieVoteGridMetrics {
+    private const val TIE_CARD_MIN_WIDTH_DP = 88
+    private const val TIE_CARD_HORIZONTAL_MARGIN_DP = 14
+
+    fun tieVoteGridMetrics(
+        candidateCount: Int,
+        maxColumns: Int = 4,
+        availableWidthDp: Int = 0
+    ): TieVoteGridMetrics {
         val safeCount = candidateCount.coerceAtLeast(0)
         val safeMaxColumns = maxColumns.coerceAtLeast(1)
         val columns = safeCount.coerceIn(1, safeMaxColumns)
         val rows = ((safeCount + columns - 1) / columns).coerceAtLeast(1)
-        val cardWidth = when {
+        val preferredWidth = when {
             safeCount <= 2 -> 136
             safeCount == 3 -> 116
             safeCount >= 5 -> 92
@@ -861,6 +871,15 @@ object GameplayTableUi {
             safeCount <= 2 -> 156
             safeCount >= 5 -> 124
             else -> 140
+        }
+        // El ancho de carta se ajusta para que `columns` cartas (con sus margenes) entren en el
+        // ancho disponible del panel; asi la ventana no se corta en pantallas angostas. Nunca
+        // crece mas alla del ancho preferido. Con availableWidthDp <= 0 mantiene el ancho viejo.
+        val cardWidth = if (availableWidthDp > 0) {
+            ((availableWidthDp / columns) - TIE_CARD_HORIZONTAL_MARGIN_DP)
+                .coerceIn(TIE_CARD_MIN_WIDTH_DP, preferredWidth)
+        } else {
+            preferredWidth
         }
         return TieVoteGridMetrics(
             columns = columns,

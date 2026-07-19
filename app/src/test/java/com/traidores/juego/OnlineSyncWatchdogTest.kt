@@ -75,4 +75,45 @@ class OnlineSyncWatchdogTest {
         assertFalse(decision.shouldForceSyncing)
         assertEquals("presence_pulse", decision.reason)
     }
+
+    @Test
+    fun presencePulseRespectsThePerClientJitteredInterval() {
+        val interval = OnlineSyncWatchdog.PRESENCE_PULSE_MS + 2_000L
+
+        val beforeInterval = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = true,
+            isStartupPhase = false,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = false,
+            lastPresencePulseElapsedMs = interval - 1L,
+            elapsedSinceGameplayStartMs = 99_000L,
+            presencePulseIntervalMs = interval
+        )
+        val atInterval = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = true,
+            isStartupPhase = false,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = false,
+            lastPresencePulseElapsedMs = interval,
+            elapsedSinceGameplayStartMs = 99_000L,
+            presencePulseIntervalMs = interval
+        )
+
+        assertFalse(beforeInterval.shouldPublishPresence)
+        assertTrue(atInterval.shouldPublishPresence)
+    }
+
+    @Test
+    fun presenceJitterStaysInsideThreeSecondsAndVaries() {
+        val intervals = (-20..20).map { seed ->
+            OnlineSyncWatchdog.jitteredPresencePulseMs(seed)
+        }
+        val minimum = OnlineSyncWatchdog.PRESENCE_PULSE_MS - OnlineSyncWatchdog.PRESENCE_JITTER_MS
+        val maximum = OnlineSyncWatchdog.PRESENCE_PULSE_MS + OnlineSyncWatchdog.PRESENCE_JITTER_MS
+
+        assertTrue(intervals.distinct().size > 1)
+        assertTrue(intervals.all { it in minimum..maximum })
+    }
 }

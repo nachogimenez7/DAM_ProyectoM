@@ -230,6 +230,25 @@ class GameplayTableUiTest {
     }
 
     @Test
+    fun tieVoteGridMetricsShrinkCardsToFitNarrowPanels() {
+        // Panel angosto: 2 cartas deben entrar (ancho + margenes) * columnas <= disponible,
+        // asi la ventana de desempate no se corta en telefonos.
+        val narrow = GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 240)
+        assertEquals(2, narrow.columns)
+        assertTrue(narrow.cardWidthDp in 88..136)
+        assertTrue((narrow.cardWidthDp + 14) * narrow.columns <= 240)
+
+        // Pantalla ancha: no crece mas alla del ancho preferido.
+        assertEquals(136, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 800).cardWidthDp)
+
+        // Sin ancho disponible mantiene el comportamiento viejo (compatibilidad).
+        assertEquals(136, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2).cardWidthDp)
+
+        // Nunca baja del minimo legible aunque el panel sea absurdamente chico.
+        assertEquals(88, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 120).cardWidthDp)
+    }
+
+    @Test
     fun deathRevealOnlyIncludesNewNightVictims() {
         val role = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
         val players = listOf(
