@@ -200,19 +200,19 @@ class GameplayTableUiTest {
 
         assertEquals(2, two.columns)
         assertEquals(1, two.rows)
-        assertEquals(136, two.cardWidthDp)
-        assertEquals(156, two.cardHeightDp)
+        assertEquals(94, two.cardWidthDp)
+        assertEquals(134, two.cardHeightDp)
         assertFalse(two.scrollEnabled)
 
         assertEquals(4, four.columns)
         assertEquals(1, four.rows)
-        assertEquals(102, four.cardWidthDp)
-        assertEquals(140, four.cardHeightDp)
+        assertEquals(90, four.cardWidthDp)
+        assertEquals(130, four.cardHeightDp)
 
         assertEquals(4, five.columns)
         assertEquals(2, five.rows)
-        assertEquals(92, five.cardWidthDp)
-        assertEquals(124, five.cardHeightDp)
+        assertEquals(84, five.cardWidthDp)
+        assertEquals(126, five.cardHeightDp)
         assertFalse(five.scrollEnabled)
         assertEquals(2, eight.rows)
         assertFalse(eight.scrollEnabled)
@@ -235,17 +235,17 @@ class GameplayTableUiTest {
         // asi la ventana de desempate no se corta en telefonos.
         val narrow = GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 240)
         assertEquals(2, narrow.columns)
-        assertTrue(narrow.cardWidthDp in 88..136)
-        assertTrue((narrow.cardWidthDp + 14) * narrow.columns <= 240)
+        assertTrue(narrow.cardWidthDp in 78..94)
+        assertTrue((narrow.cardWidthDp + 10) * narrow.columns <= 240)
 
         // Pantalla ancha: no crece mas alla del ancho preferido.
-        assertEquals(136, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 800).cardWidthDp)
+        assertEquals(94, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 800).cardWidthDp)
 
         // Sin ancho disponible mantiene el comportamiento viejo (compatibilidad).
-        assertEquals(136, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2).cardWidthDp)
+        assertEquals(94, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2).cardWidthDp)
 
         // Nunca baja del minimo legible aunque el panel sea absurdamente chico.
-        assertEquals(88, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 120).cardWidthDp)
+        assertEquals(78, GameplayTableUi.tieVoteGridMetrics(2, maxColumns = 2, availableWidthDp = 120).cardWidthDp)
     }
 
     @Test

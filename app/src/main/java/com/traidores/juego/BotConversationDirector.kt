@@ -61,6 +61,7 @@ internal object BotConversationDirector {
         promptedSilentHuman: Boolean
     ): BotConversationBeat? {
         if (!canRun(session) || idleLinesUsed >= idleBudget(session)) return null
+        oracleGuestOpeningBeat(session, idleLinesUsed)?.let { return it }
         silentHumanPrompt(
             session = session,
             idleLinesUsed = idleLinesUsed,
@@ -149,6 +150,24 @@ internal object BotConversationDirector {
             ?.takeIf { it.isNotBlank() }
             ?: return null
         return BotConversationBeat(speaker, message)
+    }
+
+    private fun oracleGuestOpeningBeat(
+        session: GameSession,
+        idleLinesUsed: Int
+    ): BotConversationBeat? {
+        if (session.phase != GamePhase.DIA_DEBATE || idleLinesUsed != 0) return null
+        val guestName = session.oracleInvitedPlayer.takeIf { it.isNotBlank() } ?: return null
+        val guest = GameEngine.playerByName(session, guestName)
+            ?.takeIf { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
+            ?: return null
+        val generated = LocalBotAi.nextConversationLine(session, guest.name)
+            ?.takeIf { it.isNotBlank() }
+        val message = generated ?: sanitizeBotSpeech(
+            "Me dieron una ultima voz. Miren bien a quienes siguen vivos.",
+            session
+        )
+        return BotConversationBeat(guest.name, message)
     }
 
     private fun chooseSpeakers(session: GameSession, lastSpeaker: String?): List<String> {

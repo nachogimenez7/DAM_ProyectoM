@@ -117,6 +117,7 @@ object OnlineMatchSessionBuilder {
             showIndividualVotes = (config?.get("votosIndividuales") as? Boolean)
                 ?: showIndividualVotes,
             onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS,
+            afkExpulsionEnabled = true,
             initialPlayerCount = players.size,
             startedAtEpochMs = System.currentTimeMillis(),
             onlineMatchId = (initialMatch["matchId"] as? String).orEmpty(),
@@ -160,7 +161,15 @@ object OnlineMatchSessionBuilder {
             player.copy(
                 alive = (playerState["vivo"] as? Boolean) ?: player.alive,
                 muted = (playerState["muteado"] as? Boolean) ?: player.muted,
-                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt()
+                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt(),
+                consecutiveNightAfk = (playerState["afkNoche"] as? Number)?.toInt()
+                    ?: player.consecutiveNightAfk,
+                consecutiveVoteAfk = (playerState["afkVoto"] as? Number)?.toInt()
+                    ?: player.consecutiveVoteAfk,
+                deathCause = deathCauseFromState(
+                    playerState["causaEliminacion"],
+                    player.deathCause
+                )
             )
         }
         val publicHistory = (state["historialPublico"] as? List<*>)
@@ -206,6 +215,11 @@ object OnlineMatchSessionBuilder {
         if (desertor.isHuman) return ""
         val seed = stableNoise("$sessionCode|${players.joinToString("|") { "${it.name}:${it.role?.key.orEmpty()}" }}")
         return if ((seed ushr 1) and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
+    }
+
+    private fun deathCauseFromState(value: Any?, fallback: DeathCause): DeathCause {
+        val name = (value as? String).orEmpty()
+        return runCatching { DeathCause.valueOf(name) }.getOrDefault(fallback)
     }
 
     private fun Any?.asStringAnyMap(): Map<String, Any?>? {

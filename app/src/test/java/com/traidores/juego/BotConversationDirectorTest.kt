@@ -61,6 +61,27 @@ class BotConversationDirectorTest {
     }
 
     @Test
+    fun oracleGuestGetsFirstDebateBeatEvenWhenDead() {
+        val session = session().copy(
+            oracleInvitedPlayer = "Mora",
+            players = session().players.map { player ->
+                if (player.name == "Mora") player.copy(alive = false) else player
+            }
+        )
+
+        val beat = BotConversationDirector.nextIdleBeat(
+            session = session,
+            idleLinesUsed = 0,
+            lastSpeaker = null,
+            humanSpokeThisPhase = false,
+            promptedSilentHuman = false
+        )
+
+        assertEquals("Mora", beat?.speaker)
+        assertTrue(beat?.message.orEmpty().isNotBlank())
+    }
+
+    @Test
     fun humanReactionDoesNotRepeatLastSpeaker() {
         val session = session().copy(
             chatHistory = listOf(

@@ -11,11 +11,11 @@
     -->
 
     <!-- Carta que aparece en los reveals (muerte, etc.) -->
-    <dimen name="reveal_card_stage">124dp</dimen>
-    <dimen name="reveal_card_width">78dp</dimen>
-    <dimen name="reveal_card_height">104dp</dimen>
-    <dimen name="reveal_blood_large">58dp</dimen>
-    <dimen name="reveal_blood_small">52dp</dimen>
+    <dimen name="reveal_card_stage">160dp</dimen>
+    <dimen name="reveal_card_width">88dp</dimen>
+    <dimen name="reveal_card_height">118dp</dimen>
+    <dimen name="reveal_blood_large">96dp</dimen>
+    <dimen name="reveal_blood_small">80dp</dimen>
 
     <!-- Ancho del reveal del Oráculo; la altura se adapta al contenido. -->
     <dimen name="reveal_oracle_panel_width">336dp</dimen>

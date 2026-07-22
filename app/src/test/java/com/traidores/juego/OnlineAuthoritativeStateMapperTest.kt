@@ -50,4 +50,35 @@ class OnlineAuthoritativeStateMapperTest {
         assertEquals(true, mapped[1].muted)
         assertEquals(true, mapped[2].alive)
     }
+
+    @Test
+    fun playersFromStateRestoresAfkStreaksAndDeathCause() {
+        val players = listOf(
+            GamePlayer(name = "Ana", initial = "A"),
+            GamePlayer(name = "Bruno", initial = "B")
+        )
+        val state = mapOf(
+            "jugadores" to listOf(
+                mapOf(
+                    "orden" to 0,
+                    "afkNoche" to 1,
+                    "afkVoto" to 0,
+                    "causaEliminacion" to DeathCause.NONE.name
+                ),
+                mapOf(
+                    "orden" to 1,
+                    "vivo" to false,
+                    "afkNoche" to 0,
+                    "afkVoto" to 2,
+                    "causaEliminacion" to DeathCause.AFK.name
+                )
+            )
+        )
+
+        val mapped = OnlineAuthoritativeStateMapper.playersFromState(players, state)!!
+
+        assertEquals(1, mapped[0].consecutiveNightAfk)
+        assertEquals(2, mapped[1].consecutiveVoteAfk)
+        assertEquals(DeathCause.AFK, mapped[1].deathCause)
+    }
 }

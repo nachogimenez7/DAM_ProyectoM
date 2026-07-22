@@ -22,7 +22,7 @@ import android.widget.LinearLayout
 import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import com.traidores.juego.GameToast as Toast
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -133,7 +133,7 @@ class GameplayChatController(
 
     private val centerColumn: FrameLayout = root.findViewById(R.id.centerColumn)
     private val bottomPlayerPanel: LinearLayout = root.findViewById(R.id.bottomPlayerPanel)
-    private val roleCard: LinearLayout = root.findViewById(R.id.roleCard)
+    private val roleCard: View = root.findViewById(R.id.roleCard)
     private val currentPlayerName: TextView = root.findViewById(R.id.currentPlayerName)
     private val currentPlayerStatus: TextView = root.findViewById(R.id.currentPlayerStatus)
     private val currentPlayerHint: TextView = root.findViewById(R.id.currentPlayerHint)

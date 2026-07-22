@@ -3,26 +3,28 @@ package com.traidores.juego
 import android.app.AlertDialog
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.text.InputFilter
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
+import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.google.firebase.firestore.FirebaseFirestore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ProfileActivity : BaseActivity() {
 
@@ -49,6 +51,22 @@ class ProfileActivity : BaseActivity() {
         getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
+    private val avatarSelectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        applyProfileSelectionResult(result) { draftProfile.avatarKey = it }
+    }
+    private val bannerSelectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        applyProfileSelectionResult(result) { draftProfile.bannerKey = it }
+    }
+    private val favoriteRoleSelectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        applyProfileSelectionResult(result) { draftProfile.favoriteRoleKey = it }
+    }
+
     private lateinit var savedProfile: ProfileDraft
     private lateinit var draftProfile: ProfileDraft
     private var isEditing = false
@@ -63,6 +81,14 @@ class ProfileActivity : BaseActivity() {
     private lateinit var favoriteRoleName: TextView
     private lateinit var editProfileButton: Button
     private lateinit var editPublicIdIcon: View
+    private lateinit var lastMatchCard: LinearLayout
+    private lateinit var lastMatchMapRole: TextView
+    private lateinit var lastMatchResultDate: TextView
+    private lateinit var lastMatchRoleImage: ImageView
+    private lateinit var statMatchesValue: TextView
+    private lateinit var statWinsValue: TextView
+    private lateinit var statWinRateValue: TextView
+    private lateinit var profileStatsHint: TextView
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
     private lateinit var editIcons: List<View>
@@ -104,6 +130,11 @@ class ProfileActivity : BaseActivity() {
                     this,
                     ProfileRoleCatalog.find(draftProfile.favoriteRoleKey).role
                 )
+            }
+        }
+        lastMatchCard.setOnClickListener {
+            if (MatchHistoryStore.lastMatch(this) != null) {
+                showMatchHistory()
             }
         }
 
@@ -158,6 +189,14 @@ class ProfileActivity : BaseActivity() {
         favoriteRoleName = findViewById(R.id.favoriteRoleName)
         editProfileButton = findViewById(R.id.btnEditProfile)
         editPublicIdIcon = findViewById(R.id.editPublicId)
+        lastMatchCard = findViewById(R.id.lastMatchCard)
+        lastMatchMapRole = findViewById(R.id.lastMatchMapRole)
+        lastMatchResultDate = findViewById(R.id.lastMatchResultDate)
+        lastMatchRoleImage = findViewById(R.id.lastMatchRoleImage)
+        statMatchesValue = findViewById(R.id.statMatchesValue)
+        statWinsValue = findViewById(R.id.statWinsValue)
+        statWinRateValue = findViewById(R.id.statWinRateValue)
+        profileStatsHint = findViewById(R.id.profileStatsHint)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -219,6 +258,7 @@ class ProfileActivity : BaseActivity() {
         val favoriteRole = ProfileRoleCatalog.find(draftProfile.favoriteRoleKey).role
         favoriteRoleName.text = favoriteRole.name
         setRoleImage(favoriteRoleImage, favoriteRole)
+        alignRoleThumbnailFromTop(favoriteRoleImage)
         updateInteractiveContentDescriptions(favoriteRole.name)
         renderEmoteLoadout()
 
@@ -235,6 +275,167 @@ class ProfileActivity : BaseActivity() {
             view.isClickable = achievement != null
             achievement?.let { applyAchievementBadgeStyle(view, it.rarity) }
         }
+        renderMatchProgress()
+    }
+
+    private fun renderMatchProgress() {
+        val stats = MatchHistoryStore.stats(this)
+        statMatchesValue.text = stats.matches.toString()
+        statWinsValue.text = stats.wins.toString()
+        statWinRateValue.text = "${stats.winRatePercent}%"
+        profileStatsHint.text = if (stats.matches == 0) {
+            "Las estadísticas aparecerán cuando termines una partida local."
+        } else {
+            "Progreso de partidas locales finalizadas."
+        }
+
+        val lastMatch = MatchHistoryStore.lastMatch(this)
+        if (lastMatch == null) {
+            lastMatchMapRole.text = "Todavía no jugaste ninguna partida."
+            lastMatchResultDate.text = "Las partidas locales finalizadas aparecerán aquí."
+            lastMatchResultDate.setTextColor(getColor(R.color.text_secondary))
+            lastMatchRoleImage.visibility = View.GONE
+            lastMatchCard.background = getDrawable(R.drawable.bg_profile_stat)
+            lastMatchCard.contentDescription = "Todavía no hay partidas en el historial"
+            lastMatchCard.isEnabled = false
+            return
+        }
+
+        lastMatchMapRole.text = "${lastMatch.mapName} · ${lastMatch.roleName}"
+        lastMatchResultDate.text = buildString {
+            append(if (lastMatch.won) "VICTORIA" else "DERROTA")
+            append(" · ")
+            append(formatMatchDate(lastMatch.dateEpochMs))
+        }
+        lastMatchResultDate.setTextColor(
+            getColor(if (lastMatch.won) R.color.winner_town_accent else R.color.traitor_red_bright)
+        )
+        bindMatchRoleImage(lastMatchRoleImage, lastMatch)
+        lastMatchCard.background = matchHistoryBackground(lastMatch.won, emphasized = true)
+        lastMatchCard.contentDescription =
+            "Última partida, ${lastMatch.mapName}, ${lastMatch.roleName}, " +
+                (if (lastMatch.won) "victoria" else "derrota")
+        lastMatchCard.isEnabled = true
+    }
+
+    private fun showMatchHistory() {
+        val records = MatchHistoryStore.lastMatches(this, 5)
+        if (records.isEmpty()) return
+        val content = layoutInflater.inflate(R.layout.dialog_match_history, null)
+        val list: LinearLayout = content.findViewById(R.id.matchHistoryList)
+        content.findViewById<View>(R.id.matchHistoryScroll).layoutParams =
+            content.findViewById<View>(R.id.matchHistoryScroll).layoutParams.apply {
+                height = dp((resources.configuration.screenHeightDp - 180).coerceIn(140, 280))
+            }
+        records.forEach { record ->
+            list.addView(
+                createMatchHistoryRow(record),
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+            )
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setView(content)
+            .create()
+        content.findViewById<Button>(R.id.btnCloseMatchHistory).setOnClickListener {
+            dialog.dismiss()
+        }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                val maxWidth = resources.displayMetrics.widthPixels - dp(24)
+                setLayout(dp(390).coerceAtMost(maxWidth), ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun createMatchHistoryRow(record: MatchRecord): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = matchHistoryBackground(record.won, emphasized = false)
+            contentDescription =
+                "${record.mapName}, ${record.roleName}, " +
+                    (if (record.won) "victoria" else "derrota")
+
+            addView(
+                LinearLayout(this@ProfileActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(this@ProfileActivity).apply {
+                        text = "${record.mapName} · ${record.roleName}"
+                        setTextColor(getColor(R.color.text_primary))
+                        textSize = 15f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    })
+                    addView(TextView(this@ProfileActivity).apply {
+                        text = "${if (record.won) "VICTORIA" else "DERROTA"} · " +
+                            formatMatchDate(record.dateEpochMs)
+                        setTextColor(
+                            getColor(
+                                if (record.won) R.color.winner_town_accent
+                                else R.color.traitor_red_bright
+                            )
+                        )
+                        textSize = 12f
+                        setPadding(0, dp(4), 0, 0)
+                    })
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = dp(10)
+                }
+            )
+            addView(ImageView(this@ProfileActivity).apply {
+                scaleType = ImageView.ScaleType.MATRIX
+                setBackgroundResource(R.drawable.bg_role_card)
+                setPadding(dp(2), dp(2), dp(2), dp(2))
+                clipToOutline = true
+                this@ProfileActivity.bindMatchRoleImage(this, record)
+            }, LinearLayout.LayoutParams(dp(54), dp(54)))
+        }
+    }
+
+    private fun bindMatchRoleImage(view: ImageView, record: MatchRecord) {
+        val roleImage = runCatching {
+            RoleCatalog.gameRole(
+                record.roleKey,
+                RoleMap.fromSessionKey(record.mapKey)
+            ).imageResName
+        }.getOrNull()
+        val imageRes = roleImage
+            ?.let { resources.getIdentifier(it, "drawable", packageName) }
+            ?.takeIf { it != 0 }
+        if (imageRes == null) {
+            view.visibility = View.GONE
+            return
+        }
+        view.setImageResource(imageRes)
+        alignRoleThumbnailFromTop(view)
+        view.contentDescription = "Rol ${record.roleName}"
+        view.visibility = View.VISIBLE
+    }
+
+    private fun matchHistoryBackground(won: Boolean, emphasized: Boolean): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(if (emphasized) 10 else 8).toFloat()
+            setColor(Color.parseColor(if (won) "#D91B2A1D" else "#D92A1718"))
+            setStroke(
+                dp(if (emphasized) 2 else 1),
+                getColor(if (won) R.color.accent_green else R.color.accent_red)
+            )
+        }
+    }
+
+    private fun formatMatchDate(epochMs: Long): String {
+        return SimpleDateFormat("dd/MM/yyyy · HH:mm", Locale.getDefault()).format(Date(epochMs))
     }
 
     private fun ensureNumericPublicId() {
@@ -334,17 +535,18 @@ class ProfileActivity : BaseActivity() {
             return
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Descartar cambios")
-            .setMessage("Los cambios del perfil todavía no fueron guardados.")
-            .setNegativeButton("Seguir editando", null)
-            .setPositiveButton("Descartar") { _, _ ->
-                draftProfile = copyProfile(savedProfile)
-                setEditing(false)
-                renderProfile()
-                finish()
-            }
-            .show()
+        GameDialog.confirm(
+            activity = this,
+            title = "Descartar cambios",
+            message = "Los cambios del perfil todavía no fueron guardados.",
+            positiveLabel = "DESCARTAR",
+            negativeLabel = "SEGUIR EDITANDO"
+        ) {
+            draftProfile = copyProfile(savedProfile)
+            setEditing(false)
+            renderProfile()
+            finish()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -394,24 +596,22 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showAvatarSelector() {
-        startActivityForResult(
+        avatarSelectionLauncher.launch(
             ProfileSelectionActivity.intent(
                 this,
                 ProfileSelectionActivity.MODE_AVATAR,
                 draftProfile.avatarKey
-            ),
-            REQUEST_AVATAR
+            )
         )
     }
 
     private fun showBannerSelector() {
-        startActivityForResult(
+        bannerSelectionLauncher.launch(
             ProfileSelectionActivity.intent(
                 this,
                 ProfileSelectionActivity.MODE_BANNER,
                 draftProfile.bannerKey
-            ),
-            REQUEST_BANNER
+            )
         )
     }
 
@@ -460,33 +660,14 @@ class ProfileActivity : BaseActivity() {
         hint: String,
         onAccept: (String) -> String?
     ) {
-        val input = EditText(this).apply {
-            setText(currentValue)
-            setSelection(text.length)
-            this.hint = hint
-            filters = arrayOf(InputFilter.LengthFilter(maxLength))
-            setSingleLine()
-            setPadding(dp(20), dp(12), dp(20), dp(12))
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(input)
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Aplicar", null)
-            .create()
-
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val error = onAccept(input.text.toString().trim())
-                if (error == null) {
-                    dialog.dismiss()
-                } else {
-                    input.error = error
-                }
-            }
-        }
-        dialog.show()
+        GameDialog.input(
+            activity = this,
+            title = title,
+            currentValue = currentValue,
+            hint = hint,
+            maxLength = maxLength,
+            onAccept = onAccept
+        )
     }
 
     private fun showEmoteSelector() {
@@ -624,31 +805,25 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showFavoriteRoleSelector() {
-        startActivityForResult(
+        favoriteRoleSelectionLauncher.launch(
             ProfileSelectionActivity.intent(
                 this,
                 ProfileSelectionActivity.MODE_FAVORITE_ROLE,
                 draftProfile.favoriteRoleKey
-            ),
-            REQUEST_FAVORITE_ROLE
+            )
         )
     }
 
-    @Deprecated("Android activity result callback")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != Activity.RESULT_OK) return
-        val selectedKey = data
+    private fun applyProfileSelectionResult(
+        result: ActivityResult,
+        applySelection: (String) -> Unit
+    ) {
+        if (result.resultCode != Activity.RESULT_OK) return
+        val selectedKey = result.data
             ?.getStringExtra(ProfileSelectionActivity.EXTRA_SELECTED_KEY)
             .orEmpty()
         if (selectedKey.isBlank()) return
-
-        when (requestCode) {
-            REQUEST_AVATAR -> draftProfile.avatarKey = selectedKey
-            REQUEST_BANNER -> draftProfile.bannerKey = selectedKey
-            REQUEST_FAVORITE_ROLE -> draftProfile.favoriteRoleKey = selectedKey
-            else -> return
-        }
+        applySelection(selectedKey)
         renderProfile()
     }
 
@@ -969,6 +1144,42 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
+    private fun alignRoleThumbnailFromTop(image: ImageView) {
+        image.scaleType = ImageView.ScaleType.MATRIX
+        image.post {
+            val drawable = image.drawable ?: return@post
+            val drawableWidth = drawable.intrinsicWidth.toFloat()
+            val drawableHeight = drawable.intrinsicHeight.toFloat()
+            val contentWidth = (image.width - image.paddingLeft - image.paddingRight).toFloat()
+            val contentHeight = (image.height - image.paddingTop - image.paddingBottom).toFloat()
+            if (
+                drawableWidth <= 0f ||
+                drawableHeight <= 0f ||
+                contentWidth <= 0f ||
+                contentHeight <= 0f
+            ) {
+                return@post
+            }
+
+            val fillScale = maxOf(
+                contentWidth / drawableWidth,
+                contentHeight / drawableHeight
+            )
+            val fitScale = minOf(
+                contentWidth / drawableWidth,
+                contentHeight / drawableHeight
+            )
+            // Encuadre superior y algo menos cerrado que CENTER_CROP: primero conserva rostro y
+            // torso, y acepta un margen lateral pequeño antes que volver a cortar la cabeza.
+            val scale = maxOf(fitScale, fillScale * ROLE_THUMBNAIL_ZOOM)
+            val scaledWidth = drawableWidth * scale
+            image.imageMatrix = Matrix().apply {
+                setScale(scale, scale)
+                postTranslate((contentWidth - scaledWidth) / 2f, 0f)
+            }
+        }
+    }
+
     private fun restoreDraft(savedInstanceState: Bundle?): ProfileDraft? {
         if (savedInstanceState == null) return null
         return ProfileDraft(
@@ -1065,6 +1276,7 @@ class ProfileActivity : BaseActivity() {
         const val PREF_AVATAR = "profile_avatar"
         const val PREF_BANNER = "profile_banner"
         const val PREF_FAVORITE_ROLE = "profile_favorite_role"
+        const val ROLE_THUMBNAIL_ZOOM = 0.90f
         const val PREF_ACHIEVEMENTS = "profile_achievements"
 
         const val DEFAULT_BIO = "No fui yo. Esta vez."
@@ -1072,9 +1284,6 @@ class ProfileActivity : BaseActivity() {
         const val DEFAULT_BANNER_KEY = "pampa"
         const val DEFAULT_ROLE_KEY = "detective"
         const val ACHIEVEMENT_SEPARATOR = "|"
-        const val REQUEST_AVATAR = 101
-        const val REQUEST_BANNER = 102
-        const val REQUEST_FAVORITE_ROLE = 103
 
         const val MAX_NAME_LENGTH = 20
         const val MAX_BIO_LENGTH = 40

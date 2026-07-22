@@ -41,4 +41,14 @@
     <string name="lobby_start_ready">LISTO</string>
     <string name="lobby_start_progress_players">%1$d de %2$d jugadores</string>
     <string name="lobby_start_progress_ready">%1$d de %2$d listos</string>
+
+    <string name="lobby_practice_section">MODO PRÁCTICA</string>
+    <string name="lobby_practice_description">Elegí un rol para asegurarte de que te toque esta partida. Si no está en la composición actual, reemplaza a un Aldeano.</string>
+    <string name="lobby_practice_role">Practicar: %1$s%2$s</string>
+    <string name="lobby_practice_minimum"> (%1$d+)</string>
+    <string name="lobby_practice_view_role">VER ROL</string>
+    <string name="lobby_practice_view_role_description">Ver detalles de %1$s</string>
+    <string name="lobby_practice_summary">Práctica: %1$s%2$s</string>
+    <string name="lobby_practice_summary_default">Práctica: AZAR</string>
+    <string name="lobby_practice_summary_description">Rol de práctica: %1$s%2$s. Toca para cambiarlo.</string>
 </resources>

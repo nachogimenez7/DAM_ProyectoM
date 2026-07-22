@@ -21,6 +21,7 @@ class OnlineMatchSessionBuilderTest {
         assertEquals(1, session.players.count { it.role?.key == RoleCatalog.MEDICO })
         assertEquals(1, session.players.count { it.role?.key == RoleCatalog.POLICIA })
         assertEquals(2, session.players.count { it.role?.key == RoleCatalog.ALDEANO })
+        assertEquals(true, session.afkExpulsionEnabled)
     }
 
     @Test

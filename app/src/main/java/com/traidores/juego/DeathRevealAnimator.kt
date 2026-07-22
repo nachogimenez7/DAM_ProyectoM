@@ -81,12 +81,12 @@ internal class DeathRevealAnimator(
                     0f
                 ),
                 ObjectAnimator.ofFloat(flash, View.ALPHA, 0f, 0.56f, 0f),
-                ObjectAnimator.ofFloat(bloodLeft, View.ALPHA, 0f, 0.9f),
-                ObjectAnimator.ofFloat(bloodLeft, View.SCALE_X, 0.55f, 1.08f),
-                ObjectAnimator.ofFloat(bloodLeft, View.SCALE_Y, 0.55f, 1.08f),
-                ObjectAnimator.ofFloat(bloodRight, View.ALPHA, 0f, 0.76f),
-                ObjectAnimator.ofFloat(bloodRight, View.SCALE_X, 0.5f, 1f),
-                ObjectAnimator.ofFloat(bloodRight, View.SCALE_Y, 0.5f, 1f)
+                ObjectAnimator.ofFloat(bloodLeft, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(bloodLeft, View.SCALE_X, 0.55f, 1.16f),
+                ObjectAnimator.ofFloat(bloodLeft, View.SCALE_Y, 0.55f, 1.16f),
+                ObjectAnimator.ofFloat(bloodRight, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(bloodRight, View.SCALE_X, 0.5f, 1.1f),
+                ObjectAnimator.ofFloat(bloodRight, View.SCALE_Y, 0.5f, 1.1f)
             )
             duration = IMPACT_MS
             interpolator = AccelerateDecelerateInterpolator()

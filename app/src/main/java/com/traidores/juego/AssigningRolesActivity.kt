@@ -19,7 +19,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
+import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
 
 class AssigningRolesActivity : BaseActivity() {
@@ -144,7 +144,7 @@ class AssigningRolesActivity : BaseActivity() {
             bottomMargin = dp(108)
         }
         status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
-        status.text = "REPARTIENDO ROLES"
+        status.text = DEALING_STATUS_MESSAGE
 
         finalCard.alpha = 0f
         finalCard.translationX = 0f
@@ -172,11 +172,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(finalCard, View.ROTATION, -2f, 0f),
                 ObjectAnimator.ofFloat(status, View.ALPHA, 0f, 1f)
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "REPARTIENDO TU CARTA"
-                }
-            })
         }
 
         val settleCard = AnimatorSet().apply {
@@ -191,11 +186,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(finalCard, View.SCALE_X, 1.04f, 1.0f, 1.06f),
                 ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1.04f, 1.0f, 1.06f)
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "LA CARTA CAE SOBRE LA MESA"
-                }
-            })
         }
 
         val releaseHands = AnimatorSet().apply {
@@ -211,11 +201,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(finalCard, View.SCALE_Y, 1.06f, 1.13f),
                 ObjectAnimator.ofFloat(finalCard, View.TRANSLATION_Y, cardSettleY + dp(2), cardSettleY - dp(2))
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "EL DESTINO QUEDA SELLADO"
-                }
-            })
         }
 
         val holdFinalCard = AnimatorSet().apply {
@@ -312,6 +297,7 @@ class AssigningRolesActivity : BaseActivity() {
             bottomMargin = dp(metrics.statusBottomMarginDp)
         }
         status.setTextSize(TypedValue.COMPLEX_UNIT_SP, metrics.statusTextSp)
+        status.text = DEALING_STATUS_MESSAGE
 
         val deckOffset = root.width * metrics.deckOffsetRatio
         openHands.translationY = dp(metrics.handsStartYDp).toFloat()
@@ -352,11 +338,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(dealingHands, View.SCALE_X, 0.985f, 1f),
                 ObjectAnimator.ofFloat(dealingHands, View.SCALE_Y, 0.985f, 1f)
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "BARAJANDO DESTINOS"
-                }
-            })
         }
 
         val revealDeck = AnimatorSet().apply {
@@ -418,11 +399,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(leftCard, View.SCALE_X, 1f, 0.9f),
                 ObjectAnimator.ofFloat(leftCard, View.SCALE_Y, 1f, 0.9f)
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "LA MESA ELIGE"
-                }
-            })
         }
         val dealRight = AnimatorSet().apply {
             duration = 420L
@@ -450,11 +426,6 @@ class AssigningRolesActivity : BaseActivity() {
                 ObjectAnimator.ofFloat(dealingHands, View.TRANSLATION_Y, 0f, dp(10).toFloat()),
                 ObjectAnimator.ofFloat(status, View.ALPHA, 1f, 0.72f, 1f)
             )
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationStart(animation: Animator) {
-                    status.text = "TU CARTA ESTA LISTA"
-                }
-            })
         }
 
         val holdFinalCard = ObjectAnimator.ofFloat(finalCard, View.ALPHA, 1f, 1f).apply {
@@ -632,6 +603,7 @@ class AssigningRolesActivity : BaseActivity() {
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val ANIMATION_FALLBACK_MS = 4800L
+        private const val DEALING_STATUS_MESSAGE = "¡Buena suerte con tu carta!"
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
         const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"
         const val EXTRA_ONLINE_IS_HOST = "extra_online_is_host"

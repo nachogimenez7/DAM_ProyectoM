@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
@@ -22,11 +21,9 @@ import android.widget.ProgressBar
 import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import com.traidores.juego.GameToast as Toast
 import android.view.View
-import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.widget.TextViewCompat
 import com.google.firebase.firestore.DocumentSnapshot
@@ -47,6 +44,7 @@ class LobbyActivity : BaseActivity() {
     private lateinit var btnAddPlayer: Button
     private lateinit var btnRemovePlayer: Button
     private lateinit var btnAdvancedOptions: Button
+    private lateinit var practiceRoleSummary: TextView
     private lateinit var lobbyMapBackground: ImageView
     private lateinit var playersContainer: LinearLayout
     private lateinit var playerCount: TextView
@@ -55,7 +53,6 @@ class LobbyActivity : BaseActivity() {
     private lateinit var selectedMapImage: ImageView
     private lateinit var selectedMapName: TextView
     private lateinit var selectedMapRole: TextView
-    private lateinit var debugRoleButton: Button
     private lateinit var timingOptionsButton: Button
     private lateinit var lobbyTitle: TextView
     private lateinit var lobbyModeHint: TextView
@@ -149,14 +146,14 @@ class LobbyActivity : BaseActivity() {
     private var realtimePresenceBaselineReady = false
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
-    private var debugRoleIndex = 0
+    private var practiceRoleIndex = 0
 
     private val onlineEntryReleaseTimeoutRunnable = Runnable {
         onlineEntryReleaseTimeoutScheduled = false
         maybeReleaseOnlineMatchEntry(force = true)
     }
 
-    private val debugRoles = listOf(
+    private val practiceRoles = listOf(
         "" to "AZAR",
         "asesino" to "ASESINO",
         "mercenario" to "MERCENARIO",
@@ -196,8 +193,7 @@ class LobbyActivity : BaseActivity() {
         btnAddPlayer = findViewById(R.id.btnAddPlayer)
         btnRemovePlayer = findViewById(R.id.btnRemovePlayer)
         btnAdvancedOptions = findViewById(R.id.btnAdvancedOptions)
-        val debugRoleSection: LinearLayout = findViewById(R.id.debugRoleSection)
-        debugRoleButton = findViewById(R.id.btnDebugRole)
+        practiceRoleSummary = findViewById(R.id.practiceRoleSummary)
         timingOptionsButton = findViewById(R.id.btnTimingOptions)
         lobbyTitle = findViewById(R.id.lobbyTitle)
         lobbyModeHint = findViewById(R.id.lobbyModeHint)
@@ -274,13 +270,9 @@ class LobbyActivity : BaseActivity() {
             }
         })
         setupMapSelector()
-        debugRoleSection.visibility = View.GONE
-        debugRoleButton.setOnClickListener {
-            debugRoleIndex = (debugRoleIndex + 1) % debugRoles.size
-            renderDebugRole()
-        }
         timingOptionsButton.setOnClickListener { showTestOptionsDialog() }
         btnAdvancedOptions.setOnClickListener { showAdvancedOptionsDialog() }
+        practiceRoleSummary.setOnClickListener { showAdvancedOptionsDialog() }
         btnCopyRoomCode.setOnClickListener { copyOnlineRoomCode() }
         btnShareRoomCode.setOnClickListener { shareOnlineRoomCode() }
         btnReleaseDisconnected.setOnClickListener { releaseDisconnectedOnlinePlayers() }
@@ -328,7 +320,7 @@ class LobbyActivity : BaseActivity() {
                 handleOnlineStartButton()
                 return@setOnClickListener
             }
-            val selectedRoleKey = debugRoles[debugRoleIndex].first
+            val selectedRoleKey = practiceRoles[practiceRoleIndex].first
             val minimumPlayers = LocalGameFactory.minimumPlayersForRole(selectedRoleKey)
             val selectedRoleMap = RoleMap.fromSessionKey(session.mapKey)
             if (
@@ -337,7 +329,7 @@ class LobbyActivity : BaseActivity() {
             ) {
                 Toast.makeText(
                     this,
-                    "${debugRoles[debugRoleIndex].second} no esta disponible en este mapa.",
+                    "${practiceRoles[practiceRoleIndex].second} no esta disponible en este mapa.",
                     Toast.LENGTH_SHORT
                 ).show()
             } else if (session.players.size < minimumPlayers) {
@@ -465,9 +457,9 @@ class LobbyActivity : BaseActivity() {
         renderOnlineMapVoting()
         playersContainer.removeAllViews()
         onlinePlayersContainer.removeAllViews()
-        renderDebugRole()
         timingOptionsButton.text = "Opciones de testeo"
         btnAdvancedOptions.text = "Opciones avanzadas"
+        renderPracticeRoleSummary()
 
         val visibleOnlinePlayers = activeOnlinePlayers()
         val onlineSlotCount = if (onlineLobby) onlineExpectedPlayers else session.players.size
@@ -557,6 +549,7 @@ class LobbyActivity : BaseActivity() {
         onlinePlayersScroll.visibility = presentation.onlinePlayersVisible.toVisibility()
         playersListPanel.visibility = presentation.localPlayersVisible.toVisibility()
         lobbyPlayersLabel.visibility = presentation.localPlayersVisible.toVisibility()
+        practiceRoleSummary.visibility = presentation.localPlayersVisible.toVisibility()
         mapVoteCardsRow.layoutParams = mapVoteCardsRow.layoutParams.apply {
             height = dp(presentation.mapVoteCardsHeightDp)
         }
@@ -1392,19 +1385,19 @@ class LobbyActivity : BaseActivity() {
         } else {
             "Vas a salir de la sala. El resto de jugadores seguira en el lobby."
         }
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setNegativeButton("CANCELAR", null)
-            .setPositiveButton("SALIR") { _, _ ->
-                if (isHost && handoffCandidate != null) {
-                    transferLobbyHostAndExit(handoffCandidate)
-                } else {
-                    leavingOnlineLobby = true
-                    finish()
-                }
+        GameDialog.confirm(
+            activity = this,
+            title = title,
+            message = message,
+            positiveLabel = "SALIR"
+        ) {
+            if (isHost && handoffCandidate != null) {
+                transferLobbyHostAndExit(handoffCandidate)
+            } else {
+                leavingOnlineLobby = true
+                finish()
             }
-            .show()
+        }
     }
 
     private fun listenToOnlinePlayers() {
@@ -2962,14 +2955,14 @@ class LobbyActivity : BaseActivity() {
     private fun showMapTieBreakDialog(mapKeys: List<String>) {
         val validKeys = mapKeys.filter { it in OnlineMapVoteResolver.mapKeys }.distinct()
         if (validKeys.isEmpty()) return
-        AlertDialog.Builder(this)
-            .setTitle("Empate en la votacion")
-            .setMessage("Tu voto ya conto como uno. Ahora elegi entre los mapas empatados para iniciar.")
-            .setItems(validKeys.map(::mapName).toTypedArray()) { _, index ->
-                startOnlineRoomForEveryone(validKeys[index])
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        GameDialog.choose(
+            activity = this,
+            title = "Empate en la votación",
+            message = "Tu voto ya contó como uno. Ahora elegí entre los mapas empatados para iniciar.",
+            options = validKeys.map(::mapName)
+        ) { index ->
+            startOnlineRoomForEveryone(validKeys[index])
+        }
     }
 
     private fun scheduleOnlineLobbyHostHandoffCheck() {
@@ -3196,13 +3189,6 @@ class LobbyActivity : BaseActivity() {
             }
     }
 
-    private fun renderDebugRole() {
-        val (roleKey, label) = debugRoles[debugRoleIndex]
-        val minimumPlayers = LocalGameFactory.minimumPlayersForRole(roleKey)
-        val requirement = if (minimumPlayers > LocalGameFactory.MIN_PLAYERS) " ($minimumPlayers+)" else ""
-        debugRoleButton.text = "ROL: $label$requirement"
-    }
-
     private fun showTimingDialog() {
         var draft = session.timingConfig.normalized()
         val content = dialogColumn()
@@ -3362,25 +3348,23 @@ class LobbyActivity : BaseActivity() {
             isFillViewport = true
             addView(content)
         }
-        val dialog = AlertDialog.Builder(this)
-            .setView(dialogContent)
-            .setNegativeButton("CANCELAR", null)
-            .setNeutralButton("RESTABLECER", null)
-            .setPositiveButton("APLICAR", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+        GameDialog.custom(
+            activity = this,
+            contentView = dialogContent,
+            widthDp = 620,
+            negativeLabel = "CANCELAR",
+            neutralLabel = "RESTABLECER",
+            positiveLabel = "APLICAR",
+            onNeutral = {
                 draft = GameTimingPreset.NORMAL.config
                 customMode = false
                 refreshValues()
-            }
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            },
+            onPositive = {
                 session = session.copy(timingConfig = draft.normalized())
                 renderLobby()
-                dialog.dismiss()
             }
-        }
-        showLandscapeDialog(dialog, widthDp = 620)
+        )
     }
 
     private fun buildTimingEditor(initial: GameTimingConfig): TimingEditor {
@@ -3478,7 +3462,6 @@ class LobbyActivity : BaseActivity() {
         var forceTies = session.debugForceVoteTies
         var botsNeverKill = session.debugBotsNeverKillHuman
         var botsNeverVote = session.debugBotsNeverVoteHuman
-        var forcedRoleIndex = debugRoleIndex
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES DE TESTEO"))
@@ -3516,22 +3499,6 @@ class LobbyActivity : BaseActivity() {
             addTestSwitch("Forzar empates", forceTies) { forceTies = it }
             addTestSwitch("Bots no te matan de noche", botsNeverKill) { botsNeverKill = it }
             addTestSwitch("Bots no te votan", botsNeverVote) { botsNeverVote = it }
-            val roleButton = compactDialogButton("")
-            fun refreshForcedRole() {
-                val (_, label) = debugRoles[forcedRoleIndex]
-                roleButton.text = "Forzar tu rol: $label"
-            }
-            roleButton.setOnClickListener {
-                forcedRoleIndex = (forcedRoleIndex + 1) % debugRoles.size
-                refreshForcedRole()
-            }
-            refreshForcedRole()
-            content.addView(
-                roleButton,
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply {
-                    topMargin = dp(6)
-                }
-            )
         } else {
             content.addView(TextView(this).apply {
                 text = "Las herramientas debug solo aparecen en compilaciones de prueba."
@@ -3541,11 +3508,13 @@ class LobbyActivity : BaseActivity() {
             })
         }
         val scroll = ScrollView(this).apply { addView(content) }
-        val dialog = AlertDialog.Builder(this)
-            .setView(scroll)
-            .setNegativeButton("CANCELAR", null)
-            .setPositiveButton("APLICAR") { _, _ ->
-                debugRoleIndex = forcedRoleIndex
+        GameDialog.custom(
+            activity = this,
+            contentView = scroll,
+            widthDp = 560,
+            negativeLabel = "CANCELAR",
+            positiveLabel = "APLICAR",
+            onPositive = {
                 session = session.copy(
                     quickTestMode = quickTestMode,
                     debugBotsObeyVoteCommands = botsObeyVotes,
@@ -3555,8 +3524,7 @@ class LobbyActivity : BaseActivity() {
                 )
                 renderLobby()
             }
-            .create()
-        showLandscapeDialog(dialog, widthDp = 560)
+        )
     }
 
     private fun showAdvancedOptionsDialog() {
@@ -3576,6 +3544,7 @@ class LobbyActivity : BaseActivity() {
                     else -> 10
                 }
             }
+        var selectedPracticeRoleIndex = practiceRoleIndex
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
         content.addView(dialogSectionTitle("REGLAS DE LA PARTIDA"))
@@ -3675,6 +3644,67 @@ class LobbyActivity : BaseActivity() {
         val timingEditor = buildTimingEditor(session.timingConfig)
         content.addView(dialogSectionTitle("TIEMPOS DE PARTIDA"))
         content.addView(timingEditor.view)
+        content.addView(dialogSectionTitle(getString(R.string.lobby_practice_section)))
+        content.addView(TextView(this).apply {
+            text = getString(R.string.lobby_practice_description)
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(6))
+        })
+        val practiceRoleButton = compactDialogButton("")
+        val practiceRoleDetailButton = compactDialogButton(
+            getString(R.string.lobby_practice_view_role)
+        ).apply {
+            textSize = 11f
+        }
+        fun refreshPracticeRole() {
+            val (roleKey, label) = practiceRoles[selectedPracticeRoleIndex]
+            val requirement = practiceRoleRequirement(roleKey)
+            practiceRoleButton.text = getString(
+                R.string.lobby_practice_role,
+                label,
+                requirement
+            )
+            practiceRoleDetailButton.visibility =
+                if (roleKey.isBlank()) View.GONE else View.VISIBLE
+            practiceRoleDetailButton.contentDescription = getString(
+                R.string.lobby_practice_view_role_description,
+                label
+            )
+        }
+        practiceRoleButton.setOnClickListener {
+            selectedPracticeRoleIndex = (selectedPracticeRoleIndex + 1) % practiceRoles.size
+            refreshPracticeRole()
+        }
+        practiceRoleDetailButton.setOnClickListener {
+            val roleKey = practiceRoles[selectedPracticeRoleIndex].first
+            if (roleKey.isNotBlank()) {
+                RoleDetailDialog.show(this, roleForPracticeDetails(roleKey))
+            }
+        }
+        refreshPracticeRole()
+        content.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(
+                    practiceRoleButton,
+                    LinearLayout.LayoutParams(0, dp(42), 1f)
+                )
+                addView(
+                    practiceRoleDetailButton,
+                    LinearLayout.LayoutParams(dp(96), dp(42)).apply {
+                        marginStart = dp(6)
+                    }
+                )
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(8)
+            }
+        )
         content.addView(TextView(this).apply {
             text = "COMPOSICION DE ROLES"
             gravity = Gravity.CENTER
@@ -3884,10 +3914,15 @@ class LobbyActivity : BaseActivity() {
             isFillViewport = true
             addView(content)
         }
-        val dialog = AlertDialog.Builder(this)
-            .setView(advancedDialogContent)
-            .setNegativeButton("CANCELAR", null)
-            .setPositiveButton("APLICAR") { _, _ ->
+        GameDialog.custom(
+            activity = this,
+            contentView = advancedDialogContent,
+            widthDp = 640,
+            contentHeightDp = advancedOptionsContentHeightDp(),
+            negativeLabel = "VOLVER",
+            positiveLabel = "APLICAR",
+            onPositive = {
+                practiceRoleIndex = selectedPracticeRoleIndex
                 preferences.edit()
                     .putInt(PREF_ROLE_READING_SECONDS, roleReadingSeconds)
                     .apply()
@@ -3904,9 +3939,9 @@ class LobbyActivity : BaseActivity() {
                     timingConfig = timingEditor.currentConfig()
                 )
                 renderLobby()
+                Toast.makeText(this, "Opciones aplicadas.", Toast.LENGTH_SHORT).show()
             }
-            .create()
-        showLandscapeDialog(dialog, widthDp = 640)
+        )
     }
 
     private fun showOnlineAdvancedOptionsDialog() {
@@ -3951,23 +3986,35 @@ class LobbyActivity : BaseActivity() {
         val timingEditor = buildTimingEditor(session.timingConfig)
         content.addView(timingEditor.view)
         if (!canEdit) setViewTreeEnabled(timingEditor.view, false)
-        val scroll = ScrollView(this).apply { addView(content) }
-        val builder = AlertDialog.Builder(this)
-            .setView(scroll)
-            .setNegativeButton(if (canEdit) "CANCELAR" else "CERRAR", null)
-        if (canEdit) {
-            builder.setPositiveButton("APLICAR") { _, _ ->
-                saveOnlineLobbyConfig(
-                    OnlineLobbyConfig(
-                        timing = timingEditor.currentConfig(),
-                        revealRolesOnDeath = revealRolesOnDeath,
-                        showIndividualVotes = showIndividualVotes
-                    )
-                )
-            }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
         }
-        showLandscapeDialog(builder.create(), widthDp = 560)
+        GameDialog.custom(
+            activity = this,
+            contentView = scroll,
+            widthDp = 560,
+            contentHeightDp = advancedOptionsContentHeightDp(),
+            negativeLabel = if (canEdit) "VOLVER" else "CERRAR",
+            positiveLabel = if (canEdit) "APLICAR" else null,
+            onPositive = if (canEdit) {
+                {
+                    saveOnlineLobbyConfig(
+                        OnlineLobbyConfig(
+                            timing = timingEditor.currentConfig(),
+                            revealRolesOnDeath = revealRolesOnDeath,
+                            showIndividualVotes = showIndividualVotes
+                        )
+                    )
+                }
+            } else {
+                null
+            }
+        )
     }
+
+    private fun advancedOptionsContentHeightDp(): Int =
+        (resources.configuration.screenHeightDp - 190).coerceIn(280, 520)
 
     private fun saveOnlineLobbyConfig(config: OnlineLobbyConfig) {
         val safe = config.normalized()
@@ -4025,6 +4072,40 @@ class LobbyActivity : BaseActivity() {
             RoleCatalog.ORACULO -> "ORACULO"
             RoleCatalog.BUFON -> "BUFON"
             else -> roleKey.uppercase()
+        }
+    }
+
+    private fun roleForPracticeDetails(roleKey: String): Role {
+        val currentMap = RoleMap.fromSessionKey(session.mapKey)
+        val detailMap = RoleCatalog.definition(roleKey).exclusiveMap ?: currentMap
+        return RoleCatalog.role(roleKey, detailMap)
+    }
+
+    private fun renderPracticeRoleSummary() {
+        val (roleKey, label) = practiceRoles[practiceRoleIndex]
+        val requirement = practiceRoleRequirement(roleKey)
+        practiceRoleSummary.text = getString(
+            R.string.lobby_practice_summary,
+            label,
+            requirement
+        )
+        practiceRoleSummary.setTextColor(
+            getColor(if (roleKey.isBlank()) R.color.text_secondary else R.color.accent_gold)
+        )
+        practiceRoleSummary.contentDescription = getString(
+            R.string.lobby_practice_summary_description,
+            label,
+            requirement
+        )
+    }
+
+    private fun practiceRoleRequirement(roleKey: String): String {
+        if (roleKey.isBlank()) return ""
+        val minimumPlayers = LocalGameFactory.minimumPlayersForRole(roleKey)
+        return if (minimumPlayers > session.players.size) {
+            getString(R.string.lobby_practice_minimum, minimumPlayers)
+        } else {
+            ""
         }
     }
 
@@ -4120,47 +4201,6 @@ class LobbyActivity : BaseActivity() {
         button.alpha = if (enabled) 1f else 0.45f
     }
 
-    private fun showLandscapeDialog(dialog: AlertDialog, widthDp: Int) {
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val availableWidth = resources.displayMetrics.widthPixels - dp(32)
-        dialog.window?.setLayout(
-            dp(widthDp).coerceAtMost(availableWidth),
-            WindowManager.LayoutParams.WRAP_CONTENT
-        )
-        dialog.window?.setDimAmount(0.55f)
-        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        listOf(
-            AlertDialog.BUTTON_NEGATIVE,
-            AlertDialog.BUTTON_NEUTRAL,
-            AlertDialog.BUTTON_POSITIVE
-        ).forEach { buttonId ->
-            dialog.getButton(buttonId)?.apply {
-                minHeight = dp(44)
-                maxLines = 1
-                isAllCaps = false
-                setTextColor(getColor(R.color.accent_gold))
-                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                    this,
-                    10,
-                    14,
-                    1,
-                    TypedValue.COMPLEX_UNIT_SP
-                )
-            }
-        }
-        dialog.window?.decorView?.post {
-            val availableHeight = resources.displayMetrics.heightPixels - dp(32)
-            val measuredHeight = dialog.window?.decorView?.measuredHeight ?: return@post
-            if (measuredHeight > availableHeight) {
-                dialog.window?.setLayout(
-                    dp(widthDp).coerceAtMost(availableWidth),
-                    availableHeight
-                )
-            }
-        }
-    }
-
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
     }
@@ -4185,17 +4225,15 @@ class LobbyActivity : BaseActivity() {
                 Toast.makeText(this, "No se puede expulsar a ese jugador ahora.", Toast.LENGTH_SHORT).show()
                 return
             }
-            AlertDialog.Builder(this)
-                .setTitle("Expulsar participante online")
-                .setMessage(
-                    "Quitar a ${onlinePlayer.name} de la sala? " +
-                        "Su cupo quedara liberado y no podra iniciar esta partida."
-                )
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Expulsar") { _, _ ->
-                    removeOnlinePlayer(onlinePlayer)
-                }
-                .show()
+            GameDialog.confirm(
+                activity = this,
+                title = "Expulsar participante online",
+                message = "¿Quitar a ${onlinePlayer.name} de la sala? " +
+                    "Su cupo quedará liberado y no podrá iniciar esta partida.",
+                positiveLabel = "EXPULSAR"
+            ) {
+                removeOnlinePlayer(onlinePlayer)
+            }
             return
         }
         if (isOnlineGuest()) {
@@ -4207,15 +4245,15 @@ class LobbyActivity : BaseActivity() {
             return
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Expulsar participante")
-            .setMessage("Quitar a ${player.name} de la sala local?")
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Expulsar") { _, _ ->
-                session = PlayerProfileStore.withProfiles(this, LocalGameFactory.removePlayer(session, index))
-                renderLobby()
-            }
-            .show()
+        GameDialog.confirm(
+            activity = this,
+            title = "Expulsar participante",
+            message = "¿Quitar a ${player.name} de la sala local?",
+            positiveLabel = "EXPULSAR"
+        ) {
+            session = PlayerProfileStore.withProfiles(this, LocalGameFactory.removePlayer(session, index))
+            renderLobby()
+        }
     }
 
     private fun currentMap(): GameMap {

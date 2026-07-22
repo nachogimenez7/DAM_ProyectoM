@@ -377,7 +377,15 @@ object GameEngine {
             dawnNoDeathMessage(session)
         } else {
             updatedPlayers = updatedPlayers.map { player ->
-                if (player.name == victim) player.copy(alive = false, muted = false) else player
+                if (player.name == victim) {
+                    player.copy(
+                        alive = false,
+                        muted = false,
+                        deathCause = DeathCause.NIGHT
+                    )
+                } else {
+                    player
+                }
             }
             dawnDeathMessage(session, victim)
         }
@@ -949,9 +957,21 @@ object GameEngine {
         }
 
         val updatedPlayers = session.players.map { player ->
-            if (player.name == target) player.copy(alive = false, muted = false) else player
+            if (player.name == target) {
+                player.copy(
+                    alive = false,
+                    muted = false,
+                    deathCause = DeathCause.VOTE
+                )
+            } else {
+                player
+            }
         }
-        val expelledPlayer = targetPlayer.copy(alive = false, muted = false)
+        val expelledPlayer = targetPlayer.copy(
+            alive = false,
+            muted = false,
+            deathCause = DeathCause.VOTE
+        )
         val jesterVictory = expelledPlayer.role?.key == RoleCatalog.BUFON &&
             session.specialVictories.none {
                 it.key == JESTER_VICTORY_KEY && it.playerName == target
@@ -1234,6 +1254,65 @@ object GameEngine {
             isTraitorChatWritable(session)
     }
 
+    fun applyOnlineAfkOpportunity(
+        session: GameSession,
+        opportunity: AfkOpportunity,
+        requiredPlayerIndexes: Set<Int>,
+        actedPlayerIndexes: Set<Int>
+    ): GameSession {
+        if (!session.afkExpulsionEnabled || session.winner.isNotBlank()) return session
+
+        val validRequiredIndexes = requiredPlayerIndexes.filterTo(mutableSetOf()) { index ->
+            session.players.getOrNull(index)?.alive == true
+        }
+        if (validRequiredIndexes.isEmpty()) return session
+
+        val expelledIndexes = mutableListOf<Int>()
+        val updatedPlayers = session.players.mapIndexed { index, player ->
+            if (index !in validRequiredIndexes) return@mapIndexed player
+
+            val acted = index in actedPlayerIndexes
+            val currentStreak = when (opportunity) {
+                AfkOpportunity.NIGHT -> player.consecutiveNightAfk
+                AfkOpportunity.VOTE -> player.consecutiveVoteAfk
+            }
+            val nextStreak = if (acted) 0 else currentStreak + 1
+            val expelled = !acted && nextStreak >= 2
+            if (expelled) expelledIndexes += index
+
+            player.copy(
+                alive = if (expelled) false else player.alive,
+                muted = if (expelled) false else player.muted,
+                consecutiveNightAfk = if (opportunity == AfkOpportunity.NIGHT) {
+                    nextStreak
+                } else {
+                    player.consecutiveNightAfk
+                },
+                consecutiveVoteAfk = if (opportunity == AfkOpportunity.VOTE) {
+                    nextStreak
+                } else {
+                    player.consecutiveVoteAfk
+                },
+                deathCause = if (expelled) DeathCause.AFK else player.deathCause
+            )
+        }
+
+        var updated = session.copy(players = updatedPlayers)
+        if (expelledIndexes.isEmpty()) return updated
+
+        val expelledPlayers = expelledIndexes.mapNotNull { index -> updatedPlayers.getOrNull(index) }
+        val names = expelledPlayers.joinToReadableNames()
+        val message = if (expelledPlayers.size == 1) {
+            "$names fue expulsado por inactividad."
+        } else {
+            "$names fueron expulsados por inactividad."
+        }
+        updated = updated.copy(publicAnnouncement = message)
+            .withPublicHistory(message)
+            .withWinnerCheck()
+        return updated
+    }
+
     fun canSeeSpectatorChat(player: GamePlayer): Boolean {
         return !player.alive
     }
@@ -1492,6 +1571,7 @@ object GameEngine {
                 player.copy(
                     alive = false,
                     muted = false,
+                    deathCause = DeathCause.AFK,
                     consecutiveNightAfk = if (night) nextStreak else player.consecutiveNightAfk,
                     consecutiveVoteAfk = if (night) player.consecutiveVoteAfk else nextStreak
                 )

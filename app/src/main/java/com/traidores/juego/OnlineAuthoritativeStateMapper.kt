@@ -26,8 +26,21 @@ object OnlineAuthoritativeStateMapper {
             player.copy(
                 alive = (playerState["vivo"] as? Boolean) ?: player.alive,
                 muted = (playerState["muteado"] as? Boolean) ?: player.muted,
-                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt()
+                lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt(),
+                consecutiveNightAfk = (playerState["afkNoche"] as? Number)?.toInt()
+                    ?: player.consecutiveNightAfk,
+                consecutiveVoteAfk = (playerState["afkVoto"] as? Number)?.toInt()
+                    ?: player.consecutiveVoteAfk,
+                deathCause = deathCauseFromState(
+                    playerState["causaEliminacion"],
+                    player.deathCause
+                )
             )
         }
+    }
+
+    private fun deathCauseFromState(value: Any?, fallback: DeathCause): DeathCause {
+        val name = (value as? String).orEmpty()
+        return runCatching { DeathCause.valueOf(name) }.getOrDefault(fallback)
     }
 }

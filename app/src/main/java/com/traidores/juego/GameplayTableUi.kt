@@ -849,8 +849,8 @@ object GameplayTableUi {
         return fitted
     }
 
-    private const val TIE_CARD_MIN_WIDTH_DP = 88
-    private const val TIE_CARD_HORIZONTAL_MARGIN_DP = 14
+    private const val TIE_CARD_MIN_WIDTH_DP = 78
+    private const val TIE_CARD_HORIZONTAL_MARGIN_DP = 10
 
     fun tieVoteGridMetrics(
         candidateCount: Int,
@@ -862,15 +862,15 @@ object GameplayTableUi {
         val columns = safeCount.coerceIn(1, safeMaxColumns)
         val rows = ((safeCount + columns - 1) / columns).coerceAtLeast(1)
         val preferredWidth = when {
-            safeCount <= 2 -> 136
-            safeCount == 3 -> 116
-            safeCount >= 5 -> 92
-            else -> 102
+            safeCount <= 2 -> 94
+            safeCount == 3 -> 96
+            safeCount >= 5 -> 84
+            else -> 90
         }
         val cardHeight = when {
-            safeCount <= 2 -> 156
-            safeCount >= 5 -> 124
-            else -> 140
+            safeCount <= 2 -> 134
+            safeCount >= 5 -> 126
+            else -> 130
         }
         // El ancho de carta se ajusta para que `columns` cartas (con sus margenes) entren en el
         // ancho disponible del panel; asi la ventana no se corta en pantallas angostas. Nunca

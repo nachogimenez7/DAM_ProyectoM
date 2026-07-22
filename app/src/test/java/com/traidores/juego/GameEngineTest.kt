@@ -685,7 +685,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun debugRoleSelectionForcesHumanRoleWithoutDuplicatingIt() {
+    fun practiceRoleSelectionForcesHumanRoleWithoutDuplicatingIt() {
         var setup = LocalGameFactory.createSession()
         repeat(2) {
             setup = LocalGameFactory.addMockPlayer(setup)
@@ -708,7 +708,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun debugAdvancedRolesRequireBalancedTableSizes() {
+    fun practiceAdvancedRolesRequireBalancedTableSizes() {
         assertEquals(5, LocalGameFactory.minimumPlayersForRole("asesino"))
         assertEquals(7, LocalGameFactory.minimumPlayersForRole("mercenario"))
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("alcalde"))
@@ -716,6 +716,36 @@ class GameEngineTest {
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("bufon"))
         assertEquals(9, LocalGameFactory.minimumPlayersForRole("desertor"))
         assertEquals(10, LocalGameFactory.minimumPlayersForRole("espia"))
+    }
+
+    @Test
+    fun practiceRoleReplacesVillagerWhenMissingFromCustomComposition() {
+        var setup = LocalGameFactory.selectMap(LocalGameFactory.createSession(), "medieval")
+        repeat(3) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        setup = setup.copy(
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ALDEANO to 5,
+                    RoleCatalog.POLICIA to 1,
+                    RoleCatalog.MEDICO to 1,
+                    RoleCatalog.ASESINO to 1,
+                    RoleCatalog.BUFON to 0
+                ),
+                customized = true
+            )
+        )
+
+        val assigned = LocalGameFactory.assignRoles(
+            setup,
+            forcedHumanRoleKey = RoleCatalog.BUFON
+        )
+
+        assertEquals(RoleCatalog.BUFON, GameEngine.humanPlayer(assigned).role?.key)
+        assertEquals(1, assigned.players.count { it.role?.key == RoleCatalog.BUFON })
+        assertEquals(4, assigned.players.count { it.role?.key == RoleCatalog.ALDEANO })
+        assertEquals(8, assigned.players.count { it.role != null })
     }
 
     @Test
@@ -3438,6 +3468,138 @@ class GameEngineTest {
         )
 
         assertEquals(listOf(candidates[1]), candidates.dropEchoesOfRecentChat(session))
+    }
+
+    @Test
+    fun deathCauseDistinguishesNightAndVoteEliminations() {
+        val dawn = GameEngine.resolveDawn(
+            baseSession().copy(
+                phase = GamePhase.AMANECER,
+                nightKillTarget = "Aldeano1"
+            )
+        )
+        assertEquals(
+            DeathCause.NIGHT,
+            GameEngine.playerByName(dawn, "Aldeano1")?.deathCause
+        )
+
+        val result = GameEngine.resolveResult(
+            baseSession().copy(
+                phase = GamePhase.RESULTADO,
+                dayEliminationTarget = "Aldeano2"
+            )
+        )
+        assertEquals(
+            DeathCause.VOTE,
+            GameEngine.playerByName(result, "Aldeano2")?.deathCause
+        )
+    }
+
+    @Test
+    fun assigningRolesClearsPreviousDeathCause() {
+        val deadSession = baseSession().copy(
+            players = baseSession().players.mapIndexed { index, player ->
+                if (index == 1) {
+                    player.copy(alive = false, deathCause = DeathCause.NIGHT)
+                } else {
+                    player
+                }
+            }
+        )
+
+        val assigned = LocalGameFactory.assignRoles(deadSession)
+
+        assertTrue(assigned.players.all { it.alive })
+        assertTrue(assigned.players.all { it.deathCause == DeathCause.NONE })
+    }
+
+    @Test
+    fun afkExpulsionKeepsItsOwnDeathCause() {
+        val session = sessionWithHumanRole(RoleCatalog.ASESINO).copy(
+            phase = GamePhase.NOCHE_ASESINO,
+            afkExpulsionEnabled = true,
+            players = sessionWithHumanRole(RoleCatalog.ASESINO).players.map { player ->
+                if (player.isHuman) player.copy(consecutiveNightAfk = 1) else player
+            }
+        )
+
+        val resolved = GameEngine.resolveHumanTimeout(session)
+        val human = GameEngine.humanPlayer(resolved)
+
+        assertFalse(human.alive)
+        assertEquals(DeathCause.AFK, human.deathCause)
+    }
+
+    @Test
+    fun onlineNightAfkTracksEveryRequiredPlayerAndExpelsOnSecondMiss() {
+        val initial = baseSession().copy(
+            afkExpulsionEnabled = true,
+            players = baseSession().players.mapIndexed { index, player ->
+                if (index == 1) player.copy(consecutiveNightAfk = 1) else player
+            }
+        )
+
+        val firstWindow = GameEngine.applyOnlineAfkOpportunity(
+            session = initial,
+            opportunity = AfkOpportunity.NIGHT,
+            requiredPlayerIndexes = setOf(1, 2),
+            actedPlayerIndexes = setOf(1)
+        )
+
+        assertEquals(0, firstWindow.players[1].consecutiveNightAfk)
+        assertEquals(1, firstWindow.players[2].consecutiveNightAfk)
+        assertTrue(firstWindow.players[2].alive)
+
+        val secondWindow = GameEngine.applyOnlineAfkOpportunity(
+            session = firstWindow,
+            opportunity = AfkOpportunity.NIGHT,
+            requiredPlayerIndexes = setOf(2),
+            actedPlayerIndexes = emptySet()
+        )
+
+        assertFalse(secondWindow.players[2].alive)
+        assertEquals(2, secondWindow.players[2].consecutiveNightAfk)
+        assertEquals(DeathCause.AFK, secondWindow.players[2].deathCause)
+        assertTrue(secondWindow.publicHistory.last().contains("Policia fue expulsado"))
+    }
+
+    @Test
+    fun onlineVoteActionResetsOnlyVoteAfkStreak() {
+        val initial = baseSession().copy(
+            afkExpulsionEnabled = true,
+            players = baseSession().players.mapIndexed { index, player ->
+                if (index == 0) {
+                    player.copy(consecutiveNightAfk = 1, consecutiveVoteAfk = 1)
+                } else {
+                    player
+                }
+            }
+        )
+
+        val resolved = GameEngine.applyOnlineAfkOpportunity(
+            session = initial,
+            opportunity = AfkOpportunity.VOTE,
+            requiredPlayerIndexes = setOf(0),
+            actedPlayerIndexes = setOf(0)
+        )
+
+        assertEquals(1, resolved.players[0].consecutiveNightAfk)
+        assertEquals(0, resolved.players[0].consecutiveVoteAfk)
+        assertTrue(resolved.players[0].alive)
+    }
+
+    @Test
+    fun onlineAfkAccountingIsIgnoredWhenRuleIsDisabled() {
+        val session = baseSession()
+
+        val resolved = GameEngine.applyOnlineAfkOpportunity(
+            session = session,
+            opportunity = AfkOpportunity.VOTE,
+            requiredPlayerIndexes = setOf(0),
+            actedPlayerIndexes = emptySet()
+        )
+
+        assertEquals(session, resolved)
     }
 
     private fun sessionWithHumanAdvancedRole(roleKey: String): GameSession {

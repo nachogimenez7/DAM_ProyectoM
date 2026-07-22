@@ -1,10 +1,8 @@
 package com.traidores.juego
 
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -154,25 +152,13 @@ object AccessibilityOptionsDialog {
         content.addView(textSizeRow)
         refreshRows()
 
-        val dialog = AlertDialog.Builder(activity)
-            .setView(ScrollView(activity).apply { addView(content) })
-            .setPositiveButton("CERRAR", null)
-            .create()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val availableWidth = activity.resources.displayMetrics.widthPixels - activity.dp(24)
-        dialog.window?.setLayout(
-            activity.dp(500).coerceAtMost(availableWidth),
-            WindowManager.LayoutParams.WRAP_CONTENT
+        return GameDialog.custom(
+            activity = activity,
+            contentView = ScrollView(activity).apply { addView(content) },
+            widthDp = 500,
+            negativeLabel = null,
+            positiveLabel = "CERRAR"
         )
-        dialog.window?.setDimAmount(0.55f)
-        dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
-            minHeight = activity.dp(44)
-            isAllCaps = false
-            setTextColor(activity.getColor(R.color.accent_gold))
-        }
-        return dialog
     }
 
     private fun optionSwitch(

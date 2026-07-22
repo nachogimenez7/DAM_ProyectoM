@@ -174,6 +174,18 @@ enum class RoleCompositionPreset(
     )
 }
 
+enum class DeathCause {
+    NONE,
+    NIGHT,
+    VOTE,
+    AFK
+}
+
+enum class AfkOpportunity {
+    NIGHT,
+    VOTE
+}
+
 data class GamePlayer(
     val name: String,
     val initial: String,
@@ -183,7 +195,8 @@ data class GamePlayer(
     val lastSilencedRound: Int? = null,
     val consecutiveNightAfk: Int = 0,
     val consecutiveVoteAfk: Int = 0,
-    val isHuman: Boolean = false
+    val isHuman: Boolean = false,
+    val deathCause: DeathCause = DeathCause.NONE
 ) : Serializable
 
 data class RoleRevealConfig(
@@ -592,7 +605,8 @@ object LocalGameFactory {
                 muted = false,
                 lastSilencedRound = null,
                 consecutiveNightAfk = 0,
-                consecutiveVoteAfk = 0
+                consecutiveVoteAfk = 0,
+                deathCause = DeathCause.NONE
             )
         }
         val assignedPlayers = forceHumanRole(randomlyAssignedPlayers, effectiveForcedRole)

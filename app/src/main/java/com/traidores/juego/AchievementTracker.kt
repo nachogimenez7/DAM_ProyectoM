@@ -59,13 +59,13 @@ object AchievementTracker {
             return unlocked
         }
 
-        val finalEventKey = "final:${matchKey(session)}"
+        val finalEventKey = "final:${MatchOutcome.matchKey(session)}"
         if (finalEventKey in processedEvents(prefs)) {
             unlocked += unlockSupremeIfReady(context)
             return unlocked
         }
 
-        val humanWon = didHumanWin(session, human)
+        val humanWon = MatchOutcome.didHumanWin(session, human)
         val roleKey = human.role?.key.orEmpty()
         if (humanWon) {
             if (incrementCounter(prefs, TOTAL_WINS, 1) >= 50) {
@@ -134,7 +134,7 @@ object AchievementTracker {
         }
         if (!wonAsJester) return emptyList()
 
-        val eventKey = "special:jester:${matchKey(session)}"
+        val eventKey = "special:jester:${MatchOutcome.matchKey(session)}"
         if (eventKey in processedEvents(prefs)) return emptyList()
 
         val unlocked = if (incrementCounter(prefs, JESTER_WINS, 1) >= 5) {
@@ -145,17 +145,6 @@ object AchievementTracker {
         }
         rememberEvent(prefs, eventKey)
         return unlocked
-    }
-
-    private fun didHumanWin(session: GameSession, human: GamePlayer): Boolean {
-        val roleKey = human.role?.key.orEmpty()
-        return when {
-            session.specialVictories.any { it.playerName == human.name } -> true
-            roleKey == RoleCatalog.DESERTOR -> session.desertorTeam == session.winner
-            session.winner == GameRules.TOWN_WINNER -> human.role?.team == GameRules.TOWN_WINNER
-            session.winner == GameRules.TRAITOR_WINNER -> roleKey in GameRules.traitorRoleKeys
-            else -> false
-        }
     }
 
     private fun silencedSameTargetThreeTimes(session: GameSession, human: GamePlayer): Boolean {
@@ -233,14 +222,6 @@ object AchievementTracker {
         val updated = (prefs.getInt(key, 0) + amount).coerceAtLeast(0)
         prefs.edit().putInt(key, updated).apply()
         return updated
-    }
-
-    private fun matchKey(session: GameSession): String {
-        return listOf(
-            session.code,
-            session.startedAtEpochMs.toString(),
-            session.initialPlayerCount.toString()
-        ).joinToString(":")
     }
 
     private fun processedEvents(prefs: SharedPreferences): List<String> {
