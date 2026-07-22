@@ -54,6 +54,7 @@ class GameplayChatController(
         fun renderHumanCardIfVisible()
         fun renderPersonalStatus()
         fun chatLogDrawableRes(): Int
+        fun onOnlineReactionReceived(playerName: String, emoteId: String)
     }
 
     private data class OnlineChatEntry(
@@ -61,6 +62,13 @@ class GameplayChatController(
         val speaker: String,
         val message: String,
         val isGod: Boolean
+    )
+
+    private data class OnlineReactionEntry(
+        val id: String,
+        val actorId: String,
+        val playerName: String,
+        val emoteId: String
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -89,6 +97,11 @@ class GameplayChatController(
     private var onlineSpectatorChatListener: ValueEventListener? = null
     private var lastOnlineSpectatorChatSentAtMs = 0L
     private var lastOnlineSpectatorChatMessage = ""
+    private var onlineReactionQuery: Query? = null
+    private var onlineReactionListener: ValueEventListener? = null
+    private var onlineReactionMatchId = ""
+    private var onlineReactionBaselineReady = false
+    private val seenOnlineReactionIds = linkedSetOf<String>()
     private var wasHumanAlive: Boolean? = null
     private var stagedEventReactionKey = ""
     private var directorPhaseIndex = -1
@@ -184,6 +197,7 @@ class GameplayChatController(
             startOnlineChatListener()
             startOnlineTraitorChatListener()
             startOnlineSpectatorChatListener()
+            startOnlineReactionListener()
         }
     }
 
@@ -201,6 +215,7 @@ class GameplayChatController(
             // condicionales se auto-protegen contra una doble suscripcion.
             startOnlineTraitorChatListener()
             startOnlineSpectatorChatListener()
+            startOnlineReactionListener()
         }
         updateUnreadChatCount()
         renderChatPanel()
@@ -234,6 +249,7 @@ class GameplayChatController(
         }
         onlineSpectatorChatListener = null
         onlineSpectatorChatQuery = null
+        stopOnlineReactionListener()
         cancelPendingBotChat()
         handler.removeCallbacksAndMessages(null)
     }
@@ -261,6 +277,52 @@ class GameplayChatController(
         cancelScheduledBotChat()
         directorPendingHumanMessage = ""
         directorReactionLines = 0
+    }
+
+    fun sendOnlineReaction(playerName: String, emoteId: String) {
+        if (!host.isOnlineGameplay()) return
+        val matchId = host.currentSession.onlineMatchId
+        if (
+            host.onlineRoomId.isBlank() ||
+            host.onlinePlayerUid.isBlank() ||
+            matchId.isBlank() ||
+            playerName.isBlank() ||
+            EmoteCatalog.byId(emoteId) == null
+        ) {
+            OnlineDebugLog.e(
+                "emote_send_rejected roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId player=$playerName emoteId=$emoteId"
+            )
+            host.showToast("No se pudo sincronizar el emote.", Toast.LENGTH_LONG)
+            return
+        }
+
+        FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_REACTIONS_NODE")
+            .push()
+            .setValue(
+                mapOf(
+                    "matchId" to matchId,
+                    "actorId" to host.onlinePlayerUid,
+                    "player" to playerName,
+                    "emoteId" to emoteId,
+                    "ts" to ServerValue.TIMESTAMP
+                )
+            )
+            .addOnSuccessListener {
+                OnlineDebugLog.i(
+                    "emote_send_success roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId player=$playerName emoteId=$emoteId"
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "emote_send_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId player=$playerName emoteId=$emoteId",
+                    error
+                )
+                host.showToast(
+                    OnlineErrorMessages.forAction("No se pudo sincronizar el emote", error),
+                    Toast.LENGTH_LONG
+                )
+            }
     }
 
     fun onPhaseSettled() {
@@ -1668,6 +1730,122 @@ class GameplayChatController(
             }
     }
 
+    private fun startOnlineReactionListener() {
+        if (!host.isOnlineGameplay() || host.onlineRoomId.isBlank()) return
+        val matchId = host.currentSession.onlineMatchId
+        if (matchId.isBlank()) return
+        if (onlineReactionListener != null && onlineReactionMatchId == matchId) return
+
+        stopOnlineReactionListener()
+        OnlineDebugLog.i(
+            "emote_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId"
+        )
+        val query = FirebaseDatabase.getInstance()
+            .getReference("salas/${host.onlineRoomId}/$RTDB_REACTIONS_NODE")
+            .orderByKey()
+            .limitToLast(ONLINE_REACTION_MAX_EVENTS)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val entries = onlineReactionEntries(snapshot, matchId)
+                if (!onlineReactionBaselineReady) {
+                    entries.forEach { entry -> seenOnlineReactionIds += entry.id }
+                    onlineReactionBaselineReady = true
+                    trimSeenOnlineReactionIds()
+                    return
+                }
+
+                entries.forEach { entry ->
+                    if (!seenOnlineReactionIds.add(entry.id)) return@forEach
+                    if (entry.actorId == host.onlinePlayerUid) return@forEach
+                    if (EmoteCatalog.byId(entry.emoteId) == null) return@forEach
+                    host.onOnlineReactionReceived(entry.playerName, entry.emoteId)
+                }
+                trimSeenOnlineReactionIds()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                OnlineDebugLog.e(
+                    "emote_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId",
+                    error.toException()
+                )
+            }
+        }
+
+        onlineReactionQuery = query
+        onlineReactionListener = listener
+        onlineReactionMatchId = matchId
+        onlineReactionBaselineReady = false
+        seenOnlineReactionIds.clear()
+
+        // Primero tomamos una foto del historial actual. Esas keys se marcan como vistas y
+        // luego se adjunta el listener continuo; cualquier emote que llegue entre ambos pasos
+        // aparece en el primer callback como nuevo, sin reanimar eventos viejos al entrar tarde.
+        query.get()
+            .addOnSuccessListener { baseline ->
+                if (onlineReactionQuery !== query || onlineReactionMatchId != matchId) {
+                    return@addOnSuccessListener
+                }
+                onlineReactionEntries(baseline, matchId).forEach { entry ->
+                    seenOnlineReactionIds += entry.id
+                }
+                onlineReactionBaselineReady = true
+                trimSeenOnlineReactionIds()
+                query.addValueEventListener(listener)
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "emote_listener_baseline_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId",
+                    error
+                )
+                if (onlineReactionQuery === query && onlineReactionMatchId == matchId) {
+                    // El primer callback del listener se convierte en baseline si la lectura
+                    // inicial falla, priorizando no repetir el historial sobre mostrar algo viejo.
+                    query.addValueEventListener(listener)
+                }
+            }
+    }
+
+    private fun onlineReactionEntries(
+        snapshot: DataSnapshot,
+        matchId: String
+    ): List<OnlineReactionEntry> {
+        return snapshot.children.mapNotNull { child ->
+            val id = child.key.orEmpty()
+            val eventMatchId = child.child("matchId").getValue(String::class.java).orEmpty()
+            val actorId = child.child("actorId").getValue(String::class.java).orEmpty()
+            val playerName = child.child("player").getValue(String::class.java).orEmpty()
+            val emoteId = child.child("emoteId").getValue(String::class.java).orEmpty()
+            if (
+                id.isBlank() ||
+                eventMatchId != matchId ||
+                actorId.isBlank() ||
+                playerName.isBlank() ||
+                emoteId.isBlank()
+            ) {
+                return@mapNotNull null
+            }
+            OnlineReactionEntry(id, actorId, playerName, emoteId)
+        }
+    }
+
+    private fun trimSeenOnlineReactionIds() {
+        while (seenOnlineReactionIds.size > ONLINE_REACTION_SEEN_IDS_LIMIT) {
+            val oldest = seenOnlineReactionIds.firstOrNull() ?: return
+            seenOnlineReactionIds.remove(oldest)
+        }
+    }
+
+    private fun stopOnlineReactionListener() {
+        onlineReactionListener?.let { listener ->
+            onlineReactionQuery?.removeEventListener(listener)
+        }
+        onlineReactionListener = null
+        onlineReactionQuery = null
+        onlineReactionMatchId = ""
+        onlineReactionBaselineReady = false
+        seenOnlineReactionIds.clear()
+    }
+
     private fun startOnlineChatListener() {
         if (!host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
@@ -2490,6 +2668,9 @@ class GameplayChatController(
         private const val RTDB_PUBLIC_CHAT_NODE = "chat"
         private const val RTDB_TRAITOR_CHAT_NODE = "chat_traidores"
         private const val RTDB_SPECTATOR_CHAT_NODE = "chat_espectadores"
+        private const val RTDB_REACTIONS_NODE = "emotes"
+        private const val ONLINE_REACTION_MAX_EVENTS = 30
+        private const val ONLINE_REACTION_SEEN_IDS_LIMIT = ONLINE_REACTION_MAX_EVENTS * 4
         private const val MAX_STAGGERED_BOT_REACTIONS = 3
         private const val MAX_EVENT_BOT_REACTIONS = 3
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L

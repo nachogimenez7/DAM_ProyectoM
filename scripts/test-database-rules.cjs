@@ -19,6 +19,14 @@ const chatMessage = (actorId) => ({
   ts: Date.now(),
 });
 
+const emoteEvent = (actorId) => ({
+  matchId: "match-1",
+  actorId,
+  player: "Jugador",
+  emoteId: "griego_enojado",
+  ts: Date.now(),
+});
+
 async function main() {
   const testEnv = await initializeTestEnvironment({
     projectId,
@@ -43,6 +51,18 @@ async function main() {
     );
     await assertSucceeds(alice.ref(`salas/${roomId}/chat`).once("value"));
     await assertFails(guest.ref(`salas/${roomId}/chat`).once("value"));
+
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/emotes/emote-a`).set(emoteEvent("alice"))
+    );
+    await assertFails(
+      alice.ref(`salas/${roomId}/emotes/emote-bad-actor`).set(emoteEvent("bob"))
+    );
+    await assertFails(
+      guest.ref(`salas/${roomId}/emotes/emote-guest`).set(emoteEvent("guest"))
+    );
+    await assertSucceeds(alice.ref(`salas/${roomId}/emotes`).once("value"));
+    await assertFails(guest.ref(`salas/${roomId}/emotes`).once("value"));
 
     await assertSucceeds(
       bob.ref(`salas/${roomId}/chat_lobby/message-b`).set({
@@ -102,16 +122,20 @@ async function main() {
         chat_lobby: null,
         chat_traidores: null,
         chat_espectadores: null,
+        emotes: null,
       })
     );
 
     // Cierre completo de sala vacia: RTDB no puede validar el estado/host de Firestore,
     // asi que cualquier autenticado puede borrar el nodo entero de una sala (chat +
-    // chat_lobby + chat_traidores + chat_espectadores + presencia de una), pero NO
+    // chat_lobby + chat_traidores + chat_espectadores + emotes + presencia de una), pero NO
     // sobrescribirlo con contenido arbitrario, y un invitado sin sesion no puede borrar nada.
     const roomId2 = "room_rules_teardown";
     await assertSucceeds(
       alice.ref(`salas/${roomId2}/chat/message-a`).set(chatMessage("alice"))
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId2}/emotes/emote-a`).set(emoteEvent("alice"))
     );
     await assertSucceeds(
       alice.ref(`salas/${roomId2}/presencia/alice`).set({ estado: "conectado", ts: Date.now() })

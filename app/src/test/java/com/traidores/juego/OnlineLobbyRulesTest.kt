@@ -8,6 +8,13 @@ import org.junit.Test
 class OnlineLobbyRulesTest {
 
     @Test
+    fun browserUsesDeclaredTwelvePlayerLimitBeforeDefault() {
+        assertEquals(12, OnlineLobbyRules.displayedPlayerLimit(12, 10, 10))
+        assertEquals(12, OnlineLobbyRules.displayedPlayerLimit(null, 12, 10))
+        assertEquals(10, OnlineLobbyRules.displayedPlayerLimit(null, null, 10))
+    }
+
+    @Test
     fun staleWaitingRoomIsHiddenFromBrowser() {
         val now = 10_000_000L
 
@@ -93,6 +100,28 @@ class OnlineLobbyRulesTest {
             OnlineLobbyRules.canStart(
                 players = players,
                 expectedPlayers = 10,
+                roomWaiting = true,
+                initialMatchCreated = false
+            )
+        )
+    }
+
+    @Test
+    fun twelveConnectedReadyPlayersCanStart() {
+        val players = (0 until 12).map { index ->
+            participant(
+                id = if (index == 0) "host" else "p$index",
+                connected = true,
+                ready = true,
+                active = true,
+                order = index
+            )
+        }
+
+        assertTrue(
+            OnlineLobbyRules.canStart(
+                players = players,
+                expectedPlayers = 12,
                 roomWaiting = true,
                 initialMatchCreated = false
             )

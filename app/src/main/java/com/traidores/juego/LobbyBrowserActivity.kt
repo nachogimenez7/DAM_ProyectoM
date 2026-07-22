@@ -90,15 +90,17 @@ class LobbyBrowserActivity : BaseActivity() {
             ?: LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name
             ?: "Pampa"
         val players = document.getLong(FIELD_CURRENT_PLAYERS)?.toInt() ?: 0
-        val limit = document.getLong(FIELD_EXPECTED_PLAYERS)?.toInt()
-            ?: document.getLong(FIELD_MAX_PLAYERS)?.toInt()
-            ?: DEFAULT_MAX_PLAYERS
+        val limit = OnlineLobbyRules.displayedPlayerLimit(
+            expectedPlayers = document.getLong(FIELD_EXPECTED_PLAYERS)?.toInt(),
+            maximumPlayers = document.getLong(FIELD_MAX_PLAYERS)?.toInt(),
+            fallback = DEFAULT_MAX_PLAYERS
+        )
         return OnlineLobby(
             id = document.id,
             code = document.getString(FIELD_ROOM_CODE).orEmpty(),
             name = document.getString(FIELD_NAME)?.takeIf { it.isNotBlank() } ?: "Sala online",
             players = players.coerceAtLeast(0),
-            limit = limit.coerceAtLeast(1),
+            limit = limit,
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
             mapKey = mapKey,

@@ -627,6 +627,28 @@ class GameEngineTest {
     }
 
     @Test
+    fun onlineSafeRoleCompositionAtTwelveKeepsTheReducedPreset() {
+        val composition = LocalGameFactory.onlineSafeRoleComposition(12)
+
+        assertEquals(1, composition.counts[RoleCatalog.ASESINO])
+        assertEquals(1, composition.counts[RoleCatalog.MEDICO])
+        assertEquals(1, composition.counts[RoleCatalog.POLICIA])
+        assertEquals(1, composition.counts[RoleCatalog.MERCENARIO])
+        assertEquals(8, composition.counts[RoleCatalog.ALDEANO])
+        listOf(
+            RoleCatalog.ALCALDE,
+            RoleCatalog.DESERTOR,
+            RoleCatalog.ESPIA,
+            RoleCatalog.PAYADOR,
+            RoleCatalog.ORACULO,
+            RoleCatalog.BUFON
+        ).forEach { specialRole ->
+            assertEquals(0, composition.counts[specialRole] ?: 0)
+        }
+        assertEquals(12, composition.counts.values.sum())
+    }
+
+    @Test
     fun onlineSafeRoleCompositionForThreePlayersUsesOnlyTheThreeCoreRoles() {
         val composition = LocalGameFactory.onlineSafeRoleComposition(3)
 

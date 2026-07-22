@@ -135,6 +135,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val feedbackState = GameplayFeedbackState()
     private val reactionLimiter = GameplayReactionLimiter()
     private val activeReactionBubbles = mutableMapOf<String, View>()
+    private val pendingOnlineReactions = linkedMapOf<String, ReactionSpec>()
+    private var gameplayResumed = false
     private val defaultReactionSpecs = reactionSpecsForTheme(EmoteCatalog.THEME_GREEK)
     private val medievalAssassinReactionSpecs =
         reactionSpecsForTheme(EmoteCatalog.THEME_MEDIEVAL_ASSASSIN)
@@ -982,6 +984,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         cancelActionPulse()
         dismissReactionPalette()
         clearReactionBubbles()
+        pendingOnlineReactions.clear()
         hideCentralPublicEventBanner(immediate = true)
         cancelFeedbackPresentation(keepPending = false)
         eventLogHeightAnimator?.cancel()
@@ -1016,6 +1019,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     override fun onPause() {
+        gameplayResumed = false
         restoreRolePreviewOnResume = isRolePreviewOpen
         restoreInitialRoleReadingOnResume = initialRoleReadingActive
         if (initialRoleReadingActive) {
@@ -1058,6 +1062,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onResume() {
         super.onResume()
+        gameplayResumed = true
         if (::gameplayRoot.isInitialized) {
             applyGameplayTextScale()
         }
@@ -2633,6 +2638,29 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         showTieVoteWindow()
     }
 
+    override fun onOnlineReactionReceived(playerName: String, emoteId: String) {
+        if (!::session.isInitialized || !isOnlineGameplay()) return
+        val player = session.players.firstOrNull { it.name == playerName } ?: return
+        val spec = EmoteCatalog.byId(emoteId)?.toReactionSpec() ?: return
+        if (
+            session.winner.isNotBlank() ||
+            !GameEngine.isAlive(player) ||
+            !isPublicReactionPhase(session.phase)
+        ) {
+            return
+        }
+        if (!gameplayResumed || reactionUiBlocked()) {
+            pendingOnlineReactions.remove(playerName)
+            pendingOnlineReactions[playerName] = spec
+            while (pendingOnlineReactions.size > MAX_PENDING_ONLINE_REACTIONS) {
+                val oldestPlayer = pendingOnlineReactions.keys.firstOrNull() ?: break
+                pendingOnlineReactions.remove(oldestPlayer)
+            }
+            return
+        }
+        showReactionBubble(playerName, spec)
+    }
+
     private fun startRealtimeGameplayPresence() {
         if (!isOnlineGameplay() || realtimePresence != null) return
         realtimePresence = RealtimeRoomPresence(
@@ -3607,12 +3635,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun renderReactionButton() {
         if (!::btnToggleEmotes.isInitialized || !::session.isInitialized) return
-        if (isOnlineGameplay()) {
-            btnToggleEmotes.visibility = View.GONE
-            dismissReactionPalette()
-            return
-        }
-
         btnToggleEmotes.visibility = View.VISIBLE
         val human = GameEngine.humanPlayer(session)
         val now = SystemClock.elapsedRealtime()
@@ -3751,12 +3773,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         dismissReactionPalette()
         GameplayEffects.play(this, GameplayEffect.EMOTE)
         showReactionBubble(human.name, spec)
+        if (isOnlineGameplay()) {
+            chatController.sendOnlineReaction(human.name, spec.id)
+        }
         renderReactionButton()
     }
 
     private fun reactionBaseUnavailableMessage(player: GamePlayer): String? {
         return when {
-            isOnlineGameplay() -> "Los emotes online todavía no están sincronizados."
             session.winner.isNotBlank() || session.phase == GamePhase.RESULTADO ->
                 "La partida ya terminó."
             session.phase == GamePhase.REPARTO -> "Primero empieza la partida."
@@ -7204,8 +7228,26 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (maybeOfferSpectatorChoice()) return
         maybeShowDesertorChoice()
         if (!desertorDialogOpen) {
+            flushPendingOnlineReactions()
             refreshOnlinePresentationGate()
             scheduleAutoAdvanceIfNeeded()
+        }
+    }
+
+    private fun flushPendingOnlineReactions() {
+        if (pendingOnlineReactions.isEmpty()) return
+        if (session.winner.isNotBlank() || !isPublicReactionPhase(session.phase)) {
+            pendingOnlineReactions.clear()
+            return
+        }
+        if (!gameplayResumed || reactionUiBlocked()) return
+        val reactions = pendingOnlineReactions.toMap()
+        pendingOnlineReactions.clear()
+        reactions.forEach { (playerName, spec) ->
+            val player = session.players.firstOrNull { it.name == playerName } ?: return@forEach
+            if (GameEngine.isAlive(player)) {
+                showReactionBubble(playerName, spec)
+            }
         }
     }
 
@@ -8637,6 +8679,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val READY_VOTE_MINIMUM_DEBATE_MS = 10_000L
         private const val MAX_NIGHT_SKIP_STEPS = 8
         private const val ONLINE_PREVIEW_ACTION_HISTORY_LIMIT = 60
+        private const val MAX_PENDING_ONLINE_REACTIONS = 12
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
         private const val PRIMARY_ACTION_RESTING_FILL = "#4A3A1E"

@@ -58,10 +58,12 @@ class GameplayTableUiTest {
     fun splitCompanionsExcludesHumanAndPutsOddExtraOnRight() {
         val fivePlayers = players(5)
         val eightPlayers = players(8)
+        val twelvePlayers = players(12)
         val fifteenPlayers = players(15)
 
         assertSplit(fivePlayers, expectedLeft = 2, expectedRight = 2)
         assertSplit(eightPlayers, expectedLeft = 3, expectedRight = 4)
+        assertSplit(twelvePlayers, expectedLeft = 5, expectedRight = 6)
         assertSplit(fifteenPlayers, expectedLeft = 7, expectedRight = 7)
     }
 
@@ -195,6 +197,7 @@ class GameplayTableUiTest {
         val five = GameplayTableUi.tieVoteGridMetrics(5)
         val eight = GameplayTableUi.tieVoteGridMetrics(8)
         val ten = GameplayTableUi.tieVoteGridMetrics(10)
+        val twelve = GameplayTableUi.tieVoteGridMetrics(12)
         val fivePortrait = GameplayTableUi.tieVoteGridMetrics(5, maxColumns = 2)
         val tenPortrait = GameplayTableUi.tieVoteGridMetrics(10, maxColumns = 2)
 
@@ -220,6 +223,9 @@ class GameplayTableUiTest {
         assertEquals(4, ten.columns)
         assertEquals(3, ten.rows)
         assertTrue(ten.scrollEnabled)
+        assertEquals(4, twelve.columns)
+        assertEquals(3, twelve.rows)
+        assertTrue(twelve.scrollEnabled)
 
         assertEquals(2, fivePortrait.columns)
         assertEquals(3, fivePortrait.rows)

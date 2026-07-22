@@ -11,6 +11,14 @@ data class OnlineLobbyParticipant(
 )
 
 object OnlineLobbyRules {
+    fun displayedPlayerLimit(
+        expectedPlayers: Int?,
+        maximumPlayers: Int?,
+        fallback: Int
+    ): Int {
+        return (expectedPlayers ?: maximumPlayers ?: fallback).coerceAtLeast(1)
+    }
+
     fun isRoomFresh(updatedAtMs: Long, nowMs: Long, maxAgeMs: Long): Boolean {
         if (updatedAtMs <= 0L) return true
         return nowMs - updatedAtMs <= maxAgeMs
