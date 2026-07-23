@@ -3,6 +3,7 @@ package com.traidores.juego
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -97,6 +98,210 @@ class BotConversationDirectorTest {
         )
 
         assertNotEquals("Beto", beat?.speaker)
+    }
+
+    @Test
+    fun directlyAddressedBotAnswersFirst() {
+        val beat = BotConversationDirector.nextHumanReactionBeat(
+            session = session(),
+            humanMessage = "Mora, que pensas de Beto?",
+            deliveredReactions = 0,
+            lastSpeaker = "Mora"
+        )
+
+        assertEquals("Mora", beat?.speaker)
+        assertTrue(beat?.message.orEmpty().contains("Beto"))
+    }
+
+    @Test
+    fun directlyAskedTraitorClaimsOneRoleAndKeepsTheSameStory() {
+        val firstQuestion = GameEngine.addHumanChatMessage(
+            session(),
+            "Mora, que rol sos?",
+            includeBotReactions = false
+        )
+        assertEquals(1, LocalBotAi.reactionsToHumanMessage(firstQuestion, "Mora, que rol sos?").size)
+        val firstBeat = BotConversationDirector.nextHumanReactionBeat(
+            session = firstQuestion,
+            humanMessage = "Mora, que rol sos?",
+            deliveredReactions = 0,
+            lastSpeaker = "Mora"
+        )
+        val firstClaim = LocalBotAi.roleClaimFrom(firstBeat?.message.orEmpty())
+
+        assertEquals("Mora", firstBeat?.speaker)
+        assertNotNull(firstClaim)
+
+        val afterClaim = GameEngine.addBotChatMessage(firstQuestion, "Mora", firstBeat!!.message)
+        val secondQuestion = GameEngine.addHumanChatMessage(
+            afterClaim,
+            "Mora, que rol sos?",
+            includeBotReactions = false
+        )
+        val secondBeat = BotConversationDirector.nextHumanReactionBeat(
+            session = secondQuestion,
+            humanMessage = "Mora, que rol sos?",
+            deliveredReactions = 0,
+            lastSpeaker = "Mora"
+        )
+        val secondClaim = LocalBotAi.roleClaimFrom(secondBeat?.message.orEmpty())
+
+        assertEquals("Mora", secondBeat?.speaker)
+        assertEquals(firstClaim?.roleKey, secondClaim?.roleKey)
+    }
+
+    @Test
+    fun directRoleAnswerCanBeSentAsARealTwoMessageTurn() {
+        val beat = BotConversationDirector.nextHumanReactionBeat(
+            session = session(),
+            humanMessage = "Mora, que rol sos?",
+            deliveredReactions = 0,
+            lastSpeaker = null
+        )
+
+        assertEquals("Mora", beat?.speaker)
+        assertEquals(2, beat?.messageCount)
+        assertEquals(1, beat?.followUps?.size)
+        assertTrue(beat?.followUps?.firstOrNull().orEmpty().contains("pregunt"))
+    }
+
+    @Test
+    fun groundedExplanationCanUseAThreeMessageTurn() {
+        val withPrivateRead = session().copy(
+            tableMemory = TableMemory(
+                privateInvestigationReads = listOf(
+                    InvestigationRead(
+                        round = 1,
+                        source = "Beto",
+                        target = "Mora",
+                        result = "sospechoso"
+                    )
+                )
+            )
+        )
+        val followUps = BotMessageBursts.afterHumanReply(
+            session = withPrivateRead,
+            speaker = "Beto",
+            humanMessage = "Beto, por que lo acusas a Mora?",
+            primaryMessage = "Mora me hace ruido"
+        )
+
+        assertEquals(2, followUps.size)
+        assertTrue(followUps.first().contains("nada") || followUps.first().contains("pista"))
+    }
+
+    @Test
+    fun repetitionAloneDoesNotBecomeGroundedEvidence() {
+        val mora = GameEngine.playerByName(session(), "Mora")!!
+
+        assertFalse(
+            hasGroundedSuspicion(
+                SuspectRead(
+                    player = mora,
+                    score = 20,
+                    reasons = listOf("lo nombraron en el pueblo", "le pidieron explicaciones")
+                )
+            )
+        )
+        assertTrue(
+            hasGroundedSuspicion(
+                SuspectRead(
+                    player = mora,
+                    score = 12,
+                    reasons = listOf("se contradijo de rol")
+                )
+            )
+        )
+    }
+
+    @Test
+    fun emptyTableStartsWithQuestionsInsteadOfUnsupportedPushes() {
+        val objectives = session().players
+            .filterNot { it.isHuman }
+            .map { bot -> roundObjectiveFor(session(), bot).type }
+
+        assertFalse(objectives.contains(RoundObjectiveType.PUSH_VOTE))
+        assertFalse(objectives.contains(RoundObjectiveType.DEFLECT_PRESSURE))
+        assertTrue(objectives.contains(RoundObjectiveType.ASK_PLAYER))
+    }
+
+    @Test
+    fun investigationStageOpensEarlierAtASmallTable() {
+        val smallTable = session().copy(
+            players = session().players.map { player ->
+                if (player.name == "Valen") player.copy(alive = false) else player
+            }
+        )
+        assertEquals(2, investigationSpeakerThreshold(smallTable))
+        assertTrue(isOpeningInvestigationStage(smallTable))
+
+        val afterTwoBotTurns = smallTable.copy(
+            chatHistory = listOf(
+                GameChatMessage("Dios", "Comienza el debate", isGod = true),
+                GameChatMessage("Beto", "Mora, que viste?"),
+                GameChatMessage("Dina", "primero ordenemos las versiones")
+            )
+        )
+
+        assertFalse(isOpeningInvestigationStage(afterTwoBotTurns))
+    }
+
+    @Test
+    fun groundedSuspicionWaitsUntilTheInvestigationStageIsComplete() {
+        val smallTable = session().copy(
+            players = session().players.map { player ->
+                if (player.name == "Valen") player.copy(alive = false) else player
+            },
+            tableMemory = TableMemory(
+                privateInvestigationReads = listOf(
+                    InvestigationRead(1, "Beto", "Mora", "sospechoso")
+                )
+            )
+        )
+        val beto = GameEngine.playerByName(smallTable, "Beto")!!
+        val earlyRead = rankedPublicSuspects(smallTable, beto)
+            .first { it.player.name == "Mora" }
+
+        assertTrue(hasGroundedSuspicion(earlyRead))
+        assertFalse(canVoiceStrongAccusation(smallTable, earlyRead))
+
+        val afterInvestigation = smallTable.copy(
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Mora, que hiciste?"),
+                GameChatMessage("Dina", "quiero escuchar esa respuesta")
+            )
+        )
+        val laterRead = rankedPublicSuspects(afterInvestigation, beto)
+            .first { it.player.name == "Mora" }
+
+        assertTrue(canVoiceStrongAccusation(afterInvestigation, laterRead))
+    }
+
+    @Test
+    fun burstDelayIsShorterThanAFullThinkingPauseRange() {
+        val delay = BotConversationDirector.burstDelayMs(
+            session = session(),
+            beatIndex = 1,
+            speaker = "Beto",
+            message = "y otra cosa"
+        )
+
+        assertTrue(delay in 900L..2_150L)
+    }
+
+    @Test
+    fun ordinaryThinkingDelayStaysBetweenTwoAndFiveSeconds() {
+        val delays = (0..12).map { beatIndex ->
+            BotConversationDirector.naturalDelayMs(
+                session = session(),
+                beatIndex = beatIndex,
+                message = "ok, te escucho",
+                reaction = true,
+                speaker = "Beto"
+            )
+        }
+
+        assertTrue(delays.all { it in 2_000L..5_000L })
     }
 
     @Test
@@ -212,6 +417,19 @@ class BotConversationDirectorTest {
         assertEquals(
             "van dos cosas: ordenemos esto",
             applyPersonalitySignature("ordenemos esto", BotPersonality.ANALITICO, seed = 12)
+        )
+        val variants = listOf(6, 12, 18).map { seed ->
+            applyPersonalitySignature("no compro esa historia", BotPersonality.PICANTE, seed)
+        }
+        assertEquals(3, variants.toSet().size)
+        assertEquals(
+            "no compro esa historia",
+            applyPersonalitySignature(
+                "no compro esa historia",
+                BotPersonality.JODON,
+                seed = 6,
+                playful = false
+            )
         )
     }
 

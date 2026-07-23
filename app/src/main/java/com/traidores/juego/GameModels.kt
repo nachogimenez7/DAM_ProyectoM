@@ -60,7 +60,8 @@ data class GameSession(
     val onlinePlayerUids: List<String> = emptyList(),
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
-    val phaseIndex: Int = 0
+    val phaseIndex: Int = 0,
+    val publicDiscussionStartIndex: Int = 0
 ) : Serializable
 
 enum class BotDifficulty : Serializable {
@@ -82,13 +83,17 @@ data class ClaimRecord(
     val phase: GamePhase,
     val roleKey: String? = null,
     val statementType: StatementType? = null,
-    val target: String? = null
+    val target: String? = null,
+    val reason: String? = null
 ) : Serializable
 
 data class TableMemory(
     val suspicion: Map<String, Map<String, Int>> = emptyMap(),
+    val rapport: Map<String, Map<String, Int>> = emptyMap(),
+    val emotionalPressure: Map<String, Int> = emptyMap(),
     val pendingQuestions: Map<String, PendingQuestion> = emptyMap(),
-    val declaredInvestigationReads: List<InvestigationRead> = emptyList()
+    val declaredInvestigationReads: List<InvestigationRead> = emptyList(),
+    val privateInvestigationReads: List<InvestigationRead> = emptyList()
 ) : Serializable
 
 data class TraitorPlan(

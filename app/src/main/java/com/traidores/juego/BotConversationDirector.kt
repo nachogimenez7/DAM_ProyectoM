@@ -3,8 +3,12 @@ package com.traidores.juego
 internal data class BotConversationBeat(
     val speaker: String,
     val message: String,
-    val promptsSilentHuman: Boolean = false
-)
+    val promptsSilentHuman: Boolean = false,
+    val followUps: List<String> = emptyList()
+) {
+    val messageCount: Int
+        get() = 1 + followUps.size
+}
 
 internal object BotConversationDirector {
     private val chatPhases = setOf(
@@ -71,9 +75,10 @@ internal object BotConversationDirector {
         )?.let {
             return it
         }
+        val remainingMessages = (idleBudget(session) - idleLinesUsed).coerceAtLeast(1)
         return chooseSpeakers(session, lastSpeaker)
             .asSequence()
-            .mapNotNull { speaker -> lineForSpeaker(session, speaker) }
+            .mapNotNull { speaker -> lineForSpeaker(session, speaker, remainingMessages) }
             .firstOrNull()
     }
 
@@ -86,10 +91,29 @@ internal object BotConversationDirector {
         if (!canRun(session) || deliveredReactions >= maxHumanReactions) return null
         val reactions = runCatching { LocalBotAi.reactionsToHumanMessage(session, humanMessage) }
             .getOrDefault(emptyList())
+        val directAddressee = BotPerception.directAddressee(session, humanMessage)
+        val remainingMessages = (maxHumanReactions - deliveredReactions).coerceAtLeast(1)
         return reactions
             .asSequence()
-            .filter { (speaker, _) -> speaker != lastSpeaker }
-            .map { (speaker, message) -> BotConversationBeat(speaker, message) }
+            .filter { (speaker, _) ->
+                when {
+                    directAddressee == null -> speaker != lastSpeaker
+                    deliveredReactions == 0 && speaker == directAddressee -> true
+                    else -> speaker != lastSpeaker && speaker != directAddressee
+                }
+            }
+            .map { (speaker, message) ->
+                BotConversationBeat(
+                    speaker = speaker,
+                    message = message,
+                    followUps = BotMessageBursts.afterHumanReply(
+                        session = session,
+                        speaker = speaker,
+                        humanMessage = humanMessage,
+                        primaryMessage = message
+                    ).take(remainingMessages - 1)
+                )
+            }
             .firstOrNull()
     }
 
@@ -104,16 +128,66 @@ internal object BotConversationDirector {
             .mapNotNull { speaker ->
                 LocalBotAi.nextTraitorLine(session, speaker)
                     ?.takeIf { it.isNotBlank() }
-                    ?.let { BotConversationBeat(speaker, it) }
+                    ?.let { message ->
+                        val remainingMessages = (traitorNightBudget(session) - deliveredLines).coerceAtLeast(1)
+                        BotConversationBeat(
+                            speaker = speaker,
+                            message = message,
+                            followUps = BotMessageBursts.afterTraitorNightLine(session, speaker, message)
+                                .take(remainingMessages - 1)
+                        )
+                    }
             }
             .firstOrNull()
     }
 
-    fun naturalDelayMs(session: GameSession, beatIndex: Int, message: String, reaction: Boolean): Long {
-        val base = if (reaction) 2_500L else 3_200L
-        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 1_700).toLong()
-        val readingDelay = (message.length * 24L).coerceAtMost(1_400L)
-        return base + jitter + readingDelay
+    fun naturalDelayMs(
+        session: GameSession,
+        beatIndex: Int,
+        message: String,
+        reaction: Boolean,
+        speaker: String? = null
+    ): Long {
+        val base = if (reaction) 2_150L else 3_000L
+        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 1_650).toLong()
+        val readingDelay = (message.length * 22L).coerceAtMost(1_500L)
+        val normalized = normalizedForParsing(message)
+        val thoughtDelay = if (
+            message.contains("?") ||
+            normalized.contains("por que") ||
+            normalized.contains("que rol")
+        ) 450L else 0L
+        val personalityDelay = speaker
+            ?.let { GameEngine.playerByName(session, it) }
+            ?.let { bot ->
+                when (personalityFor(session, bot)) {
+                    BotPersonality.IMPULSIVO -> -450L
+                    BotPersonality.JODON -> -200L
+                    BotPersonality.PICANTE -> -100L
+                    BotPersonality.TRANQUI -> 150L
+                    BotPersonality.DESCONFIADO -> 350L
+                    BotPersonality.ANALITICO -> 650L
+                }
+            }
+            ?: 0L
+        val complexAnswer = message.length >= 95 || listOf(
+            "contradic",
+            "pista",
+            "investig",
+            "explica",
+            "version"
+        ).any(normalized::contains)
+        val maximumDelay = if (complexAnswer) 6_800L else 5_000L
+        return (base + jitter + readingDelay + thoughtDelay + personalityDelay)
+            .coerceIn(2_000L, maximumDelay)
+    }
+
+    fun burstDelayMs(session: GameSession, beatIndex: Int, speaker: String, message: String): Long {
+        val jitter = stableNoise(
+            "${session.code}:${session.phaseIndex}:$beatIndex:$speaker:burst:$message"
+        ) % 650
+        val typingTime = (message.length * 13L).coerceAtMost(650L)
+        return (850L + jitter + typingTime).coerceIn(900L, 2_150L)
     }
 
     fun silenceDelayMs(session: GameSession, idleLinesUsed: Int): Long {
@@ -145,11 +219,20 @@ internal object BotConversationDirector {
         )
     }
 
-    private fun lineForSpeaker(session: GameSession, speaker: String): BotConversationBeat? {
+    private fun lineForSpeaker(
+        session: GameSession,
+        speaker: String,
+        remainingMessages: Int
+    ): BotConversationBeat? {
         val message = LocalBotAi.nextConversationLine(session, speaker)
             ?.takeIf { it.isNotBlank() }
             ?: return null
-        return BotConversationBeat(speaker, message)
+        return BotConversationBeat(
+            speaker = speaker,
+            message = message,
+            followUps = BotMessageBursts.afterIdleLine(session, speaker, message)
+                .take((remainingMessages - 1).coerceAtLeast(0))
+        )
     }
 
     private fun oracleGuestOpeningBeat(

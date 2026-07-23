@@ -12,7 +12,8 @@ internal data class RoleClaim(
 
 internal data class PublicStatement(
     val type: StatementType,
-    val target: String? = null
+    val target: String? = null,
+    val reason: String? = null
 )
 
 internal data class VotePlanSnapshot(
@@ -147,13 +148,25 @@ internal enum class BotConversationRole {
 
 internal enum class HumanQuestionKind {
     ROLE_HELP,
+    ASK_ROLE,
     VOTE_HELP,
     ACTION_HELP,
-    SUSPECT_HELP
+    SUSPECT_HELP,
+    WHY_VOTE,
+    WHY_ACCUSE,
+    OPINION,
+    BELIEF
+}
+
+internal enum class HumanSocialSignal {
+    PRAISE,
+    INSULT
 }
 
 internal enum class HumanMessageIntent {
     CASUAL,
+    PRAISE,
+    INSULT,
     ROLE_QUESTION,
     ACTION_HELP,
     VOTE_HELP,
@@ -554,7 +567,7 @@ internal object LocalBotAi {
             val fakeClaim = traitorFakeClaimLine(session, bot, social, index)
             val roleLine = roleDrivenLine(session, bot, read, social, index)
             val agenda = agendaFor(session, bot)
-            val weakRead = isWeakSuspicion(read)
+            val weakRead = !canVoiceStrongAccusation(session, read)
             val objective = roundObjectiveFor(session, bot)
             val objectiveLine = objectiveLine(session, bot, objective, index)
             val plannedTraitorLine = traitorPlannedDayLine(session, bot, index)
@@ -572,7 +585,7 @@ internal object LocalBotAi {
             val baseIntent = openingIntent(session, bot, index)
             val intent = if (
                 baseIntent in listOf(BotSpeechIntent.ACCUSE, BotSpeechIntent.TEASE) &&
-                (read?.score ?: 0) < 8
+                !canVoiceStrongAccusation(session, read)
             ) {
                 BotSpeechIntent.ASK
             } else {
@@ -804,132 +817,8 @@ internal object LocalBotAi {
         return eliminationLastWordsLine(session, player).takeIf { it.isNotBlank() }
     }
 
-    fun reactionsToHumanMessage(session: GameSession, humanMessage: String): List<Pair<String, String>> {
-        val focusNames = mentionedPlayerNames(session, humanMessage).toSet()
-        val roleClaim = LocalBotAi.roleClaimFrom(humanMessage)
-        val publicStatement = LocalBotAi.publicStatementFrom(session, humanMessage)
-        val claimResponder = roleClaim?.let { botWithRole(session, it.roleKey) }
-        val claimsHiddenInfo = containsSecretTerm(humanMessage, session)
-        val casualMessage = isCasualHumanMessage(humanMessage)
-        val questionKind = humanQuestionKind(humanMessage)
-        val answeredQuestion = answeredQuestionForHuman(session, humanMessage)
-        val messageIntent = if (answeredQuestion != null && humanMessage.trim().length >= 4) {
-            HumanMessageIntent.ANSWER_PENDING
-        } else {
-            humanMessageIntent(
-            session = session,
-            message = humanMessage,
-            roleClaim = roleClaim,
-            publicStatement = publicStatement,
-            claimsHiddenInfo = claimsHiddenInfo,
-            casualMessage = casualMessage,
-            questionKind = questionKind
-            )
-        }
-        val repeatedOffTopic = messageIntent == HumanMessageIntent.OFF_TOPIC &&
-            recentPublicMessages(session)
-                .asReversed()
-                .filter { it.speaker == GameEngine.humanPlayer(session).name }
-                .take(2)
-                .count { BotPerception.isOffTopicMessage(session, it.message) } >= 2
-        val desiredReplyCount = when {
-            messageIntent == HumanMessageIntent.OFF_TOPIC -> if (repeatedOffTopic) 2 else 1
-            messageIntent in setOf(
-                HumanMessageIntent.ROLE_CLAIM,
-                HumanMessageIntent.ROLE_QUESTION,
-                HumanMessageIntent.ACTION_HELP,
-                HumanMessageIntent.VOTE_HELP,
-                HumanMessageIntent.SUSPECT_HELP,
-                HumanMessageIntent.ACCUSE,
-                HumanMessageIntent.DEFEND
-            ) || focusNames.isNotEmpty() -> 3
-            publicStatement != null ||
-                claimsHiddenInfo ||
-                messageIntent == HumanMessageIntent.ANSWER_PENDING ||
-                humanMessage.length > 45 -> 2
-            else -> 1
-        }
-        val replyCount = limitedReplyCount(session, desiredReplyCount)
-        val preferredResponder = claimResponder?.name ?: answeredQuestion?.speaker
-        return messageBots(session, replyCount, preferredFirst = preferredResponder).mapIndexed { index, bot ->
-            val read = rankedPublicSuspects(session, bot, focusNames).firstOrNull()
-            val memory = memoryFor(session, bot).let { currentMemory ->
-                if (answeredQuestion != null) {
-                    currentMemory.copy(pendingHumanQuestion = answeredQuestion)
-                } else {
-                    currentMemory
-                }
-            }
-            val baseTarget = speechTarget(session, bot, read)
-            val contextSeed = "reply:$index:${session.phaseIndex}:${socialChatSize(session)}:${humanMessage.length}"
-            val reason = informalReason(read?.reason(), contextSeed)
-            val mood = moodFor(session, bot, humanMessage)
-            val baseIntent = reactionIntent(session, bot, humanMessage, focusNames, mood, index, memory)
-            val intent = coordinatedIntent(
-                session = session,
-                base = baseIntent,
-                role = conversationRole(index),
-                hasStrongRead = read != null && !isWeakSuspicion(read),
-                hasThread = memory.unansweredTarget != null || memory.pendingHumanQuestion != null
-            ).let { toneAdjustedIntent(session, it) }
-            val target = if (intent == BotSpeechIntent.FOLLOW_UP && memory.lastPressuredTarget != null) {
-                memory.lastPressuredTarget
-            } else {
-                baseTarget
-            }
-            val unanswered = memory.unansweredTarget
-                ?.takeUnless { unansweredTarget -> unansweredTarget == bot.name }
-            val claimLine = roleClaim?.let { claim ->
-                roleClaimReaction(session, bot, claim, claimResponder, index)
-            }
-            val claimStatementLine = if (claimLine == null || bot.name != claimResponder?.name) {
-                roleClaimStatementReaction(session, roleClaim, publicStatement, index)
-            } else {
-                null
-            }
-            val statementLine = publicStatement?.let { statement ->
-                actionContradiction(session, GameEngine.humanPlayer(session).name, statement)
-                    ?.let { contradictionLine(GameEngine.humanPlayer(session).name, it) }
-                    ?: statementReaction(statement, index)
-            }
-            val line = when {
-                // El Bufon no se defiende cuando lo acusan: redobla para que lo expulsen.
-                bot.role?.key == RoleCatalog.BUFON && focusNames.contains(bot.name) ->
-                    jesterEmbraceAccusationLine(session, bot, index)
-                claimStatementLine != null -> claimStatementLine
-                claimLine != null -> claimLine
-                messageIntent == HumanMessageIntent.ANSWER_PENDING ->
-                    pendingAnswerReply(session, bot, humanMessage, memory, index)
-                messageIntent == HumanMessageIntent.ACCUSE && focusNames.contains(bot.name) ->
-                    defensiveLine(session, bot, mood)
-                statementLine != null -> statementLine
-                questionKind != null -> humanQuestionReply(session, bot, questionKind, read, index)
-                casualMessage -> casualHumanReply(session, bot, humanMessage, index)
-                messageIntent == HumanMessageIntent.OFF_TOPIC ->
-                    offTopicReply(session, bot, repeatedOffTopic, index)
-                unanswered != null && (
-                    intent == BotSpeechIntent.FOLLOW_UP ||
-                        messageIntent in setOf(HumanMessageIntent.ACCUSE, HumanMessageIntent.DOUBT, HumanMessageIntent.OTHER)
-                    ) -> "$unanswered igual sigo esperando esa respuesta"
-                messageIntent == HumanMessageIntent.DOUBT ->
-                    humanDoubtReply(session, bot, read, index)
-                claimsHiddenInfo && index == 0 ->
-                    "para para, no demos cartas por hechas. decime q hizo y listo"
-                claimsHiddenInfo ->
-                    "$target me hace ruido por lo q vimos nomas, $reason"
-                focusNames.contains(bot.name) ->
-                    defensiveLine(session, bot, mood)
-                else -> lineForIntent(session, bot, intent, target, reason, contextSeed)
-            }
-            bot.name to finishSpeech(
-                line,
-                session,
-                bot,
-                "reply:$index:${humanMessage.length}",
-                allowRoleTerms = roleClaim != null
-            )
-        }.dropEchoesOfRecentChat(session).dedupeBotMessages()
-    }
+    fun reactionsToHumanMessage(session: GameSession, humanMessage: String): List<Pair<String, String>> =
+        BotHumanMessageEngine.reactionsTo(session, humanMessage)
 
     internal fun roleClaimFrom(message: String): RoleClaim? = BotPerception.roleClaimFrom(message)
 
@@ -1383,6 +1272,14 @@ internal fun relationshipRead(
     val playerMemory = tableMemory[player.name]
     val reasons = suspectRead.reasons.toMutableList()
     var score = suspectRead.score
+    val rapport = session.tableMemory.rapport[bot.name]?.get(player.name) ?: 0
+    if (rapport > 0) {
+        score -= (rapport + 1) / 2
+        reasons += "me viene bancando"
+    } else if (rapport < 0) {
+        score += (-rapport + 1) / 2
+        reasons += "me viene atacando"
+    }
 
     publicContradiction(session, player.name)?.let { contradiction ->
         score += if (contradiction.latest.roleKey != null) 10 else 8
@@ -1456,6 +1353,8 @@ internal fun relationshipRead(
 
 internal fun relationshipReason(reasons: List<String>): String {
     val priority = listOf(
+        "tengo una pista privada",
+        "mi pista lo baja",
         "se contradijo de rol",
         "cambio su accion",
         "dos dijeron el mismo rol",
@@ -1464,8 +1363,10 @@ internal fun relationshipReason(reasons: List<String>): String {
         "lo marcaron varios",
         "quedo marcado de antes",
         "me voto",
+        "me viene atacando",
         "yo ya lo venia votando",
         "me marco antes",
+        "me viene bancando",
         "me banco antes",
         "lo habian bancado antes",
         "alguien lo banco",
@@ -1504,12 +1405,14 @@ internal fun roundObjectiveFor(session: GameSession, bot: GamePlayer): RoundObje
 
     if (isTraitor(bot) && socialRead(session, bot).heated) {
         val target = reads.firstOrNull { !isTraitor(it.player) } ?: strongest
-        return RoundObjective(
-            type = RoundObjectiveType.DEFLECT_PRESSURE,
-            target = target?.player?.let { safeName(it, session) },
-            reason = target?.reason.orEmpty(),
-            confidence = target?.score ?: 0
-        )
+        if (canVoiceStrongAccusation(session, target)) {
+            return RoundObjective(
+                type = RoundObjectiveType.DEFLECT_PRESSURE,
+                target = target?.player?.let { safeName(it, session) },
+                reason = target?.reason.orEmpty(),
+                confidence = target?.score ?: 0
+            )
+        }
     }
 
     if (contradiction != null && contradiction.score >= 8) {
@@ -1523,6 +1426,7 @@ internal fun roundObjectiveFor(session: GameSession, bot: GamePlayer): RoundObje
 
     if (
         strongest != null &&
+        canVoiceStrongAccusation(session, strongest) &&
         strongest.level in setOf(TrustLevel.PRESIONA, TrustLevel.SOSPECHA) &&
         agenda in setOf(BotAgenda.PUSH_VOTE, BotAgenda.FOLLOW_THREAD, BotAgenda.ASK_ROLES)
     ) {
@@ -1531,6 +1435,20 @@ internal fun roundObjectiveFor(session: GameSession, bot: GamePlayer): RoundObje
             target = safeName(strongest.player, session),
             reason = strongest.reason,
             confidence = strongest.score
+        )
+    }
+
+    val playerToQuestion = reads.firstOrNull { read ->
+        read.level in setOf(TrustLevel.NEUTRAL, TrustLevel.DUDA, TrustLevel.SOSPECHA, TrustLevel.PRESIONA) &&
+            GameEngine.canSpeak(session, read.player) &&
+            !canVoiceStrongAccusation(session, read)
+    }
+    if (playerToQuestion != null) {
+        return RoundObjective(
+            type = RoundObjectiveType.ASK_PLAYER,
+            target = safeName(playerToQuestion.player, session),
+            reason = playerToQuestion.reason,
+            confidence = playerToQuestion.score
         )
     }
 
@@ -1633,6 +1551,18 @@ internal fun scoreCandidate(
     val recent = recentPublicMessages(session)
     val reasons = mutableListOf<String>()
     var score = stableNoise("${session.code}:${session.round}:${voter.name}:${candidate.name}:base") % 3
+    session.tableMemory.privateInvestigationReads
+        .asReversed()
+        .firstOrNull { read -> read.source == voter.name && read.target == candidate.name }
+        ?.let { privateRead ->
+            if (normalizedForParsing(privateRead.result) in setOf("sospechoso", "sospechosa", "culpable", "traidor")) {
+                score += if (session.botDifficulty == BotDifficulty.HARD) 18 else 14
+                reasons += "tengo una pista privada"
+            } else if (normalizedForParsing(privateRead.result) in setOf("inocente", "limpio", "limpia")) {
+                score -= if (session.botDifficulty == BotDifficulty.HARD) 16 else 12
+                reasons += "mi pista lo baja"
+            }
+        }
     val persistentPressure = session.tableMemory.suspicion[voter.name]?.get(candidate.name) ?: 0
     if (persistentPressure > 0) {
         score += persistentPressure

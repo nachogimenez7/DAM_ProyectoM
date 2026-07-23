@@ -26,7 +26,7 @@ class BotTableMemoryTest {
             InvestigationRead(1, "Humano", "Mora", "sospechoso"),
             updated.tableMemory.declaredInvestigationReads.single()
         )
-        assertTrue(updated.tableMemory.suspicion["Valen"].orEmpty().getValue("Mora") >= 6)
+        assertTrue(updated.tableMemory.suspicion["Valen"].orEmpty().getValue("Mora") >= 5)
     }
 
     @Test
@@ -64,6 +64,49 @@ class BotTableMemoryTest {
         assertEquals(6, decayed.suspicion["Beto"].orEmpty()["Mora"])
         assertEquals(-4, decayed.suspicion["Beto"].orEmpty()["Valen"])
         assertNotNull(decayed.pendingQuestions["Humano"])
+    }
+
+    @Test
+    fun accusationCreatesGrudgeAndDifferentBeliefsInsteadOfHiveMind() {
+        val base = session().copy(
+            players = session().players.map { player ->
+                if (player.name == "Dina") {
+                    player.copy(role = RoleCatalog.gameRole(RoleCatalog.ASESINO, RoleMap.PAMPA))
+                } else {
+                    player
+                }
+            }
+        )
+
+        val updated = GameEngine.addHumanChatMessage(
+            base,
+            "Mora es traidora porque cambio la historia",
+            includeBotReactions = false
+        )
+
+        assertEquals(0, updated.tableMemory.suspicion["Dina"].orEmpty()["Mora"] ?: 0)
+        assertTrue((updated.tableMemory.suspicion["Valen"].orEmpty()["Mora"] ?: 0) > 0)
+        assertTrue((updated.tableMemory.rapport["Mora"].orEmpty()["Humano"] ?: 0) < 0)
+        assertTrue((updated.tableMemory.emotionalPressure["Mora"] ?: 0) > 0)
+    }
+
+    @Test
+    fun directPraiseAndInsultChangeOnlyTheAddressedBotsRelationship() {
+        val praised = GameEngine.addHumanChatMessage(
+            session(),
+            "Mora, sos una genia",
+            includeBotReactions = false
+        )
+        val insulted = GameEngine.addHumanChatMessage(
+            session(),
+            "Mora, sos mentirosa",
+            includeBotReactions = false
+        )
+
+        assertTrue((praised.tableMemory.rapport["Mora"].orEmpty()["Humano"] ?: 0) > 0)
+        assertTrue((insulted.tableMemory.rapport["Mora"].orEmpty()["Humano"] ?: 0) < 0)
+        assertEquals(0, praised.tableMemory.rapport["Valen"].orEmpty()["Humano"] ?: 0)
+        assertTrue((insulted.tableMemory.emotionalPressure["Mora"] ?: 0) > 0)
     }
 
     @Test

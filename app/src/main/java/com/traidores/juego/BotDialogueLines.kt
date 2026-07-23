@@ -328,11 +328,19 @@ internal fun agendaLine(
                 "no saltemos de tema, lo de $threadTarget sigue pendiente"
             )
         }
-        BotAgenda.DEFLECT_PRESSURE -> listOf(
-            "estan mirando para cualquier lado, $target viene mas raro",
-            "si me quieren apurar ok, pero $target sigue pasando gratis",
-            "no se enganchen conmigo, revisen a $target por esto: $reason"
-        )
+        BotAgenda.DEFLECT_PRESSURE -> if (weakRead) {
+            listOf(
+                "$target, no te acuso: quiero que ordenes tu version",
+                "si me van a mirar, primero comparemos lo que dijo cada uno",
+                "$target responde algo concreto y despues vemos"
+            )
+        } else {
+            listOf(
+                "estan mirando para cualquier lado, $target viene mas raro",
+                "si me quieren apurar ok, pero $target sigue pasando gratis",
+                "no se enganchen conmigo, revisen a $target por esto: $reason"
+            )
+        }
     }
     return chooseFreshLine(options, session, bot, "agenda:$agenda:$target:$index:${socialChatSize(session)}")
 }
@@ -432,6 +440,7 @@ internal fun playerFocusLine(
 
 internal fun statementReaction(statement: PublicStatement, index: Int): String? {
     val target = statement.target ?: "eso"
+    val reason = statement.reason
     return when (statement.type) {
         StatementType.PROTECTED -> when (index) {
             0 -> "ok, queda anotado lo de $target. si después no cierra te lo vamos a cobrar"
@@ -449,18 +458,42 @@ internal fun statementReaction(statement: PublicStatement, index: Int): String? 
             else -> null
         }
         StatementType.TRUST -> when (index) {
-            0 -> "por que confias en $target? dame algo mas que corazonada"
-            1 -> "bancar a alguien sin explicar tambien hace ruido"
+            0 -> if (reason != null) {
+                "ok, bancas a $target porque $reason. queda anotado"
+            } else {
+                "por que confias en $target? dame algo mas que corazonada"
+            }
+            1 -> if (reason != null) {
+                "ese motivo puede servir, pero $target igual tiene que sostenerlo"
+            } else {
+                "bancar a alguien sin explicar tambien hace ruido"
+            }
             else -> null
         }
         StatementType.ACCUSE -> when (index) {
-            0 -> "puede ser, pero deci que viste de $target"
-            1 -> "acusarlo asi nomas es medio gratis, explica"
+            0 -> if (reason != null) {
+                "ok, marcas a $target porque $reason. que responda eso"
+            } else {
+                "puede ser, pero deci que viste de $target"
+            }
+            1 -> if (reason != null) {
+                "ahi hay algo concreto para discutir con $target"
+            } else {
+                "acusarlo asi nomas es medio gratis, explica"
+            }
             else -> null
         }
         StatementType.VOTE -> when (index) {
-            0 -> "si vas con $target explica rapido pq"
-            1 -> "no votemos en manada sin escuchar respuesta"
+            0 -> if (reason != null) {
+                "vas con $target porque $reason, entendido. que conteste antes del cierre"
+            } else {
+                "si vas con $target explica rapido pq"
+            }
+            1 -> if (reason != null) {
+                "al menos hay motivo; ahora escuchemos a $target"
+            } else {
+                "no votemos en manada sin escuchar respuesta"
+            }
             else -> null
         }
     }
@@ -577,7 +610,7 @@ internal fun coordinatedIntent(
     }
     return when (role) {
         BotConversationRole.OPENER -> when {
-            base == BotSpeechIntent.ACCUSE && !hasStrongRead -> BotSpeechIntent.ASK
+            base in setOf(BotSpeechIntent.ACCUSE, BotSpeechIntent.TEASE) && !hasStrongRead -> BotSpeechIntent.ASK
             else -> base
         }
         BotConversationRole.FOLLOWER -> when (base) {
@@ -769,8 +802,104 @@ internal fun humanQuestionReply(
                 "no tengo nombre firme, ojo con votar por costumbre"
             )
         }
+        HumanQuestionKind.WHY_VOTE,
+        HumanQuestionKind.WHY_ACCUSE,
+        HumanQuestionKind.OPINION,
+        HumanQuestionKind.BELIEF,
+        HumanQuestionKind.ASK_ROLE -> listOf(
+            "esa pregunta es para quien nombraste, que responda sin vueltas",
+            "quiero escuchar primero al que estas cruzando",
+            "que conteste el involucrado y despues opino"
+        )
     }
     return chooseFreshLine(options, session, bot, "human-question:$kind:$index:${socialChatSize(session)}")
+}
+
+internal fun directHumanQuestionReply(
+    session: GameSession,
+    bot: GamePlayer,
+    humanMessage: String,
+    kind: HumanQuestionKind
+): String {
+    if (kind == HumanQuestionKind.ASK_ROLE) return directRoleQuestionReply(session, bot)
+    val human = GameEngine.humanPlayer(session)
+    val mentionedTarget = mentionedPlayerNames(session, humanMessage)
+        .firstOrNull { it != bot.name && it != human.name }
+        ?.let { GameEngine.playerByName(session, it) }
+    val latestVoteTarget = session.actionHistory
+        .asReversed()
+        .firstOrNull { action -> action.actor == bot.name && action.type == GameActionType.VOTE }
+        ?.target
+        ?.let { GameEngine.playerByName(session, it) }
+    val declaredTarget = declaredSuspicionTarget(session, bot)
+        ?.let { GameEngine.playerByName(session, it) }
+    val target = mentionedTarget ?: latestVoteTarget ?: declaredTarget
+    val targetRead = target?.let { relationshipRead(session, bot, it) }
+    val targetName = target?.let { safeName(it, session) } ?: "esa persona"
+    val reason = informalReason(targetRead?.reason, "direct-question:${bot.name}:$kind:${socialChatSize(session)}")
+    val options = when (kind) {
+        HumanQuestionKind.WHY_VOTE -> if (target?.isHuman == true) {
+            listOf(
+                "te vote porque $reason, no fue por copiar al resto",
+                "fui con vos por $reason. si cambia eso puedo revisar",
+                "mi voto contra vos salio de esto: $reason"
+            )
+        } else {
+            listOf(
+                "fui con $targetName porque $reason, no fue por copiar al resto",
+                "vote a $targetName por $reason. si cambia eso puedo revisar",
+                "mi voto a $targetName salio de esto: $reason"
+            )
+        }
+        HumanQuestionKind.WHY_ACCUSE -> if (target?.isHuman == true) {
+            listOf(
+                "te marque porque $reason, pero quiero escuchar tu respuesta",
+                "lo tuyo me hace ruido por $reason, no lo invente de la nada",
+                "te acuse por $reason. si lo explicas bien, aflojo"
+            )
+        } else {
+            listOf(
+                "marque a $targetName porque $reason, pero quiero escuchar su respuesta",
+                "lo de $targetName me hace ruido por $reason, no lo invente de la nada",
+                "acuse a $targetName por $reason. si lo explica bien, aflojo"
+            )
+        }
+        HumanQuestionKind.OPINION -> when (targetRead?.level) {
+            TrustLevel.CONFIA -> listOf(
+                "a $targetName lo vengo bancando, por ahora me cierra mas que el resto",
+                "$targetName hoy me parece bastante limpio, aunque no lo doy por seguro"
+            )
+            TrustLevel.SOSPECHA,
+            TrustLevel.PRESIONA -> listOf(
+                "$targetName me hace ruido porque $reason",
+                "a $targetName lo tengo arriba; necesito que explique $reason"
+            )
+            else -> listOf(
+                "con $targetName estoy en duda, no tengo una prueba fuerte todavia",
+                "$targetName no me cierra del todo, pero tampoco lo votaria ciego"
+            )
+        }
+        HumanQuestionKind.BELIEF -> {
+            val humanRead = relationshipRead(session, bot, human)
+            when (humanRead.level) {
+                TrustLevel.CONFIA -> listOf(
+                    "por ahora te creo, venis sosteniendo lo que decis",
+                    "te banco por ahora, pero no cambies la historia despues"
+                )
+                TrustLevel.SOSPECHA,
+                TrustLevel.PRESIONA -> listOf(
+                    "no del todo, me haces ruido porque ${informalReason(humanRead.reason, "belief:${bot.name}")}",
+                    "todavia no te compro; necesito una respuesta mas concreta"
+                )
+                else -> listOf(
+                    "te doy el beneficio de la duda, pero no estoy cerrado",
+                    "mitad y mitad: te escucho, pero quiero ver si sostenes eso"
+                )
+            }
+        }
+        else -> listOf("te respondo directo: todavia no lo tengo claro")
+    }
+    return chooseFreshLine(options, session, bot, "direct-question:$kind:$humanMessage")
 }
 
 internal fun humanDoubtReply(
@@ -1367,13 +1496,20 @@ internal fun traitorPlannedDayLine(
             dirtyTarget != null &&
             !hasClaimedRole(session, bot.name) -> {
             val label = roleLabel(cover.fakeRoleKey ?: RoleCatalog.POLICIA)
-            "paro ahi: yo tambien soy $label. $dirtyTarget esta acomodando la historia"
+            if (isOpeningInvestigationStage(session)) {
+                "paro ahi: yo tambien soy $label. $dirtyTarget explica como pueden cerrar las dos versiones"
+            } else {
+                "paro ahi: yo tambien soy $label. $dirtyTarget esta acomodando la historia"
+            }
         }
         cover?.kind == CoverKind.COUNTER_CLAIM &&
             cover.backer == bot.name &&
             dirtyTarget != null &&
-            cover.actor.isNotBlank() ->
-            "yo le creo mas a ${cover.actor}; $dirtyTarget viene forzando esa lectura"
+            cover.actor.isNotBlank() -> if (isOpeningInvestigationStage(session)) {
+                "${cover.actor} y $dirtyTarget no pueden tener razon los dos; escuchemos las versiones"
+            } else {
+                "yo le creo mas a ${cover.actor}; $dirtyTarget viene forzando esa lectura"
+            }
         cover?.kind == CoverKind.FAKE_CLAIM &&
             cover.actor == bot.name &&
             !hasClaimedRole(session, bot.name) -> {
@@ -1381,13 +1517,19 @@ internal fun traitorPlannedDayLine(
             "lo digo para ordenar: soy $label. no me hagan quemar mas de lo necesario"
         }
         cover?.kind == CoverKind.BUS_ALLY &&
-            dirtyTarget != null ->
-            "no voy a tapar a $dirtyTarget, ya queda demasiado raro todo lo que hizo"
+            dirtyTarget != null -> if (isOpeningInvestigationStage(session)) {
+                "$dirtyTarget ordena lo que hiciste antes de que alguien cierre una acusacion"
+            } else {
+                "no voy a tapar a $dirtyTarget, ya queda demasiado raro todo lo que hizo"
+            }
         pushTarget != null && index <= 2 -> {
-            if (cover?.backer == bot.name && cover.actor.isNotBlank()) {
+            val read = relationshipReads(session, bot).firstOrNull { it.player.name == pushTarget }
+            if (!canVoiceStrongAccusation(session, read)) {
+                "$pushTarget, antes de tirar votos quiero saber a quien miras y por que"
+            } else if (cover?.backer == bot.name && cover.actor.isNotBlank()) {
                 "banco a ${cover.actor}; el voto para mi esta en $pushTarget"
             } else {
-                "para mi hoy hay que ordenar con $pushTarget, viene dejando huecos"
+                "para mi hoy hay que ordenar con $pushTarget, ${read?.reason.orEmpty()}"
             }
         }
         else -> null
@@ -1632,7 +1774,12 @@ internal fun finishTraitorSpeech(
         .replace("que ", if (seed % 5 == 0) "q " else "que ")
         .replace("tambien", if (seed % 4 == 0) "tmb" else "tambien")
         .replace("no se", if (seed % 2 == 0) "nose" else "no se")
-    text = applyPersonalitySignature(text, personality, seed)
+    text = applyPersonalitySignature(
+        text,
+        personality,
+        seed,
+        playful = session.botDifficulty != BotDifficulty.HARD
+    )
     return text
         .replace(Regex("[.!]{1,}$"), "")
         .replace(Regex("\\s+"), " ")
@@ -1707,6 +1854,16 @@ internal fun informalReason(reason: String?, contextSeed: String = ""): String {
             "dio dos versiones de su accion",
             "no sostuvo la misma historia"
         )
+        "tengo una pista privada" -> listOf(
+            "hay una pista que me lo deja mal",
+            "tengo un hilo concreto con el",
+            "mi lectura de anoche no me cierra"
+        )
+        "mi pista lo baja" -> listOf(
+            "mi lectura no lo deja arriba",
+            "tengo motivos para no cerrarlo ahi",
+            "hay una pista que lo baja bastante"
+        )
         else -> listOf(
             "hay algo q no me cierra",
             "me hace ruido",
@@ -1748,7 +1905,12 @@ internal fun finishSpeech(
     if (personality == BotPersonality.TRANQUI && seed % 4 == 0 && !text.startsWith("igual")) {
         text = "igual $text"
     }
-    text = applyPersonalitySignature(text, personality, seed)
+    text = applyPersonalitySignature(
+        text,
+        personality,
+        seed,
+        playful = session.botDifficulty != BotDifficulty.HARD
+    )
     text = text
         .replace(Regex("[.!]{1,}$"), "")
         .replace(Regex("\\s+"), " ")
@@ -1773,23 +1935,26 @@ internal fun finishSpeech(
 internal fun applyPersonalitySignature(
     text: String,
     personality: BotPersonality,
-    seed: Int
+    seed: Int,
+    playful: Boolean = true
 ): String {
     if (text.length > 110 || seed % 6 != 0) return text
-    return when (personality) {
-        BotPersonality.TRANQUI ->
-            if (text.startsWith("igual")) text else "tranqui, $text"
-        BotPersonality.PICANTE ->
-            if (text.startsWith("sin vueltas")) text else "sin vueltas, $text"
-        BotPersonality.JODON ->
-            if (containsLaugh(text)) text else "$text jaja"
-        BotPersonality.DESCONFIADO ->
-            if (text.startsWith("mmm")) text else "mmm, $text"
-        BotPersonality.IMPULSIVO ->
-            if (text.startsWith("dale")) text else "dale, $text"
-        BotPersonality.ANALITICO ->
-            if (text.startsWith("van dos cosas")) text else "van dos cosas: $text"
+    val variantIndex = Math.floorMod(seed / 6, 3)
+    if (personality == BotPersonality.JODON) {
+        if (!playful || containsLaugh(text)) return text
+        val suffix = listOf("posta jaja", "jaja", "en serio mentira jaja")[variantIndex]
+        return "$text $suffix"
     }
+    val prefix = when (personality) {
+        BotPersonality.TRANQUI -> listOf("igual,", "tranqui,", "che tranqui, quedate con esto:")[variantIndex]
+        BotPersonality.PICANTE -> listOf("te lo digo derecho,", "sin vueltas,", "a las claras,")[variantIndex]
+        BotPersonality.DESCONFIADO -> listOf("ojo,", "mmm,", "no se eh,")[variantIndex]
+        BotPersonality.IMPULSIVO -> listOf("va,", "dale,", "ya esta,")[variantIndex]
+        BotPersonality.ANALITICO -> listOf("mira:", "pensandolo bien:", "van dos cosas:")[variantIndex]
+        BotPersonality.JODON -> error("handled above")
+    }
+    val prefixStart = prefix.substringBefore(',').substringBefore(':')
+    return if (text.startsWith(prefixStart)) text else "$prefix $text"
 }
 
 private val leadingBotFillers = listOf(

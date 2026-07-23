@@ -777,17 +777,25 @@ class VoteResultAnimator(
         val holder = cardHolders[token.targetName] ?: return
         holder.count += 1
         holder.total.text = "${holder.count} ${if (holder.count == 1) "VOTO" else "VOTOS"}"
-        val tokenView = TextView(context).apply {
-            background = ResourcesCompat.getDrawable(
-                context.resources,
-                R.drawable.bg_vote_token,
-                context.theme
-            )
-            gravity = Gravity.CENTER
-            text = if (session.showIndividualVotes) token.initial else "*"
-            setTextColor(context.getColor(R.color.bg_dark))
-            textSize = if (session.showIndividualVotes) 8f else 10f
-            typeface = Typeface.DEFAULT_BOLD
+        val tokenView: View = (if (session.showIndividualVotes) {
+            TextView(context).apply {
+                background = ResourcesCompat.getDrawable(
+                    context.resources,
+                    R.drawable.bg_vote_token,
+                    context.theme
+                )
+                gravity = Gravity.CENTER
+                text = token.initial
+                setTextColor(context.getColor(R.color.bg_dark))
+                textSize = 8f
+                typeface = Typeface.DEFAULT_BOLD
+            }
+        } else {
+            ImageView(context).apply {
+                setImageResource(R.drawable.expulsion_seal)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+        }).apply {
             alpha = 0f
             scaleX = 0.4f
             scaleY = 0.4f
@@ -798,8 +806,9 @@ class VoteResultAnimator(
             }
         }
         val params = GridLayout.LayoutParams().apply {
-            width = dp(10)
-            height = dp(10)
+            val tokenSize = if (session.showIndividualVotes) 10 else 12
+            width = dp(tokenSize)
+            height = dp(tokenSize)
             setMargins(dp(1), dp(1), dp(1), dp(1))
         }
         holder.voterTokens.addView(tokenView, params)

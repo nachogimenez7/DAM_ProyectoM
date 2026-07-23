@@ -2,6 +2,7 @@ package com.traidores.juego
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,6 +33,40 @@ class BotPerceptionTest {
         assertEquals(StatementType.REFUSED_ROLE, LocalBotAi.publicStatementFrom(session, "no pienso decir mi rol")?.type)
         assertEquals(StatementType.TRUST, LocalBotAi.publicStatementFrom(session, "confío en Valen")?.type)
         assertEquals(StatementType.VOTE, LocalBotAi.publicStatementFrom(session, "voto a Thiago")?.type)
+    }
+
+    @Test
+    fun understandsDirectAddressNegatedVoteAndStatedReason() {
+        val session = session()
+
+        assertEquals("Mora", BotPerception.directAddressee(session, "Mora, que pensas de Valen?"))
+        assertNull(BotPerception.directAddressee(session, "Mora esta rara"))
+        assertEquals(HumanQuestionKind.WHY_VOTE, BotPerception.humanQuestionKind("Mora, por que me votaste?"))
+        assertEquals(HumanQuestionKind.ASK_ROLE, BotPerception.humanQuestionKind("Mora, que rol sos?"))
+        assertEquals(HumanSocialSignal.PRAISE, BotPerception.socialSignal("Mora, sos una genia"))
+        assertEquals(HumanSocialSignal.INSULT, BotPerception.socialSignal("Mora, sos mentirosa"))
+
+        val statement = LocalBotAi.publicStatementFrom(
+            session,
+            "no voto a Mora porque sostuvo la misma historia"
+        )
+        assertEquals(StatementType.TRUST, statement?.type)
+        assertEquals("Mora", statement?.target)
+        assertEquals("sostuvo la misma historia", statement?.reason)
+
+        val addressedAccusation = LocalBotAi.publicStatementFrom(session, "Mora, Valen miente")
+        assertEquals(StatementType.ACCUSE, addressedAccusation?.type)
+        assertEquals("Valen", addressedAccusation?.target)
+
+        assertEquals(
+            StatementType.ACCUSE,
+            LocalBotAi.publicStatementFrom(session, "no confio en Valen")?.type
+        )
+        assertEquals(
+            StatementType.TRUST,
+            LocalBotAi.publicStatementFrom(session, "Mora no me dio sospechosa")?.type
+        )
+        assertNull(LocalBotAi.publicStatementFrom(session, "no protegi a Valen"))
     }
 
     @Test
@@ -82,7 +117,7 @@ class BotPerceptionTest {
             chatHistory = listOf(GameChatMessage("Beto", "Humano, qué opinás de Mora?"))
         )
         assertEquals(
-            HumanMessageIntent.ANSWER_PENDING,
+            HumanMessageIntent.OFF_TOPIC,
             humanMessageIntent(pending, "anoche vi una película buenísima", null, null, false, false, null)
         )
     }

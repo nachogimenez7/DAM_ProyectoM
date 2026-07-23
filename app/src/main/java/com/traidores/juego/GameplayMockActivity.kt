@@ -7,6 +7,7 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -5127,7 +5128,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         if (deathIcon != 0) {
             holder.deathCauseOverlay.setImageResource(deathIcon)
-            holder.deathCauseOverlay.alpha = 1f
+            applyDeathCauseIconStyle(holder.deathCauseOverlay, player.deathCause)
         }
         holder.avatar.layoutParams = (holder.avatar.layoutParams as FrameLayout.LayoutParams).apply {
             width = dp(metrics.avatarSizeDp)
@@ -5277,7 +5278,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         holder.cardBack.alpha = eliminatedContentAlpha
         holder.roleFace.alpha = when {
             isAlive || isOracleGuest -> 1f
-            showPublicRole -> 0.86f
+            showPublicRole -> 0.80f
             else -> eliminatedContentAlpha
         }
         holder.avatar.alpha = eliminatedContentAlpha
@@ -5334,7 +5335,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             holder.roleFace.visibility = if (showPublicRole) View.VISIBLE else View.GONE
             if (showPublicRole) {
                 holder.roleFace.setImageResource(roleImageFor(player.role))
-                holder.roleFace.alpha = if (isAlive) 1f else 0.86f
+                holder.roleFace.alpha = if (isAlive) 1f else 0.80f
             }
         }
         val animateReveal = holder.hasBound && showPublicRole && !holder.publicRoleVisible
@@ -5361,6 +5362,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     .start()
             }
             .start()
+    }
+
+    private fun applyDeathCauseIconStyle(icon: ImageView, cause: DeathCause) {
+        icon.alpha = 1f
+        if (cause == DeathCause.VOTE || cause == DeathCause.AFK) {
+            icon.colorFilter = ColorMatrixColorFilter(
+                floatArrayOf(
+                    1.12f, 0f, 0f, 0f, 10f,
+                    0f, 1.12f, 0f, 0f, 7f,
+                    0f, 0f, 1.08f, 0f, 3f,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+        } else {
+            icon.clearColorFilter()
+        }
     }
 
     private fun showMiniPlayerProfile(player: GamePlayer) {
@@ -5439,7 +5456,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         card.addView(ImageView(this).apply {
             setImageResource(roleImageFor(role))
             scaleType = ImageView.ScaleType.FIT_CENTER
-            alpha = 0.88f
+            alpha = 0.82f
             contentDescription = "Carta ${role.name} de ${player.name}"
         }, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -5449,7 +5466,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             card.addView(ImageView(this).apply {
                 setImageResource(deathIcon)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                alpha = 1f
+                applyDeathCauseIconStyle(this, player.deathCause)
                 elevation = dp(8).toFloat()
                 contentDescription = statusText.lowercase()
             }, FrameLayout.LayoutParams(
@@ -6566,9 +6583,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         if (deathIcon != 0) {
             humanDeathCauseOverlay.setImageResource(deathIcon)
-            humanDeathCauseOverlay.alpha = 1f
+            applyDeathCauseIconStyle(humanDeathCauseOverlay, human.deathCause)
         }
-        roleImage.alpha = if (human.alive) 1f else 0.62f
+        roleImage.alpha = if (human.alive) 1f else 0.58f
         if (showRole) {
             val imageRes = roleImageFor(role)
             if (lastRoleCardImageRes != imageRes) {

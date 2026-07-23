@@ -863,19 +863,29 @@ class GameplayChatController(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
-        row.addView(TextView(root.context).apply {
-            text = event.icon
-            gravity = Gravity.CENTER
-            setTextColor(event.iconColor)
-            textSize = 8.5f * host.gameplayTextScale
-            typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = host.dp(5).toFloat()
-                setColor(event.backgroundColor)
-                setStroke(host.dp(1), event.strokeColor)
+        val iconView = if (event.iconRes != 0) {
+            ImageView(root.context).apply {
+                setImageResource(event.iconRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2))
+                if (event.tintIcon) setColorFilter(event.iconColor)
             }
-        }, LinearLayout.LayoutParams(host.dp(18), host.dp(18)).apply {
+        } else {
+            TextView(root.context).apply {
+                text = event.icon
+                gravity = Gravity.CENTER
+                setTextColor(event.iconColor)
+                textSize = 8.5f * host.gameplayTextScale
+                typeface = Typeface.DEFAULT_BOLD
+            }
+        }
+        iconView.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = host.dp(5).toFloat()
+            setColor(event.backgroundColor)
+            setStroke(host.dp(1), event.strokeColor)
+        }
+        row.addView(iconView, LinearLayout.LayoutParams(host.dp(18), host.dp(18)).apply {
             marginEnd = host.dp(6)
         })
         row.addView(TextView(root.context).apply {
@@ -979,7 +989,9 @@ class GameplayChatController(
         val label: String,
         val backgroundColor: Int,
         val strokeColor: Int,
-        val iconColor: Int
+        val iconColor: Int,
+        val iconRes: Int = 0,
+        val tintIcon: Boolean = true
     )
 
     private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
@@ -1012,35 +1024,43 @@ class GameplayChatController(
                 label = "MUERTE",
                 backgroundColor = Color.parseColor("#7A2A22"),
                 strokeColor = Color.parseColor("#B46A72"),
-                iconColor = Color.parseColor("#F0B2A8")
+                iconColor = Color.parseColor("#F0B2A8"),
+                iconRes = R.drawable.death_blood_splatter_art,
+                tintIcon = false
             )
             ChronicleEntryKind.EXPULSION -> EventPresentation(
                 icon = "V",
                 label = "EXPULSION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
-                iconColor = gold
+                iconColor = gold,
+                iconRes = R.drawable.expulsion_seal,
+                tintIcon = false
             )
             ChronicleEntryKind.VOTE -> EventPresentation(
                 icon = "V",
                 label = "VOTACION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
-                iconColor = gold
+                iconColor = gold,
+                iconRes = R.drawable.expulsion_seal,
+                tintIcon = false
             )
             ChronicleEntryKind.NIGHT -> EventPresentation(
                 icon = "N",
                 label = "NOCHE",
                 backgroundColor = Color.parseColor("#25334F"),
                 strokeColor = Color.parseColor("#6B86B8"),
-                iconColor = Color.parseColor("#B7C7E8")
+                iconColor = Color.parseColor("#B7C7E8"),
+                iconRes = R.drawable.ic_chronicle_moon
             )
             ChronicleEntryKind.DAWN -> EventPresentation(
                 icon = "A",
                 label = "AMANECER",
                 backgroundColor = Color.parseColor("#6B5525"),
                 strokeColor = Color.parseColor("#E3C46F"),
-                iconColor = Color.parseColor("#F4D77D")
+                iconColor = Color.parseColor("#F4D77D"),
+                iconRes = R.drawable.ic_chronicle_sun
             )
             ChronicleEntryKind.SILENCE -> EventPresentation(
                 icon = "S",
@@ -1068,7 +1088,9 @@ class GameplayChatController(
                 label = "SUCESO",
                 backgroundColor = Color.parseColor("#4A3518"),
                 strokeColor = gold,
-                iconColor = gold
+                iconColor = gold,
+                iconRes = R.drawable.ic_chronicle_crest,
+                tintIcon = false
             )
         }
     }
@@ -2021,7 +2043,6 @@ class GameplayChatController(
 
     private fun onHumanMessage(rawHumanMessage: String) {
         if (host.isOnlineGameplay()) return
-        cancelScheduledBotChat()
         val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         val session = host.currentSession
         if (humanMessage.isBlank() || LocalBotAi.isDebugVoteCommand(session, humanMessage)) return
@@ -2029,6 +2050,14 @@ class GameplayChatController(
             resetDirectorForPhase(session)
         }
         directorHumanSpokePhaseIndex = session.phaseIndex
+        if (directorPendingHumanMessage.isNotBlank()) {
+            cancelScheduledBotChat()
+            directorPendingHumanMessage = humanMessage
+            directorReactionLines = 0
+            scheduleNextHumanReactionBeat()
+            return
+        }
+        cancelScheduledBotChat()
         directorPendingHumanMessage = humanMessage
         directorReactionLines = 0
         scheduleNextHumanReactionBeat()
@@ -2085,34 +2114,36 @@ class GameplayChatController(
             lastSpeaker = directorLastSpeaker
         )
         if (beat == null) {
-            directorPendingHumanMessage = ""
-            directorReactionLines = 0
-            scheduleNextIdleBeat()
+            finishHumanConversation()
             return
         }
         val delayMs = BotConversationDirector.naturalDelayMs(
             session = session,
             beatIndex = directorBeatCounter++,
             message = beat.message,
-            reaction = true
+            reaction = true,
+            speaker = beat.speaker
         )
-        scheduleBotChatMessage(
-            speaker = beat.speaker,
-            message = beat.message,
+        scheduleBotConversationBeat(
+            beat = beat,
             phaseIndex = session.phaseIndex,
             phase = session.phase,
             delayMs = delayMs
-        ) { committed ->
+        ) { committed, deliveredMessages ->
             directorLastSpeaker = beat.speaker
-            directorReactionLines += 1
+            directorReactionLines += deliveredMessages
             if (directorReactionLines >= MAX_STAGGERED_BOT_REACTIONS) {
-                directorPendingHumanMessage = ""
-                directorReactionLines = 0
-                scheduleNextIdleBeat(committed)
+                finishHumanConversation(committed)
             } else {
                 scheduleNextHumanReactionBeat()
             }
         }
+    }
+
+    private fun finishHumanConversation(sessionOverride: GameSession? = null) {
+        directorReactionLines = 0
+        directorPendingHumanMessage = ""
+        scheduleNextIdleBeat(sessionOverride)
     }
 
     private fun scheduleNextIdleBeat(sessionOverride: GameSession? = null) {
@@ -2146,17 +2177,17 @@ class GameplayChatController(
                 session = session,
                 beatIndex = directorBeatCounter++,
                 message = beat.message,
-                reaction = false
+                reaction = false,
+                speaker = beat.speaker
             )
-        scheduleBotChatMessage(
-            speaker = beat.speaker,
-            message = beat.message,
+        scheduleBotConversationBeat(
+            beat = beat,
             phaseIndex = session.phaseIndex,
             phase = session.phase,
             delayMs = delayMs
-        ) { committed ->
+        ) { committed, deliveredMessages ->
             directorLastSpeaker = beat.speaker
-            directorIdleLines += 1
+            directorIdleLines += deliveredMessages
             if (beat.promptsSilentHuman) {
                 directorPromptedSilentHuman = true
             }
@@ -2200,19 +2231,87 @@ class GameplayChatController(
             session = session,
             beatIndex = directorBeatCounter++,
             message = beat.message,
-            reaction = false
+            reaction = false,
+            speaker = beat.speaker
         )
-        scheduleBotChatMessage(
-            speaker = beat.speaker,
-            message = beat.message,
+        scheduleBotConversationBeat(
+            beat = beat,
             phaseIndex = session.phaseIndex,
             phase = session.phase,
             delayMs = delayMs,
             channel = ChatChannel.TRAIDORES
-        ) { committed ->
+        ) { committed, deliveredMessages ->
             traitorDirectorLastSpeaker = beat.speaker
-            traitorDirectorLines += 1
+            traitorDirectorLines += deliveredMessages
             scheduleNextTraitorNightBeat(committed)
+        }
+    }
+
+    private fun scheduleBotConversationBeat(
+        beat: BotConversationBeat,
+        phaseIndex: Int,
+        phase: GamePhase,
+        delayMs: Long,
+        channel: ChatChannel = ChatChannel.PUBLICO,
+        afterCommit: ((GameSession, Int) -> Unit)? = null
+    ) {
+        scheduleBotConversationMessage(
+            speaker = beat.speaker,
+            messages = listOf(beat.message) + beat.followUps,
+            messageIndex = 0,
+            phaseIndex = phaseIndex,
+            phase = phase,
+            delayMs = delayMs,
+            channel = channel,
+            afterCommit = afterCommit
+        )
+    }
+
+    private fun scheduleBotConversationMessage(
+        speaker: String,
+        messages: List<String>,
+        messageIndex: Int,
+        phaseIndex: Int,
+        phase: GamePhase,
+        delayMs: Long,
+        channel: ChatChannel,
+        afterCommit: ((GameSession, Int) -> Unit)?
+    ) {
+        val message = messages.getOrNull(messageIndex) ?: return
+        scheduleBotChatMessage(
+            speaker = speaker,
+            message = message,
+            phaseIndex = phaseIndex,
+            phase = phase,
+            delayMs = delayMs,
+            channel = channel,
+            minimumSilentPauseMs = if (messageIndex == 0) {
+                PRIMARY_BOT_THINKING_PAUSE_MS
+            } else {
+                BURST_BOT_THINKING_PAUSE_MS
+            }
+        ) { committed ->
+            val nextIndex = messageIndex + 1
+            if (nextIndex < messages.size) {
+                val nextMessage = messages[nextIndex]
+                scheduleBotConversationMessage(
+                    speaker = speaker,
+                    messages = messages,
+                    messageIndex = nextIndex,
+                    phaseIndex = phaseIndex,
+                    phase = phase,
+                    delayMs = BotConversationDirector.burstDelayMs(
+                        session = committed,
+                        beatIndex = directorBeatCounter++,
+                        speaker = speaker,
+                        message = nextMessage
+                    ),
+                    channel = channel,
+                    afterCommit = afterCommit
+                )
+            } else {
+                afterCommit?.invoke(committed, messages.size)
+            }
         }
     }
 
@@ -2223,6 +2322,7 @@ class GameplayChatController(
         phase: GamePhase,
         delayMs: Long,
         channel: ChatChannel = ChatChannel.PUBLICO,
+        minimumSilentPauseMs: Long = PRIMARY_BOT_THINKING_PAUSE_MS,
         afterCommit: ((GameSession) -> Unit)? = null
     ) {
         val typingRunnable = object : Runnable {
@@ -2264,6 +2364,7 @@ class GameplayChatController(
                         phase = phase,
                         delayMs = TRANSITION_RETRY_DELAY_MS,
                         channel = channel,
+                        minimumSilentPauseMs = minimumSilentPauseMs,
                         afterCommit = afterCommit
                     )
                     return
@@ -2281,9 +2382,12 @@ class GameplayChatController(
         }
         pendingBotChatRunnables += typingRunnable
         pendingBotChatRunnables += runnable
+        val effectiveSilentPause = minimumSilentPauseMs
+            .coerceAtMost((delayMs - MIN_BOT_TYPING_VISIBLE_MS).coerceAtLeast(0L))
         handler.postDelayed(
             typingRunnable,
-            (delayMs - botTypingVisibleMs(delayMs)).coerceAtLeast(250L)
+            (delayMs - botTypingVisibleMs(delayMs, message, effectiveSilentPause))
+                .coerceAtLeast(effectiveSilentPause)
         )
         handler.postDelayed(runnable, delayMs)
     }
@@ -2303,8 +2407,12 @@ class GameplayChatController(
         }
     }
 
-    private fun botTypingVisibleMs(delayMs: Long): Long {
-        return (delayMs * 3 / 5).coerceIn(900L, 2_800L)
+    private fun botTypingVisibleMs(delayMs: Long, message: String, silentPauseMs: Long): Long {
+        val desiredWritingTime = (700L + message.length * 18L).coerceIn(
+            MIN_BOT_TYPING_VISIBLE_MS,
+            MAX_BOT_TYPING_VISIBLE_MS
+        )
+        return desiredWritingTime.coerceAtMost((delayMs - silentPauseMs).coerceAtLeast(0L))
     }
 
     private fun clearChatComposerAfterSend() {
@@ -2676,5 +2784,9 @@ class GameplayChatController(
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
         private const val EVENT_BOT_REACTION_DELAY_MS = 2_400L
         private const val TRANSITION_RETRY_DELAY_MS = 650L
+        private const val PRIMARY_BOT_THINKING_PAUSE_MS = 700L
+        private const val BURST_BOT_THINKING_PAUSE_MS = 250L
+        private const val MIN_BOT_TYPING_VISIBLE_MS = 550L
+        private const val MAX_BOT_TYPING_VISIBLE_MS = 2_400L
     }
 }

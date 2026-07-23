@@ -95,13 +95,48 @@ internal object BotPerception {
             publicStatementCache[cacheKey]?.let { return it.value }
         }
         val text = normalizedForParsing(message)
-        val target = mentionedPlayerNames(session, message).firstOrNull()
-        val targetText = target?.let(::normalizedForParsing)
+        val mentionedTargets = mentionedPlayerNames(session, message)
+        val protectedTarget = targetAfterAction(
+            text,
+            mentionedTargets,
+            listOf("protegi", "cuide", "salve", "cure")
+        )
+        val investigatedTarget = targetAfterAction(
+            text,
+            mentionedTargets,
+            listOf("investigue", "revise", "mire", "pregunte")
+        )
+        val rejectedVoteTarget = mentionedTargets.firstOrNull { target ->
+            explicitlyRejectsVote(text, normalizedForParsing(target))
+        }
+        val trustTarget = mentionedTargets.firstOrNull { target ->
+            hasTrustSignal(text, normalizedForParsing(target))
+        }
+        val accusationTarget = mentionedTargets.firstOrNull { target ->
+            hasAccusationSignal(text, normalizedForParsing(target))
+        }
+        val voteTarget = mentionedTargets.firstOrNull { target ->
+            hasVoteSignal(text, normalizedForParsing(target))
+        }
+        val resultTarget = investigatedTarget
+            ?: mentionedTargets.firstOrNull { target ->
+                val normalizedTarget = normalizedForParsing(target)
+                text.contains("$normalizedTarget me dio") ||
+                    text.contains("$normalizedTarget dio") ||
+                    text.contains("$normalizedTarget salio")
+            }
+            ?: mentionedTargets.lastOrNull()
         val publicResult = publicResultPattern.find(text)?.groupValues?.getOrNull(4)
+        val publicResultNegated = publicResult?.let { result ->
+            listOf("no me dio $result", "no dio $result", "no salio $result", "no resulto $result")
+                .any(text::contains)
+        } == true
+        val statedReason = statedReasonFrom(text)
 
         val statement = when {
-            protectedStatementPattern.containsMatchIn(text) ->
-                PublicStatement(StatementType.PROTECTED, target)
+            protectedStatementPattern.containsMatchIn(text) &&
+                !hasNegatedAction(text, listOf("protegi", "cuide", "salve", "cure")) ->
+                PublicStatement(StatementType.PROTECTED, protectedTarget ?: mentionedTargets.lastOrNull())
             text.contains("no digo mi rol") ||
                 text.contains("no pienso decir mi rol") ||
                 text.contains("no voy a decir rol") ||
@@ -111,46 +146,28 @@ internal object BotPerception {
                 text.contains("prefiero no decir") ||
                 text.contains("no digo rol") ->
                 PublicStatement(StatementType.REFUSED_ROLE)
-            target != null && publicResult in setOf("inocente", "limpio", "limpia") ->
-                PublicStatement(StatementType.TRUST, target)
-            target != null && publicResult in setOf(
+            resultTarget != null && publicResult in setOf("inocente", "limpio", "limpia") &&
+                !publicResultNegated ->
+                PublicStatement(StatementType.TRUST, resultTarget)
+            resultTarget != null && publicResult in setOf(
                 "sospechoso", "sospechosa", "culpable", "traidor", "traidora"
-            ) -> PublicStatement(StatementType.ACCUSE, target)
-            target != null && (
-                text.contains("confio en $targetText") ||
-                    text.contains("banco a $targetText") ||
-                    text.contains("$targetText es limpio") ||
-                    text.contains("$targetText es limpia") ||
-                    text.contains("$targetText es inocente") ||
-                    text.contains("$targetText no me parece raro") ||
-                    text.contains("$targetText no me parece rara") ||
-                    text.contains("$targetText no es") ||
-                    text.contains("no votaria a $targetText")
-                ) -> PublicStatement(StatementType.TRUST, target)
-            target != null && (
-                text.contains("$targetText miente") ||
-                    text.contains("no confio en $targetText") ||
-                    text.contains("$targetText esta raro") ||
-                    text.contains("$targetText esta rara") ||
-                    text.contains("$targetText es raro") ||
-                    text.contains("$targetText es rara") ||
-                    text.contains("$targetText me hace ruido") ||
-                    text.contains("$targetText es culpable") ||
-                    text.contains("$targetText es sospechoso") ||
-                    text.contains("$targetText es sospechosa") ||
-                    text.contains("$targetText es traidor") ||
-                    text.contains("$targetText es traidora") ||
-                    text.contains("sospecho de $targetText") ||
-                    text.contains("para mi es $targetText")
-                ) -> PublicStatement(StatementType.ACCUSE, target)
-            target != null && (
-                text.contains("voto a $targetText") ||
-                    text.contains("votaria a $targetText") ||
-                    text.contains("voy con $targetText")
-                ) -> PublicStatement(StatementType.VOTE, target)
-            investigatedStatementPattern.containsMatchIn(text) ->
-                PublicStatement(StatementType.INVESTIGATED, target)
+            ) && !publicResultNegated -> PublicStatement(StatementType.ACCUSE, resultTarget)
+            resultTarget != null && publicResultNegated &&
+                publicResult in setOf("sospechoso", "sospechosa", "culpable", "traidor", "traidora") ->
+                PublicStatement(StatementType.TRUST, resultTarget)
+            resultTarget != null && publicResultNegated &&
+                publicResult in setOf("inocente", "limpio", "limpia") ->
+                PublicStatement(StatementType.ACCUSE, resultTarget)
+            rejectedVoteTarget != null -> PublicStatement(StatementType.TRUST, rejectedVoteTarget)
+            trustTarget != null -> PublicStatement(StatementType.TRUST, trustTarget)
+            accusationTarget != null -> PublicStatement(StatementType.ACCUSE, accusationTarget)
+            voteTarget != null -> PublicStatement(StatementType.VOTE, voteTarget)
+            investigatedStatementPattern.containsMatchIn(text) &&
+                !hasNegatedAction(text, listOf("investigue", "revise", "mire", "pregunte")) ->
+                PublicStatement(StatementType.INVESTIGATED, investigatedTarget ?: mentionedTargets.lastOrNull())
             else -> null
+        }?.let { parsed ->
+            parsed.copy(reason = statedReason)
         }
         synchronized(publicStatementCache) {
             publicStatementCache[cacheKey] = CachedValue(statement)
@@ -161,6 +178,27 @@ internal object BotPerception {
     fun humanQuestionKind(message: String): HumanQuestionKind? {
         val text = normalizedForParsing(message)
         return when {
+            text.contains("por que me votaste") || text.contains("porque me votaste") ||
+                text.contains("por que votaste") || text.contains("porque votaste") ||
+                text.contains("por que me votas") || text.contains("porque me votas") ||
+                text.contains("por que votas") || text.contains("porque votas") ->
+                HumanQuestionKind.WHY_VOTE
+            text.contains("por que me acusaste") || text.contains("porque me acusaste") ||
+                text.contains("por que me acusas") || text.contains("porque me acusas") ||
+                text.contains("por que lo acusas") || text.contains("porque lo acusas") ||
+                text.contains("por que acusas") || text.contains("porque acusas") ->
+                HumanQuestionKind.WHY_ACCUSE
+            text.contains("que pensas de") || text.contains("que opinas de") ||
+                text.contains("como ves a") || text.contains("que te parece") ->
+                HumanQuestionKind.OPINION
+            text.contains("me crees") || text.contains("me creen") ||
+                text.contains("me bancas") || text.contains("confias en mi") ->
+                HumanQuestionKind.BELIEF
+            text.contains("que rol sos") || text.contains("q rol sos") ||
+                text.contains("cual es tu rol") || text.contains("cual es el rol tuyo") ||
+                text.contains("vos que sos") || text.contains("vos q sos") ||
+                text.contains("decime tu rol") || text.contains("dime tu rol") ->
+                HumanQuestionKind.ASK_ROLE
             text.contains("que soy") || text.contains("quien soy") || text.contains("q soy") ||
                 text.contains("cual es mi rol") || text.contains("que rol soy") ||
                 text.contains("q rol soy") || text.contains("mi rol") -> HumanQuestionKind.ROLE_HELP
@@ -172,6 +210,48 @@ internal object BotPerception {
                 text.contains("a quien miramos") || text.contains("quien les parece") -> HumanQuestionKind.SUSPECT_HELP
             else -> null
         }
+    }
+
+    fun socialSignal(message: String): HumanSocialSignal? {
+        val text = normalizedForParsing(message)
+        if (text.isBlank()) return null
+        val praise = listOf(
+            "gracias", "bien ahi", "bien jugado", "te banco", "me caes bien",
+            "sos crack", "sos un crack", "sos genio", "sos genia", "buena jugada"
+        ).any(text::contains) && !text.contains("no te banco")
+        if (praise) return HumanSocialSignal.PRAISE
+        val insult = listOf(
+            "callate", "sos idiota", "sos un idiota", "sos una idiota",
+            "sos inutil", "sos un inutil", "sos una inutil", "sos mentiroso",
+            "sos mentirosa", "sos tarado", "sos tarada", "no servis"
+        ).any(text::contains)
+        return HumanSocialSignal.INSULT.takeIf { insult }
+    }
+
+    fun directAddressee(session: GameSession, message: String): String? {
+        val raw = message.trim()
+        val text = normalizedForParsing(raw)
+        if (text.isBlank()) return null
+        return session.players
+            .asSequence()
+            .filter { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
+            .sortedByDescending { it.name.length }
+            .firstOrNull { player ->
+                val normalizedName = normalizedForParsing(player.name)
+                if (normalizedName.isBlank() || !text.startsWith(normalizedName)) return@firstOrNull false
+                val rawPunctuation = Regex(
+                    "^\\s*${Regex.escape(player.name)}\\s*[,;:]",
+                    RegexOption.IGNORE_CASE
+                ).containsMatchIn(raw)
+                val tail = text.removePrefix(normalizedName).trim()
+                val directLanguage = listOf(
+                    "vos", "votaste", "votas", "acusaste", "acusas", "pensaste", "pensas",
+                    "opinaste", "opinas", "dijiste", "decis", "hiciste", "haces", "sos",
+                    "me crees", "me bancas", "explica", "contesta", "responde"
+                ).any { signal -> tail == signal || tail.startsWith("$signal ") || tail.contains(" $signal ") }
+                rawPunctuation || directLanguage
+            }
+            ?.name
     }
 
     fun isCasualHumanMessage(message: String): Boolean {
@@ -199,5 +279,98 @@ internal object BotPerception {
         return message.trim().length >= 12 &&
             !isCasualHumanMessage(message) &&
             !isGameRelatedMessage(session, message)
+    }
+
+    private fun explicitlyRejectsVote(text: String, target: String): Boolean {
+        if (target.isBlank()) return false
+        return listOf(
+            "no voto a $target",
+            "no votaria a $target",
+            "no voy a votar a $target",
+            "ni loco voto a $target",
+            "ni loca voto a $target"
+        ).any(text::contains)
+    }
+
+    private fun hasTrustSignal(text: String, target: String): Boolean {
+        if (target.isBlank()) return false
+        if (text.contains("no confio en $target") || text.contains("no banco a $target")) return false
+        return listOf(
+            "confio en $target",
+            "banco a $target",
+            "$target es limpio",
+            "$target es limpia",
+            "$target es inocente",
+            "$target no me parece raro",
+            "$target no me parece rara",
+            "$target no es traidor",
+            "$target no es traidora",
+            "$target no es culpable",
+            "$target no es sospechoso",
+            "$target no es sospechosa",
+            "no votaria a $target"
+        ).any(text::contains)
+    }
+
+    private fun hasAccusationSignal(text: String, target: String): Boolean {
+        if (target.isBlank()) return false
+        return listOf(
+            "$target miente",
+            "no confio en $target",
+            "$target esta raro",
+            "$target esta rara",
+            "$target es raro",
+            "$target es rara",
+            "$target me hace ruido",
+            "$target es culpable",
+            "$target es sospechoso",
+            "$target es sospechosa",
+            "$target es traidor",
+            "$target es traidora",
+            "$target no es inocente",
+            "$target no es limpio",
+            "$target no es limpia",
+            "sospecho de $target",
+            "para mi es $target"
+        ).any(text::contains)
+    }
+
+    private fun hasVoteSignal(text: String, target: String): Boolean {
+        if (target.isBlank()) return false
+        return listOf("voto a $target", "votaria a $target", "voy con $target").any(text::contains)
+    }
+
+    private fun hasNegatedAction(text: String, actions: List<String>): Boolean {
+        return actions.any { action ->
+            text.contains("no $action") || text.contains("nunca $action")
+        }
+    }
+
+    private fun targetAfterAction(text: String, targets: List<String>, actions: List<String>): String? {
+        val actionIndex = actions
+            .map(text::indexOf)
+            .filter { it >= 0 }
+            .minOrNull()
+            ?: return null
+        return targets
+            .mapNotNull { target ->
+                val targetIndex = text.indexOf(normalizedForParsing(target), startIndex = actionIndex)
+                target.takeIf { targetIndex >= 0 }?.let { it to targetIndex }
+            }
+            .minByOrNull { (_, index) -> index }
+            ?.first
+    }
+
+    private fun statedReasonFrom(text: String): String? {
+        val marker = listOf(" porque ", " pq ", " ya que ")
+            .mapNotNull { token ->
+                text.indexOf(token).takeIf { it >= 0 }?.let { index -> index to token }
+            }
+            .minByOrNull { it.first }
+            ?: return null
+        return text.substring(marker.first + marker.second.length)
+            .trim()
+            .take(80)
+            .takeIf { it.length >= 3 }
     }
 }

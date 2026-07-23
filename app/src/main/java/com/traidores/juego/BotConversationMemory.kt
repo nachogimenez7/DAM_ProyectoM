@@ -45,22 +45,26 @@ internal fun humanMessageIntent(
     publicStatement: PublicStatement?,
     claimsHiddenInfo: Boolean,
     casualMessage: Boolean,
-    questionKind: HumanQuestionKind?
+    questionKind: HumanQuestionKind?,
+    socialSignal: HumanSocialSignal? = BotPerception.socialSignal(message)
 ): HumanMessageIntent {
     if (LocalBotAi.isDebugVoteCommand(session, message)) return HumanMessageIntent.OTHER
     if (claimsHiddenInfo) return HumanMessageIntent.SECRET_LEAK
     if (roleClaim != null) return HumanMessageIntent.ROLE_CLAIM
     return when {
         questionKind == HumanQuestionKind.ROLE_HELP -> HumanMessageIntent.ROLE_QUESTION
+        questionKind == HumanQuestionKind.ASK_ROLE -> HumanMessageIntent.ROLE_QUESTION
         questionKind == HumanQuestionKind.ACTION_HELP -> HumanMessageIntent.ACTION_HELP
         questionKind == HumanQuestionKind.VOTE_HELP -> HumanMessageIntent.VOTE_HELP
         questionKind == HumanQuestionKind.SUSPECT_HELP -> HumanMessageIntent.SUSPECT_HELP
-        pendingQuestionForHuman(session) != null && message.trim().length >= 4 ->
+        pendingQuestionForHuman(session) != null && isRelevantPendingAnswer(session, message) ->
             HumanMessageIntent.ANSWER_PENDING
         publicStatement?.type == StatementType.REFUSED_ROLE -> HumanMessageIntent.REFUSE_ROLE
         publicStatement?.type == StatementType.ACCUSE ||
             publicStatement?.type == StatementType.VOTE -> HumanMessageIntent.ACCUSE
         publicStatement?.type == StatementType.TRUST -> HumanMessageIntent.DEFEND
+        socialSignal == HumanSocialSignal.PRAISE -> HumanMessageIntent.PRAISE
+        socialSignal == HumanSocialSignal.INSULT -> HumanMessageIntent.INSULT
         isDoubtMessage(message) -> HumanMessageIntent.DOUBT
         casualMessage -> HumanMessageIntent.CASUAL
         BotPerception.isOffTopicMessage(session, message) -> HumanMessageIntent.OFF_TOPIC
@@ -111,6 +115,16 @@ internal fun humanQuestionKind(message: String): HumanQuestionKind? {
     return BotPerception.humanQuestionKind(message)
 }
 
+internal fun isRelevantPendingAnswer(session: GameSession, message: String): Boolean {
+    if (message.trim().length < 2) return false
+    return LocalBotAi.roleClaimFrom(message) != null ||
+        LocalBotAi.publicStatementFrom(session, message) != null ||
+        mentionedPlayerNames(session, message).isNotEmpty() ||
+        isDoubtMessage(message) ||
+        isDirectClarification(message) ||
+        BotPerception.isGameRelatedMessage(session, message)
+}
+
 internal fun isCasualHumanMessage(message: String): Boolean {
     return BotPerception.isCasualHumanMessage(message)
 }
@@ -119,13 +133,77 @@ internal fun isWeakSuspicion(read: SuspectRead?): Boolean {
     return read == null || read.score < 6 || read.reason() == "esta hablando poco"
 }
 
+/**
+ * A high score can come from repetition alone. Grounded suspicion requires both enough weight and
+ * a concrete event that a bot can explain in chat, so one unsupported accusation does not snowball.
+ */
+internal fun hasGroundedSuspicion(read: SuspectRead?): Boolean {
+    return read != null && read.score >= 8 && read.reasons.any(::isGroundedSuspicionReason)
+}
+
+internal fun hasGroundedSuspicion(read: RelationshipRead?): Boolean {
+    return read != null && read.score >= 8 && isGroundedSuspicionReason(read.reason)
+}
+
+internal fun canVoiceStrongAccusation(session: GameSession, read: SuspectRead?): Boolean {
+    return !isOpeningInvestigationStage(session) && hasGroundedSuspicion(read)
+}
+
+internal fun canVoiceStrongAccusation(session: GameSession, read: RelationshipRead?): Boolean {
+    return !isOpeningInvestigationStage(session) && hasGroundedSuspicion(read)
+}
+
+internal fun investigationSpeakerThreshold(session: GameSession): Int {
+    val aliveCount = GameEngine.alivePlayers(session).size
+    val desired = when {
+        aliveCount <= 4 -> 2
+        aliveCount <= 6 -> 3
+        else -> 4
+    }
+    val availableBotSpeakers = session.players.count { player ->
+        !player.isHuman && GameEngine.canParticipateInChat(session, player)
+    }
+    return desired.coerceAtMost(availableBotSpeakers.coerceAtLeast(1))
+}
+
+internal fun isOpeningInvestigationStage(session: GameSession): Boolean {
+    if (session.phase !in setOf(GamePhase.DIA_DEBATE, GamePhase.CONTRAPUNTO)) return false
+    val discussionStart = session.publicDiscussionStartIndex
+        .coerceIn(0, session.chatHistory.size)
+    val speakersThisPhase = session.chatHistory
+        .drop(discussionStart)
+        .asSequence()
+        .filter { message ->
+            message.channel == ChatChannel.PUBLICO &&
+                !message.isGod &&
+                isBotSpeaker(session, message.speaker)
+        }
+        .map { it.speaker }
+        .distinct()
+        .count()
+    return speakersThisPhase < investigationSpeakerThreshold(session)
+}
+
+internal fun isGroundedSuspicionReason(reason: String): Boolean {
+    return reason in setOf(
+        "tengo una pista privada",
+        "se contradijo de rol",
+        "se contradijo con la accion",
+        "cambio su accion",
+        "dos dijeron el mismo rol",
+        "dejo una pregunta colgada",
+        "debe una respuesta",
+        "esquivo el rol",
+        "tiro dato y falta detalle",
+        "dio info a medias",
+        "me voto"
+    )
+}
+
 internal fun personalityFor(session: GameSession, bot: GamePlayer): BotPersonality {
     val personalities = BotPersonality.entries
-    val bots = session.players.filterNot { it.isHuman }
-    val tableShift = stableNoise("personality-table:${session.code}:${session.initialPlayerCount}") % personalities.size
-    val seatIndex = bots.indexOfFirst { it.name == bot.name }.takeUnless { it < 0 } ?: 0
-    val smallJitter = stableNoise("personality-jitter:${session.code}:${bot.name}") % 2
-    return personalities[(seatIndex + tableShift + smallJitter) % personalities.size]
+    val identityKey = normalizedForParsing(bot.name).ifBlank { bot.initial.lowercase() }
+    return personalities[stableNoise("personality-identity:$identityKey") % personalities.size]
 }
 
 internal fun moodFor(session: GameSession, bot: GamePlayer, latestMessage: String): BotMood {
@@ -135,8 +213,9 @@ internal fun moodFor(session: GameSession, bot: GamePlayer, latestMessage: Strin
         mentionsName(it.message, bot.name) && hasAnySignal(it.message, accusationWords)
     }
     val latestTargetsBot = mentionsName(latestMessage, bot.name)
+    val persistentPressure = session.tableMemory.emotionalPressure[bot.name] ?: 0
     return when {
-        latestTargetsBot && accusations >= 2 -> BotMood.ANNOYED
+        latestTargetsBot && (accusations >= 2 || persistentPressure >= 5) -> BotMood.ANNOYED
         latestTargetsBot -> BotMood.DEFENSIVE
         latestMessage.contains("jaja", ignoreCase = true) ||
             latestMessage.contains("jsjs", ignoreCase = true) -> BotMood.AMUSED
@@ -275,6 +354,7 @@ internal fun pendingQuestionForHuman(session: GameSession): PendingHumanQuestion
 }
 
 internal fun answeredQuestionForHuman(session: GameSession, currentMessage: String): PendingHumanQuestion? {
+    if (!isRelevantPendingAnswer(session, currentMessage)) return null
     val human = GameEngine.humanPlayer(session)
     val messages = recentPublicMessages(session)
     val answerIndex = messages.indexOfLast { message ->
@@ -438,7 +518,8 @@ internal fun actionContradiction(
             round = session.round,
             phase = session.phase,
             statementType = it.type,
-            target = it.target
+            target = it.target,
+            reason = it.reason
         )
     }
     val all = if (latestSynthetic != null && records.none {
@@ -739,7 +820,7 @@ internal fun claimFromRecord(record: ClaimRecord): RoleClaim? {
 
 internal fun statementFromRecord(record: ClaimRecord): PublicStatement? {
     val type = record.statementType ?: return null
-    return PublicStatement(type = type, target = record.target)
+    return PublicStatement(type = type, target = record.target, reason = record.reason)
 }
 
 internal fun isExclusivePublicClaimRole(roleKey: String): Boolean {

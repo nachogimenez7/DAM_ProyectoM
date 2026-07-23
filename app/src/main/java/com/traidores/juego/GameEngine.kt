@@ -273,9 +273,21 @@ object GameEngine {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
 
+        val updatedMemory = if (police.isHuman) {
+            session.tableMemory
+        } else {
+            BotTableMemory.recordPrivateInvestigation(
+                memory = session.tableMemory,
+                round = session.round,
+                source = police.name,
+                target = target,
+                result = result
+            )
+        }
         val updated = session.copy(
             investigatedPlayer = target,
             investigatedResult = result,
+            tableMemory = updatedMemory,
             actionHistory = recordAction(session, GameActionType.INVESTIGATE, police.name, target)
         )
         return updated.transitionTo(
@@ -421,7 +433,8 @@ object GameEngine {
             publicAnnouncement = publicMessage,
             privateHint = privateRoleHint(session.copy(players = updatedPlayers)),
             oracleRevealPending = oracleMessage.isNotBlank(),
-            phaseIndex = session.phaseIndex + 1
+            phaseIndex = session.phaseIndex + 1,
+            publicDiscussionStartIndex = session.chatHistory.size
         ).withPublicHistory(publicMessage)
             .withWinnerCheck()
 
@@ -550,7 +563,8 @@ object GameEngine {
             } else {
                 privateRoleHint(session)
             },
-            phaseIndex = session.phaseIndex + 1
+            phaseIndex = session.phaseIndex + 1,
+            publicDiscussionStartIndex = session.chatHistory.size
         ).withPublicHistory(message)
     }
 
@@ -2260,7 +2274,8 @@ object GameEngine {
                 phase = phase,
                 roleKey = roleClaim?.roleKey,
                 statementType = statement?.type,
-                target = statement?.target
+                target = statement?.target,
+                reason = statement?.reason
             )
             copy(
                 claimLedger = claimLedger + (speaker to (claimLedger[speaker].orEmpty() + record))

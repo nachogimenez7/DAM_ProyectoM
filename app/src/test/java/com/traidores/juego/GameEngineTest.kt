@@ -1528,6 +1528,19 @@ class GameEngineTest {
         assertTrue(resolved.privateHint.contains("Investigaste a Asesino"))
         assertTrue(resolved.privateHint.contains("parece sospechoso"))
         assertFalse(resolved.publicAnnouncement.contains("Asesino"))
+        assertTrue(resolved.tableMemory.privateInvestigationReads.isEmpty())
+    }
+
+    @Test
+    fun botPoliceStoresItsResultInItsOwnPrivateMemory() {
+        val session = publicNameSession().copy(phase = GamePhase.NOCHE_POLICIA)
+
+        val resolved = GameEngine.resolvePolice(session, "")
+        val read = resolved.tableMemory.privateInvestigationReads.single()
+
+        assertEquals("Beto", read.source)
+        assertEquals(resolved.investigatedPlayer, read.target)
+        assertEquals(resolved.investigatedResult, read.result)
     }
 
     @Test
@@ -2380,7 +2393,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun botPersonalitiesRotateBetweenMatches() {
+    fun botPersonalitiesStayAttachedToCharacterNamesAcrossMatches() {
         val first = publicNameSession().copy(code = "PERS-A")
         val second = publicNameSession().copy(code = "PERS-B")
 
@@ -2389,7 +2402,7 @@ class GameEngineTest {
 
         assertTrue("Perfil 1: $firstProfile", firstProfile.values.toSet().size >= 3)
         assertTrue("Perfil 2: $secondProfile", secondProfile.values.toSet().size >= 3)
-        assertNotEquals(firstProfile, secondProfile)
+        assertEquals(firstProfile, secondProfile)
     }
 
     @Test
@@ -2673,11 +2686,16 @@ class GameEngineTest {
     }
 
     @Test
-    fun botVotesFollowPublicSuspicionInsteadOfSecretInvestigation() {
+    fun detectiveBotUsesItsPrivateInvestigationWithoutGivingItToEveryBot() {
         val session = publicNameSession().copy(
             phase = GamePhase.VOTACION,
             investigatedPlayer = "Ana",
             investigatedResult = "sospechoso",
+            tableMemory = TableMemory(
+                privateInvestigationReads = listOf(
+                    InvestigationRead(1, "Beto", "Ana", "sospechoso")
+                )
+            ),
             chatHistory = listOf(
                 GameChatMessage("Humano", "Dina cambio de tema y me parece raro."),
                 GameChatMessage("Beto", "Dina tiene que responder eso.")
@@ -2690,8 +2708,9 @@ class GameEngineTest {
         val secretInvestigationVotes = botVotes.values.count { it == "Ana" }
 
         assertEquals("Dina", resolved.votes["Humano"])
-        assertTrue(publicSuspicionVotes > secretInvestigationVotes)
-        assertTrue(publicSuspicionVotes >= 2)
+        assertEquals("Ana", resolved.votes["Beto"])
+        assertTrue(secretInvestigationVotes >= 1)
+        assertTrue(publicSuspicionVotes >= 1)
     }
 
     @Test
