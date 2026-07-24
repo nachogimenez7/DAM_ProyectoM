@@ -11,9 +11,11 @@
     -->
 
     <!-- Carta que aparece en los reveals (muerte, etc.) -->
-    <dimen name="reveal_card_stage">160dp</dimen>
-    <dimen name="reveal_card_width">88dp</dimen>
-    <dimen name="reveal_card_height">118dp</dimen>
+    <dimen name="reveal_card_stage">190dp</dimen>
+    <dimen name="reveal_card_width">112dp</dimen>
+    <dimen name="reveal_card_height">150dp</dimen>
+    <dimen name="reveal_card_large_width">132dp</dimen>
+    <dimen name="reveal_card_large_height">176dp</dimen>
     <dimen name="reveal_blood_large">96dp</dimen>
     <dimen name="reveal_blood_small">80dp</dimen>
 

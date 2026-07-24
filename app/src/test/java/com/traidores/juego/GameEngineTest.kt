@@ -2393,16 +2393,23 @@ class GameEngineTest {
     }
 
     @Test
-    fun botPersonalitiesStayAttachedToCharacterNamesAcrossMatches() {
-        val first = publicNameSession().copy(code = "PERS-A")
-        val second = publicNameSession().copy(code = "PERS-B")
+    fun botPersonalitiesStayBalancedButCanChangeBetweenMatches() {
+        val base = publicNameSession()
+        val profiles = (1L..12L).map { matchSeed ->
+            LocalBotAi.personalityProfile(
+                base.copy(
+                    code = "PERS",
+                    startedAtEpochMs = matchSeed
+                )
+            )
+        }
 
-        val firstProfile = LocalBotAi.personalityProfile(first)
-        val secondProfile = LocalBotAi.personalityProfile(second)
-
-        assertTrue("Perfil 1: $firstProfile", firstProfile.values.toSet().size >= 3)
-        assertTrue("Perfil 2: $secondProfile", secondProfile.values.toSet().size >= 3)
-        assertEquals(firstProfile, secondProfile)
+        assertTrue(profiles.all { profile -> profile.values.toSet().size >= 3 })
+        assertTrue("Perfiles: $profiles", profiles.toSet().size > 1)
+        assertEquals(
+            profiles.first(),
+            LocalBotAi.personalityProfile(base.copy(code = "PERS", startedAtEpochMs = 1L))
+        )
     }
 
     @Test
@@ -3144,7 +3151,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun desertorSupportingTraitorsStillCountsAsLivingOppositionForParity() {
+    fun desertorDoesNotCountForParityEvenWhenSupportingTraitors() {
         val players = listOf(
             GamePlayer("Humano", "H", role = role("desertor", "Desertor", "Neutral"), isHuman = true),
             GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
@@ -3167,17 +3174,7 @@ class GameEngineTest {
             initialPlayerCount = 10
         )
 
-        assertEquals("", GameRules.winnerFor(session))
-        assertEquals(
-            GameRules.TRAITOR_WINNER,
-            GameRules.winnerFor(
-                session.copy(
-                    players = players.map {
-                        if (it.name == "Alcalde") it.copy(alive = false) else it
-                    }
-                )
-            )
-        )
+        assertEquals(GameRules.TRAITOR_WINNER, GameRules.winnerFor(session))
     }
 
     @Test

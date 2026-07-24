@@ -34,15 +34,18 @@ internal object BotConversationDirector {
         if (speakers == 0) return 0
         return when (session.phase) {
             GamePhase.VOTACION,
-            GamePhase.DESEMPATE_VOTACION -> speakers.coerceAtMost(8)
-            GamePhase.CONTRAPUNTO -> speakers.coerceAtMost(6)
-            GamePhase.DIA_DEBATE -> ((speakers * 3 + 1) / 2).coerceIn(1, 10)
+            GamePhase.DESEMPATE_VOTACION -> speakers.coerceAtMost(2)
+            GamePhase.CONTRAPUNTO -> speakers.coerceAtMost(3)
+            GamePhase.DIA_DEBATE -> speakers.coerceAtMost(3)
             else -> 0
         }
     }
 
     fun pauseAfterBotStreak(session: GameSession): Int {
-        return 3 + stableNoise("${session.code}:${session.phaseIndex}:bot-pause") % 3
+        return when (session.phase) {
+            GamePhase.DIA_DEBATE -> 2
+            else -> 1
+        }
     }
 
     fun traitorNightBudget(session: GameSession): Int {
@@ -86,10 +89,13 @@ internal object BotConversationDirector {
         session: GameSession,
         humanMessage: String,
         deliveredReactions: Int,
-        lastSpeaker: String?
+        lastSpeaker: String?,
+        intentHint: HumanMessageIntent? = null
     ): BotConversationBeat? {
         if (!canRun(session) || deliveredReactions >= maxHumanReactions) return null
-        val reactions = runCatching { LocalBotAi.reactionsToHumanMessage(session, humanMessage) }
+        val reactions = runCatching {
+            LocalBotAi.reactionsToHumanMessage(session, humanMessage, intentHint)
+        }
             .getOrDefault(emptyList())
         val directAddressee = BotPerception.directAddressee(session, humanMessage)
         val remainingMessages = (maxHumanReactions - deliveredReactions).coerceAtLeast(1)
@@ -148,25 +154,35 @@ internal object BotConversationDirector {
         reaction: Boolean,
         speaker: String? = null
     ): Long {
-        val base = if (reaction) 2_150L else 3_000L
-        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 1_650).toLong()
-        val readingDelay = (message.length * 22L).coerceAtMost(1_500L)
+        val base = if (reaction) 1_400L else 1_900L
+        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 900).toLong()
+        val readingDelay = (message.length * 12L).coerceAtMost(700L)
         val normalized = normalizedForParsing(message)
         val thoughtDelay = if (
             message.contains("?") ||
             normalized.contains("por que") ||
             normalized.contains("que rol")
-        ) 450L else 0L
+        ) 250L else 0L
         val personalityDelay = speaker
             ?.let { GameEngine.playerByName(session, it) }
             ?.let { bot ->
                 when (personalityFor(session, bot)) {
-                    BotPersonality.IMPULSIVO -> -450L
+                    BotPersonality.IMPULSIVO -> -300L
                     BotPersonality.JODON -> -200L
                     BotPersonality.PICANTE -> -100L
-                    BotPersonality.TRANQUI -> 150L
-                    BotPersonality.DESCONFIADO -> 350L
-                    BotPersonality.ANALITICO -> 650L
+                    BotPersonality.TRANQUI -> 100L
+                    BotPersonality.DESCONFIADO -> 250L
+                    BotPersonality.ANALITICO -> 450L
+                }
+            }
+            ?: 0L
+        val competitivenessDelay = speaker
+            ?.let { GameEngine.playerByName(session, it) }
+            ?.let { bot ->
+                when (competitivenessFor(session, bot)) {
+                    BotCompetitiveness.RELAJADO -> 150L
+                    BotCompetitiveness.EQUILIBRADO -> 0L
+                    BotCompetitiveness.OBSESIVO -> -150L
                 }
             }
             ?: 0L
@@ -177,21 +193,48 @@ internal object BotConversationDirector {
             "explica",
             "version"
         ).any(normalized::contains)
-        val maximumDelay = if (complexAnswer) 6_800L else 5_000L
-        return (base + jitter + readingDelay + thoughtDelay + personalityDelay)
-            .coerceIn(2_000L, maximumDelay)
+        val maximumDelay = if (complexAnswer) 4_800L else 3_600L
+        return (base + jitter + readingDelay + thoughtDelay + personalityDelay + competitivenessDelay)
+            .coerceIn(1_400L, maximumDelay)
     }
 
     fun burstDelayMs(session: GameSession, beatIndex: Int, speaker: String, message: String): Long {
         val jitter = stableNoise(
             "${session.code}:${session.phaseIndex}:$beatIndex:$speaker:burst:$message"
-        ) % 650
-        val typingTime = (message.length * 13L).coerceAtMost(650L)
-        return (850L + jitter + typingTime).coerceIn(900L, 2_150L)
+        ) % 350
+        val typingTime = (message.length * 8L).coerceAtMost(400L)
+        return (550L + jitter + typingTime).coerceIn(600L, 1_450L)
     }
 
     fun silenceDelayMs(session: GameSession, idleLinesUsed: Int): Long {
-        return 6_000L + (stableNoise("${session.code}:${session.phaseIndex}:pause:$idleLinesUsed") % 4_000).toLong()
+        val base = if (session.botDifficulty == BotDifficulty.HARD) 9_000L else 12_000L
+        val range = if (session.botDifficulty == BotDifficulty.HARD) 5_000 else 6_000
+        return base + (stableNoise("${session.code}:${session.phaseIndex}:pause:$idleLinesUsed") % range).toLong()
+    }
+
+    fun playerNudgeBeat(session: GameSession, lastSpeaker: String?): BotConversationBeat? {
+        if (!canRun(session)) return null
+        val human = GameEngine.humanPlayer(session).takeIf { it.alive } ?: return null
+        val speaker = chooseSpeakers(session, lastSpeaker).firstOrNull() ?: return null
+        val bot = GameEngine.playerByName(session, speaker) ?: return null
+        val humanName = safeName(human, session)
+        val message = when (personalityFor(session, bot)) {
+            BotPersonality.PICANTE ->
+                "$humanName no te me borres ahora, a quien votarias?"
+            BotPersonality.DESCONFIADO ->
+                "$humanName te quedaste mirando de afuera. quien te hace mas ruido?"
+            BotPersonality.JODON ->
+                "$humanName tira algo aunque sea, despues fingimos que fue una gran teoria"
+            BotPersonality.ANALITICO ->
+                "$humanName cerremos una idea: a quien escucharias y a quien votarias?"
+            else ->
+                "$humanName, vos que pensas? tira una sospecha y la vemos"
+        }
+        return BotConversationBeat(
+            speaker = speaker,
+            message = sanitizeBotSpeech(message, session),
+            promptsSilentHuman = true
+        )
     }
 
     private fun silentHumanPrompt(
@@ -231,7 +274,7 @@ internal object BotConversationDirector {
             speaker = speaker,
             message = message,
             followUps = BotMessageBursts.afterIdleLine(session, speaker, message)
-                .take((remainingMessages - 1).coerceAtLeast(0))
+                .take((remainingMessages - 2).coerceAtLeast(0))
         )
     }
 
@@ -305,5 +348,5 @@ internal object BotConversationDirector {
         }
     }
 
-    private const val maxHumanReactions = 3
+    private const val maxHumanReactions = 4
 }

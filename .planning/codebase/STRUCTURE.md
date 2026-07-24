@@ -92,7 +92,7 @@
 ## Layout Surface Map
 
 - `activity_gameplay_mock.xml`: main gameplay HUD, chat, event log, vote/tie/result overlays, reveals, and bottom panel.
-- `activity_lobby.xml`: landscape lobby screen.
+- `activity_lobby.xml`: portrait lobby screen.
 - `activity_lobby_browser.xml`: available lobby list.
 - `activity_profile.xml`, `activity_profile_selection.xml`: profile and selectors.
 - `activity_opciones.xml`: options.

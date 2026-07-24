@@ -39,15 +39,15 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 ## Coverage Gaps
 
 - No automated coverage for `Activity` lifecycle recreation.
-- No keyboard/IME tests for landscape chat.
-- No screenshot tests for compact landscape gameplay, lobby dialogs, profile, or vote overlays.
+- No keyboard/IME tests for portrait chat.
+- No screenshot tests for compact portrait gameplay, lobby dialogs, profile, or vote overlays.
 - No navigation/back-stack smoke tests.
 - No resource-size or asset-loading regression checks.
 - No tests for actual `MediaPlayer` behavior or audio preference integration on device.
 
 ## Manual Validation Needed
 
-- Compact landscape gameplay on at least one smaller phone.
+- Compact portrait gameplay on at least one smaller phone.
 - Chat with real keyboard open, including receiving bot messages while typing.
 - Vote recount, tie vote, second tie, no-expulsion, expulsion boot animation, and final result windows.
 - Role preview timing and continue button.

@@ -6,7 +6,7 @@
 ## Priority Summary
 
 1. `GameplayMockActivity.kt` and `activity_gameplay_mock.xml` are still the main fragility points.
-2. Visual behavior depends heavily on fixed landscape dimensions and manual overlay state.
+2. Visual behavior depends heavily on fixed portrait dimensions and manual overlay state.
 3. Chat/keyboard behavior requires real-device validation.
 4. Lobby/profile/navigation stability remain behind gameplay in the roadmap.
 5. Asset size and resource growth should be watched before APK sharing.
@@ -26,7 +26,7 @@
 - Vote/tie/reveal overlays are visually richer but increase state coordination complexity.
 - Event log default collapsed/open behavior is product-sensitive and should be verified from a fresh match.
 - Bottom gameplay panel competes with role art, player name, role name, hints, status chips, and buttons.
-- Lobby/options dialogs may still need compact landscape validation.
+- Lobby/options dialogs may still need compact portrait validation.
 - Profile layout has many image/text/edit affordances and should be checked on short portrait devices.
 
 ## State Coordination Concerns

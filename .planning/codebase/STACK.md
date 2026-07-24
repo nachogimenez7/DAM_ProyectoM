@@ -16,8 +16,8 @@
 - `minSdk 24`, `targetSdk 34`, `compileSdk 34`.
 - Java/Kotlin bytecode target: JVM 1.8.
 - App version: `0.1.0-alpha`.
-- Orientation is fixed per Activity in `app/src/main/AndroidManifest.xml`: portrait for menu/profile/help/options/reference screens, landscape for lobby, role assignment, and gameplay.
-- `GameplayMockActivity` uses `android:windowSoftInputMode="adjustResize"` to support the landscape chat keyboard flow.
+- Every Activity is fixed to portrait in `app/src/main/AndroidManifest.xml`; landscape resource variants are not maintained.
+- `GameplayMockActivity` uses `android:windowSoftInputMode="adjustResize"` to support the portrait chat keyboard flow.
 
 ## Frameworks And Dependencies
 

@@ -1,5 +1,6 @@
 package com.traidores.juego
 
+import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -16,6 +17,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -23,6 +25,7 @@ import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -45,7 +48,7 @@ class GameplayChatController(
         val onlinePlayerUid: String
 
         fun isOnlineGameplay(): Boolean
-        fun isPortrait(): Boolean
+        fun canOpenExpandedChat(): Boolean
         fun dp(value: Int): Int
         fun isTransitionLocked(phaseIndex: Int): Boolean
         fun hideKeyboard()
@@ -73,6 +76,7 @@ class GameplayChatController(
 
     private val handler = Handler(Looper.getMainLooper())
     private var isChatOpen = false
+    private var isClosingForInteractivePhase = false
     private var isChatKeyboardCompact = false
     private var isBottomPlayerPanelCompact = false
     private var chatKeyboardBottomInset = 0
@@ -109,6 +113,7 @@ class GameplayChatController(
     private var directorReactionLines = 0
     private var directorBeatCounter = 0
     private var directorPendingHumanMessage = ""
+    private var directorPendingIntentHint: HumanMessageIntent? = null
     private var directorLastSpeaker: String? = null
     private var directorHumanSpokePhaseIndex = -1
     private var directorPromptedSilentHuman = false
@@ -117,6 +122,7 @@ class GameplayChatController(
     private var traitorDirectorLastSpeaker: String? = null
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val typingBotSpeakers = linkedSetOf<String>()
+    private var quickChatDialog: AlertDialog? = null
 
     private val btnToggleChat: ImageButton = root.findViewById(R.id.btnToggleChat)
     private val btnSendChat: Button = root.findViewById(R.id.btnSendChat)
@@ -140,6 +146,8 @@ class GameplayChatController(
     private val chatPanelBackground: ImageView = root.findViewById(R.id.chatPanelBackground)
     private val chatPanelContent: LinearLayout = root.findViewById(R.id.chatPanelContent)
     private val chatPanelShade: View = root.findViewById(R.id.chatPanelShade)
+    private val chatQuickReplies: LinearLayout = root.findViewById(R.id.chatQuickReplies)
+    private val chatQuickRepliesScroll: HorizontalScrollView = root.findViewById(R.id.chatQuickRepliesScroll)
     private val chatRoleChip: TextView = root.findViewById(R.id.chatRoleChip)
     private val chatStatusRow: LinearLayout = root.findViewById(R.id.chatStatusRow)
     private val chatUnreadBadge: TextView = root.findViewById(R.id.chatUnreadBadge)
@@ -236,6 +244,8 @@ class GameplayChatController(
     }
 
     fun onDestroy() {
+        quickChatDialog?.dismiss()
+        quickChatDialog = null
         onlineChatListener?.let { listener -> onlineChatQuery?.removeEventListener(listener) }
         onlineChatListener = null
         onlineChatQuery = null
@@ -255,7 +265,7 @@ class GameplayChatController(
     }
 
     fun openExpanded() {
-        if (isChatOpen) return
+        if (isChatOpen || isClosingForInteractivePhase || !host.canOpenExpandedChat()) return
         GameplayEffects.play(root.context, GameplayEffect.PANEL)
         isChatOpen = true
         unreadChatCount = 0
@@ -273,9 +283,48 @@ class GameplayChatController(
 
     fun isOpenOrRestoringTieVote(): Boolean = isChatOpen || restoreTieVoteAfterChat
 
+    fun closeForInteractivePhase(onClosed: () -> Unit): Boolean {
+        if (isClosingForInteractivePhase) return true
+        val chatStillVisible = chatPanel.visibility == View.VISIBLE
+        if (!isChatOpen && !chatStillVisible && !isChatKeyboardCompact) return false
+
+        isClosingForInteractivePhase = true
+        isChatOpen = false
+        restoreTieVoteAfterChat = false
+        newChatMessagesWhileTyping = 0
+        clearChatComposerAfterSend()
+        chatInput.clearFocus()
+        host.hideKeyboard()
+        setChatKeyboardState(false, 0)
+        renderChatPanelVisibility(animate = true) {
+            isClosingForInteractivePhase = false
+            onClosed()
+        }
+        renderChatBadge()
+        renderNewChatMessageNotice()
+        return true
+    }
+
+    fun closeForPriorityWindow() {
+        quickChatDialog?.dismiss()
+        quickChatDialog = null
+        restoreTieVoteAfterChat = false
+        isClosingForInteractivePhase = false
+        if (!isChatOpen && chatPanel.visibility != View.VISIBLE && !isChatKeyboardCompact) return
+        isChatOpen = false
+        newChatMessagesWhileTyping = 0
+        chatInput.clearFocus()
+        host.hideKeyboard()
+        setChatKeyboardState(false, 0)
+        renderChatPanelVisibility(animate = false)
+        renderChatBadge()
+        renderNewChatMessageNotice()
+    }
+
     fun cancelPendingBotChat() {
         cancelScheduledBotChat()
         directorPendingHumanMessage = ""
+        directorPendingIntentHint = null
         directorReactionLines = 0
     }
 
@@ -331,6 +380,7 @@ class GameplayChatController(
         if (canRunVisibleTraitorNight(session)) {
             cancelPublicDirectorState()
             if (traitorDirectorPhaseIndex != session.phaseIndex) {
+                cancelScheduledBotChat()
                 resetTraitorDirectorForPhase(session)
             }
             scheduleNextTraitorNightBeat()
@@ -342,6 +392,7 @@ class GameplayChatController(
             return
         }
         if (directorPhaseIndex != session.phaseIndex) {
+            cancelScheduledBotChat()
             resetDirectorForPhase(session)
         }
         scheduleNextIdleBeat()
@@ -356,6 +407,7 @@ class GameplayChatController(
 
     private fun cancelPublicDirectorState() {
         directorPendingHumanMessage = ""
+        directorPendingIntentHint = null
         directorReactionLines = 0
         directorIdleLines = 0
     }
@@ -408,7 +460,10 @@ class GameplayChatController(
         }
     }
 
-    private fun renderChatPanelVisibility(animate: Boolean) {
+    private fun renderChatPanelVisibility(
+        animate: Boolean,
+        onClosed: (() -> Unit)? = null
+    ) {
         chatPanel.animate().cancel()
         renderAmbientChatFeed()
         if (isChatOpen) {
@@ -441,12 +496,16 @@ class GameplayChatController(
                     chatPanel.visibility = View.GONE
                     resetChatPanelTransform()
                     renderAmbientChatFeed()
+                    onClosed?.invoke()
                 }
                 .start()
         } else {
             chatPanel.visibility = View.GONE
             resetChatPanelTransform()
             renderAmbientChatFeed()
+            if (onClosed != null) {
+                root.post { onClosed() }
+            }
         }
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
         updateChatToggleContentDescription()
@@ -476,6 +535,7 @@ class GameplayChatController(
         btnSendChat.isEnabled = canChat
         chatInput.hint = chatInputHint(canChat, channel)
         btnSendChat.alpha = if (canChat) 1f else 0.45f
+        renderQuickReplies(channel, canChat)
         renderChatCharacterCount(chatInput.text.length)
         renderNewChatMessageNotice()
         if (newChatMessagesWhileTyping == 0) {
@@ -510,7 +570,7 @@ class GameplayChatController(
         chatKeyboardBottomInset = bottomInset
         applyChatPanelDimensions()
         applyKeyboardAwarePlayerPanel()
-        if (compact) {
+        if (compact && isChatOpen && !isClosingForInteractivePhase) {
             chatPanel.bringToFront()
             chatPanel.visibility = View.VISIBLE
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
@@ -518,7 +578,7 @@ class GameplayChatController(
     }
 
     private fun shouldCompactBottomPlayerPanel(): Boolean {
-        return host.isPortrait() && isChatOpen && isChatKeyboardCompact && chatInput.hasFocus()
+        return isChatOpen && isChatKeyboardCompact && chatInput.hasFocus()
     }
 
     private fun applyKeyboardAwarePlayerPanel() {
@@ -590,73 +650,6 @@ class GameplayChatController(
 
     private fun applyChatPanelDimensions() {
         if (root.width == 0) return
-        if (host.isPortrait()) {
-            applyChatSheetDimensionsPortrait()
-            return
-        }
-        val containerWidth = centerColumn.width.takeIf { it > 0 } ?: root.width
-        val containerHeight = centerColumn.height.takeIf { it > 0 }
-            ?: root.height.takeIf { it > 0 }
-            ?: host.dp(CHAT_PANEL_MAX_HEIGHT_DP)
-        val params = chatPanel.layoutParams
-        val widthRatio = if (isChatKeyboardCompact) {
-            CHAT_PANEL_COMPACT_WIDTH_RATIO
-        } else {
-            CHAT_PANEL_WIDTH_RATIO
-        }
-        params.width = (containerWidth * widthRatio)
-            .toInt()
-            .coerceIn(
-                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_WIDTH_DP else CHAT_PANEL_MIN_WIDTH_DP),
-                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_WIDTH_DP else CHAT_PANEL_MAX_WIDTH_DP)
-            )
-        val heightRatio = if (isChatKeyboardCompact) {
-            CHAT_PANEL_COMPACT_HEIGHT_RATIO
-        } else {
-            CHAT_PANEL_HEIGHT_RATIO
-        }
-        params.height = (containerHeight * heightRatio)
-            .toInt()
-            .coerceIn(
-                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MIN_HEIGHT_DP else CHAT_PANEL_MIN_HEIGHT_DP),
-                host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MAX_HEIGHT_DP else CHAT_PANEL_MAX_HEIGHT_DP)
-            )
-        (params as? ViewGroup.MarginLayoutParams)?.apply {
-            topMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
-            bottomMargin = host.dp(if (isChatKeyboardCompact) CHAT_PANEL_COMPACT_MARGIN_DP else 0)
-        }
-        (params as? RelativeLayout.LayoutParams)?.apply {
-            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
-            addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
-        }
-        (params as? FrameLayout.LayoutParams)?.apply {
-            gravity = Gravity.CENTER
-        }
-        chatPanel.layoutParams = params
-        chatPanelContent.setPadding(
-            host.dp(if (isChatKeyboardCompact) 7 else 10),
-            host.dp(if (isChatKeyboardCompact) 4 else 10),
-            host.dp(if (isChatKeyboardCompact) 7 else 10),
-            host.dp(if (isChatKeyboardCompact) 5 else 10)
-        )
-        chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = host.dp(if (isChatKeyboardCompact) 24 else 34)
-        }
-        chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = host.dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-        chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = host.dp(if (isChatKeyboardCompact) 18 else 22)
-        }
-        chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = host.dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-        btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = host.dp(if (isChatKeyboardCompact) 34 else 42)
-        }
-    }
-
-    private fun applyChatSheetDimensionsPortrait() {
         val params = chatPanel.layoutParams
         val heightRatio = if (isChatKeyboardCompact) {
             CHAT_SHEET_COMPACT_HEIGHT_RATIO
@@ -863,21 +856,11 @@ class GameplayChatController(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
-        val iconView = if (event.iconRes != 0) {
-            ImageView(root.context).apply {
-                setImageResource(event.iconRes)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2))
-                if (event.tintIcon) setColorFilter(event.iconColor)
-            }
-        } else {
-            TextView(root.context).apply {
-                text = event.icon
-                gravity = Gravity.CENTER
-                setTextColor(event.iconColor)
-                textSize = 8.5f * host.gameplayTextScale
-                typeface = Typeface.DEFAULT_BOLD
-            }
+        val iconView = ImageView(root.context).apply {
+            setImageResource(event.iconRes)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2))
+            if (event.tintIcon) setColorFilter(event.iconColor)
         }
         iconView.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
@@ -963,6 +946,243 @@ class GameplayChatController(
         )
     }
 
+    private fun renderQuickReplies(channel: ChatChannel, canChat: Boolean) {
+        val canShowQuickChat =
+            canChat &&
+            channel == ChatChannel.PUBLICO &&
+            (host.isOnlineGameplay() || directorPendingHumanMessage.isBlank())
+        val replies = if (canShowQuickChat) {
+            BotQuickReplies.forSession(host.currentSession)
+        } else {
+            emptyList()
+        }
+        chatQuickReplies.removeAllViews()
+        chatQuickRepliesScroll.visibility = if (canShowQuickChat) View.VISIBLE else View.GONE
+        replies.forEach { reply ->
+            addQuickChatButton(reply.text) { handleQuickChatMessage(reply) }
+        }
+        if (canShowQuickChat) {
+            addQuickChatButton("MÁS", emphasized = true) {
+                showQuickMessageCategories()
+            }
+        }
+    }
+
+    private fun addQuickChatButton(
+        label: String,
+        emphasized: Boolean = false,
+        onClick: () -> Unit
+    ) {
+        val button = Button(root.context).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(
+                root.context.getColor(
+                    if (emphasized) R.color.bg_dark else R.color.text_primary
+                )
+            )
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(host.dp(10), 0, host.dp(10), 0)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(
+                    if (emphasized) {
+                        root.context.getColor(R.color.accent_gold)
+                    } else {
+                        Color.parseColor("#E6211810")
+                    }
+                )
+                setStroke(host.dp(1), root.context.getColor(R.color.accent_gold))
+                cornerRadius = host.dp(12).toFloat()
+            }
+            setOnClickListener { onClick() }
+        }
+        chatQuickReplies.addView(
+            button,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                host.dp(32)
+            ).apply {
+                marginEnd = host.dp(6)
+            }
+        )
+    }
+
+    private fun showQuickMessageCategories() {
+        host.hideKeyboard()
+        showQuickChoiceDialog(
+            title = "MENSAJES RÁPIDOS",
+            options = listOf(
+                "Sospechar de...",
+                "Defender a...",
+                "Preguntar...",
+                "Decir mi rol...",
+                "Informar una acción...",
+                "Estrategia de voto..."
+            )
+        ) { index ->
+            when (index) {
+                0 -> showAlivePlayerPicker("¿DE QUIÉN SOSPECHÁS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.suspect(target))
+                }
+                1 -> showAlivePlayerPicker("¿A QUIÉN DEFENDÉS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.defend(target))
+                }
+                2 -> showQuickQuestionMenu()
+                3 -> showQuickRolePicker()
+                4 -> showQuickActionMenu()
+                5 -> showQuickVoteMenu()
+            }
+        }
+    }
+
+    private fun showQuickQuestionMenu() {
+        showQuickChoiceDialog(
+            title = "PREGUNTAR",
+            options = listOf(
+                "¿Qué rol sos?",
+                "¿A quién votarías?",
+                "¿Por qué sospechás de mí?"
+            )
+        ) { index ->
+            showAlivePlayerPicker("ELEGÍ A QUIÉN PREGUNTAR") { target ->
+                val message = when (index) {
+                    0 -> BotQuickReplies.askRole(target)
+                    1 -> BotQuickReplies.askVote(target)
+                    else -> BotQuickReplies.askExplanation(target)
+                }
+                sendQuickChatMessage(message)
+            }
+        }
+    }
+
+    private fun showQuickRolePicker() {
+        val roles = BotQuickReplies.rolesInPlay(host.currentSession)
+        if (roles.isEmpty()) {
+            host.showToast("Todavía no hay roles disponibles.")
+            return
+        }
+        showQuickChoiceDialog(
+            title = "DECIR MI ROL",
+            options = roles.map { it.name }
+        ) { index ->
+            roles.getOrNull(index)?.let { role ->
+                sendQuickChatMessage(BotQuickReplies.claimRole(role))
+            }
+        }
+    }
+
+    private fun showQuickActionMenu() {
+        showQuickChoiceDialog(
+            title = "INFORMAR UNA ACCIÓN",
+            options = listOf(
+                "Investigación...",
+                "Protección..."
+            )
+        ) { index ->
+            when (index) {
+                0 -> showAlivePlayerPicker("¿A QUIÉN INVESTIGASTE?") { target ->
+                    showQuickChoiceDialog(
+                        title = "RESULTADO DE $target",
+                        options = listOf("Inocente", "Sospechoso")
+                    ) { resultIndex ->
+                        sendQuickChatMessage(
+                            BotQuickReplies.investigation(
+                                target = target,
+                                suspicious = resultIndex == 1
+                            )
+                        )
+                    }
+                }
+                1 -> showAlivePlayerPicker("¿A QUIÉN PROTEGISTE?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.protection(target))
+                }
+            }
+        }
+    }
+
+    private fun showQuickVoteMenu() {
+        showQuickChoiceDialog(
+            title = "ESTRATEGIA DE VOTO",
+            options = listOf(
+                "Votaría a...",
+                "No votemos apurados",
+                "Quiero escuchar a..."
+            )
+        ) { index ->
+            when (index) {
+                0 -> showAlivePlayerPicker("¿A QUIÉN VOTARÍAS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.voteFor(target))
+                }
+                1 -> sendQuickChatMessage(BotQuickReplies.holdVote())
+                2 -> showAlivePlayerPicker("¿A QUIÉN QUERÉS ESCUCHAR?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.hearFirst(target))
+                }
+            }
+        }
+    }
+
+    private fun showAlivePlayerPicker(
+        title: String,
+        onSelected: (String) -> Unit
+    ) {
+        val players = BotQuickReplies.aliveTargets(host.currentSession)
+        if (players.isEmpty()) {
+            host.showToast("No hay otros jugadores vivos para elegir.")
+            return
+        }
+        showQuickChoiceDialog(
+            title = title,
+            options = players.map { it.name }
+        ) { index ->
+            players.getOrNull(index)?.name?.let(onSelected)
+        }
+    }
+
+    private fun showQuickChoiceDialog(
+        title: String,
+        options: List<String>,
+        onSelected: (Int) -> Unit
+    ) {
+        if (options.isEmpty()) return
+        val activity = root.context as? Activity ?: return
+        quickChatDialog?.dismiss()
+        quickChatDialog = GameDialog.choose(
+            activity = activity,
+            title = title,
+            message = "Elegí una opción para enviarla al chat.",
+            options = options,
+            onSelected = onSelected
+        )
+    }
+
+    private fun handleQuickChatMessage(message: QuickChatMessage) {
+        when (message.action) {
+            QuickChatAction.SEND -> sendQuickChatMessage(message)
+            QuickChatAction.CHOOSE_SUSPECT -> {
+                showAlivePlayerPicker("¿DE QUIÉN SOSPECHÁS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.suspect(target))
+                }
+            }
+            QuickChatAction.CHOOSE_ROLE -> showQuickRolePicker()
+            QuickChatAction.CHOOSE_VOTE -> {
+                showAlivePlayerPicker("¿A QUIÉN VOTAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.voteTogether(target))
+                }
+            }
+        }
+    }
+
+    private fun sendQuickChatMessage(message: QuickChatMessage) {
+        chatInput.setText(message.text)
+        chatInput.setSelection(chatInput.text.length)
+        sendHumanChatMessage(message.intentHint)
+    }
+
     private fun renderSpectatorHeaderChip() {
         val deadPlayers = host.currentSession.players.count { !it.alive }
         chatRoleChip.visibility = View.VISIBLE
@@ -985,12 +1205,11 @@ class GameplayChatController(
     }
 
     private data class EventPresentation(
-        val icon: String,
         val label: String,
         val backgroundColor: Int,
         val strokeColor: Int,
         val iconColor: Int,
-        val iconRes: Int = 0,
+        val iconRes: Int = R.drawable.ic_chronicle_crest,
         val tintIcon: Boolean = true
     )
 
@@ -1001,26 +1220,36 @@ class GameplayChatController(
             val normalized = GameplayTextMarkers.normalize(entry.text)
             val isTarget = "objetivo del plan" in normalized || "cambio de plan" in normalized
             return EventPresentation(
-                icon = if (isTarget) "X" else "*",
                 label = if (isTarget) "OBJETIVO" else "PLAN",
                 backgroundColor = root.context.getColor(R.color.traitor_panel),
                 strokeColor = root.context.getColor(R.color.traitor_red),
-                iconColor = bright
+                iconColor = bright,
+                iconRes = if (isTarget) {
+                    R.drawable.ic_chronicle_target
+                } else {
+                    R.drawable.ic_chronicle_dagger
+                }
             )
         }
         if (channel == ChatChannel.ESPECTADORES) {
             return EventPresentation(
-                icon = "~",
                 label = "MUERTOS",
                 backgroundColor = root.context.getColor(R.color.espectro_panel),
                 strokeColor = root.context.getColor(R.color.espectro_blue),
-                iconColor = root.context.getColor(R.color.espectro_blue_bright)
+                iconColor = root.context.getColor(R.color.espectro_blue_bright),
+                iconRes = R.drawable.ic_chronicle_ghost
             )
         }
         val gold = root.context.getColor(R.color.accent_gold)
         return when (entry.kind) {
+            ChronicleEntryKind.ROLE_COMPOSITION -> EventPresentation(
+                label = "ROLES",
+                backgroundColor = Color.parseColor("#55401F"),
+                strokeColor = Color.parseColor("#D6AE52"),
+                iconColor = Color.parseColor("#F2D483"),
+                iconRes = R.drawable.ic_chronicle_roles
+            )
             ChronicleEntryKind.DEATH -> EventPresentation(
-                icon = "X",
                 label = "MUERTE",
                 backgroundColor = Color.parseColor("#7A2A22"),
                 strokeColor = Color.parseColor("#B46A72"),
@@ -1029,7 +1258,6 @@ class GameplayChatController(
                 tintIcon = false
             )
             ChronicleEntryKind.EXPULSION -> EventPresentation(
-                icon = "V",
                 label = "EXPULSION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
@@ -1038,7 +1266,6 @@ class GameplayChatController(
                 tintIcon = false
             )
             ChronicleEntryKind.VOTE -> EventPresentation(
-                icon = "V",
                 label = "VOTACION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
@@ -1047,7 +1274,6 @@ class GameplayChatController(
                 tintIcon = false
             )
             ChronicleEntryKind.NIGHT -> EventPresentation(
-                icon = "N",
                 label = "NOCHE",
                 backgroundColor = Color.parseColor("#25334F"),
                 strokeColor = Color.parseColor("#6B86B8"),
@@ -1055,7 +1281,6 @@ class GameplayChatController(
                 iconRes = R.drawable.ic_chronicle_moon
             )
             ChronicleEntryKind.DAWN -> EventPresentation(
-                icon = "A",
                 label = "AMANECER",
                 backgroundColor = Color.parseColor("#6B5525"),
                 strokeColor = Color.parseColor("#E3C46F"),
@@ -1063,28 +1288,27 @@ class GameplayChatController(
                 iconRes = R.drawable.ic_chronicle_sun
             )
             ChronicleEntryKind.SILENCE -> EventPresentation(
-                icon = "S",
                 label = "SILENCIO",
                 backgroundColor = Color.parseColor("#4F3140"),
                 strokeColor = Color.parseColor("#A26A88"),
-                iconColor = Color.parseColor("#E6B6CE")
+                iconColor = Color.parseColor("#E6B6CE"),
+                iconRes = R.drawable.ic_chronicle_silence
             )
             ChronicleEntryKind.TIE -> EventPresentation(
-                icon = "!",
                 label = "EMPATE",
                 backgroundColor = Color.parseColor("#4B3B22"),
                 strokeColor = gold,
-                iconColor = gold
+                iconColor = gold,
+                iconRes = R.drawable.ic_chronicle_balance
             )
             ChronicleEntryKind.SPECIAL_VICTORY -> EventPresentation(
-                icon = "E",
                 label = "ESPECIAL",
                 backgroundColor = Color.parseColor("#493058"),
                 strokeColor = Color.parseColor("#C392E6"),
-                iconColor = Color.parseColor("#E2C8F8")
+                iconColor = Color.parseColor("#E2C8F8"),
+                iconRes = R.drawable.ic_chronicle_crown
             )
             else -> EventPresentation(
-                icon = "*",
                 label = "SUCESO",
                 backgroundColor = Color.parseColor("#4A3518"),
                 strokeColor = gold,
@@ -1350,13 +1574,29 @@ class GameplayChatController(
                 setStroke(host.dp(1), event.strokeColor)
             }
         }
-        banner.addView(TextView(root.context).apply {
+        val eventHeader = LinearLayout(root.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        eventHeader.addView(
+            ImageView(root.context).apply {
+                setImageResource(event.iconRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                if (event.tintIcon) setColorFilter(event.iconColor)
+                contentDescription = null
+            },
+            LinearLayout.LayoutParams(host.dp(17), host.dp(17)).apply {
+                marginEnd = host.dp(5)
+            }
+        )
+        eventHeader.addView(TextView(root.context).apply {
             text = event.label
             gravity = Gravity.CENTER
             setTextColor(event.iconColor)
             textSize = 8.5f * host.gameplayTextScale
             typeface = cronistaTypeface()
         })
+        banner.addView(eventHeader)
         banner.addView(TextView(root.context).apply {
             text = entry.text
             gravity = Gravity.CENTER
@@ -1534,7 +1774,7 @@ class GameplayChatController(
         }
     }
 
-    private fun sendHumanChatMessage() {
+    private fun sendHumanChatMessage(intentHint: HumanMessageIntent? = null) {
         val session = host.currentSession
         if (host.isTransitionLocked(session.phaseIndex)) {
             host.showToast("El chat se habilita al comenzar la fase.")
@@ -1561,7 +1801,7 @@ class GameplayChatController(
         if (updated.chatHistory.size > before) {
             GameplayEffects.play(root.context, GameplayEffect.CHAT)
             if (channel == ChatChannel.PUBLICO) {
-                onHumanMessage(rawMessage)
+                onHumanMessage(rawMessage, intentHint)
             } else if (channel == ChatChannel.TRAIDORES) {
                 onHumanTraitorMessage()
             }
@@ -2041,7 +2281,10 @@ class GameplayChatController(
         renderChatBadge()
     }
 
-    private fun onHumanMessage(rawHumanMessage: String) {
+    private fun onHumanMessage(
+        rawHumanMessage: String,
+        intentHint: HumanMessageIntent?
+    ) {
         if (host.isOnlineGameplay()) return
         val humanMessage = rawHumanMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         val session = host.currentSession
@@ -2050,15 +2293,18 @@ class GameplayChatController(
             resetDirectorForPhase(session)
         }
         directorHumanSpokePhaseIndex = session.phaseIndex
+        directorPromptedSilentHuman = false
         if (directorPendingHumanMessage.isNotBlank()) {
             cancelScheduledBotChat()
             directorPendingHumanMessage = humanMessage
+            directorPendingIntentHint = intentHint
             directorReactionLines = 0
             scheduleNextHumanReactionBeat()
             return
         }
         cancelScheduledBotChat()
         directorPendingHumanMessage = humanMessage
+        directorPendingIntentHint = intentHint
         directorReactionLines = 0
         scheduleNextHumanReactionBeat()
     }
@@ -2079,6 +2325,7 @@ class GameplayChatController(
         directorReactionLines = 0
         directorBeatCounter = 0
         directorPendingHumanMessage = ""
+        directorPendingIntentHint = null
         directorLastSpeaker = recentPublicMessages(session)
             .lastOrNull { !it.isGod && isBotSpeaker(session, it.speaker) }
             ?.speaker
@@ -2111,7 +2358,8 @@ class GameplayChatController(
             session = session,
             humanMessage = directorPendingHumanMessage,
             deliveredReactions = directorReactionLines,
-            lastSpeaker = directorLastSpeaker
+            lastSpeaker = directorLastSpeaker,
+            intentHint = directorPendingIntentHint
         )
         if (beat == null) {
             finishHumanConversation()
@@ -2143,7 +2391,33 @@ class GameplayChatController(
     private fun finishHumanConversation(sessionOverride: GameSession? = null) {
         directorReactionLines = 0
         directorPendingHumanMessage = ""
-        scheduleNextIdleBeat(sessionOverride)
+        directorPendingIntentHint = null
+        schedulePlayerNudge(sessionOverride)
+        renderChatPanel()
+    }
+
+    private fun schedulePlayerNudge(sessionOverride: GameSession? = null) {
+        val session = sessionOverride ?: host.currentSession
+        if (
+            host.isOnlineGameplay() ||
+            directorPromptedSilentHuman ||
+            !BotConversationDirector.canRun(session) ||
+            directorPhaseIndex != session.phaseIndex ||
+            directorPendingHumanMessage.isNotBlank() ||
+            pendingBotChatRunnables.isNotEmpty()
+        ) {
+            return
+        }
+        val beat = BotConversationDirector.playerNudgeBeat(session, directorLastSpeaker) ?: return
+        scheduleBotConversationBeat(
+            beat = beat,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = BotConversationDirector.silenceDelayMs(session, directorIdleLines)
+        ) { _, _ ->
+            directorLastSpeaker = beat.speaker
+            directorPromptedSilentHuman = true
+        }
     }
 
     private fun scheduleNextIdleBeat(sessionOverride: GameSession? = null) {
@@ -2191,7 +2465,9 @@ class GameplayChatController(
             if (beat.promptsSilentHuman) {
                 directorPromptedSilentHuman = true
             }
-            scheduleNextIdleBeat(committed)
+            if (directorIdleLines < BotConversationDirector.idleBudget(committed)) {
+                scheduleNextIdleBeat(committed)
+            }
         }
     }
 
@@ -2747,19 +3023,6 @@ class GameplayChatController(
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_CHAT_CHANNEL = "chat_channel"
-        private const val CHAT_PANEL_WIDTH_RATIO = 0.58f
-        private const val CHAT_PANEL_HEIGHT_RATIO = 0.68f
-        private const val CHAT_PANEL_COMPACT_WIDTH_RATIO = 0.78f
-        private const val CHAT_PANEL_COMPACT_HEIGHT_RATIO = 0.58f
-        private const val CHAT_PANEL_MIN_WIDTH_DP = 340
-        private const val CHAT_PANEL_MAX_WIDTH_DP = 560
-        private const val CHAT_PANEL_MIN_HEIGHT_DP = 340
-        private const val CHAT_PANEL_MAX_HEIGHT_DP = 520
-        private const val CHAT_PANEL_COMPACT_MIN_WIDTH_DP = 300
-        private const val CHAT_PANEL_COMPACT_MAX_WIDTH_DP = 620
-        private const val CHAT_PANEL_COMPACT_MIN_HEIGHT_DP = 230
-        private const val CHAT_PANEL_COMPACT_MAX_HEIGHT_DP = 380
-        private const val CHAT_PANEL_COMPACT_MARGIN_DP = 5
         private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
         private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f
         private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
@@ -2779,7 +3042,7 @@ class GameplayChatController(
         private const val RTDB_REACTIONS_NODE = "emotes"
         private const val ONLINE_REACTION_MAX_EVENTS = 30
         private const val ONLINE_REACTION_SEEN_IDS_LIMIT = ONLINE_REACTION_MAX_EVENTS * 4
-        private const val MAX_STAGGERED_BOT_REACTIONS = 3
+        private const val MAX_STAGGERED_BOT_REACTIONS = 4
         private const val MAX_EVENT_BOT_REACTIONS = 3
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
         private const val EVENT_BOT_REACTION_DELAY_MS = 2_400L

@@ -2,6 +2,7 @@ package com.traidores.juego
 
 enum class ChronicleEntryKind {
     PLAYER,
+    ROLE_COMPOSITION,
     DEATH,
     SILENCE,
     VOTE,
@@ -74,6 +75,8 @@ object ChronicleFeedPresenter {
         val lower = normalizeText(text)
         val round = roundFor(text)
         val kind = when {
+            "en juego:" in lower && "identidades siguen ocultas" in lower ->
+                ChronicleEntryKind.ROLE_COMPOSITION
             "victoria especial" in lower || "bufon" in lower -> ChronicleEntryKind.SPECIAL_VICTORY
             ("murio" in lower || "asesin" in lower) &&
                 "no murio" !in lower &&
@@ -119,6 +122,7 @@ object ChronicleFeedPresenter {
     private fun toneFor(kind: ChronicleEntryKind): ChronicleTone {
         return when (kind) {
             ChronicleEntryKind.PLAYER -> ChronicleTone.PLAYER
+            ChronicleEntryKind.ROLE_COMPOSITION -> ChronicleTone.SYSTEM
             ChronicleEntryKind.DEATH -> ChronicleTone.DEATH
             ChronicleEntryKind.SILENCE -> ChronicleTone.SILENCE
             ChronicleEntryKind.VOTE,

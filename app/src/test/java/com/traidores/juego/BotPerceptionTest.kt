@@ -43,6 +43,7 @@ class BotPerceptionTest {
         assertNull(BotPerception.directAddressee(session, "Mora esta rara"))
         assertEquals(HumanQuestionKind.WHY_VOTE, BotPerception.humanQuestionKind("Mora, por que me votaste?"))
         assertEquals(HumanQuestionKind.ASK_ROLE, BotPerception.humanQuestionKind("Mora, que rol sos?"))
+        assertEquals(HumanQuestionKind.VOTE_HELP, BotPerception.humanQuestionKind("Mora, a quien votarias?"))
         assertEquals(HumanSocialSignal.PRAISE, BotPerception.socialSignal("Mora, sos una genia"))
         assertEquals(HumanSocialSignal.INSULT, BotPerception.socialSignal("Mora, sos mentirosa"))
 

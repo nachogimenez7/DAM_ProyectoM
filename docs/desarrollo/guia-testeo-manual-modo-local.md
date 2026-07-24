@@ -64,7 +64,7 @@ Si tenés tiempo para más, repetí una partida completa en cada mapa con rol AZ
 De las últimas sesiones, estos son los puntos donde ya aparecieron bugs — vale la pena prestarles atención extra:
 1. **Roles sin acción nocturna** (Aldeano/Payador/Alcalde): que la noche NO se salte sola. Ya lo arreglamos, pero es el bug que más volvió.
 2. **Alcalde**: que VOTAR y "Revelarme" no queden ambos activos a la vez con un objetivo ya elegido.
-3. **Consistencia vertical/horizontal**: gameplay es apaisado, pero si algo se ve raro, avisá — varias veces un cambio quedó solo en un layout y no en el otro.
+3. **Consistencia vertical**: revisá que gameplay, chat y ventanas entren correctamente en teléfonos bajos y con texto grande.
 4. **Los 3 mapas**: el chat de pergamino y los marcos de reveal se ven distinto en cada mapa (mármol claro vs madera oscura) — confirmá legibilidad en los tres, no solo en uno.
 
 ## Cómo reportar lo que encuentres

@@ -38,7 +38,7 @@ Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, pe
 
 - Android runtime, minimum SDK 24 and target/compile SDK 34.
 - Java 8 bytecode target through `sourceCompatibility`, `targetCompatibility`, and `jvmTarget`.
-- Portrait orientation for menu/profile/reference screens; landscape orientation for lobby, role assignment, and gameplay in `app/src/main/AndroidManifest.xml`.
+- Portrait orientation for every screen in `app/src/main/AndroidManifest.xml`; no landscape resource variants are maintained.
 - Gradle wrapper 8.5, configured in `gradle/wrapper/gradle-wrapper.properties`.
 - Android Gradle Plugin 8.1.4.
 - No dependency lockfile or version catalog.
@@ -176,7 +176,7 @@ Este ciclo de trabajo se concentra en pulir las pantallas de gameplay, lobby, pe
 
 - One Android `:app` module and one package, `com.traidores.juego`.
 - Explicit `Intent` navigation between Activities rather than Navigation Component routes.
-- Portrait menu/reference flow and landscape game flow are separated by manifest orientation locks.
+- The complete application flow, including lobby, role assignment, and gameplay, is locked to portrait orientation.
 - Local game simulation passes a serializable `GameSession` through Activity extras.
 - Business rules have meaningful test coverage; visual and navigation behavior does not.
 

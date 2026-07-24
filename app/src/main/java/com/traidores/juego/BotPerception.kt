@@ -203,6 +203,7 @@ internal object BotPerception {
                 text.contains("cual es mi rol") || text.contains("que rol soy") ||
                 text.contains("q rol soy") || text.contains("mi rol") -> HumanQuestionKind.ROLE_HELP
             text.contains("a quien voto") || text.contains("a quien votamos") ||
+                text.contains("a quien votas") || text.contains("a quien votarias") ||
                 text.contains("quien voto") || text.contains("voto a quien") -> HumanQuestionKind.VOTE_HELP
             text.contains("que hago") || text.contains("q hago") ||
                 text.contains("que deberia hacer") || text.contains("como juego") -> HumanQuestionKind.ACTION_HELP

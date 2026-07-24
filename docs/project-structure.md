@@ -50,7 +50,6 @@ Ruta: `app/src/test/java/com/traidores/juego/`
 
 ## Documentacion existente
 
-- `docs/gameplay-vertical-draft.md`: cambios guardados del intento de gameplay vertical para retomarlo en el futuro.
 - `docs/lan-role-readiness.md`: notas de preparacion para lectura/flujo de roles.
 - `docs/map-exclusive-roles.md`: reglas de roles por mapa.
 - `docs/discord/`: material para integracion o presentacion de Discord.

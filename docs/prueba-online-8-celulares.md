@@ -13,8 +13,7 @@ TraidoresOnline
 ```
 
 4. Instalar el APK en el celular host y en los invitados.
-5. En Opciones, confirmar que `Modo vertical de gameplay` este activado si el celular venia de una instalacion vieja.
-6. Abrir una vez `Perfil` u `Online` en cada celular para que reserve su `#` publico si todavia no lo tiene.
+5. Abrir una vez `Perfil` u `Online` en cada celular para que reserve su `#` publico si todavia no lo tiene.
 
 ## Flujo recomendado
 

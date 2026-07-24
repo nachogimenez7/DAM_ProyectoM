@@ -89,13 +89,14 @@ Registro de decisiones importantes **inferidas del código actual**. Cada una do
 
 ---
 
-## ADR-09 — Orientación gestionada por preferencia, no fija en manifest
+## ADR-09 — Aplicación exclusivamente vertical
 
-**Decisión:** las pantallas de juego declaran `screenOrientation="unspecified"`; `BaseActivity` aplica una preferencia (vertical/horizontal) sólo a Lobby/LobbyBrowser/AssigningRoles/Gameplay; los menús son `portrait`.
-**Contexto:** experimentación con gameplay vertical (ver `docs/gameplay-vertical-draft.md`).
+**Decisión:** todas las Activities, incluidas Lobby, reparto de roles y Gameplay, declaran `screenOrientation="portrait"`. No se mantienen recursos ni ramas alternativas para landscape.
+**Contexto:** la interfaz vertical pasó a ser la única experiencia soportada y las variantes apaisadas quedaron obsoletas.
 **Consecuencias:**
-- (+) Flexibilidad para probar orientaciones sin tocar el manifest.
-- (−) El comportamiento de orientación no es evidente sólo leyendo el manifest.
+- (+) Una sola interfaz para diseñar, probar y mantener.
+- (+) El manifiesto expresa directamente la orientación efectiva.
+- (−) Volver a admitir otra orientación requeriría diseñarla e implementarla nuevamente.
 
 ---
 

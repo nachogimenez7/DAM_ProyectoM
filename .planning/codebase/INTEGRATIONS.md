@@ -14,7 +14,7 @@
 - `AndroidManifest.xml` declares `android.permission.VIBRATE`.
 - `BaseActivity.kt` provides shared AppCompat setup and is inherited by app screens.
 - Navigation uses Android `Intent` and Activity transitions directly from each Activity.
-- Landscape gameplay uses `adjustResize` to respond to soft keyboard insets.
+- Portrait gameplay uses `adjustResize` to respond to soft keyboard insets.
 
 ## Media And Audio
 

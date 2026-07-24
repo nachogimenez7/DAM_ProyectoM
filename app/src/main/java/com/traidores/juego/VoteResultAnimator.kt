@@ -246,8 +246,8 @@ class VoteResultAnimator(
         cards.addView(
             holder.root,
             GridLayout.LayoutParams().apply {
-                width = dp(142)
-                height = dp(142)
+                width = dp(176)
+                height = dp(218)
                 setMargins(dp(6), dp(6), dp(6), dp(6))
             }
         )
@@ -954,13 +954,14 @@ class VoteResultAnimator(
         }
         val roleImage = ImageView(context).apply {
             visibility = View.GONE
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_CENTER
             background = ResourcesCompat.getDrawable(
                 context.resources,
-                R.drawable.bg_profile_avatar_frame,
+                R.drawable.bg_role_card,
                 context.theme
             )
-            setPadding(dp(2), dp(2), dp(2), dp(2))
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            contentDescription = "Rol revelado de ${player.name}"
         }
         val seal = ImageView(context).apply {
             setImageResource(R.drawable.expulsion_seal)
@@ -968,13 +969,16 @@ class VoteResultAnimator(
             visibility = View.GONE
             alpha = 0f
         }
-        portrait.addView(avatar, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
-        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
+        portrait.addView(avatar, FrameLayout.LayoutParams(dp(76), dp(76), Gravity.CENTER))
+        portrait.addView(roleImage, FrameLayout.LayoutParams(dp(112), dp(150), Gravity.CENTER))
         portrait.addView(
             seal,
-            FrameLayout.LayoutParams(dp(38), dp(38), Gravity.BOTTOM or Gravity.END)
+            FrameLayout.LayoutParams(dp(42), dp(42), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(2)
+                bottomMargin = dp(2)
+            }
         )
-        root.addView(portrait, LinearLayout.LayoutParams(dp(66), dp(62)))
+        root.addView(portrait, LinearLayout.LayoutParams(dp(120), dp(154)))
 
         root.addView(TextView(context).apply {
             gravity = Gravity.CENTER
@@ -984,7 +988,7 @@ class VoteResultAnimator(
             setTextColor(context.getColor(R.color.text_primary))
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24)))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(27)))
 
         val total = TextView(context).apply {
             gravity = Gravity.CENTER
@@ -993,7 +997,7 @@ class VoteResultAnimator(
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
         }
-        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(20)))
+        root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(21)))
 
         val voterTokens = GridLayout(context).apply {
             visibility = View.GONE

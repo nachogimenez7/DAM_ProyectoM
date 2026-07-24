@@ -33,17 +33,17 @@ Ruta: `app/src/main/java/com/traidores/juego/` (~60 archivos Kotlin).
 | `JugarActivity.kt` | Selector local/online | portrait |
 | `LocalModeActivity.kt` | Crea sesión local → lobby | portrait |
 | `OnlineModeActivity.kt` | Crea/busca salas Firestore | portrait |
-| `LobbyBrowserActivity.kt` | Lista salas online | unspecified |
-| `LobbyActivity.kt` | Configuración de sala, jugadores, mapa, tiempos, roles | unspecified |
-| `AssigningRolesActivity.kt` | Pantalla intermedia de reparto/lectura | unspecified |
-| `GameplayMockActivity.kt` | Pantalla principal de partida (local y online) | unspecified, `adjustResize` |
+| `LobbyBrowserActivity.kt` | Lista salas online | portrait |
+| `LobbyActivity.kt` | Configuración de sala, jugadores, mapa, tiempos, roles | portrait |
+| `AssigningRolesActivity.kt` | Pantalla intermedia de reparto/lectura | portrait |
+| `GameplayMockActivity.kt` | Pantalla principal de partida (local y online) | portrait, `adjustResize` |
 | `RolesActivity.kt` | Guía/listado de roles | portrait |
 | `AyudaActivity.kt` | Ayuda/tutorial | portrait |
 | `OpcionesActivity.kt` | Preferencias (audio, idioma, vibración, texto, smoke test Firebase) | portrait |
 | `ProfileActivity.kt` | Perfil del jugador (nombre, avatar, banner, rol favorito, bio) | portrait |
 | `ProfileSelectionActivity.kt` | Selección de avatar/banner/rol | portrait |
 
-> Las pantallas de juego declaran `screenOrientation="unspecified"`; `BaseActivity` aplica una preferencia de orientación (vertical/horizontal) sólo a Lobby, LobbyBrowser, AssigningRoles y Gameplay. **No están fijadas a landscape en el manifest.**
+> Toda la aplicación está fijada a `portrait` en el manifest. No se mantienen variantes `layout-land`.
 
 ### Dominio y reglas
 - `GameModels.kt` — `GameSession`, `GamePlayer`, `GameRole`, `GamePhase`, enums, configs (`GameTimingConfig`, `RoleRevealConfig`, `RoleCompositionConfig`), `RoleRevealGate`, `GameRules`, `LocalGameFactory`, `GameMap`.

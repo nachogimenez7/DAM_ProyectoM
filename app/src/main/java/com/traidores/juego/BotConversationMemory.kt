@@ -52,6 +52,7 @@ internal fun humanMessageIntent(
     if (claimsHiddenInfo) return HumanMessageIntent.SECRET_LEAK
     if (roleClaim != null) return HumanMessageIntent.ROLE_CLAIM
     return when {
+        publicStatement?.type in actionStatementTypes -> HumanMessageIntent.ACTION_CLAIM
         questionKind == HumanQuestionKind.ROLE_HELP -> HumanMessageIntent.ROLE_QUESTION
         questionKind == HumanQuestionKind.ASK_ROLE -> HumanMessageIntent.ROLE_QUESTION
         questionKind == HumanQuestionKind.ACTION_HELP -> HumanMessageIntent.ACTION_HELP
@@ -201,9 +202,11 @@ internal fun isGroundedSuspicionReason(reason: String): Boolean {
 }
 
 internal fun personalityFor(session: GameSession, bot: GamePlayer): BotPersonality {
-    val personalities = BotPersonality.entries
-    val identityKey = normalizedForParsing(bot.name).ifBlank { bot.initial.lowercase() }
-    return personalities[stableNoise("personality-identity:$identityKey") % personalities.size]
+    return BotIdentity.personalityFor(session, bot)
+}
+
+internal fun competitivenessFor(session: GameSession, bot: GamePlayer): BotCompetitiveness {
+    return BotIdentity.competitivenessFor(session, bot)
 }
 
 internal fun moodFor(session: GameSession, bot: GamePlayer, latestMessage: String): BotMood {

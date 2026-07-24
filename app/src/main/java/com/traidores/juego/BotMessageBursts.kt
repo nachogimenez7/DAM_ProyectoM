@@ -54,6 +54,7 @@ internal object BotMessageBursts {
         val bot = GameEngine.playerByName(session, speaker) ?: return emptyList()
         val directAddressee = BotPerception.directAddressee(session, humanMessage)
         val questionKind = BotPerception.humanQuestionKind(humanMessage)
+        val roleClaim = LocalBotAi.roleClaimFrom(humanMessage)
         val direct = directAddressee == bot.name
         val target = mentionedPlayerNames(session, humanMessage)
             .firstOrNull { it != bot.name }
@@ -80,6 +81,21 @@ internal object BotMessageBursts {
             direct && humanMessage.length >= 55 -> listOf(
                 "te respondo eso puntual y despues vemos el resto"
             )
+            roleClaim != null &&
+                stableNoise("${session.code}:${session.phaseIndex}:claim-burst:${bot.name}:$humanMessage") % 100 < 28 ->
+                when (roleClaim.roleKey) {
+                    RoleCatalog.ALDEANO -> listOf(
+                        "${safeName(GameEngine.humanPlayer(session), session)}, entonces juga: a quien miras?"
+                    )
+                    RoleCatalog.ASESINO,
+                    RoleCatalog.MERCENARIO,
+                    RoleCatalog.ESPIA -> listOf(
+                        "lo decis posta o estas buscando que saltemos?"
+                    )
+                    else -> listOf(
+                        "igual el nombre del rol solo no alcanza, conta algo de la ronda"
+                    )
+                }
             else -> emptyList()
         }
         if (options.isEmpty()) return emptyList()
@@ -119,6 +135,11 @@ internal object BotMessageBursts {
         val roll = stableNoise(
             "${session.code}:${session.round}:${session.phaseIndex}:${bot.name}:idle-burst:$primaryMessage"
         ) % 100
+        val competitivenessAdjustment = when (competitivenessFor(session, bot)) {
+            BotCompetitiveness.RELAJADO -> -8
+            BotCompetitiveness.EQUILIBRADO -> 0
+            BotCompetitiveness.OBSESIVO -> 12
+        }
         val allowsThree = objective.type in setOf(
             RoundObjectiveType.PUSH_VOTE,
             RoundObjectiveType.FOLLOW_CONTRADICTION,
@@ -126,14 +147,14 @@ internal object BotMessageBursts {
         ) && objective.confidence >= 10
         return if (session.botDifficulty == BotDifficulty.HARD) {
             when {
-                allowsThree && roll < 5 -> 2
-                roll < 32 -> 1
+                allowsThree && roll < 5 + competitivenessAdjustment / 3 -> 2
+                roll < 32 + competitivenessAdjustment -> 1
                 else -> 0
             }
         } else {
             when {
-                allowsThree && roll < 12 -> 2
-                roll < 52 -> 1
+                allowsThree && roll < 12 + competitivenessAdjustment / 2 -> 2
+                roll < 52 + competitivenessAdjustment -> 1
                 else -> 0
             }
         }

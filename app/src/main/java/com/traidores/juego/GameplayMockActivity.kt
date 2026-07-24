@@ -5,7 +5,6 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
@@ -1011,6 +1010,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onlineActionsListener?.remove()
         onlineActionsListener = null
         chatController.onDestroy()
+        GameNotice.dismissAll(this)
+        PlayerProfileDialog.dismissAll(this)
+        GameDialog.dismissAll(this)
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
         } else {
@@ -1090,6 +1092,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.phase == GamePhase.RESULTADO &&
             session.dayEliminationTarget.isBlank()
         ) {
+            dismissSecondaryUiForPriorityWindow()
             dismissActionFeedbackBannerNow()
             hideCentralPublicEventBanner(immediate = true)
             isVoteResultVisible = true
@@ -1830,6 +1833,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun renderGame() {
         val renderStartedAtMs = SystemClock.elapsedRealtime()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        val enteringInteractivePhase =
+            lastRenderedPhase != session.phase && requiresHumanInput()
+        if (enteringInteractivePhase) {
+            dismissSecondaryUiForPriorityWindow()
+        }
         syncReactionRound()
         if (
             selectedTarget.isNotBlank() &&
@@ -2407,6 +2415,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         lastAppliedOnlineVotePresentation = presentation
+        dismissSecondaryUiForPriorityWindow()
         dismissActionFeedbackBannerNow()
         hideCentralPublicEventBanner(immediate = true)
         when {
@@ -2616,6 +2625,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun isOnlineGameplay(): Boolean {
         return onlinePartidaId.isNotBlank() && onlinePlayerId.isNotBlank()
+    }
+
+    override fun canOpenExpandedChat(): Boolean {
+        return !reactionUiBlocked()
     }
 
     override fun isTransitionLocked(phaseIndex: Int): Boolean {
@@ -3518,6 +3531,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun toggleEventLog() {
+        if (reactionUiBlocked()) return
         GameplayEffects.play(this, GameplayEffect.PANEL)
         isEventLogExpanded = !isEventLogExpanded
         if (isEventLogExpanded) {
@@ -3584,15 +3598,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val text = TextView(this)
         text.text = message
         text.setTextColor(getColor(R.color.text_primary))
-        text.textSize = when {
-            isEventLogExpanded && isPortrait() -> 11.5f
-            isEventLogExpanded -> 10f
-            else -> 9f
-        }
-        text.maxLines = if (isEventLogExpanded && isPortrait()) 3 else 1
-        text.setSingleLine(!isEventLogExpanded || !isPortrait())
+        text.textSize = if (isEventLogExpanded) 11.5f else 9f
+        text.maxLines = if (isEventLogExpanded) 3 else 1
+        text.setSingleLine(!isEventLogExpanded)
         text.setPadding(dp(9), 0, 0, 0)
-        if (isEventLogExpanded && isPortrait()) {
+        if (isEventLogExpanded) {
             row.addView(
                 text,
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -3835,6 +3845,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun dismissReactionPalette() {
         reactionPalette?.dismiss()
         reactionPalette = null
+    }
+
+    private fun dismissSecondaryUiForPriorityWindow() {
+        if (::chatController.isInitialized) {
+            chatController.closeForPriorityWindow()
+        }
+        dismissReactionPalette()
+        clearReactionBubbles()
+        GameNotice.dismissAll(this)
+        PlayerProfileDialog.dismissAll(this)
+        GameDialog.dismissAll(this)
+        if (::eventLogPanel.isInitialized && isEventLogExpanded) {
+            eventLogHeightAnimator?.cancel()
+            isEventLogExpanded = false
+            lastRenderedEventExpanded = null
+            renderEventLogPanel(animate = false)
+        }
     }
 
     private fun clearReactionBubbles() {
@@ -4662,22 +4689,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun renderPlayerColumns(newlyDeadPlayers: Set<String> = emptySet()) {
-        val portrait = isPortrait()
         val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(
             session.players,
             includeEliminated = true,
-            putOddExtraOnLeft = portrait
+            putOddExtraOnLeft = true
         )
-        val displayedPlayers = if (portrait) {
-            leftPlayers.size + rightPlayers.size + 1
-        } else {
-            session.players.size
-        }
+        val displayedPlayers = leftPlayers.size + rightPlayers.size + 1
         val totalPlayers = displayedPlayers.coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
         val measuredHeightPx = listOf(leftPlayersScroll.height, rightPlayersScroll.height)
             .filter { it > 0 }
             .minOrNull()
-        val bottomPanelInsetDp = if (portrait) BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12 else 0
+        val bottomPanelInsetDp = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
         val availableHeightDp = measuredHeightPx
             ?.let { (pxToDp(it) - bottomPanelInsetDp).coerceAtLeast(1) }
             ?: (resources.configuration.screenHeightDp - 16 - bottomPanelInsetDp)
@@ -4685,7 +4707,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val metrics = GameplayTableUi.companionCardMetrics(
             totalPlayers,
             availableHeightDp,
-            availableWidthDp = if (isPortrait()) availableSideColumnWidthDp() else null
+            availableWidthDp = availableSideColumnWidthDp()
         )
         if (lastCompanionCardMetrics != metrics) {
             lastCompanionCardMetrics = metrics
@@ -4726,38 +4748,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             Gravity.CENTER_VERTICAL
         }
-        if (isPortrait()) {
-            leftPlayersContainer.gravity = verticalGravity or Gravity.START
-            rightPlayersContainer.gravity = verticalGravity or Gravity.END
-            leftPlayersContainer.setPadding(dp(2), 0, 0, 0)
-            rightPlayersContainer.setPadding(0, 0, dp(2), 0)
-            val bottomScrollInset = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
-            leftPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
-            rightPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
-            bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
-                width = dp((resources.configuration.screenWidthDp - 24).coerceIn(244, 372))
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            }
-        } else {
-            val containerGravity = verticalGravity or Gravity.CENTER_HORIZONTAL
-            leftPlayersContainer.gravity = containerGravity
-            rightPlayersContainer.gravity = containerGravity
-            leftPlayersContainer.setPadding(0, 0, 0, 0)
-            rightPlayersContainer.setPadding(0, 0, 0, 0)
-            leftPlayersScroll.setPadding(0, 0, 0, 0)
-            rightPlayersScroll.setPadding(0, 0, 0, 0)
-            bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
-                width = FrameLayout.LayoutParams.MATCH_PARENT
-                gravity = Gravity.BOTTOM
-            }
+        leftPlayersContainer.gravity = verticalGravity or Gravity.START
+        rightPlayersContainer.gravity = verticalGravity or Gravity.END
+        leftPlayersContainer.setPadding(dp(2), 0, 0, 0)
+        rightPlayersContainer.setPadding(0, 0, dp(2), 0)
+        val bottomScrollInset = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
+        leftPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
+        rightPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
+        bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
+            width = dp((resources.configuration.screenWidthDp - 24).coerceIn(244, 372))
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         }
-        applyAdaptiveVerticalHudSizing()
+        applyAdaptiveHudSizing()
 
         gameplayBody.requestLayout()
     }
 
-    private fun applyAdaptiveVerticalHudSizing() {
-        if (!isPortrait()) return
+    private fun applyAdaptiveHudSizing() {
         val playerCount = session.players.size
         val roomy = playerCount <= 8
         val relaxed = playerCount <= 10
@@ -4786,11 +4793,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun eventLogCollapsedHeightDp(): Int {
-        return if (isPortrait() && ::session.isInitialized && session.players.size <= 8) 40 else 32
+        return if (::session.isInitialized && session.players.size <= 8) 40 else 32
     }
 
     private fun eventLogExpandedHeightDp(): Int {
-        return if (!isPortrait() || !::session.isInitialized) {
+        return if (!::session.isInitialized) {
             136
         } else {
             when {
@@ -4813,10 +4820,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 centerColumnPreferredWidthDp
             ).coerceAtLeast(108)
         return (combinedSideWidth / 2).coerceIn(54, 78)
-    }
-
-    override fun isPortrait(): Boolean {
-        return resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     }
 
     private fun syncPlayerContainer(
@@ -4854,14 +4857,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 container.removeView(holder.root)
                 container.addView(holder.root, index.coerceAtMost(container.childCount))
             }
-            holder.root.gravity = if (isPortrait()) {
-                Gravity.CENTER_VERTICAL or if (container === rightPlayersContainer) {
-                    Gravity.END
-                } else {
-                    Gravity.START
-                }
+            holder.root.gravity = Gravity.CENTER_VERTICAL or if (container === rightPlayersContainer) {
+                Gravity.END
             } else {
-                Gravity.CENTER
+                Gravity.START
             }
             bindSidePlayerCard(holder, player, metrics)
             if (player.name in newlyDeadPlayers) {
@@ -5381,12 +5380,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showMiniPlayerProfile(player: GamePlayer) {
+        if (reactionUiBlocked()) return
         GameplayEffects.play(this, GameplayEffect.PANEL)
         val profile = PlayerProfileStore.profileFor(this, session, player)
         PlayerProfileDialog.showMini(this, profile)
     }
 
     private fun showEliminatedPlayerCard(player: GamePlayer) {
+        if (reactionUiBlocked()) return
         val role = player.role ?: return
         GameplayEffects.play(this, GameplayEffect.PANEL)
 
@@ -5482,7 +5483,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 bottomMargin = dp(3)
             })
         }
-        content.addView(card, LinearLayout.LayoutParams(dp(154), dp(214)).apply {
+        content.addView(card, LinearLayout.LayoutParams(dp(174), dp(232)).apply {
             bottomMargin = dp(10)
         })
         content.addView(TextView(this).apply {
@@ -6631,6 +6632,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             return
         }
+        dismissSecondaryUiForPriorityWindow()
         dismissActionFeedbackBannerNow()
         val role = GameEngine.humanPlayer(session).role ?: return
         pauseCountdown()
@@ -7064,6 +7066,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun showPendingPrivateFeedback() {
         val spec = feedbackState.privateToPresent() ?: return
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         MusicManager.pauseForTransition()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
@@ -7223,6 +7226,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.phase == GamePhase.RESULTADO &&
             session.dayEliminationTarget.isBlank()
         ) {
+            dismissSecondaryUiForPriorityWindow()
             dismissActionFeedbackBannerNow()
             hideCentralPublicEventBanner(immediate = true)
             isVoteResultVisible = true
@@ -7276,6 +7280,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showDeathReveal(player: GamePlayer) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(deathRevealContinueTimeoutRunnable)
@@ -7369,6 +7374,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showNoDeathReveal() {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -7414,6 +7420,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun maybeShowVoteResult(): Boolean {
         if (isVoteResultVisible) return true
         if (session.phase != GamePhase.RECUENTO_VOTOS) return false
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(voteResultAutoContinueRunnable)
@@ -7442,6 +7449,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun showTieVoteWindow() {
         if (session.phase != GamePhase.DESEMPATE_VOTACION) return
+        dismissSecondaryUiForPriorityWindow()
         dismissActionFeedbackBannerNow()
         selectedTarget = selectedTarget.takeIf { canActOnTarget(it) }.orEmpty()
         isTieVoteVisible = true
@@ -7485,7 +7493,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         val gridMetrics = GameplayTableUi.tieVoteGridMetrics(
             candidateCount = candidates.size,
-            maxColumns = if (isPortrait()) 2 else 4,
+            maxColumns = 2,
             availableWidthDp = tieVotePanelAvailableWidthDp()
         )
         tieVoteCards.columnCount = gridMetrics.columns
@@ -7828,6 +7836,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showSilenceReveal(player: GamePlayer) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -7864,6 +7873,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showOracleReveal() {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -7934,6 +7944,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showJesterVictory(victory: GameSpecialVictory) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -7984,6 +7995,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showWinnerReveal(animate: Boolean) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -8008,7 +8020,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             summary = presentation.summary,
             specialVictories = presentation.specialVictories,
             specialWinners = presentation.specialWinningPlayers,
-            themeKey = themeKey,
             winnerKey = session.winner
         )
         winnerRevealScroll.scrollTo(0, 0)
@@ -8028,15 +8039,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun applyWinnerRevealLayout(winnerKey: String) {
-        val portrait = isPortrait()
         winnerRevealPanel.layoutParams = (winnerRevealPanel.layoutParams as FrameLayout.LayoutParams).apply {
             width = FrameLayout.LayoutParams.MATCH_PARENT
             height = FrameLayout.LayoutParams.MATCH_PARENT
-            if (portrait) {
-                setMargins(dp(14), dp(16), dp(14), dp(16))
-            } else {
-                setMargins(dp(36), dp(6), dp(36), dp(6))
-            }
+            setMargins(dp(14), dp(16), dp(14), dp(16))
             gravity = Gravity.CENTER
         }
         val factionColor = winnerAccentColor(winnerKey)
@@ -8046,48 +8052,48 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealTitle.setTextColor(Color.parseColor("#F3D488"))
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealTitle,
-            if (portrait) 26 else 22,
-            if (portrait) 34 else 30,
+            26,
+            34,
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
-        winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 34f else 30f)
+        winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34f)
         winnerRevealPersonalResult.setBackgroundResource(android.R.color.transparent)
         winnerRevealPersonalResult.setTextColor(factionColor)
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealPersonalResult,
-            if (portrait) 12 else 14,
-            if (portrait) 17 else 19,
+            12,
+            17,
             1,
             TypedValue.COMPLEX_UNIT_SP
         )
-        winnerRevealPersonalResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 14.5f else 18f)
+        winnerRevealPersonalResult.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14.5f)
         winnerSummaryPanel.setBackgroundResource(R.drawable.bg_winner_premium_summary)
         winnerSummaryStatsRow.layoutParams = winnerSummaryStatsRow.layoutParams.apply {
-            height = dp(if (portrait) 52 else 32)
+            height = dp(52)
         }
         listOf(winnerSummaryRounds, winnerSummaryDuration, winnerSummaryPlayers).forEach { stat ->
             stat.setBackgroundResource(R.drawable.bg_winner_stat_chip)
-            stat.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 13.5f)
-            stat.maxLines = if (portrait) 2 else 1
-            stat.setSingleLine(!portrait)
+            stat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            stat.maxLines = 2
+            stat.setSingleLine(false)
         }
         listOf(winnerSummaryHighlight, winnerSummaryTimeline).forEach { summaryText ->
             summaryText.setBackgroundResource(R.drawable.bg_winner_summary_text)
             summaryText.setPadding(dp(12), dp(7), dp(9), dp(7))
         }
         winnerSummaryHighlight.setTextColor(Color.parseColor("#B9AD92"))
-        winnerSummaryHighlight.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13.5f else 13f)
+        winnerSummaryHighlight.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
         winnerSummaryTimeline.setTextColor(Color.parseColor("#B9AD92"))
-        winnerSummaryTimeline.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 12.5f else 12.5f)
+        winnerSummaryTimeline.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
         btnWinnerReturnLobby.setBackgroundResource(R.drawable.bg_winner_premium_button)
         btnWinnerReturnLobby.setTextColor(Color.parseColor("#211407"))
-        btnWinnerReturnLobby.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (portrait) 13f else 12f)
+        btnWinnerReturnLobby.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         btnWinnerReturnLobby.layoutParams = (btnWinnerReturnLobby.layoutParams as LinearLayout.LayoutParams).apply {
-            width = dp(if (portrait) 208 else 190)
-            height = dp(if (portrait) 46 else 36)
-            topMargin = dp(if (portrait) 12 else 10)
-            bottomMargin = dp(if (portrait) 8 else 10)
+            width = dp(208)
+            height = dp(46)
+            topMargin = dp(12)
+            bottomMargin = dp(8)
         }
     }
 
@@ -8205,6 +8211,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showTraitorReveal(teammates: List<GamePlayer>) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         dismissActionFeedbackBannerNow()
@@ -8245,12 +8252,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val container = LinearLayout(this)
         container.orientation = LinearLayout.VERTICAL
         container.gravity = Gravity.CENTER
-        container.setPadding(dp(12), 0, dp(12), 0)
+        container.setPadding(dp(10), 0, dp(10), 0)
 
-        val card = ImageView(this)
-        card.setImageResource(roleImageFor(player.role))
-        card.scaleType = ImageView.ScaleType.FIT_CENTER
-        container.addView(card, LinearLayout.LayoutParams(dp(80), dp(100)))
+        val cardFrame = FrameLayout(this).apply {
+            setBackgroundResource(R.drawable.bg_role_card)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+        }
+        cardFrame.addView(ImageView(this).apply {
+            setImageResource(roleImageFor(player.role))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Rol de ${player.name}"
+        }, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        container.addView(cardFrame, LinearLayout.LayoutParams(dp(96), dp(128)))
 
         val playerName = TextView(this)
         playerName.text = player.name
@@ -8261,7 +8277,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         playerName.setTextColor(getColor(R.color.accent_gold))
         playerName.textSize = 14f
         playerName.setTypeface(null, Typeface.BOLD)
-        val nameParams = LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
+        val nameParams = LinearLayout.LayoutParams(dp(124), LinearLayout.LayoutParams.WRAP_CONTENT)
         nameParams.topMargin = dp(7)
         container.addView(playerName, nameParams)
 
@@ -8274,7 +8290,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         roleLabel.textSize = 11.5f
         container.addView(
             roleLabel,
-            LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT)
+            LinearLayout.LayoutParams(dp(124), LinearLayout.LayoutParams.WRAP_CONTENT)
         )
         return container
     }
@@ -8306,6 +8322,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun startDayNightTransition(spec: GameplayTransitionSpec) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         val fromPeriod = presentedPeriod ?: spec.period
@@ -8470,6 +8487,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun showSpectatorChoiceDialog(human: GamePlayer) {
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         val wonAsJester = session.specialVictories.any {
@@ -8591,6 +8609,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             return
         }
+        dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)

@@ -808,10 +808,12 @@
 
                         <ImageView
                             android:id="@+id/rolePreviewImage"
-                            android:layout_width="128dp"
-                            android:layout_height="146dp"
+                            android:layout_width="@dimen/reveal_card_large_width"
+                            android:layout_height="@dimen/reveal_card_large_height"
                             android:adjustViewBounds="true"
+                            android:background="@drawable/bg_role_card"
                             android:contentDescription="Carta de rol ampliada"
+                            android:padding="3dp"
                             android:scaleType="fitCenter" />
 
                         <TextView
@@ -1581,19 +1583,19 @@
                     android:orientation="horizontal">
 
                     <FrameLayout
-                        android:layout_width="116dp"
-                        android:layout_height="116dp"
+                        android:layout_width="@dimen/reveal_card_width"
+                        android:layout_height="@dimen/reveal_card_height"
                         android:background="@drawable/bg_jester_portrait_glow"
-                        android:padding="6dp">
+                        android:padding="4dp">
 
                         <ImageView
                             android:id="@+id/jesterVictoryImage"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:background="@drawable/bg_profile_avatar_frame"
+                            android:background="@drawable/bg_role_card"
                             android:contentDescription="Bufón revelado"
-                            android:padding="4dp"
-                            android:scaleType="centerCrop"
+                            android:padding="3dp"
+                            android:scaleType="fitCenter"
                             android:src="@drawable/rol_bufon_medieval" />
                     </FrameLayout>
 

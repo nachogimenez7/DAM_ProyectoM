@@ -13,8 +13,18 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import java.util.WeakHashMap
 
 object GameDialog {
+    private val openDialogs = WeakHashMap<Activity, MutableSet<AlertDialog>>()
+
+    fun dismissAll(activity: Activity) {
+        openDialogs[activity]
+            ?.toList()
+            ?.forEach { dialog -> dialog.dismiss() }
+        openDialogs.remove(activity)
+    }
+
     fun confirm(
         activity: Activity,
         title: String,
@@ -48,8 +58,11 @@ object GameDialog {
         host.content.visibility = View.VISIBLE
         host.negative.text = negativeLabel
         host.negative.setOnClickListener { host.dialog.dismiss() }
+        val optionList = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         options.forEachIndexed { index, label ->
-            host.content.addView(Button(activity).apply {
+            optionList.addView(Button(activity).apply {
                 text = label
                 setTextColor(activity.getColor(R.color.text_primary))
                 textSize = 13f
@@ -66,7 +79,30 @@ object GameDialog {
                 if (index > 0) topMargin = activity.dp(7)
             })
         }
-        show(activity, host.dialog)
+        val optionHeight = (options.size.coerceAtLeast(1) * 53).coerceAtMost(330)
+        val optionScroll = ScrollView(activity).apply {
+            isFillViewport = false
+            overScrollMode = if (options.size * 53 > optionHeight) {
+                View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            } else {
+                View.OVER_SCROLL_NEVER
+            }
+            addView(
+                optionList,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        host.content.addView(
+            optionScroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                activity.dp(optionHeight)
+            )
+        )
+        show(activity, host.dialog, heightConstrainedView = optionScroll)
         return host.dialog
     }
 
@@ -214,7 +250,18 @@ object GameDialog {
                 }
             }
         }
+        track(activity, dialog)
         dialog.show()
+    }
+
+    private fun track(activity: Activity, dialog: AlertDialog) {
+        openDialogs.getOrPut(activity) { linkedSetOf() }.add(dialog)
+        dialog.setOnDismissListener {
+            openDialogs[activity]?.let { dialogs ->
+                dialogs.remove(dialog)
+                if (dialogs.isEmpty()) openDialogs.remove(activity)
+            }
+        }
     }
 
     private data class DialogHost(

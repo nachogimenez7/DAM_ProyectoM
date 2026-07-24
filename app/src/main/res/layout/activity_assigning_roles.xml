@@ -13,25 +13,73 @@
 
         <ImageView
             android:id="@+id/assigningTable"
-            android:layout_width="250dp"
-            android:layout_height="300dp"
-            android:layout_gravity="center_horizontal|top"
-            android:layout_marginTop="170dp"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
             android:alpha="0"
             android:contentDescription="@null"
             android:elevation="1dp"
-            android:scaleType="fitXY"
-            android:src="@drawable/assigning_vertical_table" />
+            android:scaleType="centerCrop"
+            android:src="@drawable/assigning_vertical_table_trailer" />
+
+        <View
+            android:id="@+id/assigningCandleGlow"
+            android:layout_width="210dp"
+            android:layout_height="250dp"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="-42dp"
+            android:layout_marginTop="-22dp"
+            android:alpha="0"
+            android:background="@drawable/bg_assigning_candle_glow"
+            android:elevation="2dp"
+            android:importantForAccessibility="no" />
+
+        <View
+            android:id="@+id/assigningVignette"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:background="@drawable/bg_assigning_vignette"
+            android:elevation="2dp"
+            android:importantForAccessibility="no" />
+
+        <View
+            android:id="@+id/finalCardAura"
+            android:layout_width="190dp"
+            android:layout_height="270dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:background="@drawable/bg_assigning_card_aura"
+            android:elevation="3dp"
+            android:importantForAccessibility="no" />
+
+        <View
+            android:id="@+id/finalCardShadow"
+            android:layout_width="112dp"
+            android:layout_height="174dp"
+            android:layout_gravity="center"
+            android:alpha="0"
+            android:background="@drawable/bg_assigning_hand_shadow"
+            android:elevation="4dp"
+            android:importantForAccessibility="no" />
 
         <ImageView
             android:id="@+id/assigningHands"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:alpha="0"
-            android:elevation="6dp"
+            android:elevation="8dp"
             android:importantForAccessibility="no"
-            android:scaleType="fitCenter"
-            android:src="@drawable/assigning_vertical_hands_throw" />
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/assigningCardGripHands"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:alpha="0"
+            android:elevation="8dp"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
 
         <ImageView
             android:id="@+id/shuffleCardLeft"
@@ -40,7 +88,7 @@
             android:layout_gravity="center"
             android:alpha="0"
             android:contentDescription="Carta oculta"
-            android:elevation="1dp"
+            android:elevation="5dp"
             android:scaleType="fitCenter"
             android:src="@drawable/card_back_traidores" />
 
@@ -51,7 +99,7 @@
             android:layout_gravity="center"
             android:alpha="0"
             android:contentDescription="Carta oculta"
-            android:elevation="2dp"
+            android:elevation="6dp"
             android:scaleType="fitCenter"
             android:src="@drawable/card_back_traidores" />
 
@@ -62,7 +110,7 @@
             android:layout_gravity="center"
             android:alpha="0"
             android:contentDescription="Tu carta oculta"
-            android:elevation="3dp"
+            android:elevation="7dp"
             android:scaleType="fitCenter"
             android:src="@drawable/card_back_traidores" />
 
@@ -71,10 +119,9 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:alpha="0"
-            android:elevation="8dp"
+            android:elevation="9dp"
             android:importantForAccessibility="no"
-            android:scaleType="centerCrop"
-            android:src="@drawable/assigning_roles_dealing_hands" />
+            android:scaleType="centerCrop" />
 
         <TextView
             android:id="@+id/assigningStatus"
@@ -88,7 +135,7 @@
             android:fontFamily="sans-serif"
             android:gravity="center"
             android:maxLines="1"
-            android:text="¡Buena suerte con tu carta!"
+            android:text="¡Buena suerte con tu rol!"
             android:textColor="@color/accent_gold"
             android:textSize="21sp"
             android:textStyle="bold" />
@@ -100,6 +147,7 @@
         android:layout_height="40dp"
         android:layout_gravity="top|start"
         android:layout_margin="10dp"
+        android:alpha="0"
         android:background="@drawable/bg_btn_dark"
         android:contentDescription="Volver al lobby"
         android:elevation="12dp"

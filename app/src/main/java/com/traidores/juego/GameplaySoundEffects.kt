@@ -7,7 +7,12 @@ object GameplaySoundEffects {
         ShortSoundPool.preload(context, GameSound.values().map { it.res })
     }
 
-    fun play(context: Context, soundRes: Int, volumeScale: Float = 1f) {
+    fun play(
+        context: Context,
+        soundRes: Int,
+        volumeScale: Float = 1f,
+        playbackRate: Float = 1f
+    ) {
         val preferences = AudioPreferences.preferences(context)
         if (!AudioPreferences.areEffectsEnabled(preferences)) return
 
@@ -15,6 +20,11 @@ object GameplaySoundEffects {
         if (volume <= 0f) return
 
         val effectiveVolume = volume * volumeScale.coerceIn(0f, 1f)
-        ShortSoundPool.play(context, soundRes, effectiveVolume)
+        ShortSoundPool.play(
+            context = context,
+            soundRes = soundRes,
+            volume = effectiveVolume,
+            playbackRate = playbackRate
+        )
     }
 }

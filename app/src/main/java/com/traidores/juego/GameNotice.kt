@@ -79,6 +79,14 @@ object GameNotice {
         handler.postDelayed(dismiss, duration.milliseconds)
     }
 
+    fun dismissAll(activity: Activity) {
+        active.remove(activity)?.let { notice ->
+            handler.removeCallbacks(notice.dismiss)
+            notice.view.animate().cancel()
+            (notice.view.parent as? ViewGroup)?.removeView(notice.view)
+        }
+    }
+
     private fun dismiss(activity: Activity, notice: View) {
         if (notice.parent == null) return
         notice.animate()

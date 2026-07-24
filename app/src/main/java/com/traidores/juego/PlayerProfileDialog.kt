@@ -19,8 +19,17 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import java.util.WeakHashMap
 
 object PlayerProfileDialog {
+    private val openDialogs = WeakHashMap<Activity, MutableSet<AlertDialog>>()
+
+    fun dismissAll(activity: Activity) {
+        openDialogs[activity]
+            ?.toList()
+            ?.forEach { dialog -> dialog.dismiss() }
+        openDialogs.remove(activity)
+    }
 
     fun showFull(activity: Activity, profile: PlayerProfile, canEdit: Boolean) {
         val content = profileView(activity, profile, compact = false, canEdit = canEdit)
@@ -42,7 +51,7 @@ object PlayerProfileDialog {
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
         }
-        dialog.show()
+        showTracked(activity, dialog)
     }
 
     fun showMini(activity: Activity, profile: PlayerProfile) {
@@ -63,7 +72,7 @@ object PlayerProfileDialog {
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
         }
-        dialog.show()
+        showTracked(activity, dialog)
     }
 
     private fun profileView(
@@ -493,7 +502,7 @@ object PlayerProfileDialog {
             }
             alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
         }
-        dialog.show()
+        showTracked(activity, dialog)
     }
 
     private fun showEmotePreview(activity: Activity, spec: EmoteSpec) {
@@ -525,6 +534,17 @@ object PlayerProfileDialog {
         container.setOnClickListener { dialog.dismiss() }
         dialog.setOnShowListener {
             dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        }
+        showTracked(activity, dialog)
+    }
+
+    private fun showTracked(activity: Activity, dialog: AlertDialog) {
+        openDialogs.getOrPut(activity) { linkedSetOf() }.add(dialog)
+        dialog.setOnDismissListener {
+            openDialogs[activity]?.let { dialogs ->
+                dialogs.remove(dialog)
+                if (dialogs.isEmpty()) openDialogs.remove(activity)
+            }
         }
         dialog.show()
     }

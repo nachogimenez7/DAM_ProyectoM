@@ -1,7 +1,6 @@
 package com.traidores.juego
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -39,23 +38,15 @@ class WinnerResultsRenderer(
         summary: GameSummaryPresentation,
         specialVictories: List<GameSpecialVictory>,
         specialWinners: List<GamePlayer>,
-        themeKey: String,
         winnerKey: String
     ): List<View> {
-        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        applyThemeInsets(themeKey)
+        applyThemeInsets()
         val factionAccent = factionAccent(winnerKey)
         val cardViews = renderCards(players, factionAccent)
         val specialCardViews = renderSpecialVictories(specialVictories, specialWinners)
-        if (isPortrait) {
-            rounds.text = statText(summary.roundsPlayed.toString(), "RONDAS", true)
-            duration.text = statText(summary.durationLabel, "TIEMPO", true)
-            eliminatedCount.text = statText(summary.eliminated.toString(), "ELIM.", true)
-        } else {
-            rounds.text = statText(summary.roundsPlayed.toString(), "RONDAS", false)
-            duration.text = statText(summary.durationLabel, "TIEMPO", false)
-            eliminatedCount.text = statText(summary.eliminated.toString(), "ELIM.", false)
-        }
+        rounds.text = statText(summary.roundsPlayed.toString(), "RONDAS")
+        duration.text = statText(summary.durationLabel, "TIEMPO")
+        eliminatedCount.text = statText(summary.eliminated.toString(), "ELIM.")
         val eliminatedLabel = if (summary.eliminatedPlayers.isEmpty()) {
             "ELIMINADOS: NINGUNO"
         } else {
@@ -84,8 +75,8 @@ class WinnerResultsRenderer(
         return cardViews + specialCardViews
     }
 
-    private fun statText(value: String, label: String, stacked: Boolean): SpannableString {
-        val text = if (stacked) "$value\n$label" else "$value $label"
+    private fun statText(value: String, label: String): SpannableString {
+        val text = "$value\n$label"
         return SpannableString(text).apply {
             setSpan(
                 ForegroundColorSpan(Color.parseColor("#F3D488")),
@@ -107,7 +98,7 @@ class WinnerResultsRenderer(
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             setSpan(
-                RelativeSizeSpan(if (stacked) 0.78f else 0.82f),
+                RelativeSizeSpan(0.78f),
                 labelStart,
                 text.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -170,7 +161,6 @@ class WinnerResultsRenderer(
             createSpecialCard(
                 player = player,
                 winnerCount = specialWinners.size,
-                isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT,
                 victory = victoriesByPlayer[player.name]
             )
                 .also { row.addView(it) }
@@ -182,7 +172,6 @@ class WinnerResultsRenderer(
         if (players.isEmpty()) return emptyList()
 
         val cardViews = mutableListOf<View>()
-        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         cards.addView(
             sectionHeader("BANDO GANADOR", borderColor),
             LinearLayout.LayoutParams(
@@ -192,20 +181,12 @@ class WinnerResultsRenderer(
                 bottomMargin = dp(3)
             }
         )
-        val rowCount = if (isPortrait) {
-            when (players.size) {
-                in 1..2 -> 1
-                in 3..4 -> 2
-                in 5..8 -> 3
-                in 9..12 -> 4
-                else -> 5
-            }
-        } else {
-            when (players.size) {
-                in 1..6 -> 1
-                in 7..10 -> 2
-                else -> 3
-            }
+        val rowCount = when (players.size) {
+            in 1..2 -> 1
+            in 3..4 -> 2
+            in 5..8 -> 3
+            in 9..12 -> 4
+            else -> 5
         }
         val playersPerRow = ceil(players.size / rowCount.toDouble()).toInt()
         players.chunked(playersPerRow).forEach { rowPlayers ->
@@ -219,11 +200,11 @@ class WinnerResultsRenderer(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    bottomMargin = dp(if (isPortrait) 5 else 0)
+                    bottomMargin = dp(5)
                 }
             )
             rowPlayers.forEach { player ->
-                createCard(player, players.size, isPortrait, borderColor).also {
+                createCard(player, players.size, borderColor).also {
                     cardViews += it
                     row.addView(it)
                 }
@@ -232,28 +213,8 @@ class WinnerResultsRenderer(
         return cardViews
     }
 
-    private fun applyThemeInsets(themeKey: String) {
-        val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-        val top = when (themeKey) {
-            "medieval" -> if (isPortrait) 20 else 20
-            "griego" -> if (isPortrait) 20 else 12
-            else -> if (isPortrait) 20 else 8
-        }
-        val horizontal = if (isPortrait) {
-            when (themeKey) {
-                "medieval" -> 22
-                "griego" -> 22
-                else -> 22
-            }
-        } else {
-            when (themeKey) {
-                "medieval" -> 54
-                "griego" -> 48
-                else -> 42
-            }
-        }
-        val bottom = if (isPortrait) 10 else if (themeKey == "medieval") 12 else 8
-        content.setPadding(dp(horizontal), dp(top), dp(horizontal), dp(bottom))
+    private fun applyThemeInsets() {
+        content.setPadding(dp(22), dp(20), dp(22), dp(10))
     }
 
     private fun sectionHeader(text: String, color: Int): View {
@@ -306,27 +267,16 @@ class WinnerResultsRenderer(
     private fun createCard(
         player: GamePlayer,
         winnerCount: Int,
-        isPortrait: Boolean,
         borderColor: Int,
         forceFullColor: Boolean = false
     ): View {
-        val metrics = if (isPortrait) {
-            when {
-                winnerCount == 1 -> intArrayOf(156, 94, 114, 18, 13, 24, 19)
-                winnerCount == 2 -> intArrayOf(142, 86, 104, 16, 12, 22, 18)
-                winnerCount <= 4 -> intArrayOf(124, 74, 90, 14, 10, 20, 15)
-                winnerCount <= 8 -> intArrayOf(104, 62, 74, 12, 9, 17, 13)
-                winnerCount <= 12 -> intArrayOf(86, 50, 62, 10, 8, 14, 12)
-                else -> intArrayOf(76, 44, 54, 9, 7, 13, 11)
-            }
-        } else {
-            when {
-                winnerCount == 1 -> intArrayOf(136, 80, 96, 16, 12, 21, 18)
-                winnerCount == 2 -> intArrayOf(126, 76, 92, 15, 11, 20, 18)
-                winnerCount <= 5 -> intArrayOf(106, 64, 77, 13, 10, 20, 18)
-                winnerCount <= 10 -> intArrayOf(94, 58, 72, 10, 8, 15, 12)
-                else -> intArrayOf(76, 42, 52, 9, 7, 13, 11)
-            }
+        val metrics = when {
+            winnerCount == 1 -> intArrayOf(176, 112, 150, 18, 13, 24, 19)
+            winnerCount == 2 -> intArrayOf(152, 96, 128, 16, 12, 22, 18)
+            winnerCount <= 4 -> intArrayOf(132, 84, 112, 14, 10, 20, 15)
+            winnerCount <= 8 -> intArrayOf(108, 68, 91, 12, 9, 17, 13)
+            winnerCount <= 12 -> intArrayOf(90, 56, 75, 10, 8, 14, 12)
+            else -> intArrayOf(78, 48, 64, 9, 7, 13, 11)
         }
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -387,11 +337,10 @@ class WinnerResultsRenderer(
     private fun createSpecialCard(
         player: GamePlayer,
         winnerCount: Int,
-        isPortrait: Boolean,
         victory: GameSpecialVictory?
     ): View {
         val accent = context.getColor(R.color.special_victory_accent)
-        val card = createCard(player, winnerCount, isPortrait, accent, forceFullColor = true) as LinearLayout
+        val card = createCard(player, winnerCount, accent, forceFullColor = true) as LinearLayout
         val roleLabel = victory?.roleKey?.uppercase() ?: player.role?.name?.uppercase() ?: "ESPECIAL"
         val existingRole = card.getChildAt(2) as? TextView
         existingRole?.text = roleLabel
@@ -403,12 +352,12 @@ class WinnerResultsRenderer(
             gravity = Gravity.CENTER
             includeFontPadding = false
             setTextColor(Color.parseColor("#D8C9F0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (isPortrait) 9f else 8.5f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
             maxLines = 2
         }
         card.addView(reason, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(if (isPortrait) 28 else 24)
+            dp(28)
         ))
         return card
     }

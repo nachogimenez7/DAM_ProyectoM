@@ -13,7 +13,7 @@ Aunque no hay módulos físicos separados, se distinguen estas capas por respons
 ### 1. Capa de presentación (Activities)
 Inflan XML, enlazan vistas, manejan clicks, muestran diálogos y renderizan estado.
 - `MainActivity`, `JugarActivity`, `LocalModeActivity`, `OnlineModeActivity`, `LobbyBrowserActivity`, `LobbyActivity`, `AssigningRolesActivity`, `GameplayMockActivity`, `RolesActivity`, `AyudaActivity`, `OpcionesActivity`, `ProfileActivity`, `ProfileSelectionActivity`.
-- `BaseActivity` reporta el ciclo de vida a `MusicManager` y aplica preferencias de orientación a las pantallas de juego.
+- `BaseActivity` reporta el ciclo de vida a `MusicManager`; todas las Activities están fijadas en vertical desde el manifest.
 - **Riesgo conocido:** `GameplayMockActivity.kt` (~6.300 líneas) y `LobbyActivity.kt` (~2.400 líneas) concentran navegación, render, animación, timers, chat, sincronización online y mutación de estado.
 
 ### 2. Capa de presentación de datos / renderizado

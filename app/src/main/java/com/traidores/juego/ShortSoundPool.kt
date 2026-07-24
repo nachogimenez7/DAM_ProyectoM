@@ -13,7 +13,8 @@ object ShortSoundPool {
     private data class PlayRequest(
         val soundRes: Int,
         val volume: Float,
-        val replaceChannel: String?
+        val replaceChannel: String?,
+        val playbackRate: Float
     )
 
     private val lock = Any()
@@ -39,9 +40,15 @@ object ShortSoundPool {
         context: Context,
         soundRes: Int,
         volume: Float,
-        replaceChannel: String? = null
+        replaceChannel: String? = null,
+        playbackRate: Float = 1f
     ) {
-        val request = PlayRequest(soundRes, volume.coerceIn(0f, 1f), replaceChannel)
+        val request = PlayRequest(
+            soundRes = soundRes,
+            volume = volume.coerceIn(0f, 1f),
+            replaceChannel = replaceChannel,
+            playbackRate = playbackRate.coerceIn(0.5f, 2f)
+        )
         val appContext = context.applicationContext
         val soundId = synchronized(lock) {
             ensurePoolLocked()
@@ -117,7 +124,14 @@ object ShortSoundPool {
             val previous = synchronized(lock) { activeStreamsByChannel.remove(channel) }
             if (previous != null) currentPool.stop(previous)
         }
-        val streamId = currentPool.play(soundId, request.volume, request.volume, 1, 0, 1f)
+        val streamId = currentPool.play(
+            soundId,
+            request.volume,
+            request.volume,
+            1,
+            0,
+            request.playbackRate
+        )
         if (streamId != 0 && request.replaceChannel != null) {
             synchronized(lock) {
                 activeStreamsByChannel[request.replaceChannel] = streamId

@@ -73,7 +73,7 @@
 - `activity_gameplay_mock.xml` is also very large at about 1,946 lines.
 - The package is flat, so ownership boundaries are implicit.
 - UI state and game state are often coordinated manually through booleans.
-- Programmatic lobby dialogs and fixed dimensions create visual fragility on compact landscape screens.
+- Programmatic lobby dialogs and fixed dimensions create visual fragility on compact portrait screens.
 - There is no instrumentation layer to verify Activity recreation, keyboard, and navigation behavior.
 
 ## Recommended Boundary For Next Work

@@ -286,11 +286,11 @@ class BotConversationDirectorTest {
             message = "y otra cosa"
         )
 
-        assertTrue(delay in 900L..2_150L)
+        assertTrue(delay in 600L..1_450L)
     }
 
     @Test
-    fun ordinaryThinkingDelayStaysBetweenTwoAndFiveSeconds() {
+    fun ordinaryThinkingDelayFeelsResponsiveWithoutAppearingInstantly() {
         val delays = (0..12).map { beatIndex ->
             BotConversationDirector.naturalDelayMs(
                 session = session(),
@@ -301,7 +301,7 @@ class BotConversationDirectorTest {
             )
         }
 
-        assertTrue(delays.all { it in 2_000L..5_000L })
+        assertTrue(delays.all { it in 1_400L..3_600L })
     }
 
     @Test

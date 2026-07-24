@@ -16,7 +16,8 @@ internal object BotHumanMessageEngine {
         HumanMessageIntent.VOTE_HELP,
         HumanMessageIntent.SUSPECT_HELP,
         HumanMessageIntent.ACCUSE,
-        HumanMessageIntent.DEFEND
+        HumanMessageIntent.DEFEND,
+        HumanMessageIntent.ACTION_CLAIM
     )
 
     private data class Understanding(
@@ -33,8 +34,12 @@ internal object BotHumanMessageEngine {
         val intent: HumanMessageIntent
     )
 
-    fun reactionsTo(session: GameSession, humanMessage: String): List<Pair<String, String>> {
-        val understanding = understand(session, humanMessage)
+    fun reactionsTo(
+        session: GameSession,
+        humanMessage: String,
+        intentHint: HumanMessageIntent? = null
+    ): List<Pair<String, String>> {
+        val understanding = understand(session, humanMessage, intentHint)
         val repeatedOffTopic = understanding.intent == HumanMessageIntent.OFF_TOPIC &&
             recentPublicMessages(session)
                 .asReversed()
@@ -45,12 +50,14 @@ internal object BotHumanMessageEngine {
             understanding.directAddressee != null && understanding.questionKind in directQuestionKinds -> 1
             understanding.directAddressee != null && understanding.socialSignal != null -> 1
             understanding.intent == HumanMessageIntent.OFF_TOPIC -> if (repeatedOffTopic) 2 else 1
+            understanding.roleClaim != null && understanding.publicStatement != null -> 4
             understanding.intent in multiReplyIntents || understanding.focusNames.isNotEmpty() -> 3
             understanding.publicStatement != null ||
                 understanding.claimsHiddenInfo ||
                 understanding.intent == HumanMessageIntent.ANSWER_PENDING ||
                 humanMessage.length > 45 -> 2
-            else -> 1
+            understanding.casualMessage -> 2
+            else -> 2
         }
         val replyCount = limitedReplyCount(session, desiredReplyCount)
         val preferredResponder = understanding.directAddressee
@@ -71,7 +78,11 @@ internal object BotHumanMessageEngine {
             .dedupeBotMessages()
     }
 
-    private fun understand(session: GameSession, humanMessage: String): Understanding {
+    private fun understand(
+        session: GameSession,
+        humanMessage: String,
+        intentHint: HumanMessageIntent?
+    ): Understanding {
         val directAddressee = BotPerception.directAddressee(session, humanMessage)
         val roleClaim = LocalBotAi.roleClaimFrom(humanMessage)
         val publicStatement = LocalBotAi.publicStatementFrom(session, humanMessage)
@@ -86,7 +97,7 @@ internal object BotHumanMessageEngine {
         val socialSignal = BotPerception.socialSignal(humanMessage)
         val questionKind = humanQuestionKind(humanMessage)
         val answeredQuestion = answeredQuestionForHuman(session, humanMessage)
-        val intent = if (answeredQuestion != null && humanMessage.trim().length >= 4) {
+        val inferredIntent = if (answeredQuestion != null && humanMessage.trim().length >= 4) {
             HumanMessageIntent.ANSWER_PENDING
         } else {
             humanMessageIntent(
@@ -100,18 +111,31 @@ internal object BotHumanMessageEngine {
                 socialSignal = socialSignal
             )
         }
+        val intent = intentHint ?: inferredIntent
         return Understanding(
             directAddressee = directAddressee,
             roleClaim = roleClaim,
             publicStatement = publicStatement,
             focusNames = focusNames,
-            claimResponder = roleClaim?.let { botWithRole(session, it.roleKey) },
+            claimResponder = roleClaim
+                ?.takeIf { publiclyCounterClaimableRole(it.roleKey) }
+                ?.let { botWithRole(session, it.roleKey) },
             claimsHiddenInfo = claimsHiddenInfo,
             casualMessage = casualMessage,
             socialSignal = socialSignal,
             questionKind = questionKind,
             answeredQuestion = answeredQuestion,
             intent = intent
+        )
+    }
+
+    private fun publiclyCounterClaimableRole(roleKey: String): Boolean {
+        return roleKey in setOf(
+            RoleCatalog.MEDICO,
+            RoleCatalog.POLICIA,
+            RoleCatalog.ALCALDE,
+            RoleCatalog.PAYADOR,
+            RoleCatalog.ORACULO
         )
     }
 
@@ -175,6 +199,12 @@ internal object BotHumanMessageEngine {
                 ?.let { contradictionLine(GameEngine.humanPlayer(session).name, it) }
                 ?: statementReaction(statement, index)
         }
+        val jesterWarningLine = BotJesterAwareness.warningLine(
+            session = session,
+            speaker = bot,
+            focusNames = understanding.focusNames,
+            responseIndex = index
+        )
         val directQuestionLine = if (
             bot.name == understanding.directAddressee &&
             understanding.questionKind in directQuestionKinds
@@ -201,6 +231,7 @@ internal object BotHumanMessageEngine {
                 pendingAnswerReply(session, bot, humanMessage, memory, index)
             understanding.intent == HumanMessageIntent.ACCUSE && understanding.focusNames.contains(bot.name) ->
                 defensiveLine(session, bot, mood)
+            jesterWarningLine != null -> jesterWarningLine
             statementLine != null -> statementLine
             understanding.questionKind != null ->
                 humanQuestionReply(session, bot, understanding.questionKind, read, index)
@@ -228,7 +259,8 @@ internal object BotHumanMessageEngine {
             bot,
             "reply:$index:${humanMessage.length}",
             allowRoleTerms = understanding.roleClaim != null ||
-                understanding.questionKind == HumanQuestionKind.ASK_ROLE
+                understanding.questionKind == HumanQuestionKind.ASK_ROLE ||
+                jesterWarningLine != null
         )
     }
 }

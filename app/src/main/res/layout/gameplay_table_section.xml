@@ -833,6 +833,24 @@
                         android:textSize="10sp" />
                 </LinearLayout>
 
+                <HorizontalScrollView
+                    android:id="@+id/chatQuickRepliesScroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="38dp"
+                    android:layout_marginTop="4dp"
+                    android:fillViewport="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/chatQuickReplies"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
+
                 <LinearLayout
                     android:id="@+id/chatComposer"
                     android:layout_width="match_parent"

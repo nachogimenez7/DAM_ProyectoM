@@ -449,7 +449,7 @@ object GameRules {
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
         if (desertor != null && session.desertorTeam.isBlank()) return ""
         val traitors = alive.count { isTraitorRole(it.role) }
-        val townForParity = alive.count { it.role?.team == TOWN_WINNER || it.role?.key == "desertor" }
+        val townForParity = alive.count { it.role?.team == TOWN_WINNER }
         return when {
             traitors >= townForParity -> TRAITOR_WINNER
             else -> ""
@@ -616,7 +616,7 @@ object LocalGameFactory {
         }
         val assignedPlayers = forceHumanRole(randomlyAssignedPlayers, effectiveForcedRole)
         val human = assignedPlayers.firstOrNull { it.isHuman } ?: assignedPlayers.first()
-        val publicStart = "Dios preparo una partida local con roles ocultos."
+        val publicStart = buildRoleCompositionAnnouncement(assignedPlayers)
         val privateStart = "Tu rol: ${human.role?.name ?: "desconocido"}."
         return session.copy(
             players = assignedPlayers,
@@ -667,6 +667,56 @@ object LocalGameFactory {
             RoleCompositionPreset.RECOMMENDED
         )
     }
+
+    private fun buildRoleCompositionAnnouncement(players: List<GamePlayer>): String {
+        val counts = players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+        val orderedKeys = (visibleRoleCompositionKeys() + counts.keys)
+            .distinct()
+            .filter { counts[it].orZero() > 0 }
+        val summary = orderedKeys.joinToString(", ") { roleKey ->
+            val count = counts[roleKey].orZero()
+            "$count ${publicRoleLabel(roleKey, count)}"
+        }
+        return "Dios preparo una partida local. En juego: $summary. " +
+            "Todos conocen la composicion; las identidades siguen ocultas."
+    }
+
+    private fun publicRoleLabel(roleKey: String, count: Int): String {
+        val singular = when (roleKey) {
+            RoleCatalog.ALDEANO -> "Aldeano"
+            RoleCatalog.POLICIA -> "Detective"
+            RoleCatalog.MEDICO -> "Medico"
+            RoleCatalog.ALCALDE -> "Alcalde"
+            RoleCatalog.ASESINO -> "Asesino"
+            RoleCatalog.MERCENARIO -> "Mercenario"
+            RoleCatalog.ESPIA -> "Espia"
+            RoleCatalog.DESERTOR -> "Desertor"
+            RoleCatalog.PAYADOR -> "Payador"
+            RoleCatalog.ORACULO -> "Oraculo"
+            RoleCatalog.BUFON -> "Bufon"
+            else -> roleKey.replaceFirstChar { it.uppercase() }
+        }
+        if (count == 1) return singular
+        return when (roleKey) {
+            RoleCatalog.ALDEANO -> "Aldeanos"
+            RoleCatalog.POLICIA -> "Detectives"
+            RoleCatalog.MEDICO -> "Medicos"
+            RoleCatalog.ALCALDE -> "Alcaldes"
+            RoleCatalog.ASESINO -> "Asesinos"
+            RoleCatalog.MERCENARIO -> "Mercenarios"
+            RoleCatalog.ESPIA -> "Espias"
+            RoleCatalog.DESERTOR -> "Desertores"
+            RoleCatalog.PAYADOR -> "Payadores"
+            RoleCatalog.ORACULO -> "Oraculos"
+            RoleCatalog.BUFON -> "Bufones"
+            else -> singular
+        }
+    }
+
+    private fun Int?.orZero(): Int = this ?: 0
 
     fun roleCompositionPreset(
         playerCount: Int,

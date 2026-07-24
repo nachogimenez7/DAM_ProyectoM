@@ -27,7 +27,6 @@ docs/
     ├── project-structure.md        Estructura rápida (parcialmente desactualizada, ver nota)
     ├── map-exclusive-roles.md      Roles exclusivos por mapa
     ├── lan-role-readiness.md       Notas de lectura de roles
-    ├── gameplay-vertical-draft.md  Borrador de gameplay vertical (no activo)
     └── discord/                    Material de comunidad/Discord
 ```
 

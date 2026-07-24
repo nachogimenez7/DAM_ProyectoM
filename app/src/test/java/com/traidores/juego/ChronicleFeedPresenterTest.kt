@@ -72,6 +72,19 @@ class ChronicleFeedPresenterTest {
         assertEquals(ChronicleTone.SPECIAL, entry.tone)
     }
 
+    @Test
+    fun roleCompositionAnnouncementHasItsOwnEventKind() {
+        val entry = ChronicleFeedPresenter.entryFor(
+            god(
+                "Dios preparo una partida local. En juego: 3 Aldeanos, 1 Detective. " +
+                    "Todos conocen la composicion; las identidades siguen ocultas."
+            )
+        )
+
+        assertEquals(ChronicleEntryKind.ROLE_COMPOSITION, entry.kind)
+        assertEquals(ChronicleTone.SYSTEM, entry.tone)
+    }
+
     private fun god(message: String): GameChatMessage {
         return GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, message, isGod = true)
     }

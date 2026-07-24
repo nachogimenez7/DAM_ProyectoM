@@ -24,7 +24,7 @@ Mover **toda** la lógica de chat (incluida la nueva del feed ambiental y el uso
 ### Qué mover al controller
 - **Estado:** `isChatOpen`, `isChatKeyboardCompact`, `chatKeyboardBottomInset`, `newChatMessagesWhileTyping`, `lastSeenChatCount`, `restoreTieVoteAfterChat`, `unreadChatCount`, `onlineChatListener`, `lastOnlineChatSentAtMs`, `lastOnlineChatMessage`, `pendingBotChatRunnables`.
 - **Vistas:** `btnToggleChat`, `btnSendChat`, `btnCloseChat`, `chatAmbientFeed`, `chatAmbientHint`, `chatAmbientMessages`, `chatCharacterCount`, `chatComposer`, `chatHeader`, `chatInput`, `chatMessagesContainer`, `chatMessagesScroll`, `chatNewMessages`, `chatPanel`, `chatRoleChip`, `chatStatusRow`, `chatUnreadBadge`.
-- **Métodos:** `toggleChatPanel`, `closeChatPanel`, `renderChatPanelVisibility`, `renderChatPanel`, `renderAmbientChatFeed`, `createAmbientChatRow`, `renderChatMessages`, `addChatBubble`, `configureChatPanelLayout`, `setChatKeyboardState`, `applyChatPanelDimensions`, `applyChatSheetDimensionsPortrait`, `updateUnreadChatCount`, `renderChatCharacterCount`, `renderNewChatMessageNotice`, `acknowledgeNewChatMessages`, `renderChatBadge`, `updateChatToggleContentDescription`, `sendHumanChatMessage`, `sendOnlineHumanChatMessage`, `startOnlineChatListener`, `cancelPendingBotChat`, `clearChatComposerAfterSend`, `compactRoleChipText`, `chatInputHint`.
+- **Métodos:** `toggleChatPanel`, `closeChatPanel`, `renderChatPanelVisibility`, `renderChatPanel`, `renderAmbientChatFeed`, `createAmbientChatRow`, `renderChatMessages`, `addChatBubble`, `configureChatPanelLayout`, `setChatKeyboardState`, `applyChatPanelDimensions`, `updateUnreadChatCount`, `renderChatCharacterCount`, `renderNewChatMessageNotice`, `acknowledgeNewChatMessages`, `renderChatBadge`, `updateChatToggleContentDescription`, `sendHumanChatMessage`, `sendOnlineHumanChatMessage`, `startOnlineChatListener`, `cancelPendingBotChat`, `clearChatComposerAfterSend`, `compactRoleChipText`, `chatInputHint`.
 
 ### Límite de responsabilidad
 - El controller maneja **UI + estado de UI + envío** del chat (puede usar `GameEngine` y `PlayerChatColor` directo, son objetos sin estado).
@@ -48,7 +48,6 @@ class GameplayChatController(
 interface ChatHost {
     val currentSession: GameSession
     fun isOnlineGameplay(): Boolean
-    fun isPortrait(): Boolean
     fun dp(value: Int): Int
     fun showToast(message: String)
     fun applyLocalSession(updated: GameSession)   // resultado de GameEngine.addHumanChatMessage local
