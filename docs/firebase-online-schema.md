@@ -80,6 +80,8 @@ Campos agregados durante la partida:
 Dentro de `estadoPartida`, ademas de fase, ronda, jugadores y votos, se publican dos
 datos de presentacion compartida:
 
+- `desertorBando`: bando elegido por el desertor (`Pueblo`, `Traidores` o vacio si todavia no eligio). Sin este campo el resto de la mesa no puede mostrar el resultado final del desertor.
+- `desertorCambioBando`: `true` cuando ya uso su unica reconsideracion.
 - `nocheSinVictima`: permite que todos los clientes muestren la revelacion de amanecer sin muertes.
 - `presentacionVotacion`: identificador durable de `expulsion` o `sin_expulsion`; evita que un invitado pierda la ventana si el host avanza de fase despues de presentarla.
 
@@ -168,15 +170,15 @@ El online de prueba usa un preset seguro:
 - 4 jugadores de prueba: la composicion anterior mas 1 aldeano.
 - 5 y 6 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
 - 7 jugadores: suma 1 mercenario.
-- 8 y 9 jugadores: suma 1 alcalde.
+- 8 jugadores: suma 1 alcalde.
+- 9 jugadores: suma 1 desertor.
 - 10 a 15 jugadores: suma 1 espia (segundo killer) y completa con aldeanos.
 
 Los umbrales son los mismos `minimumPlayers` del catalogo de roles, para que el online se
 sienta como el local a medida que crece la mesa.
 
-Todavia no entran en online el Desertor, el Bufon, el Oraculo ni el Payador. El desertor
-esta pendiente porque su eleccion de bando no viaja en `estadoPartida`; los otros tres son
-exclusivos de mapa y quedan para una fase posterior. Siguen disponibles para local/IA.
+Faltan todavia el Bufon, el Oraculo y el Payador, que son exclusivos de mapa y quedan para
+una fase posterior. Siguen disponibles para local/IA.
 
 Reglas importantes:
 
@@ -200,6 +202,9 @@ Reglas importantes:
 - La noche y la votacion esperan el timer completo. No hay avance temprano aunque todos hayan actuado.
 - En noche, si un jugador envia mas de una accion valida para la misma ronda, se toma la **primera** por `creadaEnLocal`: la eleccion nocturna no se puede cambiar una vez confirmada (`OnlineActionResolver`, pineado en tests).
 - El alcalde se revela registrando una accion `accion_jugador` con `detalles.accion = "revelar_alcalde"` y sin objetivo. El anfitrion activo la ve por el listener de `acciones`, aplica la revelacion y la publica; el resto la recibe por `alcaldeRevelado` y el anuncio publico. El desempate del alcalde ya se resolvia asi desde antes, con una accion `votar` en fase `ALCALDE_DESEMPATE`.
+- El desertor manda su bando en `objetivoNombre` (`Pueblo` o `Traidores`) con dos acciones distintas: `elegir_bando` la primera vez y `reconsiderar_bando` en la ventana de cambio. **Tienen que ser distintas**: con una sola accion, al abrirse la ventana de reconsideracion el anfitrion volveria a leer la eleccion inicial y le quemaria el cambio al jugador sin que lo pidiera. El anfitrion deduce cual espera del propio estado (`desertorBando` en blanco o no), asi que un traspaso de host no pierde el pedido.
+- En online el bando del desertor **nunca se preasigna**: lo elige el jugador. Preasignarlo en el cliente dependia de `isHuman`, que es distinto en cada celular, y cada dispositivo reconstruia un bando diferente.
+- Si el desertor no elige nunca, `GameRules.winnerFor` no puede declarar ganadores a los traidores y la partida se queda sin final posible. Por eso, a partir de la ronda 2, el anfitrion le asigna un bando estable por sala (`OnlineDesertorGate`). La victoria del pueblo no depende de esto: se evalua antes que el guard del desertor.
 - En votacion/desempate, si un jugador vota mas de una vez en la misma fase, se toma el ultimo voto por `creadaEnLocal`.
 - Las acciones o votos ausentes no bloquean la fase; cuentan como sin accion o abstencion.
 - Durante `REPARTO`, cada cliente publica en `estadoClientes.{uidTemporal}` si entro al gameplay, cuantos jugadores ve y si ya toco `EMPEZAR`.
@@ -309,7 +314,9 @@ Campos:
 - Con menos de 10 jugadores hay un solo asesino: elige y listo, sin votacion.
 - **Ya funciona**: cada killer registra su accion `matar` en `acciones`; el host resuelve como victima la mas elegida y, si hay empate, sortea entre las empatadas con semilla estable por sala/ronda (`GameEngine.assassinVoteWinner`). Si nadie eligio, no muere nadie.
 - Solo cuentan roles killer. El mercenario no participa de esta votacion porque su accion es silenciar.
-- **Pendiente**: que el host publique en `chat_traidores` una linea de sistema por eleccion (`"Nacho eligio a Mora como su victima"`) y la decision final. Hoy los killers no ven la eleccion del otro y tienen que coordinarla escribiendo en el canal.
+- Cada killer ve la eleccion del otro como una linea de sistema en el canal (`"Nacho eligio a Mora como victima."`). Esas lineas **no se escriben en Realtime Database**: cada celular las deriva de las acciones que ya recibe por el listener de `acciones`, igual que los eventos de Dios se derivan de `estadoPartida`. Asi ningun cliente puede inyectar avisos falsos y no hizo falta tocar las reglas ni permitir `isGod = true` en el canal.
+- Solo se avisa la **primera** eleccion confirmada de cada killer, que es la que despues cuenta en la resolucion.
+- La decision final no se anuncia aparte: la victima aparece igual en el amanecer.
 
 Seguridad actual del canal:
 

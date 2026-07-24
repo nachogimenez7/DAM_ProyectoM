@@ -627,22 +627,26 @@ class GameEngineTest {
     }
 
     @Test
-    fun onlineSafeRoleCompositionAddsSpyFromTenPlayers() {
+    fun onlineSafeRoleCompositionAddsDesertorAtNineAndSpyAtTen() {
+        val eightPlayers = LocalGameFactory.onlineSafeRoleComposition(8)
         val ninePlayers = LocalGameFactory.onlineSafeRoleComposition(9)
         val tenPlayers = LocalGameFactory.onlineSafeRoleComposition(10)
 
+        assertEquals(0, eightPlayers.counts[RoleCatalog.DESERTOR] ?: 0)
+
         assertEquals(1, ninePlayers.counts[RoleCatalog.ALCALDE])
+        assertEquals(1, ninePlayers.counts[RoleCatalog.DESERTOR])
         assertEquals(0, ninePlayers.counts[RoleCatalog.ESPIA] ?: 0)
-        assertEquals(4, ninePlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(3, ninePlayers.counts[RoleCatalog.ALDEANO])
         assertEquals(9, ninePlayers.counts.values.sum())
 
         assertEquals(1, tenPlayers.counts[RoleCatalog.ESPIA])
-        assertEquals(4, tenPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(3, tenPlayers.counts[RoleCatalog.ALDEANO])
         assertEquals(10, tenPlayers.counts.values.sum())
     }
 
     @Test
-    fun onlineSafeRoleCompositionAtTwelveKeepsDesertorAndMapRolesOut() {
+    fun onlineSafeRoleCompositionAtTwelveKeepsMapRolesOut() {
         val composition = LocalGameFactory.onlineSafeRoleComposition(12)
 
         assertEquals(1, composition.counts[RoleCatalog.ASESINO])
@@ -650,10 +654,10 @@ class GameEngineTest {
         assertEquals(1, composition.counts[RoleCatalog.POLICIA])
         assertEquals(1, composition.counts[RoleCatalog.MERCENARIO])
         assertEquals(1, composition.counts[RoleCatalog.ALCALDE])
+        assertEquals(1, composition.counts[RoleCatalog.DESERTOR])
         assertEquals(1, composition.counts[RoleCatalog.ESPIA])
-        assertEquals(6, composition.counts[RoleCatalog.ALDEANO])
+        assertEquals(5, composition.counts[RoleCatalog.ALDEANO])
         listOf(
-            RoleCatalog.DESERTOR,
             RoleCatalog.PAYADOR,
             RoleCatalog.ORACULO,
             RoleCatalog.BUFON

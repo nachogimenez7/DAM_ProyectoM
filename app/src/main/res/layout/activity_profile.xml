@@ -623,6 +623,43 @@
                     android:visibility="gone" />
             </LinearLayout>
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_profile_stat"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/bree_serif"
+                    android:gravity="center"
+                    android:text="@string/profile_account_title"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/profileAccountState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:text="@string/profile_account_guest"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnProfileAccount"
+                    style="@style/BtnDark"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="0dp"
+                    android:minHeight="48dp"
+                    android:text="@string/profile_account_action" />
+            </LinearLayout>
+
             <Button
                 android:id="@+id/btnEditProfile"
                 style="@style/BtnGold"

@@ -182,6 +182,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastLegacyPresenceState = ""
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineMayorRevealSent = false
+    private var onlineDesertorChoiceSent = false
     private var onlineNightGateKey = ""
     private var onlineNightGateStartedAtMs = 0L
     private var onlinePresentationClientAcks = emptyMap<String, String>()
@@ -1221,14 +1222,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
 
         if (GameEngine.needsInitialDesertorChoice(session) || GameEngine.canDesertorReconsider(session)) {
-            if (
-                blockUnsupportedOnlineLocalDecision(
-                    decision = "desertor_team_choice",
-                    message = "El Desertor online queda deshabilitado en esta prueba estable."
-                )
-            ) {
-                return
-            }
             showDesertorTeamDialog()
             return
         }
@@ -1875,22 +1868,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
     }
 
-    private fun blockUnsupportedOnlineLocalDecision(
-        decision: String,
-        message: String,
-        rerender: Boolean = true
-    ): Boolean {
-        if (!isOnlineGameplay()) return false
-        OnlineDebugLog.w(
-            "online_local_decision_blocked roomId=$onlinePartidaId uid=$onlinePlayerId decision=$decision phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
-        )
-        GameplayEffects.play(this, GameplayEffect.ERROR)
-        GameNotice.show(this, message, GameNotice.Duration.LONG)
-        session = session.copy(privateHint = message)
-        if (rerender) renderGame()
-        return true
-    }
-
     private fun renderGame() {
         val renderStartedAtMs = SystemClock.elapsedRealtime()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
@@ -2086,6 +2063,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.tieVoteCandidates.joinToString("#"),
             session.alcaldeTieCandidates.joinToString("#"),
             session.alcaldeRevealed,
+            session.desertorTeam,
+            session.desertorChangedTeam,
             session.players.joinToString("#") {
                 "${it.name}:${it.alive}:${it.muted}:${it.lastSilencedRound}:" +
                     "${it.consecutiveNightAfk}:${it.consecutiveVoteAfk}:${it.deathCause.name}"
@@ -2112,6 +2091,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "candidatosAlcalde" to session.alcaldeTieCandidates,
                 "alcaldeRevelado" to session.alcaldeRevealed,
                 "corrupcionAlcalde" to session.alcaldeCorruption,
+                "desertorBando" to session.desertorTeam,
+                "desertorCambioBando" to session.desertorChangedTeam,
                 "historialPublico" to session.publicHistory,
                 "jugadores" to session.players.mapIndexed { index, player ->
                     mapOf(
@@ -2447,8 +2428,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             alcaldeTieCandidates = stringListFromAuthoritativeState(state, "candidatosAlcalde"),
             alcaldeRevealed = (state["alcaldeRevelado"] as? Boolean) ?: session.alcaldeRevealed,
             alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: session.alcaldeCorruption,
+            desertorTeam = (state["desertorBando"] as? String) ?: session.desertorTeam,
+            desertorChangedTeam = (state["desertorCambioBando"] as? Boolean)
+                ?: session.desertorChangedTeam,
             privateHint = previousPrivateHint
         )
+        // El pedido ya llego a la mesa: se libera el candado local del dialogo para que la
+        // ventana de reconsideracion pueda abrirse mas adelante.
+        if (session.desertorTeam.isNotBlank()) {
+            onlineDesertorChoiceSent = false
+        }
         onlineAwaitingHostAdvance = false
         lastAppliedAuthoritativePhaseLabel = latestAppliedPhaseLabel()
         if (phaseIndex != previousPhaseIndex) {
@@ -2948,6 +2937,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             onlineNightActionRecords = onlineActionRecordsFromSnapshot(snapshot?.documents.orEmpty())
             maybeApplyOnlineMayorReveal()
+            maybeApplyOnlineDesertorChoice()
+            appendTraitorKillNotices()
             maybeResolveOnlineNightEarly()
         }
     }
@@ -3135,9 +3126,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineAwaitingHostAdvance = false
             autoAdvanceHandler.post { renderGame() }
         }
-        // Si el alcalde pidio revelarse mientras el anfitrion anterior se caia, el pedido
-        // ya esta escrito y sin aplicar: este dispositivo lo resuelve al tomar el host.
+        // Si el alcalde o el desertor pidieron algo mientras el anfitrion anterior se caia,
+        // el pedido ya esta escrito y sin aplicar: este dispositivo lo resuelve al tomar el
+        // host. Por eso ambos pedidos se deducen del estado y no de lo que este celular vio.
         maybeApplyOnlineMayorReveal()
+        maybeApplyOnlineDesertorChoice()
         maybeResolveOnlineNightEarly()
         refreshOnlinePresentationGate()
     }
@@ -6082,6 +6075,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun resolveOnlineNightWindowFromFirestore(countAfkMisses: Boolean = true) {
         if (onlineNightResolutionInProgress) return
+        // Una vez por noche, y siempre antes de que la resolucion pueda declarar ganador.
+        maybeAutoResolveOnlineDesertorTeam()
         onlineNightResolutionInProgress = true
         OnlineDebugLog.i("night_resolve_requested roomId=$onlinePartidaId host=$onlineIsHost round=${session.round}")
         var query: Query = FirebaseFirestore.getInstance()
@@ -8527,9 +8522,137 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun maybeShowDesertorChoice() {
         if (isDayNightTransitionRunning || isRolePreviewOpen) return
+        // Online el bando no cambia en este celular hasta que el anfitrion lo publica; sin
+        // este candado el dialogo volveria a abrirse en cada render despues de elegir.
+        if (isOnlineGameplay() && onlineDesertorChoiceSent) return
+        // Durante el arranque online el dialogo taparia el boton EMPEZAR, y el anfitrion no
+        // larga la primera noche hasta que todos lo tocaron: colgaria la sala entera.
+        if (isOnlineStartupPhase() || (isOnlineGameplay() && !onlineInitialRoleRead)) return
         if (GameEngine.needsInitialDesertorChoice(session) || GameEngine.canDesertorReconsider(session)) {
             showDesertorTeamDialog()
         }
+    }
+
+    /**
+     * Online el desertor no cambia el estado por su cuenta: manda el bando como accion y el
+     * anfitrion activo lo aplica y lo publica. La eleccion inicial y la reconsideracion son
+     * dos acciones distintas a proposito: si fueran la misma, al abrirse la ventana de
+     * reconsideracion el anfitrion volveria a leer la eleccion inicial y le quemaria el
+     * cambio al jugador sin que lo pidiera.
+     */
+    private fun recordOnlineDesertorChoice(team: String, isInitial: Boolean) {
+        if (team != GameRules.TOWN_WINNER && team != GameRules.TRAITOR_WINNER) return
+        val human = GameEngine.humanPlayer(session)
+        if (human.role?.key != RoleCatalog.DESERTOR || !human.alive) return
+        onlineDesertorChoiceSent = true
+        session = session.copy(privateHint = "Desertor - Neutral. Tu bando actual es $team.")
+        recordOnlineAction(
+            type = "accion_jugador",
+            targetName = team,
+            details = mapOf(
+                "accion" to if (isInitial) {
+                    ONLINE_ACTION_DESERTOR_TEAM
+                } else {
+                    ONLINE_ACTION_DESERTOR_RETHINK
+                },
+                "bando" to team
+            ),
+            onFailure = { onlineDesertorChoiceSent = false }
+        )
+    }
+
+    /**
+     * Solo el anfitrion activo. Aplica el bando pedido por el desertor y lo publica; el
+     * resto de la mesa lo recibe por `desertorBando`.
+     */
+    private fun maybeApplyOnlineDesertorChoice() {
+        if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        if (session.winner.isNotBlank()) return
+        val desertor = GameEngine.alivePlayers(session)
+            .firstOrNull { it.role?.key == RoleCatalog.DESERTOR }
+            ?: return
+        val expectedAction = if (session.desertorTeam.isBlank()) {
+            ONLINE_ACTION_DESERTOR_TEAM
+        } else {
+            ONLINE_ACTION_DESERTOR_RETHINK
+        }
+        val team = onlineNightActionRecords
+            .filter {
+                it.matchId == session.onlineMatchId &&
+                    it.action == expectedAction &&
+                    it.actorName == desertor.name
+            }
+            .maxByOrNull { it.createdAtLocal }
+            ?.targetName
+            ?: return
+        if (team != GameRules.TOWN_WINNER && team != GameRules.TRAITOR_WINNER) return
+        val before = session
+        val hostIsDesertor = before.players.firstOrNull { it.isHuman }?.name == desertor.name
+        // `chooseDesertorTeam` opera sobre el jugador humano; en el celular del anfitrion el
+        // desertor puede ser un invitado, asi que se marca temporalmente y se restaura.
+        val asDesertor = before.copy(
+            players = before.players.map { it.copy(isHuman = it.name == desertor.name) }
+        )
+        val applied = GameEngine.chooseDesertorTeam(asDesertor, team)
+        if (applied == asDesertor) return
+        session = applied.copy(
+            players = applied.players.map { player ->
+                player.copy(
+                    isHuman = before.players.firstOrNull { it.name == player.name }?.isHuman == true
+                )
+            },
+            // La pista privada del desertor no debe aparecer en el celular del anfitrion.
+            privateHint = if (hostIsDesertor) applied.privateHint else before.privateHint
+        )
+        OnlineDebugLog.i(
+            "desertor_team_applied roomId=$onlinePartidaId desertor=${desertor.name} accion=$expectedAction round=${session.round}"
+        )
+        publishAuthoritativeOnlineState()
+        renderGame()
+    }
+
+    /**
+     * Con dos killers online, cada uno ve por el chat a quien eligio el otro. Las lineas se
+     * arman en este celular a partir de las acciones que ya recibe; no se escriben en la red.
+     */
+    private fun appendTraitorKillNotices() {
+        if (!isOnlineGameplay() || !::session.isInitialized) return
+        val notices = TraitorKillNotices.pendingNotices(
+            session = session,
+            records = onlineNightActionRecords,
+            viewerName = GameEngine.humanPlayer(session).name
+        )
+        if (notices.isEmpty()) return
+        session = session.copy(chatHistory = session.chatHistory + notices)
+        chatController.onSessionUpdated()
+    }
+
+    /**
+     * Sin bando elegido, `GameRules.winnerFor` no puede declarar ganadores a los traidores y
+     * la partida se queda sin final posible. Pasada una ronda entera, el anfitrion elige por
+     * el desertor ausente.
+     */
+    private fun maybeAutoResolveOnlineDesertorTeam() {
+        if (!isOnlineGameplay() || !::session.isInitialized) return
+        val hasAliveDesertor = GameEngine.alivePlayers(session)
+            .any { it.role?.key == RoleCatalog.DESERTOR }
+        if (
+            !OnlineDesertorGate.needsAutoTeam(
+                isHost = onlineIsHost,
+                hasAliveDesertor = hasAliveDesertor,
+                teamIsBlank = session.desertorTeam.isBlank(),
+                round = session.round,
+                winner = session.winner
+            )
+        ) {
+            return
+        }
+        val team = OnlineDesertorGate.autoTeam(session.code, session.players.map { it.name })
+        session = session.copy(desertorTeam = team)
+        OnlineDebugLog.w(
+            "desertor_team_auto_assigned roomId=$onlinePartidaId round=${session.round} team=$team"
+        )
+        publishAuthoritativeOnlineState()
     }
 
     // Cuando el humano queda fuera (muerto o expulsado) y la partida sigue, o gano como Bufon,
@@ -8662,16 +8785,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun showDesertorTeamDialog() {
         if (desertorDialogOpen || isFinishing) return
-        if (
-            blockUnsupportedOnlineLocalDecision(
-                decision = "desertor_dialog",
-                message = "El Desertor online queda deshabilitado en esta prueba estable."
-            )
-        ) {
-            return
-        }
         dismissSecondaryUiForPriorityWindow()
-        pauseCountdown()
+        // Online no se pausa el reloj: si el desertor fuera el anfitrion, dejar la fase
+        // congelada hasta que toque el dialogo frenaria la partida de toda la mesa.
+        if (!isOnlineGameplay()) pauseCountdown()
         desertorDialogOpen = true
         val isInitial = GameEngine.needsInitialDesertorChoice(session)
         val title = if (isInitial) "Elige tu bando" else "¿Quieres cambiar de bando?"
@@ -8694,6 +8811,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         fun chooseTeam(team: String) {
             desertorDialogOpen = false
             val changedTeam = session.desertorTeam.isNotBlank() && session.desertorTeam != team
+            if (isOnlineGameplay()) {
+                recordOnlineDesertorChoice(team, isInitial)
+                dialog.dismiss()
+                renderGame()
+                showActionFeedbackBanner(
+                    GameplayTableUi.feedbackForDesertorChoice(team, changedTeam)
+                )
+                return
+            }
             session = GameEngine.chooseDesertorTeam(session, team)
             dialog.dismiss()
             renderGame()
@@ -8787,6 +8913,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val FIELD_READY_TO_VOTE_PHASE_INDEX = "listoParaVotarPhaseIndex"
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"
         private const val ONLINE_ACTION_MAYOR_REVEAL = "revelar_alcalde"
+        private const val ONLINE_ACTION_DESERTOR_TEAM = "elegir_bando"
+        private const val ONLINE_ACTION_DESERTOR_RETHINK = "reconsiderar_bando"
         private val ONLINE_NIGHT_ACTOR_ROLES = setOf(
             RoleCatalog.ASESINO,
             RoleCatalog.ESPIA,

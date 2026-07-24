@@ -105,6 +105,17 @@ object PlayerPublicIdentity {
         }
     }
 
+    /**
+     * Borra el numero guardado en este dispositivo. Se usa al entrar con una cuenta que ya
+     * existia: el `#` del invitado pertenece al uid viejo y quedaria duplicado.
+     */
+    fun clearPublicId(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PREF_PUBLIC_ID)
+            .apply()
+    }
+
     fun savePublicId(context: Context, publicId: String) {
         if (!isValidPublicId(publicId)) return
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

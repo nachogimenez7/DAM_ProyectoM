@@ -4,7 +4,10 @@ Objetivo: probar el online como modo experimental jugable. No es el online final
 
 ## Antes de probar
 
-1. En Firebase Console > Firestore > Reglas, copiar el contenido de `firestore.rules` y publicar.
+1. Publicar **las dos** reglas, que viven en pantallas distintas de la consola. Si publicas
+   una sola, la otra queda con la version vieja:
+   - Firebase Console > Firestore Database > Reglas: pegar `firestore.rules` y publicar.
+   - Firebase Console > Realtime Database > Reglas: pegar `database.rules.json` y publicar.
 2. En Firestore > Datos, borrar salas viejas de `partidas` que ya no sirvan para la prueba.
 3. En Android Studio, abrir Logcat y filtrar por:
 

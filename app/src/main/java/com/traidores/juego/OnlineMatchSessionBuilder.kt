@@ -132,7 +132,10 @@ object OnlineMatchSessionBuilder {
             publicHistory = listOf(publicStart),
             chatHistory = listOf(GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, publicStart, isGod = true)),
             godHistory = listOf(publicStart),
-            desertorTeam = initialOnlineDesertorTeam(players, base.code)
+            // En online el bando del desertor nunca se preasigna: lo elige el jugador y el
+            // anfitrion lo publica. Preasignarlo aca dependia de `isHuman`, que es distinto
+            // en cada celular, asi que cada cliente reconstruia un bando diferente.
+            desertorTeam = ""
         )
 
         return applyState(initialSession, matchState)
@@ -208,13 +211,6 @@ object OnlineMatchSessionBuilder {
             alcaldeRevealed = (state["alcaldeRevelado"] as? Boolean) ?: base.alcaldeRevealed,
             alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: base.alcaldeCorruption
         )
-    }
-
-    private fun initialOnlineDesertorTeam(players: List<GamePlayer>, sessionCode: String): String {
-        val desertor = players.firstOrNull { it.role?.key == RoleCatalog.DESERTOR } ?: return ""
-        if (desertor.isHuman) return ""
-        val seed = stableNoise("$sessionCode|${players.joinToString("|") { "${it.name}:${it.role?.key.orEmpty()}" }}")
-        return if ((seed ushr 1) and 1 == 0) GameRules.TOWN_WINNER else GameRules.TRAITOR_WINNER
     }
 
     private fun deathCauseFromState(value: Any?, fallback: DeathCause): DeathCause {

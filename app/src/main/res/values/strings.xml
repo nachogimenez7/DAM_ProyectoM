@@ -51,4 +51,16 @@
     <string name="lobby_practice_summary">Práctica: %1$s%2$s</string>
     <string name="lobby_practice_summary_default">Práctica: AZAR</string>
     <string name="lobby_practice_summary_description">Rol de práctica: %1$s%2$s. Toca para cambiarlo.</string>
+
+    <string name="profile_account_title">CUENTA</string>
+    <string name="profile_account_guest">Jugás como invitado. Si borrás la app perdés tu perfil y tu número.</string>
+    <string name="profile_account_linked">Cuenta: %1$s</string>
+    <string name="profile_account_action">CREAR CUENTA O ENTRAR</string>
+    <string name="profile_account_action_linked">CUENTA VINCULADA</string>
+    <string name="profile_account_dialog_title">Tu cuenta</string>
+    <string name="profile_account_dialog_message">Con una cuenta conservás tu perfil y tu número aunque cambies de celular. Podés seguir jugando como invitado si preferís.</string>
+    <string name="profile_account_email_hint">Correo</string>
+    <string name="profile_account_password_hint">Contraseña</string>
+    <string name="profile_account_linked_toast">Listo. Tu perfil y tu número quedaron guardados en %1$s.</string>
+    <string name="profile_account_recovered_toast">Entraste con %1$s. Recuperaste el número #%2$s.</string>
 </resources>

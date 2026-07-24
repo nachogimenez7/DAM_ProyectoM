@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -89,6 +90,9 @@ class ProfileActivity : BaseActivity() {
     private lateinit var statWinsValue: TextView
     private lateinit var statWinRateValue: TextView
     private lateinit var profileStatsHint: TextView
+    private lateinit var accountStateText: TextView
+    private lateinit var accountButton: Button
+    private var accountRequestInProgress = false
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
     private lateinit var editIcons: List<View>
@@ -161,6 +165,8 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editAchievements).contentDescription = "Editar logros destacados"
         findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
+        accountButton.setOnClickListener { showAccountDialog() }
+
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
         profilePublicId.setOnClickListener { showFixedPublicIdMessage() }
         profileBio.setOnClickListener { if (isEditing) showBioEditor() }
@@ -197,6 +203,8 @@ class ProfileActivity : BaseActivity() {
         statWinsValue = findViewById(R.id.statWinsValue)
         statWinRateValue = findViewById(R.id.statWinRateValue)
         profileStatsHint = findViewById(R.id.profileStatsHint)
+        accountStateText = findViewById(R.id.profileAccountState)
+        accountButton = findViewById(R.id.btnProfileAccount)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -235,7 +243,101 @@ class ProfileActivity : BaseActivity() {
         )
     }
 
+    private fun renderAccountSection() {
+        val email = AccountLink.currentEmail()
+        val linked = email.isNotBlank()
+        accountStateText.text = if (linked) {
+            getString(R.string.profile_account_linked, email)
+        } else {
+            getString(R.string.profile_account_guest)
+        }
+        accountButton.isEnabled = !linked && !accountRequestInProgress
+        accountButton.alpha = if (accountButton.isEnabled) 1f else 0.5f
+        accountButton.text = if (linked) {
+            getString(R.string.profile_account_action_linked)
+        } else {
+            getString(R.string.profile_account_action)
+        }
+    }
+
+    /**
+     * Vincula una cuenta a la identidad anonima que ya tiene este dispositivo. No hay
+     * "cerrar sesion" a proposito: salir dejaria el `#` guardado apuntando a un uid que ya
+     * no es el de la sesion, que es justo el escenario que rompe la identidad.
+     */
+    private fun showAccountDialog() {
+        if (accountRequestInProgress || AccountLink.currentEmail().isNotBlank()) return
+        val content = layoutInflater.inflate(R.layout.dialog_account_link, null)
+        val emailInput = content.findViewById<EditText>(R.id.accountEmailInput)
+        val passwordInput = content.findViewById<EditText>(R.id.accountPasswordInput)
+        val errorText = content.findViewById<TextView>(R.id.accountDialogError)
+
+        val dialog = GameDialog.custom(
+            activity = this,
+            contentView = content,
+            widthDp = 400,
+            negativeLabel = "CANCELAR",
+            positiveLabel = "CONTINUAR"
+        )
+        // El boton positivo de GameDialog cierra siempre. Se reemplaza su accion para que un
+        // error de tipeo no borre lo que el jugador ya escribio.
+        dialog.findViewById<Button>(R.id.gameDialogPositive)?.setOnClickListener {
+            val email = emailInput.text.toString()
+            val password = passwordInput.text.toString()
+            val problem = AccountCredentials.validationError(email, password)
+            if (problem != null) {
+                errorText.text = problem
+                errorText.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            submitAccountRequest(email, password)
+        }
+    }
+
+    private fun submitAccountRequest(email: String, password: String) {
+        accountRequestInProgress = true
+        renderAccountSection()
+        AccountLink.linkOrSignIn(this, email, password) { result ->
+            accountRequestInProgress = false
+            if (isFinishing || isDestroyed) return@linkOrSignIn
+            when (result) {
+                is AccountLinkResult.Linked -> {
+                    GameNotice.show(
+                        activity = this,
+                        message = getString(R.string.profile_account_linked_toast, result.email),
+                        duration = GameNotice.Duration.LONG
+                    )
+                }
+                is AccountLinkResult.SignedIn -> {
+                    // El uid cambio: el `#` que se muestra es el de la cuenta recuperada.
+                    draftProfile.publicId = result.recoveredPublicId
+                    savedProfile.publicId = result.recoveredPublicId
+                    GameNotice.show(
+                        activity = this,
+                        message = getString(
+                            R.string.profile_account_recovered_toast,
+                            result.email,
+                            result.recoveredPublicId
+                        ),
+                        duration = GameNotice.Duration.LONG
+                    )
+                    renderProfile()
+                }
+                is AccountLinkResult.Failed -> {
+                    GameNotice.show(
+                        activity = this,
+                        message = result.message,
+                        duration = GameNotice.Duration.LONG
+                    )
+                }
+            }
+            renderAccountSection()
+        }
+    }
+
     private fun renderProfile() {
+        renderAccountSection()
         profileName.text = draftProfile.name
         profilePublicId.text = draftProfile.publicId.takeIf { it.isNotBlank() }?.let { "#$it" }
             ?: "#SIN ID"

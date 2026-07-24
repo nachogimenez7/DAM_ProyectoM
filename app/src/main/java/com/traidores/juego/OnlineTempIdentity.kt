@@ -40,6 +40,16 @@ object OnlineTempIdentity {
         }
     }
 
+    /**
+     * Fija la identidad a un uid que ya existia (entrar con una cuenta creada en otro
+     * dispositivo). Cambia el uid, asi que quien llame tiene que recuperar tambien el `#`
+     * publico de esa cuenta.
+     */
+    fun adopt(context: Context, uid: String) {
+        if (uid.isBlank()) return
+        persist(context, uid)
+    }
+
     private fun persist(context: Context, uid: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
