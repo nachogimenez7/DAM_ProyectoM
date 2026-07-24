@@ -767,7 +767,12 @@ object LocalGameFactory {
             RoleCatalog.MEDICO to 1,
             RoleCatalog.ASESINO to 1
         )
+        // Umbrales iguales a los `minimumPlayers` del catalogo, para que el online se sienta
+        // como el local a medida que la mesa crece. El desertor (9) todavia no entra: su
+        // eleccion de bando no viaja en el estado autoritativo.
         if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
+        if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
+        if (count >= 10) counts[RoleCatalog.ESPIA] = 1
         val specialCount = counts.values.sum()
         counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
         return RoleCompositionConfig(counts = counts, customized = true)

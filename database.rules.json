@@ -4,12 +4,12 @@
     ".write": false,
     "salas": {
       "$roomId": {
-        ".write": "auth != null && !newData.exists()",
+        ".write": "auth != null && !newData.exists() && data.child('presencia').child(auth.uid).exists()",
         "chat": {
           ".read": "auth != null",
-          ".write": "auth != null && !newData.exists()",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
             ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
@@ -24,9 +24,9 @@
         },
         "chat_traidores": {
           ".read": "auth != null",
-          ".write": "auth != null && !newData.exists()",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
             ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
@@ -42,9 +42,9 @@
         },
         "chat_espectadores": {
           ".read": "auth != null",
-          ".write": "auth != null && !newData.exists()",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
             ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
@@ -60,9 +60,9 @@
         },
         "emotes": {
           ".read": "auth != null",
-          ".write": "auth != null && !newData.exists()",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$emoteEventId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
             ".validate": "newData.hasChildren(['matchId', 'actorId', 'player', 'emoteId', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
@@ -74,9 +74,9 @@
         },
         "chat_lobby": {
           ".read": "auth != null",
-          ".write": "auth != null && !newData.exists()",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists()))",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
             ".validate": "newData.hasChildren(['actorId', 'speaker', 'mensaje', 'tipo', 'ts']) && ((newData.child('tipo').val() === 'texto' && !newData.hasChild('emoteId')) || (newData.child('tipo').val() === 'emote' && newData.hasChild('emoteId')))",
             "actorId": { ".validate": "newData.val() === auth.uid" },
             "speaker": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },

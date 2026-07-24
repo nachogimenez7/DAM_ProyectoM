@@ -167,9 +167,16 @@ El online de prueba usa un preset seguro:
 - 3 jugadores de prueba: 1 asesino, 1 medico y 1 comisario/detective.
 - 4 jugadores de prueba: la composicion anterior mas 1 aldeano.
 - 5 y 6 jugadores: 1 asesino, 1 medico, 1 comisario/detective y el resto aldeanos.
-- 7 a 15 jugadores: la composicion anterior suma 1 mercenario y completa con aldeanos.
+- 7 jugadores: suma 1 mercenario.
+- 8 y 9 jugadores: suma 1 alcalde.
+- 10 a 15 jugadores: suma 1 espia (segundo killer) y completa con aldeanos.
 
-No se agregan por defecto Alcalde, Desertor, Espia, Bufon, Oraculo ni Payador en online. Siguen disponibles para local/IA y fases futuras.
+Los umbrales son los mismos `minimumPlayers` del catalogo de roles, para que el online se
+sienta como el local a medida que crece la mesa.
+
+Todavia no entran en online el Desertor, el Bufon, el Oraculo ni el Payador. El desertor
+esta pendiente porque su eleccion de bando no viaja en `estadoPartida`; los otros tres son
+exclusivos de mapa y quedan para una fase posterior. Siguen disponibles para local/IA.
 
 Reglas importantes:
 
@@ -191,7 +198,8 @@ Reglas importantes:
 - Los eliminados siguen viendo carteles y chat publico en modo solo lectura, pero no cuentan en `LISTOS n/total`.
 - La pantalla ganadora vuelve al lobby al terminar la musica de victoria; 45 segundos quedan como respaldo si el audio esta desactivado o falla.
 - La noche y la votacion esperan el timer completo. No hay avance temprano aunque todos hayan actuado.
-- En noche, si un jugador envia mas de una accion valida para la misma ronda, se toma la ultima por `creadaEnLocal`.
+- En noche, si un jugador envia mas de una accion valida para la misma ronda, se toma la **primera** por `creadaEnLocal`: la eleccion nocturna no se puede cambiar una vez confirmada (`OnlineActionResolver`, pineado en tests).
+- El alcalde se revela registrando una accion `accion_jugador` con `detalles.accion = "revelar_alcalde"` y sin objetivo. El anfitrion activo la ve por el listener de `acciones`, aplica la revelacion y la publica; el resto la recibe por `alcaldeRevelado` y el anuncio publico. El desempate del alcalde ya se resolvia asi desde antes, con una accion `votar` en fase `ALCALDE_DESEMPATE`.
 - En votacion/desempate, si un jugador vota mas de una vez en la misma fase, se toma el ultimo voto por `creadaEnLocal`.
 - Las acciones o votos ausentes no bloquean la fase; cuentan como sin accion o abstencion.
 - Durante `REPARTO`, cada cliente publica en `estadoClientes.{uidTemporal}` si entro al gameplay, cuantos jugadores ve y si ya toco `EMPEZAR`.
@@ -296,14 +304,12 @@ Campos:
 - `creadaEn`: timestamp de servidor.
 - `creadaEnLocal`: timestamp local.
 
-Diseno futuro para 2+ killers online:
+2+ killers online (activo desde 10 jugadores, con la entrada del espia):
 
-- Mientras el preset online tenga 1 solo asesino, no hay votacion nocturna de asesinos: elige y listo.
-- Cuando el preset sume mas killers (por ejemplo asesino + espia, o 2 asesinos), cada killer registra su accion nocturna normal en `acciones`.
-- El host activo lee la ultima accion valida de cada killer para la ronda/fase y publica en `chat_traidores` una linea de sistema por eleccion: `"Nacho eligio a Mora como su victima"`.
-- Al cerrar la noche por timer, el host activo resuelve como victima a la mas elegida. Si hay empate, sortea entre las empatadas con semilla estable por sala/ronda; si nadie eligio, no muere nadie.
-- El host activo publica la decision final en `chat_traidores` antes de aplicar la muerte en `estadoPartida`.
+- Con menos de 10 jugadores hay un solo asesino: elige y listo, sin votacion.
+- **Ya funciona**: cada killer registra su accion `matar` en `acciones`; el host resuelve como victima la mas elegida y, si hay empate, sortea entre las empatadas con semilla estable por sala/ronda (`GameEngine.assassinVoteWinner`). Si nadie eligio, no muere nadie.
 - Solo cuentan roles killer. El mercenario no participa de esta votacion porque su accion es silenciar.
+- **Pendiente**: que el host publique en `chat_traidores` una linea de sistema por eleccion (`"Nacho eligio a Mora como su victima"`) y la decision final. Hoy los killers no ven la eleccion del otro y tienen que coordinarla escribiendo en el canal.
 
 Seguridad actual del canal:
 
@@ -362,6 +368,15 @@ refleje membresia, roles y autoridad del host.
 ## Limites actuales
 
 Las reglas validan forma y tamanos, pero no pueden garantizar frecuencia fuerte de escritura. El cooldown local evita spam accidental, pero un cliente modificado podria seguir abusando.
+
+Lectura: desde el barrido de reglas, `partidas`, `jugadores`, `acciones`, `perfiles_publicos`
+y `meta/public_ids` exigen sesion iniciada. Ya no se puede leer una sala sin autenticarse,
+pero **cualquier usuario autenticado sigue pudiendo leer cualquier sala**, y `partidaInicial`
+incluye el rol de cada jugador: el secreto de roles sigue siendo honor-system.
+
+Borrado en RTDB: vaciar un canal, borrar un mensaje o eliminar el nodo completo de una sala
+exige tener nodo de presencia en esa sala. Antes bastaba con estar autenticado, asi que
+cualquiera podia vaciar el chat de una partida ajena.
 
 Pendiente para produccion:
 

@@ -621,24 +621,39 @@ class GameEngineTest {
         assertEquals(7, sevenPlayers.counts.values.sum())
 
         assertEquals(1, eightPlayers.counts[RoleCatalog.MERCENARIO])
-        assertEquals(4, eightPlayers.counts[RoleCatalog.ALDEANO])
-        assertEquals(0, eightPlayers.counts[RoleCatalog.ALCALDE] ?: 0)
+        assertEquals(1, eightPlayers.counts[RoleCatalog.ALCALDE])
+        assertEquals(3, eightPlayers.counts[RoleCatalog.ALDEANO])
         assertEquals(8, eightPlayers.counts.values.sum())
     }
 
     @Test
-    fun onlineSafeRoleCompositionAtTwelveKeepsTheReducedPreset() {
+    fun onlineSafeRoleCompositionAddsSpyFromTenPlayers() {
+        val ninePlayers = LocalGameFactory.onlineSafeRoleComposition(9)
+        val tenPlayers = LocalGameFactory.onlineSafeRoleComposition(10)
+
+        assertEquals(1, ninePlayers.counts[RoleCatalog.ALCALDE])
+        assertEquals(0, ninePlayers.counts[RoleCatalog.ESPIA] ?: 0)
+        assertEquals(4, ninePlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(9, ninePlayers.counts.values.sum())
+
+        assertEquals(1, tenPlayers.counts[RoleCatalog.ESPIA])
+        assertEquals(4, tenPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(10, tenPlayers.counts.values.sum())
+    }
+
+    @Test
+    fun onlineSafeRoleCompositionAtTwelveKeepsDesertorAndMapRolesOut() {
         val composition = LocalGameFactory.onlineSafeRoleComposition(12)
 
         assertEquals(1, composition.counts[RoleCatalog.ASESINO])
         assertEquals(1, composition.counts[RoleCatalog.MEDICO])
         assertEquals(1, composition.counts[RoleCatalog.POLICIA])
         assertEquals(1, composition.counts[RoleCatalog.MERCENARIO])
-        assertEquals(8, composition.counts[RoleCatalog.ALDEANO])
+        assertEquals(1, composition.counts[RoleCatalog.ALCALDE])
+        assertEquals(1, composition.counts[RoleCatalog.ESPIA])
+        assertEquals(6, composition.counts[RoleCatalog.ALDEANO])
         listOf(
-            RoleCatalog.ALCALDE,
             RoleCatalog.DESERTOR,
-            RoleCatalog.ESPIA,
             RoleCatalog.PAYADOR,
             RoleCatalog.ORACULO,
             RoleCatalog.BUFON

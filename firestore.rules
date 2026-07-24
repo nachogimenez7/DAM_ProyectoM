@@ -346,12 +346,19 @@ service cloud.firestore {
            data.listoParaVotarPhaseIndex <= 500));
     }
 
+    // Boton "probar Firebase" de Opciones. Escribe siempre el mismo documento; con Auth
+    // anonima activa el boton sigue funcionando, pero ya no se puede escribir sin sesion.
     match /pruebas/{docId} {
-      allow read, write: if true;
+      allow read, write: if signedIn();
     }
 
     match /partidas/{partidaId} {
-      allow read: if true;
+      // El navegador de salas necesita leer salas de las que todavia no sos miembro, asi
+      // que la lectura no puede pedir membresia: se cierra hasta estar autenticado.
+      // OJO: partidaInicial incluye el rol de cada jugador. El secreto de roles sigue
+      // siendo honor-system y solo se cierra de verdad con un backend que reparta el rol
+      // por jugador (ver docs/firebase-online-schema.md).
+      allow read: if signedIn();
 
       allow create: if signedIn()
         && validRoomBase(request.resource.data)
@@ -376,7 +383,7 @@ service cloud.firestore {
         && request.auth.uid in [resource.data.hostId, resource.data.hostActivoId];
 
       match /jugadores/{uidTemporal} {
-        allow read: if true;
+        allow read: if signedIn();
 
         allow create: if isSelf(uidTemporal)
           && validPlayerDocument(request.resource.data, uidTemporal);
@@ -390,7 +397,10 @@ service cloud.firestore {
       }
 
       match /acciones/{accionId} {
-        allow read: if true;
+        // No se pide membresia: el anfitrion borra `jugadores` antes que `acciones` al
+        // desarmar una sala vacia (LobbyActivity.teardownEmptyOnlineRoom), y en ese punto
+        // ya no seria miembro de su propia sala.
+        allow read: if signedIn();
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
@@ -430,7 +440,7 @@ service cloud.firestore {
       }
 
       match /chat/{mensajeId} {
-        allow read: if true;
+        allow read: if signedIn();
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
@@ -509,7 +519,7 @@ service cloud.firestore {
         // lectura a nivel servidor, reemplazar `allow read: if true` por una funcion que
         // haga get() sobre partidaInicial y verifique que request.auth.uid tiene un rol
         // traidor. Requiere confirmar el shape del rol por uid en partidaInicial.
-        allow read: if true;
+        allow read: if signedIn();
 
         allow create: if signedIn()
           && hasOnly(request.resource.data, [
@@ -542,7 +552,7 @@ service cloud.firestore {
     }
 
     match /meta/public_ids {
-      allow read: if true;
+      allow read: if signedIn();
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           'nextId',
@@ -563,7 +573,7 @@ service cloud.firestore {
     }
 
     match /perfiles_publicos/{uidTemporal} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create, update: if isSelf(uidTemporal)
         && request.resource.data.keys().hasOnly([
           'uidTemporal',

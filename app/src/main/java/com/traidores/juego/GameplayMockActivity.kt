@@ -181,6 +181,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
+    private var onlineMayorRevealSent = false
     private var onlineNightGateKey = ""
     private var onlineNightGateStartedAtMs = 0L
     private var onlinePresentationClientAcks = emptyMap<String, String>()
@@ -1309,12 +1310,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GameNotice.show(this, "Espera a que comience la fase.")
             return
         }
-        if (
-            blockUnsupportedOnlineLocalDecision(
-                decision = "alcalde_reveal",
-                message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable."
-            )
-        ) {
+        if (isOnlineGameplay()) {
+            recordOnlineMayorReveal()
             return
         }
         val before = session
@@ -1324,6 +1321,70 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val feedback = GameplayTableUi.feedbackForMayorReveal(before, session)
         renderGame()
         feedback?.let { showActionFeedbackBanner(it) }
+    }
+
+    /**
+     * Online el invitado no cambia el estado por su cuenta: registra la revelacion como
+     * accion y el anfitrion activo la aplica y la publica para toda la mesa.
+     */
+    private fun recordOnlineMayorReveal() {
+        val human = GameEngine.humanPlayer(session)
+        if (human.role?.key != RoleCatalog.ALCALDE || !human.alive) return
+        if (session.alcaldeRevealed || onlineMayorRevealSent) return
+        onlineMayorRevealSent = true
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        session = session.copy(
+            privateHint = "Te revelaste como Alcalde. Tu voto vale doble y decides los empates."
+        )
+        recordOnlineAction(
+            type = "accion_jugador",
+            targetName = "",
+            details = mapOf("accion" to ONLINE_ACTION_MAYOR_REVEAL),
+            onFailure = { onlineMayorRevealSent = false }
+        )
+        renderGame()
+    }
+
+    /**
+     * Solo el anfitrion activo. Aplica la revelacion pedida por el alcalde (sea el propio
+     * anfitrion o un invitado) y la publica; el resto de la mesa la recibe por
+     * `alcaldeRevealed` y el anuncio publico del estado autoritativo.
+     */
+    private fun maybeApplyOnlineMayorReveal() {
+        if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        if (session.alcaldeRevealed || session.winner.isNotBlank()) return
+        val mayor = GameEngine.alivePlayers(session)
+            .firstOrNull { it.role?.key == RoleCatalog.ALCALDE }
+            ?: return
+        val asked = onlineNightActionRecords.any {
+            it.matchId == session.onlineMatchId &&
+                it.action == ONLINE_ACTION_MAYOR_REVEAL &&
+                it.actorName == mayor.name
+        }
+        if (!asked) return
+        val before = session
+        val hostIsMayor = before.players.firstOrNull { it.isHuman }?.name == mayor.name
+        // `revealAlcalde` opera sobre el jugador humano; en el celular del anfitrion el
+        // alcalde puede ser un invitado, asi que se marca temporalmente y se restaura.
+        val asMayor = before.copy(
+            players = before.players.map { it.copy(isHuman = it.name == mayor.name) }
+        )
+        val revealed = GameEngine.revealAlcalde(asMayor)
+        if (revealed == asMayor) return
+        session = revealed.copy(
+            players = revealed.players.map { player ->
+                player.copy(
+                    isHuman = before.players.firstOrNull { it.name == player.name }?.isHuman == true
+                )
+            },
+            // La pista privada del alcalde no debe aparecer en el celular del anfitrion.
+            privateHint = if (hostIsMayor) revealed.privateHint else before.privateHint
+        )
+        OnlineDebugLog.i(
+            "alcalde_reveal_applied roomId=$onlinePartidaId mayor=${mayor.name} round=${session.round} phase=${session.phase.name}"
+        )
+        publishAuthoritativeOnlineState()
+        renderGame()
     }
 
     private fun blockOnlineGuestLocalPhaseAdvance(reason: String): Boolean {
@@ -2024,6 +2085,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.voteRound,
             session.tieVoteCandidates.joinToString("#"),
             session.alcaldeTieCandidates.joinToString("#"),
+            session.alcaldeRevealed,
             session.players.joinToString("#") {
                 "${it.name}:${it.alive}:${it.muted}:${it.lastSilencedRound}:" +
                     "${it.consecutiveNightAfk}:${it.consecutiveVoteAfk}:${it.deathCause.name}"
@@ -2885,6 +2947,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 return@addSnapshotListener
             }
             onlineNightActionRecords = onlineActionRecordsFromSnapshot(snapshot?.documents.orEmpty())
+            maybeApplyOnlineMayorReveal()
             maybeResolveOnlineNightEarly()
         }
     }
@@ -3072,6 +3135,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineAwaitingHostAdvance = false
             autoAdvanceHandler.post { renderGame() }
         }
+        // Si el alcalde pidio revelarse mientras el anfitrion anterior se caia, el pedido
+        // ya esta escrito y sin aplicar: este dispositivo lo resuelve al tomar el host.
+        maybeApplyOnlineMayorReveal()
         maybeResolveOnlineNightEarly()
         refreshOnlinePresentationGate()
     }
@@ -7684,13 +7750,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun revealMayorFromTieVote() {
-        if (
-            blockUnsupportedOnlineLocalDecision(
-                decision = "alcalde_tie_reveal",
-                message = "La revelacion del Alcalde online queda bloqueada en esta prueba estable.",
-                rerender = false
-            )
-        ) {
+        if (isOnlineGameplay()) {
+            recordOnlineMayorReveal()
             renderTieVoteWindow()
             return
         }
@@ -8725,6 +8786,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val FIELD_READY_TO_VOTE_ROUND = "listoParaVotarRonda"
         private const val FIELD_READY_TO_VOTE_PHASE_INDEX = "listoParaVotarPhaseIndex"
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"
+        private const val ONLINE_ACTION_MAYOR_REVEAL = "revelar_alcalde"
         private val ONLINE_NIGHT_ACTOR_ROLES = setOf(
             RoleCatalog.ASESINO,
             RoleCatalog.ESPIA,
