@@ -384,7 +384,10 @@ data class GameChatMessage(
     val speaker: String,
     val message: String,
     val isGod: Boolean = false,
-    val channel: ChatChannel = ChatChannel.PUBLICO
+    val channel: ChatChannel = ChatChannel.PUBLICO,
+    // Ronda en la que se escribio. Permite acotar el chat de traidores a la noche
+    // en curso sin depender del texto de los mensajes de sistema.
+    val round: Int = 0
 ) : Serializable
 
 data class GameAction(

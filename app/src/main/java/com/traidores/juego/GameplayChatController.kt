@@ -120,6 +120,7 @@ class GameplayChatController(
     private var traitorDirectorPhaseIndex = -1
     private var traitorDirectorLines = 0
     private var traitorDirectorLastSpeaker: String? = null
+    private var traitorPendingHumanMessage = ""
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val typingBotSpeakers = linkedSetOf<String>()
     private var quickChatDialog: AlertDialog? = null
@@ -947,23 +948,32 @@ class GameplayChatController(
     }
 
     private fun renderQuickReplies(channel: ChatChannel, canChat: Boolean) {
-        val canShowQuickChat =
-            canChat &&
-            channel == ChatChannel.PUBLICO &&
-            (host.isOnlineGameplay() || directorPendingHumanMessage.isBlank())
-        val replies = if (canShowQuickChat) {
-            BotQuickReplies.forSession(host.currentSession)
-        } else {
-            emptyList()
+        val canShowQuickChat = canChat && when (channel) {
+            ChatChannel.PUBLICO ->
+                host.isOnlineGameplay() || directorPendingHumanMessage.isBlank()
+            ChatChannel.TRAIDORES -> true
+            ChatChannel.ESPECTADORES -> false
+        }
+        val traitorStyle = channel == ChatChannel.TRAIDORES
+        val replies = when {
+            !canShowQuickChat -> emptyList()
+            traitorStyle -> BotQuickReplies.forTraitorChat(host.currentSession)
+            else -> BotQuickReplies.forSession(host.currentSession)
         }
         chatQuickReplies.removeAllViews()
         chatQuickRepliesScroll.visibility = if (canShowQuickChat) View.VISIBLE else View.GONE
         replies.forEach { reply ->
-            addQuickChatButton(reply.text) { handleQuickChatMessage(reply) }
+            addQuickChatButton(reply.text, traitorStyle = traitorStyle) {
+                handleQuickChatMessage(reply)
+            }
         }
         if (canShowQuickChat) {
-            addQuickChatButton("MÁS", emphasized = true) {
-                showQuickMessageCategories()
+            addQuickChatButton("MÁS", emphasized = true, traitorStyle = traitorStyle) {
+                if (traitorStyle) {
+                    showTraitorQuickMessageCategories()
+                } else {
+                    showQuickMessageCategories()
+                }
             }
         }
     }
@@ -971,15 +981,21 @@ class GameplayChatController(
     private fun addQuickChatButton(
         label: String,
         emphasized: Boolean = false,
+        traitorStyle: Boolean = false,
         onClick: () -> Unit
     ) {
+        val accentColor = root.context.getColor(
+            if (traitorStyle) R.color.traitor_red_bright else R.color.accent_gold
+        )
         val button = Button(root.context).apply {
             text = label
             isAllCaps = false
             setTextColor(
-                root.context.getColor(
-                    if (emphasized) R.color.bg_dark else R.color.text_primary
-                )
+                when {
+                    emphasized -> root.context.getColor(R.color.bg_dark)
+                    traitorStyle -> root.context.getColor(R.color.traitor_text)
+                    else -> root.context.getColor(R.color.text_primary)
+                }
             )
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             minWidth = 0
@@ -990,13 +1006,13 @@ class GameplayChatController(
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 setColor(
-                    if (emphasized) {
-                        root.context.getColor(R.color.accent_gold)
-                    } else {
-                        Color.parseColor("#E6211810")
+                    when {
+                        emphasized -> accentColor
+                        traitorStyle -> root.context.getColor(R.color.traitor_panel)
+                        else -> Color.parseColor("#E6211810")
                     }
                 )
-                setStroke(host.dp(1), root.context.getColor(R.color.accent_gold))
+                setStroke(host.dp(1), accentColor)
                 cornerRadius = host.dp(12).toFloat()
             }
             setOnClickListener { onClick() }
@@ -1037,6 +1053,92 @@ class GameplayChatController(
                 4 -> showQuickActionMenu()
                 5 -> showQuickVoteMenu()
             }
+        }
+    }
+
+    private fun showTraitorQuickMessageCategories() {
+        host.hideKeyboard()
+        showQuickChoiceDialog(
+            title = "PLAN DE LOS ASESINOS",
+            options = listOf(
+                "Matemos a...",
+                "A ese no...",
+                "Silenciemos a...",
+                "Cuidado con...",
+                "Cúbranme...",
+                "Cerrado, quedamos así"
+            )
+        ) { index ->
+            when (index) {
+                0 -> showTraitorTargetPicker("¿A QUIÉN MATAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.killProposal(target))
+                }
+                1 -> showTraitorTargetPicker("¿A QUIÉN NO TOCAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.doubtKill(target))
+                }
+                2 -> showTraitorTargetPicker("¿A QUIÉN SILENCIAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.silence(target))
+                }
+                3 -> showTraitorTargetPicker("¿DE QUIÉN NOS CUIDAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.watchOut(target))
+                }
+                4 -> showTraitorCoverMenu()
+                5 -> sendQuickChatMessage(BotQuickReplies.confirmPlan())
+            }
+        }
+    }
+
+    private fun showTraitorCoverMenu() {
+        showQuickChoiceDialog(
+            title = "CÚBRANME",
+            options = listOf(
+                "Me están marcando, cúbranme",
+                "Mañana digo que soy...",
+                "Estoy limpio, hablo yo",
+                "Mañana no nos crucemos",
+                "Vamos tranquilos, sin regalarnos"
+            )
+        ) { index ->
+            when (index) {
+                0 -> sendQuickChatMessage(BotQuickReplies.askCover())
+                1 -> showTraitorFakeRolePicker()
+                2 -> sendQuickChatMessage(BotQuickReplies.cleanCover())
+                3 -> sendQuickChatMessage(BotQuickReplies.noCrossfire())
+                4 -> sendQuickChatMessage(BotQuickReplies.stayCalm())
+            }
+        }
+    }
+
+    private fun showTraitorFakeRolePicker() {
+        val roles = BotQuickReplies.townRolesInPlay(host.currentSession)
+        if (roles.isEmpty()) {
+            host.showToast("No hay roles del pueblo para usar de coartada.")
+            return
+        }
+        showQuickChoiceDialog(
+            title = "ROL FALSO",
+            options = roles.map { it.name }
+        ) { index ->
+            roles.getOrNull(index)?.let { role ->
+                sendQuickChatMessage(BotQuickReplies.fakeClaim(role))
+            }
+        }
+    }
+
+    private fun showTraitorTargetPicker(
+        title: String,
+        onSelected: (String) -> Unit
+    ) {
+        val players = BotQuickReplies.traitorTargets(host.currentSession)
+        if (players.isEmpty()) {
+            host.showToast("No quedan objetivos fuera del plan.")
+            return
+        }
+        showQuickChoiceDialog(
+            title = title,
+            options = players.map { it.name }
+        ) { index ->
+            players.getOrNull(index)?.name?.let(onSelected)
         }
     }
 
@@ -1150,12 +1252,18 @@ class GameplayChatController(
     ) {
         if (options.isEmpty()) return
         val activity = root.context as? Activity ?: return
+        val traitorPlan = activeChatChannel() == ChatChannel.TRAIDORES
         quickChatDialog?.dismiss()
         quickChatDialog = GameDialog.choose(
             activity = activity,
             title = title,
-            message = "Elegí una opción para enviarla al chat.",
+            message = if (traitorPlan) {
+                "Elegí una opción para enviarla al plan."
+            } else {
+                "Elegí una opción para enviarla al chat."
+            },
             options = options,
+            theme = if (traitorPlan) GameDialogTheme.TRAITOR else GameDialogTheme.GOLD,
             onSelected = onSelected
         )
     }
@@ -1172,6 +1280,21 @@ class GameplayChatController(
             QuickChatAction.CHOOSE_VOTE -> {
                 showAlivePlayerPicker("¿A QUIÉN VOTAMOS?") { target ->
                     sendQuickChatMessage(BotQuickReplies.voteTogether(target))
+                }
+            }
+            QuickChatAction.CHOOSE_KILL -> {
+                showTraitorTargetPicker("¿A QUIÉN MATAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.killProposal(target))
+                }
+            }
+            QuickChatAction.CHOOSE_SILENCE -> {
+                showTraitorTargetPicker("¿A QUIÉN SILENCIAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.silence(target))
+                }
+            }
+            QuickChatAction.CHOOSE_WATCH -> {
+                showTraitorTargetPicker("¿DE QUIÉN NOS CUIDAMOS?") { target ->
+                    sendQuickChatMessage(BotQuickReplies.watchOut(target))
                 }
             }
         }
@@ -1803,7 +1926,7 @@ class GameplayChatController(
             if (channel == ChatChannel.PUBLICO) {
                 onHumanMessage(rawMessage, intentHint)
             } else if (channel == ChatChannel.TRAIDORES) {
-                onHumanTraitorMessage()
+                onHumanTraitorMessage(rawMessage)
             }
             clearChatComposerAfterSend()
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
@@ -2309,14 +2432,66 @@ class GameplayChatController(
         scheduleNextHumanReactionBeat()
     }
 
-    private fun onHumanTraitorMessage() {
+    private fun onHumanTraitorMessage(rawHumanMessage: String) {
         if (host.isOnlineGameplay()) return
         val session = host.currentSession
         if (!canRunVisibleTraitorNight(session)) return
         if (traitorDirectorPhaseIndex != session.phaseIndex) {
             resetTraitorDirectorForPhase(session)
         }
-        scheduleNextTraitorNightBeat()
+        val humanMessage = rawHumanMessage.trim()
+            .replace(Regex("\\s+"), " ")
+            .take(CHAT_MESSAGE_MAX_LENGTH)
+        if (humanMessage.isBlank()) {
+            scheduleNextTraitorNightBeat()
+            return
+        }
+        // Si un aliado estaba por soltar una linea del plan, primero te contesta a vos.
+        cancelScheduledBotChat()
+        traitorPendingHumanMessage = humanMessage
+        scheduleTraitorReactionBeat()
+    }
+
+    private fun scheduleTraitorReactionBeat() {
+        val session = host.currentSession
+        val humanMessage = traitorPendingHumanMessage
+        traitorPendingHumanMessage = ""
+        if (
+            host.isOnlineGameplay() ||
+            humanMessage.isBlank() ||
+            !canRunVisibleTraitorNight(session) ||
+            traitorDirectorPhaseIndex != session.phaseIndex ||
+            pendingBotChatRunnables.isNotEmpty()
+        ) {
+            return
+        }
+        val beat = BotConversationDirector.nextTraitorReactionBeat(
+            session = session,
+            humanMessage = humanMessage,
+            lastSpeaker = traitorDirectorLastSpeaker
+        )
+        if (beat == null) {
+            scheduleNextTraitorNightBeat()
+            return
+        }
+        val delayMs = BotConversationDirector.naturalDelayMs(
+            session = session,
+            beatIndex = directorBeatCounter++,
+            message = beat.message,
+            reaction = true,
+            speaker = beat.speaker
+        )
+        scheduleBotConversationBeat(
+            beat = beat,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = delayMs,
+            channel = ChatChannel.TRAIDORES
+        ) { committed, deliveredMessages ->
+            traitorDirectorLastSpeaker = beat.speaker
+            traitorDirectorLines += deliveredMessages
+            scheduleNextTraitorNightBeat(committed)
+        }
     }
 
     private fun resetDirectorForPhase(session: GameSession) {
@@ -2473,6 +2648,7 @@ class GameplayChatController(
 
     private fun resetTraitorDirectorForPhase(session: GameSession) {
         traitorDirectorPhaseIndex = session.phaseIndex
+        traitorPendingHumanMessage = ""
         traitorDirectorLines = recentTraitorMessages(session)
             .count { isBotSpeaker(session, it.speaker) }
         traitorDirectorLastSpeaker = recentTraitorMessages(session)
@@ -2485,6 +2661,7 @@ class GameplayChatController(
             traitorDirectorPhaseIndex = -1
             traitorDirectorLines = 0
             traitorDirectorLastSpeaker = null
+            traitorPendingHumanMessage = ""
         }
     }
 

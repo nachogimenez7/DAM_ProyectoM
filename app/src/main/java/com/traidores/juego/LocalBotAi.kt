@@ -48,6 +48,10 @@ internal object LocalBotAi {
     }
 
     fun chooseAssassinTarget(session: GameSession, assassin: GamePlayer): String {
+        // Un pedido del aliado humano en el Plan de los Asesinos pesa mas que el plan
+        // armado al empezar la noche, porque llega despues.
+        TraitorChatRequests.killTarget(session, assassin)?.let { return it }
+
         session.traitorPlan
             ?.takeIf { it.round == session.round }
             ?.killTarget
@@ -79,6 +83,8 @@ internal object LocalBotAi {
     }
 
     fun chooseSilenceTarget(session: GameSession, mercenary: GamePlayer): String {
+        TraitorChatRequests.silenceTarget(session, mercenary)?.let { return it }
+
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidSilenceTarget(session, it.name, mercenary) }
         val nonTraitors = candidates.filterNot { isTraitor(it) }
@@ -208,6 +214,31 @@ internal object LocalBotAi {
             else -> null
         } ?: return null
         return finishTraitorSpeech(raw, session, bot, "traitor:${recent.size}:$speaker")
+    }
+
+    fun traitorReplyToHuman(
+        session: GameSession,
+        speaker: String,
+        humanMessage: String
+    ): String? {
+        val bot = GameEngine.playerByName(session, speaker)
+            ?.takeIf { !it.isHuman && GameEngine.canSeeTraitorChat(it) }
+            ?: return null
+        val plan = session.traitorPlan?.takeIf { it.round == session.round }
+        val human = GameEngine.humanPlayer(session)
+        val raw = traitorHumanReplyLine(
+            session = session,
+            bot = bot,
+            plan = plan,
+            request = TraitorChatRequests.classify(session, humanMessage),
+            humanName = safeName(human, session)
+        ) ?: return null
+        return finishTraitorSpeech(
+            raw,
+            session,
+            bot,
+            "traitor-reply:${recentTraitorMessages(session).size}:$speaker"
+        )
     }
 
     fun chooseVoteTarget(session: GameSession, voter: GamePlayer): String {

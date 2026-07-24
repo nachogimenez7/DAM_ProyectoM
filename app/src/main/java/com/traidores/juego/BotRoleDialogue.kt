@@ -503,6 +503,115 @@ internal fun shouldSpeakerTakeCoverLine(
     }
 }
 
+/**
+ * Respuesta de un traidor bot a lo que escribio el humano en el Plan de los Asesinos.
+ * Los bots siempre terminan acompanando el pedido (lo ejecutan en la resolucion de la
+ * noche), pero pueden decir que no era su lectura antes de acompanarlo.
+ */
+internal fun traitorHumanReplyLine(
+    session: GameSession,
+    bot: GamePlayer,
+    plan: TraitorPlan?,
+    request: TraitorRequest,
+    humanName: String
+): String? {
+    val seed = stableNoise(
+        "${session.code}:${session.round}:${bot.name}:traitor-reply:${request.kind}:${request.target}"
+    )
+    val target = request.target
+    val personality = personalityFor(session, bot)
+    val options = when (request.kind) {
+        TraitorRequestKind.MATAR -> when {
+            target.isBlank() -> listOf(
+                "a quien? tirame un nombre y lo hacemos",
+                "de acuerdo, pero decime a quien"
+            )
+            request.targetIsAlly -> listOf(
+                "$target es de los nuestros, ni en broma",
+                "para, $target juega con nosotros"
+            )
+            plan?.killTarget.isNullOrBlank() -> listOf(
+                "no tenia a nadie fijo todavia, va $target",
+                "me sirve, arrancamos por $target"
+            )
+            plan?.killTarget == target -> listOf(
+                "de una, $target era lo que venia pensando",
+                "cerrado, $target"
+            )
+            else -> when (personality) {
+                BotPersonality.ANALITICO -> listOf(
+                    "yo venia con ${plan?.killTarget}, pero si lo tenes claro va $target"
+                )
+                BotPersonality.DESCONFIADO -> listOf(
+                    "$target no era mi lectura, igual te sigo"
+                )
+                BotPersonality.JODON -> listOf(
+                    "jaja cambio de planes entonces. dale, $target"
+                )
+                BotPersonality.PICANTE,
+                BotPersonality.IMPULSIVO -> listOf(
+                    "me sirve, $target y listo"
+                )
+                else -> listOf(
+                    "no era mi idea, pero vamos con $target"
+                )
+            }
+        }
+        TraitorRequestKind.SILENCIAR -> when {
+            target.isBlank() -> listOf("a quien callamos?")
+            request.targetIsAlly -> listOf("$target es nuestro, dejalo hablar tranquilo")
+            bot.role?.key == RoleCatalog.MERCENARIO -> listOf(
+                "listo, $target no habla manana",
+                "hecho, a $target lo dejo mudo"
+            )
+            GameEngine.alivePlayers(session).any { it.role?.key == RoleCatalog.MERCENARIO } -> listOf(
+                "que lo calle el que puede, $target no tiene que hablar",
+                "me gusta, $target callado nos ordena el dia"
+            )
+            else -> listOf(
+                "no tenemos con quien callarlo, pero a $target lo tengo marcado"
+            )
+        }
+        TraitorRequestKind.DESCARTAR -> when {
+            target.isBlank() -> listOf("dale, lo dejamos")
+            else -> listOf(
+                "listo, a $target lo sacamos de la lista",
+                "bueno, $target queda afuera por ahora"
+            )
+        }
+        TraitorRequestKind.CUIDADO -> when {
+            target.isBlank() -> listOf("a quien le tenemos que tener miedo?")
+            else -> listOf(
+                "si, $target viene leyendo bien. ojo con eso",
+                "lo tengo anotado, $target es el que ordena"
+            )
+        }
+        TraitorRequestKind.COBERTURA -> when {
+            plan?.cover?.backer == bot.name -> listOf(
+                "para eso estoy, $humanName. te sigo la version"
+            )
+            else -> listOf(
+                "tranquilo $humanName, si te aprietan te banco",
+                "quedate piola que manana te defiendo"
+            )
+        }
+        TraitorRequestKind.ROL_FALSO -> listOf(
+            "dale, decilo y yo te acompano",
+            "va, pero no te pases de detalle que se nota"
+        )
+        TraitorRequestKind.CIERRE -> listOf(
+            "cerrado",
+            "de una, asi queda",
+            "listo, actuemos normales que es lo dificil"
+        )
+        TraitorRequestKind.OTRO -> listOf(
+            "te escucho, pero cerremos algo antes de que amanezca",
+            "puede ser. igual hay que salir con un nombre"
+        )
+    }
+    return options.getOrNull(seed % options.size)
+}
+
 internal fun minimumTraitorPlanLines(session: GameSession): Int {
     val traitors = GameEngine.aliveTraitors(session).size.coerceAtLeast(1)
     return (traitors + 2).coerceIn(3, 6)

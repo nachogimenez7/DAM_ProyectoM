@@ -145,7 +145,7 @@ class BotPlayerCenteredBrainTest {
         val replies = BotQuickReplies.forSession(base)
 
         assertEquals(
-            listOf("Sospecho de:", "Soy:", "Votemos a:"),
+            listOf("Sospecho de", "Soy", "Votemos a"),
             replies.map { it.text }
         )
         assertEquals(

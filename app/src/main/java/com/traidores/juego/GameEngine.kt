@@ -2232,7 +2232,7 @@ object GameEngine {
         channel: ChatChannel = ChatChannel.PUBLICO
     ): GameSession {
         return copy(
-            chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod, channel))
+            chatHistory = (chatHistory + GameChatMessage(speaker, message, isGod, channel, round))
                 .takeLastPerChannel(GameplayFeedMessages.MAX_FEED_MESSAGES)
         )
     }

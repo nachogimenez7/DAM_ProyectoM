@@ -147,6 +147,49 @@ internal object BotConversationDirector {
             .firstOrNull()
     }
 
+    /**
+     * Una sola linea de respuesta por mensaje del humano en el chat de traidores.
+     * No consume el cupo del plan: siempre te contestan, aunque la noche ya haya
+     * gastado sus lineas.
+     */
+    fun nextTraitorReactionBeat(
+        session: GameSession,
+        humanMessage: String,
+        lastSpeaker: String?
+    ): BotConversationBeat? {
+        if (!canRunTraitorNight(session) || humanMessage.isBlank()) return null
+        val speaker = traitorResponder(session, humanMessage, lastSpeaker) ?: return null
+        val message = LocalBotAi.traitorReplyToHuman(session, speaker, humanMessage)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return BotConversationBeat(speaker = speaker, message = message)
+    }
+
+    private fun traitorResponder(
+        session: GameSession,
+        humanMessage: String,
+        lastSpeaker: String?
+    ): String? {
+        val eligible = eligibleTraitorSpeakers(session)
+        if (eligible.isEmpty()) return null
+        BotPerception.directAddressee(session, humanMessage)
+            ?.takeIf { name -> eligible.any { it.name == name } }
+            ?.let { return it }
+        val spokenTonight = recentTraitorMessages(session)
+            .filter { it.round == session.round }
+            .groupingBy { it.speaker }
+            .eachCount()
+        return eligible
+            .sortedWith(
+                compareBy<GamePlayer> { spokenTonight[it.name] ?: 0 }
+                    .thenBy { if (it.name == lastSpeaker) 1 else 0 }
+                    .thenBy { stableNoise("${session.code}:${session.round}:${it.name}:traitor-responder") }
+                    .thenBy { it.name }
+            )
+            .firstOrNull()
+            ?.name
+    }
+
     fun naturalDelayMs(
         session: GameSession,
         beatIndex: Int,

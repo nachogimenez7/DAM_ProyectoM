@@ -15,6 +15,51 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import java.util.WeakHashMap
 
+/**
+ * Paleta del cartel. GOLD es la del juego; TRAITOR se usa cuando el cartel sale
+ * del Plan de los Asesinos, para que no aparezca dorado sobre el chat rojo.
+ */
+enum class GameDialogTheme {
+    GOLD,
+    TRAITOR;
+
+    val panelRes: Int
+        get() = when (this) {
+            GOLD -> R.drawable.bg_profile_panel
+            TRAITOR -> R.drawable.bg_traitor_panel
+        }
+
+    val titleColorRes: Int
+        get() = when (this) {
+            GOLD -> R.color.accent_gold
+            TRAITOR -> R.color.traitor_red_bright
+        }
+
+    val bodyColorRes: Int
+        get() = when (this) {
+            GOLD -> R.color.text_primary
+            TRAITOR -> R.color.traitor_text
+        }
+
+    val plainButtonRes: Int
+        get() = when (this) {
+            GOLD -> R.drawable.bg_btn_dark_ripple
+            TRAITOR -> R.drawable.bg_btn_traitor_ripple
+        }
+
+    val strongButtonRes: Int
+        get() = when (this) {
+            GOLD -> R.drawable.bg_btn_gold_ripple
+            TRAITOR -> R.drawable.bg_btn_traitor_strong_ripple
+        }
+
+    val strongTextColorRes: Int
+        get() = when (this) {
+            GOLD -> R.color.bg_dark
+            TRAITOR -> R.color.traitor_text
+        }
+}
+
 object GameDialog {
     private val openDialogs = WeakHashMap<Activity, MutableSet<AlertDialog>>()
 
@@ -51,9 +96,10 @@ object GameDialog {
         message: String,
         options: List<String>,
         negativeLabel: String = "CANCELAR",
+        theme: GameDialogTheme = GameDialogTheme.GOLD,
         onSelected: (Int) -> Unit
     ): AlertDialog {
-        val host = createHost(activity, title, message)
+        val host = createHost(activity, title, message, theme)
         host.positive.visibility = View.GONE
         host.content.visibility = View.VISIBLE
         host.negative.text = negativeLabel
@@ -64,10 +110,10 @@ object GameDialog {
         options.forEachIndexed { index, label ->
             optionList.addView(Button(activity).apply {
                 text = label
-                setTextColor(activity.getColor(R.color.text_primary))
+                setTextColor(activity.getColor(theme.bodyColorRes))
                 textSize = 13f
                 setAllCaps(false)
-                background = activity.getDrawable(R.drawable.bg_btn_dark_ripple)
+                background = activity.getDrawable(theme.plainButtonRes)
                 setOnClickListener {
                     host.dialog.dismiss()
                     onSelected(index)
@@ -192,7 +238,12 @@ object GameDialog {
         return host.dialog
     }
 
-    private fun createHost(activity: Activity, title: String, message: String): DialogHost {
+    private fun createHost(
+        activity: Activity,
+        title: String,
+        message: String,
+        theme: GameDialogTheme = GameDialogTheme.GOLD
+    ): DialogHost {
         val root = activity.layoutInflater.inflate(R.layout.dialog_game_prompt, null)
         val titleView: TextView = root.findViewById(R.id.gameDialogTitle)
         val messageView: TextView = root.findViewById(R.id.gameDialogMessage)
@@ -200,6 +251,17 @@ object GameDialog {
         val negative: Button = root.findViewById(R.id.gameDialogNegative)
         val neutral: Button = root.findViewById(R.id.gameDialogNeutral)
         val positive: Button = root.findViewById(R.id.gameDialogPositive)
+        if (theme != GameDialogTheme.GOLD) {
+            root.setBackgroundResource(theme.panelRes)
+            titleView.setTextColor(activity.getColor(theme.titleColorRes))
+            messageView.setTextColor(activity.getColor(theme.bodyColorRes))
+            listOf(negative, neutral).forEach { button ->
+                button.setBackgroundResource(theme.plainButtonRes)
+                button.setTextColor(activity.getColor(theme.bodyColorRes))
+            }
+            positive.setBackgroundResource(theme.strongButtonRes)
+            positive.setTextColor(activity.getColor(theme.strongTextColorRes))
+        }
         titleView.text = title.uppercase()
         titleView.visibility = if (title.isBlank()) View.GONE else View.VISIBLE
         messageView.text = message

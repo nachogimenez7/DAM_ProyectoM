@@ -14,7 +14,10 @@ internal enum class QuickChatAction {
     SEND,
     CHOOSE_SUSPECT,
     CHOOSE_ROLE,
-    CHOOSE_VOTE
+    CHOOSE_VOTE,
+    CHOOSE_KILL,
+    CHOOSE_SILENCE,
+    CHOOSE_WATCH
 }
 
 /**
@@ -58,6 +61,33 @@ internal object BotQuickReplies {
             asksForSuspect(normalized) -> generalReplies()
             else -> generalReplies()
         }.distinctBy { it.text }.take(3)
+    }
+
+    /**
+     * Chips del Plan de los Asesinos. Si un aliado ya propuso el objetivo de la noche,
+     * ofrece responderle; si no, quedan los selectores del plan.
+     */
+    fun forTraitorChat(session: GameSession): List<QuickChatMessage> {
+        if (!GameEngine.canHumanChatTraitor(session)) return emptyList()
+        val human = GameEngine.humanPlayer(session)
+        val plan = session.traitorPlan?.takeIf { it.round == session.round }
+        val lastAllyLine = recentTraitorMessages(session)
+            .lastOrNull()
+            ?.takeIf { it.speaker != human.name }
+        val proposedTarget = plan?.killTarget
+            ?.takeIf { it.isNotBlank() && isTraitorTarget(session, it) }
+            ?.takeIf { target -> lastAllyLine?.let { mentionsName(it.message, target) } == true }
+
+        val replies = if (proposedTarget != null) {
+            listOf(
+                agreeKill(proposedTarget),
+                doubtKill(proposedTarget),
+                chooseSilenceChip()
+            )
+        } else {
+            listOf(chooseKillChip(), chooseSilenceChip(), chooseWatchChip())
+        }
+        return replies.distinctBy { it.text }.take(3)
     }
 
     fun aliveTargets(session: GameSession): List<GamePlayer> {
@@ -116,6 +146,77 @@ internal object BotQuickReplies {
     fun hearFirst(target: String): QuickChatMessage =
         QuickChatMessage("Quiero escuchar a $target primero", HumanMessageIntent.SUSPECT_HELP)
 
+    /** Jugadores que el plan puede atacar o ensuciar: vivos, sin el humano ni sus aliados. */
+    fun traitorTargets(session: GameSession): List<GamePlayer> {
+        val human = GameEngine.humanPlayer(session)
+        return GameEngine.alivePlayers(session)
+            .filter { it.name != human.name }
+            .filterNot { GameRules.isTraitorRole(it.role) }
+            .filterNot { GameEngine.isDesertorAlignedWithTraitors(session, it) }
+            .sortedBy { it.name.lowercase() }
+    }
+
+    /** Roles del pueblo presentes en la partida: los unicos que sirven como coartada. */
+    fun townRolesInPlay(session: GameSession): List<GameRole> =
+        rolesInPlay(session).filter { it.team == GameRules.TOWN_WINNER }
+
+    fun killProposal(target: String): QuickChatMessage =
+        QuickChatMessage("Matemos a $target", HumanMessageIntent.ACCUSE)
+
+    fun agreeKill(target: String): QuickChatMessage =
+        QuickChatMessage("Dale, matemos a $target", HumanMessageIntent.ACCUSE)
+
+    fun doubtKill(target: String): QuickChatMessage =
+        QuickChatMessage("A $target no, mejor otro", HumanMessageIntent.DOUBT)
+
+    fun silence(target: String): QuickChatMessage =
+        QuickChatMessage("Silenciemos a $target", HumanMessageIntent.ACCUSE)
+
+    fun watchOut(target: String): QuickChatMessage =
+        QuickChatMessage("Cuidado con $target", HumanMessageIntent.DOUBT)
+
+    fun askCover(): QuickChatMessage =
+        QuickChatMessage("Me estan marcando, cubranme", HumanMessageIntent.SUSPECT_HELP)
+
+    fun fakeClaim(role: GameRole): QuickChatMessage =
+        QuickChatMessage("Manana digo que soy ${role.name.lowercase()}", HumanMessageIntent.ROLE_CLAIM)
+
+    fun cleanCover(): QuickChatMessage =
+        QuickChatMessage("Yo estoy limpio, hablo yo", HumanMessageIntent.DEFEND)
+
+    fun noCrossfire(): QuickChatMessage =
+        QuickChatMessage("Manana no nos crucemos", HumanMessageIntent.VOTE_HELP)
+
+    fun stayCalm(): QuickChatMessage =
+        QuickChatMessage("Vamos tranquilos, sin regalarnos", HumanMessageIntent.VOTE_HELP)
+
+    fun confirmPlan(): QuickChatMessage =
+        QuickChatMessage("Cerrado, quedamos asi", HumanMessageIntent.CASUAL)
+
+    private fun chooseKillChip(): QuickChatMessage =
+        QuickChatMessage(
+            text = "Matemos a",
+            intentHint = HumanMessageIntent.ACCUSE,
+            action = QuickChatAction.CHOOSE_KILL
+        )
+
+    private fun chooseSilenceChip(): QuickChatMessage =
+        QuickChatMessage(
+            text = "Silenciemos a",
+            intentHint = HumanMessageIntent.ACCUSE,
+            action = QuickChatAction.CHOOSE_SILENCE
+        )
+
+    private fun chooseWatchChip(): QuickChatMessage =
+        QuickChatMessage(
+            text = "Cuidado con",
+            intentHint = HumanMessageIntent.DOUBT,
+            action = QuickChatAction.CHOOSE_WATCH
+        )
+
+    private fun isTraitorTarget(session: GameSession, name: String): Boolean =
+        traitorTargets(session).any { it.name == name }
+
     private fun roleReplies(session: GameSession): List<QuickChatMessage> {
         val actualRole = GameEngine.humanPlayer(session).role
         val actualLabel = actualRole?.name?.lowercase().orEmpty().ifBlank { "aldeano" }
@@ -171,17 +272,17 @@ internal object BotQuickReplies {
     private fun generalReplies(): List<QuickChatMessage> {
         return listOf(
             QuickChatMessage(
-                text = "Sospecho de:",
+                text = "Sospecho de",
                 intentHint = HumanMessageIntent.ACCUSE,
                 action = QuickChatAction.CHOOSE_SUSPECT
             ),
             QuickChatMessage(
-                text = "Soy:",
+                text = "Soy",
                 intentHint = HumanMessageIntent.ROLE_CLAIM,
                 action = QuickChatAction.CHOOSE_ROLE
             ),
             QuickChatMessage(
-                text = "Votemos a:",
+                text = "Votemos a",
                 intentHint = HumanMessageIntent.ACCUSE,
                 action = QuickChatAction.CHOOSE_VOTE
             )
