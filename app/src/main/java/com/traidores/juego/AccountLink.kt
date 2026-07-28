@@ -65,17 +65,25 @@ object AccountLink {
                     onResult(AccountLinkResult.Failed("No se pudo abrir sesión. Probá de nuevo."))
                     return@addOnSuccessListener
                 }
-                if (!user.isAnonymous) {
-                    onResult(AccountLinkResult.Failed("Ya tenés una cuenta en este dispositivo."))
+                if (user.email?.isNotBlank() == true) {
+                    onResult(AccountLinkResult.Failed("Ya tenés un correo vinculado."))
                     return@addOnSuccessListener
                 }
+                val wasAnonymous = user.isAnonymous
                 user.linkWithCredential(credential)
                     .addOnSuccessListener {
-                        onResult(AccountLinkResult.Linked(email))
+                        refreshClaims { onResult(AccountLinkResult.Linked(email)) }
                     }
                     .addOnFailureListener { error ->
-                        if (error is FirebaseAuthUserCollisionException) {
+                        if (error is FirebaseAuthUserCollisionException && wasAnonymous) {
                             adoptExistingAccount(context, email, password, onResult)
+                        } else if (error is FirebaseAuthUserCollisionException) {
+                            onResult(
+                                AccountLinkResult.Failed(
+                                    "Ese correo ya pertenece a otra cuenta. " +
+                                        "No se puede mezclar automáticamente con Play Games."
+                                )
+                            )
                         } else {
                             onResult(AccountLinkResult.Failed(messageFor(error)))
                         }
@@ -119,7 +127,25 @@ object AccountLink {
             }
     }
 
-    private fun recoverPublicId(
+    /**
+     * Fuerza un token nuevo. Despues de `linkWithCredential`, el token que el cliente tiene en
+     * mano puede seguir diciendo `sign_in_provider = anonymous`, y las reglas de Firestore
+     * deciden con eso si sos invitado o no. Sin este refresco, alguien se registra y durante
+     * un rato el servidor lo sigue tratando como invitado: un bug intermitente y dependiente
+     * del reloj, de los peores de diagnosticar.
+     */
+    internal fun refreshClaims(onDone: () -> Unit) {
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null) {
+            onDone()
+            return
+        }
+        user.getIdToken(true)
+            .addOnSuccessListener { onDone() }
+            .addOnFailureListener { onDone() }
+    }
+
+    internal fun recoverPublicId(
         context: Context,
         uid: String,
         onReady: (String) -> Unit
@@ -129,6 +155,19 @@ object AccountLink {
             .document(uid)
             .get()
             .addOnSuccessListener { document ->
+                // El perfil visual tambien vivia en el servidor y no se bajaba: se recuperaba
+                // el `#` pero el avatar, el banner y la frase quedaban los del celular nuevo,
+                // justo al reves de lo que promete la pantalla de cuenta.
+                PlayerProfileStore.saveRecoveredProfile(
+                    context = context,
+                    name = document.getString(PlayerPublicIdentity.FIELD_PROFILE_NAME).orEmpty(),
+                    bio = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BIO).orEmpty(),
+                    avatarKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_AVATAR).orEmpty(),
+                    bannerKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BANNER).orEmpty(),
+                    favoriteRoleKey = document
+                        .getString(PlayerPublicIdentity.FIELD_PROFILE_FAVORITE_ROLE)
+                        .orEmpty()
+                )
                 val stored = document.getString(PlayerPublicIdentity.FIELD_PUBLIC_ID).orEmpty()
                 if (PlayerPublicIdentity.isValidPublicId(stored)) {
                     PlayerPublicIdentity.savePublicId(context, stored)

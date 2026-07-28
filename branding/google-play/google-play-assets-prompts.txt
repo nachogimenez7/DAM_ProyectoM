@@ -1,0 +1,31 @@
+ICONO DEL DESARROLLADOR
+
+Use case: logo-brand
+Asset type: Google Play developer profile icon, square source artwork
+Primary request: Create a polished square developer-profile portrait containing only Bandido, the user's beloved dog, as the Bandido Games mascot.
+Input images: Image 1 is the definitive identity reference for Bandido's real facial features. Image 2 is the approved Bandido Games logo and the definitive reference for the established illustrated mascot styling, hat, scarf, palette, and painterly finish.
+Subject: Bandido alone, recognizable friendly head-and-upper-chest portrait, looking forward. Preserve the shaggy cream-white fur, soft tan floppy ears, dark round eyes, black nose, slightly open happy mouth, and small hint of tongue. Keep the same dark-brown gaucho hat and deep burgundy neckerchief used in Image 2.
+Style/medium: premium hand-painted game illustration matching the approved logo; warm, detailed but clean and readable at small size.
+Composition/framing: exact square composition designed for a circular profile crop. Center Bandido's eyes and muzzle. Keep the entire hat, both ears, scarf knot, and fur silhouette comfortably inside the central 72% safe circle, with generous background margin on every side. No border or frame.
+Scene/backdrop: simple solid-looking near-black charcoal background with a very subtle warm vignette, fully opaque.
+Lighting/mood: soft warm gold rim light; affectionate, confident, approachable.
+Color palette: near-black, warm cream and tan, dark brown, deep burgundy, restrained antique-gold highlights.
+Constraints: only Bandido; no text; no studio name; no letters; no logo frame; no badge; no symbols; no scenery; no other animals; no weapons; no watermark; no transparency; no clipped hat or ears; strong thumbnail readability.
+Avoid: photorealistic photo, aggressive expression, snarling, generic esports mascot, busy background, decorative border, circular outline, text, mockup.
+
+
+IMAGEN DE ENCABEZADO
+
+Use case: ads-marketing
+Asset type: Google Play developer profile header image, exact 16:9 horizontal banner composition
+Primary request: Create a premium cinematic horizontal header banner for the game studio "BANDIDO GAMES", featuring Bandido prominently and the studio name with the approved brand identity.
+Input images: Image 1 is the approved Bandido Games logo and the definitive reference for typography, antique-gold ornament, black/burgundy palette, and studio identity. Image 2 is the approved developer-icon portrait and the definitive reference for Bandido's illustrated mascot appearance, hat, scarf, face, and painterly finish. Image 3 is the real identity reference for Bandido.
+Scene/backdrop: elegant near-black charcoal background with subtle leather/paper texture, restrained warm burgundy haze, and a very faint cinematic golden glow. No literal landscape. Add only a few thin antique-gold ornamental lines inspired by Image 1 along the upper and lower edges; keep them understated and away from the crop boundaries.
+Subject: Bandido as the recognizable friendly gaucho mascot, upper-body portrait on the left half, looking slightly toward the viewer. Preserve cream-white shaggy fur, tan floppy ears, dark eyes, black nose, happy mouth, dark-brown gaucho hat, and deep burgundy neckerchief. Warm gold rim lighting. Keep the entire head, hat, ears, and scarf visible.
+Composition/framing: wide 16:9 landscape banner. Bandido occupies approximately the left 38% of the frame. The studio wordmark occupies the right 48%, vertically centered. Leave generous safe margins on all four sides. Keep all critical content within the central 80% width and central 70% height so responsive cropping does not cut off the dog or text. Balanced negative space, premium professional layout.
+Text (verbatim): exactly two lines and no other words: "BANDIDO" large on the first line and "GAMES" smaller underneath. Correct spelling is mandatory: B-A-N-D-I-D-O and G-A-M-E-S. The final O in BANDIDO must be an unmistakable closed uppercase O with no tail, slash, notch, or Q-like appendage.
+Typography: match Image 1's rich antique-gold decorative Western-medieval display style and embossed texture, but maintain excellent readability. Subtle dark outline and restrained depth. The word BANDIDO must be immediately legible.
+Color palette: near-black charcoal, antique gold, deep burgundy red, warm cream and tan.
+Lighting/mood: cinematic, warm, confident, affectionate, premium independent game studio.
+Constraints: horizontal 16:9 layout intended to be resized to exactly 4096x2304; fully opaque; no transparency; no extra text; no slogan; no game title; no weapons; no skulls; no other animals; no logos besides the Bandido Games wordmark; no mockup; no watermark; no cropped hat, ears, or letters.
+Avoid: busy scenery, dense ornament, generic esports styling, illegible text, misspelled text, ambiguous O/Q, vertical or square composition, content too close to edges.

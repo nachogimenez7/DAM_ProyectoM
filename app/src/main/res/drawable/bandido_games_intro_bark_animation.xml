@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animation-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:oneshot="true">
+
+    <item
+        android:drawable="@drawable/bandido_games_intro_idle_portrait"
+        android:duration="55" />
+    <item
+        android:drawable="@drawable/bandido_games_intro_bark_soft_portrait"
+        android:duration="65" />
+    <item
+        android:drawable="@drawable/bandido_games_intro_bark_open_portrait"
+        android:duration="190" />
+    <item
+        android:drawable="@drawable/bandido_games_intro_bark_soft_portrait"
+        android:duration="75" />
+    <item
+        android:drawable="@drawable/bandido_games_intro_idle_portrait"
+        android:duration="110" />
+
+</animation-list>

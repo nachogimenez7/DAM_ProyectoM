@@ -40,6 +40,16 @@ async function main() {
     const bob = testEnv.authenticatedContext("bob").database();
     const guest = testEnv.unauthenticatedContext().database();
 
+    // Los canales se enganchan recién después de publicar la presencia propia. Estar
+    // autenticado no alcanza para leer el chat de una sala ajena.
+    await assertFails(bob.ref(`salas/${roomId}/chat`).once("value"));
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/presencia/alice`).set({
+        estado: "conectado",
+        ts: Date.now(),
+      })
+    );
+
     await assertSucceeds(
       alice.ref(`salas/${roomId}/chat/message-a`).set(chatMessage("alice"))
     );
@@ -83,18 +93,20 @@ async function main() {
       })
     );
 
-    await assertSucceeds(
-      alice.ref(`salas/${roomId}/presencia/alice`).set({
-        estado: "conectado",
-        ts: Date.now(),
-      })
-    );
     await assertFails(
       bob.ref(`salas/${roomId}/presencia/alice`).set({
         estado: "desconectado",
         ts: Date.now(),
       })
     );
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/presencia/bob`).set({
+        estado: "conectado",
+        ts: Date.now(),
+      })
+    );
+    await assertSucceeds(bob.ref(`salas/${roomId}/chat_lobby`).once("value"));
+    await assertSucceeds(bob.ref(`salas/${roomId}/chat_espectadores`).once("value"));
 
     // Rematch cleanup: authenticated clients can delete chat nodes but cannot
     // overwrite or impersonate message authors.
@@ -126,10 +138,10 @@ async function main() {
       })
     );
 
-    // Cierre completo de sala vacia: RTDB no puede validar el estado/host de Firestore,
-    // asi que cualquier autenticado puede borrar el nodo entero de una sala (chat +
-    // chat_lobby + chat_traidores + chat_espectadores + emotes + presencia de una), pero NO
-    // sobrescribirlo con contenido arbitrario, y un invitado sin sesion no puede borrar nada.
+    // Cierre completo de sala vacia: RTDB no puede validar el estado/host de Firestore.
+    // El cliente autenticado debe haber publicado su propia presencia para borrar el nodo
+    // entero; aun asi no puede sobrescribirlo con contenido arbitrario y un invitado sin
+    // sesion no puede borrar nada.
     const roomId2 = "room_rules_teardown";
     await assertSucceeds(
       alice.ref(`salas/${roomId2}/chat/message-a`).set(chatMessage("alice"))
@@ -143,6 +155,10 @@ async function main() {
     await assertFails(guest.ref(`salas/${roomId2}`).remove());
     await assertFails(
       bob.ref(`salas/${roomId2}`).set({ chat: { intruso: chatMessage("bob") } })
+    );
+    await assertFails(bob.ref(`salas/${roomId2}`).remove());
+    await assertSucceeds(
+      bob.ref(`salas/${roomId2}/presencia/bob`).set({ estado: "conectado", ts: Date.now() })
     );
     await assertSucceeds(bob.ref(`salas/${roomId2}`).remove());
 

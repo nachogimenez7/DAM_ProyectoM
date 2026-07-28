@@ -27,6 +27,16 @@ object OnlineRoomFirestore {
     const val FIELD_NAME = "nombre"
     const val FIELD_STATE = "estado"
     const val FIELD_TEST_MODE = "modoPrueba"
+
+    /**
+     * Sala cerrada a cuentas registradas. Se define al crear y no cambia despues: si se pudiera
+     * prender con gente adentro, un invitado que ya estaba jugando quedaria en una sala donde
+     * el servidor le rechaza cada escritura.
+     *
+     * Sirve contra el griefer que reinstala: a un invitado expulsado le alcanza con borrar la
+     * app para volver con otra identidad, y contra una cuenta con correo eso no funciona.
+     */
+    const val FIELD_ACCOUNTS_ONLY = "soloCuentas"
     const val FIELD_MAX_PLAYERS = "maxJugadores"
     const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
     const val FIELD_HOST_ID = "hostId"
@@ -75,6 +85,7 @@ object OnlineRoomFirestore {
         origin: String,
         expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
         modePrueba: Boolean = false,
+        accountsOnly: Boolean = false,
         roomCode: String = generateRoomCode()
     ): OnlineRoomCreation {
         val roomReference = firestore.collection(ROOMS_COLLECTION).document()
@@ -100,6 +111,7 @@ object OnlineRoomFirestore {
             FIELD_MAX_PLAYERS to safeExpectedPlayers,
             FIELD_CURRENT_PLAYERS to 1,
             FIELD_TEST_MODE to modePrueba,
+            FIELD_ACCOUNTS_ONLY to accountsOnly,
             OnlineLobbyConfig.FIELD_ROOM_CONFIG to OnlineLobbyConfig().toFirestore(),
             "origen" to origin,
             FIELD_CREATED_AT to FieldValue.serverTimestamp(),

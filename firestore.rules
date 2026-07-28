@@ -106,6 +106,8 @@ service cloud.firestore {
         && data.hostVersion >= 0
         && data.partidaInicialCreada is bool
         && (!('limpiezaPendiente' in data) || data.limpiezaPendiente is bool)
+        // Opcional: las salas creadas antes de existir esta opcion no lo traen y valen igual.
+        && (!('soloCuentas' in data) || data.soloCuentas is bool)
         && data.modoPrueba is bool
         && data.jugadoresEsperados is int
         && ((data.modoPrueba == true && data.jugadoresEsperados >= 3)
@@ -163,6 +165,73 @@ service cloud.firestore {
         && get(playerPath).data.activoEnPartida != false;
     }
 
+    // Al unirse, el documento del jugador y el contador de la sala se escriben en la misma
+    // transaccion: `exists()` todavia no ve el alta, asi que hace falta el estado posterior.
+    function isRoomMemberAfter(partidaId) {
+      return signedIn()
+        && existsAfter(
+          /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid)
+        );
+    }
+
+    // Baneo global de la cuenta. Solo se escribe desde la consola de Firebase o con una
+    // credencial de servicio; el cliente nunca puede crear ni borrar estos documentos.
+    function isGloballyBanned() {
+      return exists(/databases/$(database)/documents/bans/$(request.auth.uid));
+    }
+
+    // Baneo por sala aplicado por el anfitrion. Impide volver a entrar a esa sala.
+    function isBannedFromRoom(partidaId) {
+      return exists(
+        /databases/$(database)/documents/partidas/$(partidaId)/baneados/$(request.auth.uid)
+      );
+    }
+
+    function isRoomHostAny(partidaId) {
+      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return signedIn() && request.auth.uid in [room.hostId, room.hostActivoId];
+    }
+
+    // Cuenta real contra invitado.
+    //
+    // Se miran **las dos** señales a proposito: despues de `linkWithCredential` el claim
+    // `sign_in_provider` puede seguir diciendo `anonymous` en el token que el cliente tiene en
+    // mano hasta que se refresque, mientras que `email` aparece apenas hay token nuevo. El
+    // cliente ademas fuerza `getIdToken(true)` al vincular (`AccountLink.refreshClaims`).
+    function isRegistered() {
+      return signedIn()
+        && (
+          request.auth.token.firebase.sign_in_provider != 'anonymous'
+          || request.auth.token.get('email', '') != ''
+        );
+    }
+
+    // Un invitado no escribe su nombre: elige un alias de una lista cerrada y el juego le
+    // agrega un numero. Esta es la copia servidor de `GuestIdentity.aliases`: al tocar la
+    // lista en Kotlin hay que tocarla aca, o el nombre nuevo se rechaza.
+    function isValidGuestName(value) {
+      return value is string
+        && value.matches('^(Forastero|Mala Onda|Aguafiestas|Chamuyero|Careta|Mufa|Perejil|Metepatas|Don Nadie|El Colado|Sospechoso|Rezongón) [0-9]{4}$');
+    }
+
+    // Sala que el anfitrion cerro a cuentas registradas. Solo se consulta cuando quien escribe
+    // es invitado, asi que una cuenta no paga nunca esta lectura.
+    function roomIsAccountsOnly(partidaId) {
+      return get(/databases/$(database)/documents/partidas/$(partidaId))
+        .data.get('soloCuentas', false) == true;
+    }
+
+    // Todo lo que un invitado puede mostrarle al resto de la mesa. Los avatares, banners y
+    // roles favoritos salen de catalogos cerrados, asi que el unico texto libre que quedaba
+    // era la frase: un invitado la publica vacia.
+    function validGuestProfile(data) {
+      return isValidGuestName(data.nombre)
+        && (!('nombrePerfil' in data) || isValidGuestName(data.nombrePerfil))
+        && (!('nombreSala' in data) || isValidGuestName(data.nombreSala))
+        && (!('publicId' in data))
+        && (!('bioPerfil' in data) || data.bioPerfil == '');
+    }
+
     function lobbyChatDeleteAllowed(partidaId) {
       let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
       return signedIn()
@@ -185,6 +254,18 @@ service cloud.firestore {
         && roomHost(partidaId) == request.auth.uid;
     }
 
+    function validActionActor(partidaId) {
+      let player = get(
+        /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid)
+      ).data;
+      return isActiveRoomMember(partidaId)
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.actorNombre == player.nombre
+        && request.resource.data.actorEsHost == isRoomActiveHost(partidaId)
+        && request.resource.data.detalles.actorOrden is int
+        && request.resource.data.detalles.actorOrden == player.orden;
+    }
+
     function activeHostCanUpdateRoom() {
       return signedIn()
         && request.auth.uid in [resource.data.hostActivoId, resource.data.hostId]
@@ -204,6 +285,10 @@ service cloud.firestore {
         && request.resource.data.hostVersion >= resource.data.hostVersion
         && request.resource.data.hostVersion <= resource.data.hostVersion + 1
         && request.resource.data.modoPrueba == resource.data.modoPrueba
+        // `soloCuentas` se fija al crear y no se mueve mas: prenderlo con gente adentro dejaria
+        // a un invitado que ya estaba jugando en una sala donde cada escritura suya se rechaza.
+        && request.resource.data.get('soloCuentas', false)
+          == resource.data.get('soloCuentas', false)
         && request.resource.data.origen == resource.data.origen
         && (!(request.resource.data.estado == 'esperando'
           && resource.data.estado != 'esperando') || request.auth.uid == resource.data.hostId)
@@ -211,27 +296,38 @@ service cloud.firestore {
           || request.resource.data.partidaInicial.mapa == request.resource.data.mapa);
     }
 
-    function waitingPlayerCountUpdate() {
-      return signedIn()
-        && resource.data.estado == 'esperando'
+    // Solo un jugador de esa sala puede mover el contador. Sin la membresia, cualquier
+    // usuario autenticado podia alterar el conteo de salas ajenas.
+    // Orden a proposito: primero los chequeos baratos que descartan la rama, y la membresia
+    // al final. `allow update` encadena cinco ramas con `||` y Firestore corta la evaluacion a
+    // las 1000 expresiones; poner una llamada de acceso adelante la cobra en cada update que
+    // ni siquiera es de esta rama y acerca el techo para las ramas que vienen despues.
+    function waitingPlayerCountUpdate(partidaId) {
+      return resource.data.estado == 'esperando'
         && request.resource.data.estado == 'esperando'
         && changedOnly(['jugadoresActuales', 'actualizadaEn'])
         && request.resource.data.hostActivoId == resource.data.hostActivoId
         && request.resource.data.hostVersion == resource.data.hostVersion
         && request.resource.data.partidaInicialCreada == resource.data.partidaInicialCreada
         && request.resource.data.jugadoresActuales >= resource.data.jugadoresActuales - 1
-        && request.resource.data.jugadoresActuales <= resource.data.jugadoresActuales + 1;
+        && request.resource.data.jugadoresActuales <= resource.data.jugadoresActuales + 1
+        && isRoomMemberAfter(partidaId);
     }
 
-    function handoffUpdate() {
-      return signedIn()
-        && changedOnly(['hostActivoId', 'hostVersion', 'actualizadaEn'])
+    // El traspaso tecnico de anfitrion durante la partida. Exige ser jugador activo de esa
+    // sala: sin ese chequeo, cualquier usuario autenticado podia tomar el `hostActivoId` de
+    // una sala ajena y, con eso, editar jugadores, publicar estado falso o borrar la sala.
+    function handoffUpdate(partidaId) {
+      return changedOnly(['hostActivoId', 'hostVersion', 'actualizadaEn'])
         && request.resource.data.hostActivoId == request.auth.uid
         && request.resource.data.hostActivoId != resource.data.hostActivoId
         && request.resource.data.hostVersion == resource.data.hostVersion + 1
         && request.resource.data.estado == resource.data.estado
         && request.resource.data.partidaInicialCreada == resource.data.partidaInicialCreada
-        && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales;
+        && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales
+        // Al final, por lo mismo que en waitingPlayerCountUpdate: es la unica condicion que
+        // cuesta lecturas.
+        && isActiveRoomMember(partidaId);
     }
 
     function creatorIsStale(partidaId) {
@@ -247,7 +343,10 @@ service cloud.firestore {
 
     function stableLobbyHostTransfer(partidaId) {
       let candidatePath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.resource.data.hostId);
-      return signedIn()
+      // El anfitrion estable de una sala tiene que tener cuenta: es la autoridad de la partida
+      // y quien modera. En el lobby el corte es duro porque no hay nada que se congele; si no
+      // queda ningun registrado, la sala se desarma como cuando no queda nadie.
+      return isRegistered()
         && resource.data.estado in ['esperando', 'finalizada']
         && request.resource.data.estado == resource.data.estado
         && changedOnly([
@@ -271,6 +370,10 @@ service cloud.firestore {
         && exists(candidatePath)
         && get(candidatePath).data.estado == 'conectado'
         && get(candidatePath).data.activoEnPartida != false
+        // El que recibe la sala tampoco puede ser invitado. `isRegistered()` mira a quien
+        // escribe, que en el traspaso del anfitrion saliente es otra persona; el `publicId`
+        // es la señal en el documento, porque a un invitado las reglas no le dejan escribirlo.
+        && 'publicId' in get(candidatePath).data
         && request.resource.data.hostNombre == get(candidatePath).data.nombre
         && (
           request.auth.uid == resource.data.hostId
@@ -343,13 +446,48 @@ service cloud.firestore {
         && (!('listoParaVotarPhaseIndex' in data) ||
           (data.listoParaVotarPhaseIndex is int &&
            data.listoParaVotarPhaseIndex >= 0 &&
-           data.listoParaVotarPhaseIndex <= 500));
+           data.listoParaVotarPhaseIndex <= 500))
+        // El chequeo mira a quien escribe, no al dueño del documento: el anfitrion (que tiene
+        // cuenta) puede seguir editando el documento de un invitado al expulsarlo o al
+        // liberar su cupo.
+        && (isRegistered() || validGuestProfile(data));
     }
 
-    // Boton "probar Firebase" de Opciones. Escribe siempre el mismo documento; con Auth
-    // anonima activa el boton sigue funcionando, pero ya no se puede escribir sin sesion.
+    // Boton "probar Firebase" de Opciones. Escribe siempre el mismo documento con la misma
+    // forma (OpcionesActivity.writeFirestoreSmokeTest), asi que la regla se cierra a ese
+    // documento y a esos campos: antes era escritura libre de cualquier documento y de
+    // cualquier tamano para cualquier usuario autenticado.
     match /pruebas/{docId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && docId == 'conexion_inicial'
+        && hasOnly(request.resource.data, [
+          'nombre',
+          'mensaje',
+          'origen',
+          'fechaLocal',
+          'fechaServidor'
+        ])
+        && hasAll(request.resource.data, [
+          'nombre',
+          'mensaje',
+          'origen',
+          'fechaLocal',
+          'fechaServidor'
+        ])
+        && isString(request.resource.data.nombre, 1, 40)
+        && isString(request.resource.data.mensaje, 1, 140)
+        && isString(request.resource.data.origen, 1, 40)
+        && request.resource.data.fechaLocal is int
+        && request.resource.data.fechaServidor == request.time;
+    }
+
+    // Baneo global de cuenta. Se crea a mano desde la consola de Firebase (o con una
+    // credencial de servicio); ningun cliente puede escribir aca. Cada jugador solo lee el
+    // suyo para poder mostrar el motivo en pantalla.
+    match /bans/{uidBaneado} {
+      allow read: if isSelf(uidBaneado);
+      allow write: if false;
     }
 
     match /partidas/{partidaId} {
@@ -360,7 +498,11 @@ service cloud.firestore {
       // por jugador (ver docs/firebase-online-schema.md).
       allow read: if signedIn();
 
-      allow create: if signedIn()
+      // Crear sala es de cuentas registradas: el creador arranca de anfitrion, y el anfitrion
+      // es la autoridad de la partida y quien expulsa y banea. Un invitado puede buscar salas
+      // y entrar por codigo, pero no armar la suya.
+      allow create: if isRegistered()
+        && !isGloballyBanned()
         && validRoomBase(request.resource.data)
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.hostActivoId == request.auth.uid
@@ -370,8 +512,8 @@ service cloud.firestore {
         && (
           activeHostCanUpdateRoom()
           || clientStateSelfPublish(partidaId)
-          || waitingPlayerCountUpdate()
-          || handoffUpdate()
+          || waitingPlayerCountUpdate(partidaId)
+          || handoffUpdate(partidaId)
           || stableLobbyHostTransfer(partidaId)
         );
       // El anfitrion (activo o estable) puede borrar la sala por completo cuando queda
@@ -385,24 +527,67 @@ service cloud.firestore {
       match /jugadores/{uidTemporal} {
         allow read: if signedIn();
 
+        // Los dos chequeos de baneo miran a `request.auth.uid`, o sea a quien escribe: el
+        // anfitrion sigue pudiendo editar el documento del jugador que acaba de banear.
+        // Alcanza con cerrar el alta: `soloCuentas` se fija al crear la sala, asi que un
+        // invitado nunca llega a tener documento adentro de una sala cerrada y no hace falta
+        // pagar la lectura en cada update.
         allow create: if isSelf(uidTemporal)
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
+          && (isRegistered() || !roomIsAccountsOnly(partidaId))
           && validPlayerDocument(request.resource.data, uidTemporal);
 
         allow update: if (isSelf(uidTemporal)
           || isRoomActiveHost(partidaId)
           || isRoomStableHostAfter(partidaId))
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
           && validPlayerDocument(request.resource.data, uidTemporal);
 
         allow delete: if roomTeardownAllowed(partidaId);
       }
 
-      match /acciones/{accionId} {
-        // No se pide membresia: el anfitrion borra `jugadores` antes que `acciones` al
-        // desarmar una sala vacia (LobbyActivity.teardownEmptyOnlineRoom), y en ese punto
-        // ya no seria miembro de su propia sala.
-        allow read: if signedIn();
+      // Lista de expulsados permanentes de esta sala. La escribe el anfitrion (creador o
+      // activo). El afectado puede consultar su propio baneo y el anfitrion administrar la
+      // lista, pero los demas usuarios no pueden enumerarla.
+      // El servidor la hace valer desde `jugadores`: sin esto el kick es una puerta giratoria.
+      match /baneados/{uidBaneado} {
+        allow get: if isSelf(uidBaneado) || isRoomHostAny(partidaId);
+        allow list: if isRoomHostAny(partidaId);
 
-        allow create: if signedIn()
+        allow create: if isRoomHostAny(partidaId)
+          && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado
+            in ['esperando', 'finalizada']
+          && uidBaneado != request.auth.uid
+          && uidBaneado != get(/databases/$(database)/documents/partidas/$(partidaId)).data.hostId
+          && hasOnly(request.resource.data, [
+            'uidTemporal',
+            'nombre',
+            'motivo',
+            'baneadoPor',
+            'creadaEn'
+          ])
+          && hasAll(request.resource.data, ['uidTemporal', 'nombre', 'baneadoPor', 'creadaEn'])
+          && request.resource.data.uidTemporal == uidBaneado
+          && isString(request.resource.data.nombre, 1, 18)
+          && isOptionalString(request.resource.data, 'motivo', 60)
+          && request.resource.data.baneadoPor == request.auth.uid
+          && request.resource.data.creadaEn == request.time;
+
+        allow update: if false;
+        allow delete: if isRoomHostAny(partidaId) || roomTeardownAllowed(partidaId);
+      }
+
+      match /acciones/{accionId} {
+        // Las acciones contienen votos y decisiones nocturnas. Solo pertenecen a la mesa;
+        // un usuario autenticado ajeno no puede leerlas ni inyectarlas.
+        allow read: if isActiveRoomMember(partidaId);
+
+        allow create: if validActionActor(partidaId)
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
+          && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado == 'en_juego'
           && hasOnly(request.resource.data, [
             'matchId',
             'tipo',
@@ -418,9 +603,29 @@ service cloud.firestore {
             'creadaEn',
             'creadaEnLocal'
           ])
+          && hasAll(request.resource.data, [
+            'matchId',
+            'tipo',
+            'actorId',
+            'actorNombre',
+            'actorEsHost',
+            'objetivoNombre',
+            'fase',
+            'ronda',
+            'phaseIndex',
+            'modoCliente',
+            'detalles',
+            'creadaEn',
+            'creadaEnLocal'
+          ])
           && validCurrentMatchId(partidaId, request.resource.data.matchId)
-          && request.resource.data.actorId == request.auth.uid
-          && request.resource.data.tipo in ['accion_jugador', 'fase_avanzada']
+          && (
+            request.resource.data.tipo == 'accion_jugador'
+            || (
+              request.resource.data.tipo == 'fase_avanzada'
+              && isRoomActiveHost(partidaId)
+            )
+          )
           && isString(request.resource.data.actorNombre, 1, 18)
           && request.resource.data.actorEsHost is bool
           && isOptionalString(request.resource.data, 'objetivoNombre', 18)
@@ -433,16 +638,23 @@ service cloud.firestore {
           && request.resource.data.phaseIndex <= 500
           && isString(request.resource.data.modoCliente, 1, 30)
           && request.resource.data.detalles is map
-          && request.resource.data.creadaEnLocal is int;
+          && (
+            request.resource.data.tipo == 'fase_avanzada'
+            || isString(request.resource.data.detalles.accion, 1, 40)
+          )
+          && request.resource.data.creadaEnLocal is int
+          && request.resource.data.creadaEn == request.time;
 
         allow update: if false;
         allow delete: if cleanupDeleteAllowed(partidaId) || roomTeardownAllowed(partidaId);
       }
 
       match /chat/{mensajeId} {
-        allow read: if signedIn();
+        allow read: if isActiveRoomMember(partidaId);
 
-        allow create: if signedIn()
+        allow create: if isActiveRoomMember(partidaId)
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
           && hasOnly(request.resource.data, [
             'matchId',
             'actorId',
@@ -457,6 +669,9 @@ service cloud.firestore {
           && validCurrentMatchId(partidaId, request.resource.data.matchId)
           && request.resource.data.actorId == request.auth.uid
           && isString(request.resource.data.speaker, 1, 18)
+          && request.resource.data.speaker == get(
+            /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid)
+          ).data.nombre
           && isString(request.resource.data.mensaje, 1, 140)
           && isString(request.resource.data.fase, 1, 40)
           && request.resource.data.ronda is int
@@ -519,9 +734,11 @@ service cloud.firestore {
         // lectura a nivel servidor, reemplazar `allow read: if true` por una funcion que
         // haga get() sobre partidaInicial y verifique que request.auth.uid tiene un rol
         // traidor. Requiere confirmar el shape del rol por uid en partidaInicial.
-        allow read: if signedIn();
+        allow read: if isActiveRoomMember(partidaId);
 
-        allow create: if signedIn()
+        allow create: if isActiveRoomMember(partidaId)
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
           && hasOnly(request.resource.data, [
             'matchId',
             'actorId',
@@ -537,6 +754,9 @@ service cloud.firestore {
           && validCurrentMatchId(partidaId, request.resource.data.matchId)
           && request.resource.data.actorId == request.auth.uid
           && isString(request.resource.data.speaker, 1, 18)
+          && request.resource.data.speaker == get(
+            /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid)
+          ).data.nombre
           && isString(request.resource.data.mensaje, 1, 140)
           && isString(request.resource.data.fase, 1, 40)
           && request.resource.data.ronda is int
@@ -561,13 +781,16 @@ service cloud.firestore {
         && request.resource.data.nextId is int
         && request.resource.data.nextId >= 2
         && request.resource.data.nextId <= 999999999999;
+      // Exactamente +1: PlayerPublicIdentity.ensurePublicId siempre reserva el siguiente
+      // numero. Permitir cualquier salto hacia arriba dejaba que un solo cliente quemara
+      // todo el espacio de `#` de una sola escritura.
       allow update: if signedIn()
         && request.resource.data.keys().hasOnly([
           'nextId',
           'actualizadaEn'
         ])
         && request.resource.data.nextId is int
-        && request.resource.data.nextId > resource.data.nextId
+        && request.resource.data.nextId == resource.data.nextId + 1
         && request.resource.data.nextId <= 999999999999;
       allow delete: if false;
     }
@@ -594,7 +817,9 @@ service cloud.firestore {
         && isOptionalString(request.resource.data, 'avatarPerfil', 40)
         && isOptionalString(request.resource.data, 'bannerPerfil', 40)
         && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40);
-      allow delete: if false;
+      // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
+      // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
+      allow delete: if isSelf(uidTemporal);
     }
 
     match /{document=**} {

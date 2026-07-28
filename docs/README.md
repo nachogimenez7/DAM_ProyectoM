@@ -24,6 +24,7 @@ docs/
 │   └── decisiones-arquitectura.md
 └── (documentación técnica previa, ya existente)
     ├── firebase-online-schema.md   Contrato Firestore del online (vigente y fiel al código)
+    ├── seguridad-online.md         Auditoría de seguridad del online y plan gratuito
     ├── project-structure.md        Estructura rápida (parcialmente desactualizada, ver nota)
     ├── map-exclusive-roles.md      Roles exclusivos por mapa
     ├── lan-role-readiness.md       Notas de lectura de roles
@@ -34,6 +35,9 @@ docs/
 
 - [`firebase-online-schema.md`](firebase-online-schema.md) — Contrato completo de Firestore para el modo online. **Vigente y fiel al código** (revisado contra `OnlineRoomFirestore.kt` y `firestore.rules`). Es la fuente para el DER/Modelo Relacional de la facultad.
 - [`../ESTADO_ACTUAL.md`](../ESTADO_ACTUAL.md) — Auditoría técnica de solo lectura basada en el código, subsistema por subsistema, con referencias a archivo:línea. Es la base de la sección "estado" del backlog.
+- [`seguridad-online.md`](seguridad-online.md) — Auditoría de seguridad del online (jul 2026): hallazgos priorizados, qué se cerró en `firestore.rules`, qué límites tiene el plan gratuito y qué exige Play Store. La implementación pendiente está en [`desarrollo/specs/SPEC-seguridad-y-moderacion-online.md`](desarrollo/specs/SPEC-seguridad-y-moderacion-online.md).
+- [`play-games-setup.md`](play-games-setup.md) — Estado de la integración de Play Games, datos del proyecto y orden exacto para terminar Play Console y Firebase.
+- [`achievement-icon-concepts.md`](achievement-icon-concepts.md) — Dirección visual, símbolos y puntos propuestos para los 10 logros de Play Games.
 
 ## Avisos de documentos desactualizados
 

@@ -47,6 +47,10 @@ object PlayerProfileStore {
             .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
             .orEmpty()
             .ifBlank { "Jugador" }
+        // Un invitado no tiene nombre propio: usa el alias que eligio de la lista cerrada.
+        // Se resuelve aca y en PlayerPublicIdentity.profileName para que ninguna pantalla
+        // tenga que acordarse de preguntar si hay cuenta.
+        val guestName = if (GuestIdentity.isGuest()) GuestIdentity.displayName(context) else null
         val featuredAchievementIds = preferences
             .getString(PREF_ACHIEVEMENTS, null)
             ?.split(ACHIEVEMENT_SEPARATOR)
@@ -57,7 +61,8 @@ object PlayerProfileStore {
             .take(MAX_FEATURED_ACHIEVEMENTS)
 
         return PlayerProfile(
-            name = preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
+            name = guestName
+                ?: preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
             publicId = PlayerPublicIdentity.currentPublicId(context),
             bio = preferences.getString(PREF_BIO, DEFAULT_BIO).orEmpty(),
             avatarKey = preferences.getString(PREF_AVATAR, DEFAULT_AVATAR_KEY)
@@ -104,6 +109,37 @@ object PlayerProfileStore {
     private fun achievementIdFromStoredValue(value: String): String? {
         return ProfileCustomizationCatalog.achievementById(value)?.id
             ?: ProfileCustomizationCatalog.achievement(value)?.id
+    }
+
+    /**
+     * Baja a este dispositivo el perfil visual guardado en `perfiles_publicos`. Se usa al
+     * entrar con una cuenta que ya existia: sin esto se recuperaba el `#` pero el avatar, el
+     * banner y la frase quedaban los del celular nuevo, que es justo lo contrario de lo que
+     * promete la pantalla de cuenta.
+     *
+     * Cada campo se escribe solo si vino con algo: un documento incompleto no puede borrar lo
+     * que el jugador ya tenia.
+     */
+    fun saveRecoveredProfile(
+        context: Context,
+        name: String,
+        bio: String,
+        avatarKey: String,
+        bannerKey: String,
+        favoriteRoleKey: String
+    ) {
+        val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        name.takeIf { it.isNotBlank() }?.let {
+            editor.putString(PREF_NAME, it)
+            editor.putString(OpcionesActivity.PREF_PLAYER_NAME, it)
+        }
+        bio.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_BIO, it) }
+        avatarKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_AVATAR, it) }
+        bannerKey.takeIf { it.isNotBlank() }?.let {
+            editor.putString(PREF_BANNER, ProfileCustomizationCatalog.normalizeBannerKey(it))
+        }
+        favoriteRoleKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_FAVORITE_ROLE, it) }
+        editor.apply()
     }
 }
 

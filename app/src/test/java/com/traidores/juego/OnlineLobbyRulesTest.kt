@@ -229,6 +229,79 @@ class OnlineLobbyRulesTest {
         assertEquals("candidate", candidate?.id)
     }
 
+    @Test
+    fun registeredPlayerIsPreferredOverGuestForHandoff() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("guest", connected = true, ready = true, active = true, order = 1, registered = false),
+            participant("registered", connected = true, ready = true, active = true, order = 2)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(
+            players = players,
+            activeHostId = "host",
+            allowGuests = false
+        )
+
+        assertEquals("registered", candidate?.id)
+    }
+
+    @Test
+    fun noCandidateWhenOnlyGuestsRemainAndGuestsAreNotAllowed() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("guest", connected = true, ready = true, active = true, order = 1, registered = false)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(
+            players = players,
+            activeHostId = "host",
+            allowGuests = false
+        )
+
+        assertEquals(null, candidate)
+    }
+
+    /**
+     * El escalon de emergencia: sin este permiso la partida se quedaria sin nadie que publique
+     * las fases y no avanzaria nunca mas para toda la mesa.
+     */
+    @Test
+    fun guestTakesOverWhenAllowedAndNoRegisteredPlayerIsLeft() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("guest", connected = true, ready = true, active = true, order = 1, registered = false)
+        )
+
+        val candidate = OnlineLobbyRules.hostHandoffCandidate(
+            players = players,
+            activeHostId = "host",
+            allowGuests = true
+        )
+
+        assertEquals("guest", candidate?.id)
+    }
+
+    /**
+     * `needsHostHandoff` tiene que distinguir "no hace falta relevo" de "hace falta y no hay
+     * candidato": las dos daban `null` en `hostHandoffCandidate` y solo la segunda habilita la
+     * espera antes de dejar entrar a un invitado.
+     */
+    @Test
+    fun needsHandoffSeparatesHealthyHostFromMissingCandidate() {
+        val healthy = listOf(
+            participant("host", connected = true, ready = true, active = true, order = 0),
+            participant("guest", connected = true, ready = true, active = true, order = 1, registered = false)
+        )
+        assertEquals(false, OnlineLobbyRules.needsHostHandoff(healthy, activeHostId = "host"))
+
+        val hostGone = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("guest", connected = true, ready = true, active = true, order = 1, registered = false)
+        )
+        assertEquals(true, OnlineLobbyRules.needsHostHandoff(hostGone, activeHostId = "host"))
+    }
+
     private fun participant(
         id: String,
         connected: Boolean,
@@ -236,7 +309,8 @@ class OnlineLobbyRulesTest {
         active: Boolean,
         order: Int,
         lastSeenLocalMs: Long = 0L,
-        alive: Boolean = true
+        alive: Boolean = true,
+        registered: Boolean = true
     ): OnlineLobbyParticipant {
         return OnlineLobbyParticipant(
             id = id,
@@ -245,7 +319,8 @@ class OnlineLobbyRulesTest {
             activeInMatch = active,
             order = order,
             lastSeenLocalMs = lastSeenLocalMs,
-            alive = alive
+            alive = alive,
+            registered = registered
         )
     }
 }

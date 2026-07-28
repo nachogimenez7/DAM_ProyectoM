@@ -100,10 +100,19 @@ async function main() {
     const host = testEnv.authenticatedContext("host_uid").firestore();
     const guest = testEnv.authenticatedContext("guest_uid").firestore();
     const intruder = testEnv.authenticatedContext("intruder_uid").firestore();
+    const blocked = testEnv.authenticatedContext("blocked_uid").firestore();
     const anon = testEnv.unauthenticatedContext().firestore();
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "bans", "blocked_uid"), {
+        motivo: "abuso",
+        creadaEn: serverTimestamp(),
+      });
+    });
 
     await assertFails(setDoc(doc(anon, "partidas", "room_no_auth"), roomData("host_uid")));
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create"), roomData("host_uid")));
+    await assertFails(setDoc(doc(blocked, "partidas", "room_blocked"), roomData("blocked_uid")));
     const legacyCreate = roomData("host_uid");
     delete legacyCreate.limpiezaPendiente;
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create_legacy"), legacyCreate));
@@ -116,6 +125,26 @@ async function main() {
       doc(host, "partidas", "room_normal_three"),
       roomData("host_uid", 3, false)
     ));
+    await assertSucceeds(setDoc(doc(host, "pruebas", "conexion_inicial"), {
+      nombre: "Host",
+      mensaje: "conexion correcta",
+      origen: "android",
+      fechaLocal: Date.now(),
+      fechaServidor: serverTimestamp(),
+    }));
+    await assertFails(setDoc(doc(host, "pruebas", "otro_documento"), {
+      nombre: "Host",
+      mensaje: "conexion correcta",
+      origen: "android",
+      fechaLocal: Date.now(),
+      fechaServidor: serverTimestamp(),
+    }));
+    await assertFails(setDoc(doc(host, "pruebas", "conexion_inicial"), {
+      nombre: "Host",
+      mensaje: "sin timestamp",
+      origen: "android",
+      fechaLocal: Date.now(),
+    }));
 
     await seedRoom(testEnv);
 
@@ -246,7 +275,7 @@ async function main() {
       });
     });
 
-    await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+    const guestAction = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",
       tipo: "accion_jugador",
       actorId: "guest_uid",
@@ -257,7 +286,7 @@ async function main() {
       ronda: 1,
       phaseIndex: 7,
       modoCliente: "online",
-      detalles: { accion: "votar" },
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
@@ -272,10 +301,88 @@ async function main() {
       ronda: 1,
       phaseIndex: 7,
       modoCliente: "online",
-      detalles: { accion: "votar" },
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 1 },
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
+    await assertFails(addDoc(collection(intruder, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "accion_jugador",
+      actorId: "intruder_uid",
+      actorNombre: "Intruder",
+      actorEsHost: false,
+      objetivoNombre: "Host",
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 7,
+      modoCliente: "online",
+      detalles: { accion: "votar", actorOrden: 2, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertFails(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "accion_jugador",
+      actorId: "guest_uid",
+      actorNombre: "Host",
+      actorEsHost: false,
+      objetivoNombre: "Host",
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 7,
+      modoCliente: "online",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertFails(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "accion_jugador",
+      actorId: "guest_uid",
+      actorNombre: "Guest",
+      actorEsHost: false,
+      objetivoNombre: "Host",
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 7,
+      modoCliente: "online",
+      detalles: { accion: "votar", actorOrden: 0, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertFails(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "fase_avanzada",
+      actorId: "guest_uid",
+      actorNombre: "Guest",
+      actorEsHost: false,
+      objetivoNombre: "",
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 7,
+      modoCliente: "online",
+      detalles: { actorOrden: 1, faseNueva: "RECUENTO_VOTOS" },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertSucceeds(addDoc(collection(host, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "fase_avanzada",
+      actorId: "host_uid",
+      actorNombre: "Host",
+      actorEsHost: true,
+      objetivoNombre: "",
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 7,
+      modoCliente: "online",
+      detalles: { actorOrden: 0, faseNueva: "RECUENTO_VOTOS" },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertSucceeds(getDoc(doc(guest, guestAction.path)));
+    await assertSucceeds(getDoc(doc(host, guestAction.path)));
+    await assertFails(getDoc(doc(intruder, guestAction.path)));
 
     const oldChatRef = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "chat"), {
       matchId: "match_rules_1",
@@ -440,6 +547,8 @@ async function main() {
       nombrePerfil: "Other",
       actualizadaEn: serverTimestamp(),
     }));
+    await assertFails(deleteDoc(doc(intruder, "perfiles_publicos", "guest_uid")));
+    await assertSucceeds(deleteDoc(doc(guest, "perfiles_publicos", "guest_uid")));
 
     await assertSucceeds(setDoc(doc(host, "meta", "public_ids"), {
       nextId: 2,
@@ -453,6 +562,34 @@ async function main() {
       nextId: 2,
       actualizadaEn: serverTimestamp(),
     }));
+
+    // --- Baneos por sala: solo host/afectado leen y el afectado no puede volver a escribir ---
+    await seedRoom(testEnv, "room_bans", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_bans", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    const guestBan = doc(host, "partidas", "room_bans", "baneados", "guest_uid");
+    await assertSucceeds(setDoc(guestBan, {
+      uidTemporal: "guest_uid",
+      nombre: "Guest",
+      motivo: "abuso",
+      baneadoPor: "host_uid",
+      creadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(getDoc(doc(guest, guestBan.path)));
+    await assertSucceeds(getDoc(guestBan));
+    await assertFails(getDoc(doc(intruder, guestBan.path)));
+    await assertSucceeds(getDocs(collection(host, "partidas", "room_bans", "baneados")));
+    await assertFails(getDocs(collection(intruder, "partidas", "room_bans", "baneados")));
+    await assertFails(updateDoc(
+      doc(guest, "partidas", "room_bans", "jugadores", "guest_uid"),
+      { ultimaConexionLocal: Date.now() }
+    ));
+    await assertSucceeds(updateDoc(
+      doc(host, "partidas", "room_bans", "jugadores", "guest_uid"),
+      { estado: "desconectado" }
+    ));
 
     // --- Cierre completo de salas vacias (teardown) ---
     await seedRoom(testEnv, "room_teardown_empty", "host_uid");

@@ -80,6 +80,7 @@ object MatchHistoryStore {
                 prefs.getInt(KEY_TOTAL_WINS, 0) + if (record.won) 1 else 0
             )
             .apply()
+        PlayGamesProgressSync.onMatchRecorded(context)
         return true
     }
 

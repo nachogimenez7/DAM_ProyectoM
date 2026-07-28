@@ -27,7 +27,7 @@ class PlayerPublicIdentityTest {
 
         assertEquals("7", fields[PlayerPublicIdentity.FIELD_PUBLIC_ID])
         assertEquals("Fede", fields[PlayerPublicIdentity.FIELD_PROFILE_NAME])
-        assertEquals("Fede #7", fields[PlayerPublicIdentity.FIELD_ROOM_NAME])
+        assertEquals("Fede", fields[PlayerPublicIdentity.FIELD_ROOM_NAME])
         assertEquals("Juego callado hasta que hace falta habla", fields[PlayerPublicIdentity.FIELD_PROFILE_BIO])
         assertEquals("grecia_oraculo", fields[PlayerPublicIdentity.FIELD_PROFILE_AVATAR])
         assertEquals("medieval", fields[PlayerPublicIdentity.FIELD_PROFILE_BANNER])

@@ -1,0 +1,8 @@
+Use case: precise-object-edit
+Asset type: final game-studio logo correction
+Input images: Image 1 is the edit target.
+Primary request: Make exactly one tiny typography correction to Image 1 and nothing else. In the large word "BANDIDO", change only the final letter—the rightmost character—from its current ambiguous Q-like form into an unmistakable uppercase letter O.
+Target letter requirements: the final character must read clearly as "O" at first glance; it must be a simple closed oval/ring with a clean empty counter; absolutely no tail, diagonal stroke, notch, spur, descender, slash, or Q-like appendage. Match the existing letter's height, width, baseline, antique-gold color, bevel, texture, dark outline, lighting, and decorative Western-medieval type style.
+Text (verbatim): "BANDIDO" and "GAMES". Correct spelling is mandatory: B-A-N-D-I-D-O. The last letter is O, not Q.
+Critical invariants: Preserve every other visible element of Image 1 unchanged. Keep the exact Bandido portrait, face, expression, fur, hat, scarf, pose, composition, black background, circular gold portrait frame, ornate outer badge contour, side decorations, lower frame, gold colors, material textures, shadows, highlights, the letters B-A-N-D-I-D, the entire word GAMES, spacing, alignment, and canvas size. Do not simplify, redesign, restyle, move, resize, recolor, add, or remove anything except correcting the final O.
+Constraints: no extra text, no watermark, no new decoration. Pixel-faithful edit outside the final O region.

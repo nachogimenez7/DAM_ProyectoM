@@ -23,6 +23,8 @@ class RealtimeRoomPresence(
     private val roomId: String,
     private val uid: String,
     private val onPresenceChanged: (Map<String, RealtimePresenceState>) -> Unit,
+    private val onOwnPresenceReady: () -> Unit = {},
+    private val onOwnPresenceUnavailable: () -> Unit = {},
     private val onError: (Exception) -> Unit
 ) {
     private val presenceRoot: DatabaseReference =
@@ -32,6 +34,8 @@ class RealtimeRoomPresence(
 
     private var desiredConnected = false
     private var started = false
+    private var socketConnected = false
+    private var publishGeneration = 0
 
     private val presenceListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
@@ -48,17 +52,25 @@ class RealtimeRoomPresence(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            markOwnPresenceUnavailable()
             onError(error.toException())
         }
     }
 
     private val connectionListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
-            val socketConnected = snapshot.getValue(Boolean::class.java) == true
-            if (socketConnected && desiredConnected) armDisconnectThenPublishOnline()
+            val connected = snapshot.getValue(Boolean::class.java) == true
+            socketConnected = connected
+            if (connected && desiredConnected) {
+                armDisconnectThenPublishOnline()
+            } else if (!connected) {
+                markOwnPresenceUnavailable()
+            }
         }
 
         override fun onCancelled(error: DatabaseError) {
+            socketConnected = false
+            markOwnPresenceUnavailable()
             onError(error.toException())
         }
     }
@@ -67,6 +79,7 @@ class RealtimeRoomPresence(
         if (started) return
         started = true
         desiredConnected = true
+        markOwnPresenceUnavailable()
         presenceRoot.addValueEventListener(presenceListener)
         connectionState.addValueEventListener(connectionListener)
     }
@@ -76,15 +89,28 @@ class RealtimeRoomPresence(
         desiredConnected = connected
         if (!started) return
         if (connected) {
-            armDisconnectThenPublishOnline()
+            if (socketConnected) armDisconnectThenPublishOnline()
         } else {
+            markOwnPresenceUnavailable()
             publishOffline()
         }
     }
 
+    /**
+     * Revalida el permiso de los listeners de contenido. Se usa cuando RTDB cancela uno:
+     * primero se vuelve a confirmar la presencia propia y solo el callback de exito permite
+     * enganchar chats/emotes otra vez.
+     */
+    fun refresh() {
+        if (!started || !desiredConnected || !socketConnected) return
+        armDisconnectThenPublishOnline()
+    }
+
     fun stop(markDisconnected: Boolean) {
         if (!started) return
-        desiredConnected = !markDisconnected
+        desiredConnected = false
+        socketConnected = false
+        markOwnPresenceUnavailable()
         presenceRoot.removeEventListener(presenceListener)
         connectionState.removeEventListener(connectionListener)
         started = false
@@ -92,14 +118,22 @@ class RealtimeRoomPresence(
     }
 
     private fun armDisconnectThenPublishOnline() {
+        val generation = ++publishGeneration
         ownPresence.onDisconnect().setValue(payload(STATE_DISCONNECTED)) { error, _ ->
             if (error != null) {
+                if (isCurrentPublish(generation)) markOwnPresenceUnavailable()
                 onError(error.toException())
                 return@setValue
             }
-            if (!desiredConnected) return@setValue
+            if (!isCurrentPublish(generation)) return@setValue
             ownPresence.setValue(payload(STATE_CONNECTED))
-                .addOnFailureListener(onError)
+                .addOnSuccessListener {
+                    if (isCurrentPublish(generation)) onOwnPresenceReady()
+                }
+                .addOnFailureListener { failure ->
+                    if (isCurrentPublish(generation)) markOwnPresenceUnavailable()
+                    onError(failure)
+                }
         }
     }
 
@@ -108,6 +142,18 @@ class RealtimeRoomPresence(
             ownPresence.setValue(payload(STATE_DISCONNECTED))
                 .addOnFailureListener(onError)
         }
+    }
+
+    private fun isCurrentPublish(generation: Int): Boolean {
+        return started &&
+            desiredConnected &&
+            socketConnected &&
+            publishGeneration == generation
+    }
+
+    private fun markOwnPresenceUnavailable() {
+        publishGeneration += 1
+        onOwnPresenceUnavailable()
     }
 
     private fun payload(state: String): Map<String, Any> = mapOf(

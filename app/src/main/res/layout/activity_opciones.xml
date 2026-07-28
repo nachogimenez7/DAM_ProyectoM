@@ -366,6 +366,12 @@
             </LinearLayout>
 
             <Button
+                android:id="@+id/btnAbout"
+                style="@style/BtnDark"
+                android:layout_marginBottom="12dp"
+                android:text="@string/about_title" />
+
+            <Button
                 android:id="@+id/btnResetOptions"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"

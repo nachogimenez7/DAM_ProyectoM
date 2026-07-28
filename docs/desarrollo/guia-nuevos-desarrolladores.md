@@ -4,14 +4,15 @@ Bienvenido a **App Traidores**. Esta guía te pone a producir rápido.
 
 ## 1. Requisitos
 
-- **Android Studio** (versión reciente) con Android SDK 34 y JDK 17 (compila a bytecode Java 8).
+- **Android Studio 2025.1.3 o posterior**, Android SDK 36.1 y JDK 17 o posterior
+  (compila a bytecode Java 8).
 - **Windows** es el entorno activo del proyecto (también funciona en otros SO).
 - `app/google-services.json` válido (Firebase). Sin este archivo el build falla por el plugin `com.google.gms.google-services`. Pedilo a quien administre el proyecto Firebase.
 
 ## 2. Abrir y correr
 
 1. Android Studio → **Open** → elegí la carpeta `App Traidores`.
-2. Esperá la sincronización de Gradle (wrapper 8.5, AGP 8.1.4).
+2. Esperá la sincronización de Gradle (wrapper 8.13, AGP 8.13.0).
 3. Ejecutá en emulador o dispositivo (minSdk 24).
 
 > El validador de apariencia/compilación es el desarrollador en Android Studio: según `CLAUDE.md`, **no se ejecutan compilaciones automáticas** desde el flujo asistido.

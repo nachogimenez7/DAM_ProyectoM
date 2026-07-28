@@ -66,6 +66,22 @@ class OnlineModeActivity : BaseActivity() {
         }
 
         btnCreate.setOnClickListener {
+            // Crear sala es de cuentas registradas: el creador arranca siendo anfitrion y el
+            // anfitrion es la autoridad de la partida. Las reglas lo rechazan igual; esto
+            // existe para explicar por que, en vez de mostrar un error de permisos.
+            if (GuestIdentity.isGuest()) {
+                GameDialog.confirm(
+                    activity = this,
+                    title = "Solo con cuenta",
+                    message = getString(R.string.online_guest_cannot_create) + "\n\n" +
+                        getString(R.string.online_guest_create_cta),
+                    positiveLabel = "IR AL PERFIL",
+                    negativeLabel = "AHORA NO"
+                ) {
+                    startActivity(Intent(this, ProfileActivity::class.java))
+                }
+                return@setOnClickListener
+            }
             showCreateRoomDialog()
         }
     }
@@ -78,6 +94,7 @@ class OnlineModeActivity : BaseActivity() {
     private fun showCreateRoomDialog() {
         var expectedPlayers = OnlineRoomFirestore.DEFAULT_EXPECTED_PLAYERS
         var modePrueba = false
+        var accountsOnly = false
         val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         var selectedMap = OnlineRoomFirestore.selectedMapFromKey(
             preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
@@ -148,6 +165,24 @@ class OnlineModeActivity : BaseActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(4))
         })
+
+        val accountsOnlySwitch = SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            text = getString(R.string.online_room_accounts_only)
+            isChecked = accountsOnly
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            textSize = 14f
+            setPadding(dp(4), dp(12), dp(4), 0)
+        }
+        content.addView(accountsOnlySwitch)
+        content.addView(TextView(this).apply {
+            text = getString(R.string.online_room_accounts_only_hint)
+            setTextColor(resources.getColor(R.color.text_secondary, theme))
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(4))
+        })
+        accountsOnlySwitch.setOnCheckedChangeListener { _, checked -> accountsOnly = checked }
 
         content.addView(TextView(this).apply {
             text = "MAPA"
@@ -248,7 +283,7 @@ class OnlineModeActivity : BaseActivity() {
             preferences.edit()
                 .putString(OpcionesActivity.PREF_LAST_SELECTED_MAP, selectedMap.key)
                 .apply()
-            createOnlineRoom(expectedPlayers, selectedMap, modePrueba)
+            createOnlineRoom(expectedPlayers, selectedMap, modePrueba, accountsOnly)
         }
         refreshCount()
         dialog.show()
@@ -266,7 +301,8 @@ class OnlineModeActivity : BaseActivity() {
     private fun createOnlineRoom(
         expectedPlayers: Int,
         selectedMap: GameMap,
-        modePrueba: Boolean
+        modePrueba: Boolean,
+        accountsOnly: Boolean
     ) {
         btnCreate.isEnabled = false
         btnCreate.text = "PREPARANDO..."
@@ -276,7 +312,13 @@ class OnlineModeActivity : BaseActivity() {
                     context = this,
                     firestore = firestore,
                     onReady = { publicId ->
-                        createOnlineRoomWithPublicId(expectedPlayers, selectedMap, modePrueba, publicId)
+                        createOnlineRoomWithPublicId(
+                            expectedPlayers,
+                            selectedMap,
+                            modePrueba,
+                            accountsOnly,
+                            publicId
+                        )
                     },
                     onFailure = { error ->
                         OnlineDebugLog.e("public_id_create_room_fallback", error)
@@ -299,12 +341,14 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
+        accountsOnly: Boolean,
         publicId: String
     ) {
         createOnlineRoomWithPublicId(
             expectedPlayers,
             selectedMap,
             modePrueba,
+            accountsOnly,
             publicId,
             remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
         )
@@ -314,16 +358,14 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
+        accountsOnly: Boolean,
         publicId: String,
         remainingCodeAttempts: Int
     ) {
         btnCreate.isEnabled = false
         btnCreate.text = "CREANDO..."
 
-        val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-        val playerName = preferences
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
+        val playerName = PlayerPublicIdentity.profileName(this)
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         OnlineDebugLog.i(
             "create_room_requested hostId=$uidTemporal map=${selectedMap.key} expected=$expectedPlayers testMode=$modePrueba player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
@@ -343,6 +385,7 @@ class OnlineModeActivity : BaseActivity() {
                             expectedPlayers = expectedPlayers,
                             selectedMap = selectedMap,
                             modePrueba = modePrueba,
+                            accountsOnly = accountsOnly,
                             publicId = publicId,
                             remainingCodeAttempts = remainingCodeAttempts - 1
                         )
@@ -360,6 +403,7 @@ class OnlineModeActivity : BaseActivity() {
                 commitOnlineRoomCreation(
                     expectedPlayers = expectedPlayers,
                     modePrueba = modePrueba,
+                    accountsOnly = accountsOnly,
                     publicId = publicId,
                     playerName = playerName,
                     uidTemporal = uidTemporal,
@@ -382,6 +426,7 @@ class OnlineModeActivity : BaseActivity() {
     private fun commitOnlineRoomCreation(
         expectedPlayers: Int,
         modePrueba: Boolean,
+        accountsOnly: Boolean,
         publicId: String,
         playerName: String,
         uidTemporal: String,
@@ -398,6 +443,7 @@ class OnlineModeActivity : BaseActivity() {
             origin = "android-online-create",
             expectedPlayers = expectedPlayers,
             modePrueba = modePrueba,
+            accountsOnly = accountsOnly,
             roomCode = roomCode
         )
 
@@ -543,9 +589,7 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     private fun openRecoveredLobby(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
-        val playerName = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
+        val playerName = PlayerPublicIdentity.profileName(this)
         val resolvedMapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
             ?.takeIf { it.isNotBlank() }
             ?: room.mapKey
@@ -845,11 +889,7 @@ class OnlineModeActivity : BaseActivity() {
                 }
             return
         }
-        val playerName = OnlineRoomFirestore.normalizedPlayerName(
-            getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-                .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-                .orEmpty()
-        )
+        val playerName = PlayerPublicIdentity.profileName(this)
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         val roomReference = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION).document(roomId)
         val playerReference = roomReference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
@@ -863,6 +903,14 @@ class OnlineModeActivity : BaseActivity() {
             }
             if (freshRoom.getString(OnlineRoomFirestore.FIELD_STATE) != OnlineRoomFirestore.STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta disponible.")
+            }
+            // Las reglas lo rechazan igual; esto existe para que el mensaje diga el motivo real
+            // en vez de un error de permisos.
+            if (
+                freshRoom.getBoolean(OnlineRoomFirestore.FIELD_ACCOUNTS_ONLY) == true &&
+                GuestIdentity.isGuest()
+            ) {
+                throw IllegalStateException(getString(R.string.online_room_accounts_only_blocked))
             }
 
             val playerSnapshot = transaction.get(playerReference)

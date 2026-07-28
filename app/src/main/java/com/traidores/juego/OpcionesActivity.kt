@@ -1,7 +1,9 @@
 package com.traidores.juego
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.util.Log
 import android.util.TypedValue
@@ -50,6 +52,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var accountCard: LinearLayout
     private lateinit var btnFirebaseSmokeTest: Button
     private lateinit var firebaseSmokeStatus: TextView
+    private lateinit var btnAbout: Button
     private lateinit var btnResetOptions: Button
 
     private var currentLanguage = LANGUAGE_SPANISH
@@ -97,7 +100,9 @@ class OpcionesActivity : BaseActivity() {
         accountCard = findViewById(R.id.accountCard)
         btnFirebaseSmokeTest = findViewById(R.id.btnFirebaseSmokeTest)
         firebaseSmokeStatus = findViewById(R.id.firebaseSmokeStatus)
+        btnAbout = findViewById(R.id.btnAbout)
         btnResetOptions = findViewById(R.id.btnResetOptions)
+        configureDeveloperToolsVisibility()
     }
 
     private fun configureControls() {
@@ -168,7 +173,17 @@ class OpcionesActivity : BaseActivity() {
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
         btnFirebaseSmokeTest.setOnClickListener { writeFirestoreSmokeTest() }
+        btnAbout.setOnClickListener {
+            startActivity(Intent(this, AcercaDeActivity::class.java))
+        }
         btnResetOptions.setOnClickListener { resetOptions() }
+    }
+
+    private fun configureDeveloperToolsVisibility() {
+        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val visibility = if (debuggable) View.VISIBLE else View.GONE
+        titleAccount.visibility = visibility
+        accountCard.visibility = visibility
     }
 
     private fun writeFirestoreSmokeTest() {

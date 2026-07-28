@@ -1,4 +1,7 @@
 <resources>
+    <string name="bandido_games">Bandido Games</string>
+    <string name="bandido_games_credit">BANDIDO GAMES</string>
+    <string name="bandido_games_support_email" translatable="false">bandidogamesestudio@gmail.com</string>
     <string name="app_name">Traidores</string>
     <string name="app_title">TRAIDORES</string>
     <string name="app_subtitle">JUEGO DE DEDUCCIÓN SOCIAL</string>
@@ -9,8 +12,20 @@
     <string name="btn_local">JUGAR vs IA</string>
     <string name="btn_online">JUGAR EN LÍNEA</string>
     <string name="btn_back">VOLVER</string>
-    <string name="version">v0.1.0-alpha</string>
-
+    <string name="about_title">ACERCA DE TRAIDORES</string>
+    <string name="about_game_description">Un juego de deducción social, engaño y debate donde cada decisión puede cambiar el destino del pueblo.</string>
+    <string name="about_created_by">CREADO POR</string>
+    <string name="about_studio_description">Bandido Games es el estudio independiente detrás de Traidores.</string>
+    <string name="about_version">Versión %1$s</string>
+    <string name="about_contact_support">CONTACTAR A BANDIDO GAMES</string>
+    <string name="about_support_subject">Soporte de Traidores</string>
+    <string name="about_support_unavailable">No encontramos una aplicación de correo. Escribinos a %1$s.</string>
+    <string name="about_link_unavailable">No encontramos una aplicación para abrir este enlace.</string>
+    <string name="about_open">Acerca de Traidores</string>
+    <string name="privacy_policy_action">POLÍTICA DE PRIVACIDAD</string>
+    <string name="account_deletion_info_action">INFORMACIÓN SOBRE ELIMINACIÓN</string>
+    <string name="privacy_policy_url" translatable="false">https://www.traidores.me/privacidad</string>
+    <string name="account_deletion_url" translatable="false">https://www.traidores.me/eliminar-cuenta</string>
     <string name="lobby_section_invite">INVITAR</string>
     <string name="lobby_section_players">EN LA SALA</string>
     <string name="lobby_section_configuration">CONFIGURACIÓN</string>
@@ -53,14 +68,39 @@
     <string name="lobby_practice_summary_description">Rol de práctica: %1$s%2$s. Toca para cambiarlo.</string>
 
     <string name="profile_account_title">CUENTA</string>
-    <string name="profile_account_guest">Jugás como invitado. Si borrás la app perdés tu perfil y tu número.</string>
+    <string name="profile_account_guest">Jugás como invitado. Con una cuenta elegís tu nombre, personalizás el perfil y tenés tu número.</string>
+    <string name="online_guest_cannot_create">Crear salas es para cuentas. Como invitado podés buscar salas y entrar por código.</string>
+    <string name="online_guest_create_cta">Creá tu cuenta para armar tus propias salas y ser el anfitrión.</string>
+    <string name="online_room_accounts_only">SOLO CUENTAS REGISTRADAS</string>
+    <string name="online_room_accounts_only_hint">Los invitados no pueden entrar. Sirve para que una expulsión valga: un invitado vuelve con otra identidad, una cuenta no.</string>
+    <string name="online_room_accounts_only_blocked">Esta sala es solo para cuentas registradas. Creá la tuya y volvé a intentar.</string>
     <string name="profile_account_linked">Cuenta: %1$s</string>
+    <string name="profile_account_play_games">Cuenta vinculada con Google Play Games.</string>
     <string name="profile_account_action">CREAR CUENTA O ENTRAR</string>
+    <string name="profile_account_action_add_email">AGREGAR CORREO</string>
     <string name="profile_account_action_linked">CUENTA VINCULADA</string>
+    <string name="play_games_achievements_action">LOGROS DE PLAY GAMES</string>
+    <string name="play_games_leaderboards_action">TABLAS DE CLASIFICACIÓN</string>
+    <string name="play_games_friends_action">AMIGOS DE PLAY GAMES</string>
+    <string name="play_games_friends_title">AMIGOS DE PLAY GAMES</string>
+    <string name="play_games_friends_empty">No hay amigos disponibles. Podés seguir usando la app normalmente.</string>
+    <string name="play_games_friend_unknown">Jugador de Play Games</string>
+    <string name="play_games_friends_permission_denied">No diste permiso para ver amigos. El resto de Play Games sigue funcionando.</string>
+    <string name="play_games_friends_unavailable">La lista de amigos no está disponible ahora. El resto de la app sigue funcionando.</string>
+    <string name="play_games_open_failed">No se pudo abrir Play Games. Probá de nuevo cuando tengas conexión.</string>
+    <string name="play_games_close">CERRAR</string>
     <string name="profile_account_dialog_title">Tu cuenta</string>
-    <string name="profile_account_dialog_message">Con una cuenta conservás tu perfil y tu número aunque cambies de celular. Podés seguir jugando como invitado si preferís.</string>
+    <string name="profile_account_dialog_message">Con una cuenta elegís tu nombre, personalizás el perfil y conservás todo aunque cambies de celular. No perdés nada de lo que ya jugaste.</string>
     <string name="profile_account_email_hint">Correo</string>
     <string name="profile_account_password_hint">Contraseña</string>
     <string name="profile_account_linked_toast">Listo. Tu perfil y tu número quedaron guardados en %1$s.</string>
     <string name="profile_account_recovered_toast">Entraste con %1$s. Recuperaste el número #%2$s.</string>
+    <string name="account_delete_action">ELIMINAR MI CUENTA</string>
+    <string name="account_delete_cancel">CONSERVAR CUENTA</string>
+    <string name="account_delete_explanation">Esta acción es permanente. Se eliminarán tu cuenta de Traidores, el perfil público, el progreso respaldado por Traidores en Play Games y los datos locales. Los logros y clasificaciones administrados por Google se gestionan desde Play Games.\n\nEscribí ELIMINAR para confirmar.</string>
+    <string name="account_delete_password_hint">Contraseña actual</string>
+    <string name="account_delete_confirmation_error">Escribí %1$s exactamente para confirmar.</string>
+    <string name="account_delete_password_error">Ingresá tu contraseña actual.</string>
+    <string name="account_delete_progress">Eliminando tu cuenta y tus datos…</string>
+    <string name="account_delete_success">Tu cuenta y los datos de Traidores fueron eliminados.</string>
 </resources>

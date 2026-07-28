@@ -9,6 +9,13 @@
         <item name="android:windowAnimationStyle">@style/WindowAnim</item>
     </style>
 
+    <style name="Theme.Traidores.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/bandido_splash_medallion</item>
+        <item name="windowSplashScreenAnimationDuration">0</item>
+        <item name="postSplashScreenTheme">@style/Theme.Traidores</item>
+    </style>
+
     <style name="WindowAnim" parent="@android:style/Animation.Activity">
         <item name="android:activityOpenEnterAnimation">@android:anim/fade_in</item>
         <item name="android:activityOpenExitAnimation">@android:anim/fade_out</item>

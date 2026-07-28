@@ -23,7 +23,8 @@ class LobbyChatController(
     private val actorId: String,
     private val speaker: String,
     private val onMessagesChanged: (List<LobbyChatMessage>) -> Unit,
-    private val onError: (Exception) -> Unit
+    private val onError: (Exception) -> Unit,
+    private val onAccessCancelled: () -> Unit = {}
 ) {
     private val chatReference
         get() = database.getReference("salas/$roomId/$NODE")
@@ -58,7 +59,10 @@ class LobbyChatController(
             }
 
             override fun onCancelled(error: DatabaseError) {
+                if (this@LobbyChatController.listener !== this) return
+                stop()
                 onError(error.toException())
+                onAccessCancelled()
             }
         }
         activeQuery = query

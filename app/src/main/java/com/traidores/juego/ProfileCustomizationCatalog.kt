@@ -5,7 +5,7 @@ import androidx.annotation.DrawableRes
 data class ProfileBannerOption(
     val key: String,
     val label: String,
-    @DrawableRes val drawableRes: Int
+    @param:DrawableRes val drawableRes: Int
 )
 
 data class ProfileAchievement(
@@ -20,7 +20,7 @@ data class ProfileAchievement(
 enum class AchievementRarity(
     val label: String,
     val borderColorHex: String,
-    @DrawableRes val medalRes: Int
+    @param:DrawableRes val medalRes: Int
 ) {
     BRONZE("Bronce", "#B87333", R.drawable.ic_achievement_medal_bronze),
     SILVER("Plata", "#C9D0D8", R.drawable.ic_achievement_medal_silver),

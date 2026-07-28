@@ -38,6 +38,10 @@ object PlayerPublicIdentity {
     }
 
     fun profileName(context: Context): String {
+        // Un invitado no elige texto libre: su nombre es el alias de la lista cerrada mas el
+        // numero derivado del uid. Resolverlo aca evita que cada pantalla se acuerde de
+        // preguntar si hay cuenta.
+        if (GuestIdentity.isGuest()) return GuestIdentity.displayName(context)
         return OnlineRoomFirestore.normalizedPlayerName(
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
@@ -51,6 +55,14 @@ object PlayerPublicIdentity {
         onReady: (String) -> Unit,
         onFailure: (Exception) -> Unit = {}
     ) {
+        // El `#` es exclusivo de las cuentas registradas. Antes lo reservaba cualquiera que
+        // abriera el perfil una sola vez, asi que el contador global se gastaba con gente que
+        // desinstalaba a los cinco minutos y el numero no significaba nada.
+        if (GuestIdentity.isGuest()) {
+            onReady("")
+            return
+        }
+
         val existing = currentPublicId(context)
         if (existing.isNotBlank()) {
             publishPublicProfile(context, firestore, existing)
@@ -149,15 +161,27 @@ object PlayerPublicIdentity {
             visibleName.ifBlank { profile.name }
         )
         val safePublicId = publicId.takeIf(::isValidPublicId).orEmpty()
-        return mapOf(
-            FIELD_PUBLIC_ID to safePublicId,
+        // La frase es el unico texto libre del perfil: avatar, banner y rol favorito salen de
+        // catalogos cerrados. Un invitado la publica vacia, asi que nadie sin cuenta puede
+        // mostrarle texto propio al resto de la mesa. Si ya la tenia escrita, la sigue viendo
+        // en su perfil; lo que no hace es viajar a las salas.
+        // La ausencia de publicId es la señal estable de invitado para este payload. Evita
+        // depender del estado global de FirebaseAuth y mantiene pura esta sobrecarga.
+        val safeBio = if (safePublicId.isBlank()) "" else profile.bio.take(MAX_PUBLIC_BIO_LENGTH)
+        val fields = mutableMapOf<String, Any>(
             FIELD_PROFILE_NAME to safeName,
             FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(safeName, safePublicId),
-            FIELD_PROFILE_BIO to profile.bio.take(MAX_PUBLIC_BIO_LENGTH),
+            FIELD_PROFILE_BIO to safeBio,
             FIELD_PROFILE_AVATAR to ProfileRoleCatalog.find(profile.avatarKey).key,
             FIELD_PROFILE_BANNER to ProfileCustomizationCatalog.normalizeBannerKey(profile.bannerKey),
             FIELD_PROFILE_FAVORITE_ROLE to ProfileRoleCatalog.find(profile.favoriteRoleKey).key
         )
+        // Un invitado no tiene numero. El campo se omite en vez de mandarse vacio: las reglas
+        // aceptan que `publicId` no exista, pero rechazan una cadena que no sean digitos.
+        if (safePublicId.isNotBlank()) {
+            fields[FIELD_PUBLIC_ID] = safePublicId
+        }
+        return fields
     }
 
     private fun publishPublicProfile(

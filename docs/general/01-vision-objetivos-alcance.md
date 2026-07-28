@@ -30,7 +30,7 @@ Según [`CLAUDE.md`](../../CLAUDE.md), el ciclo actual se concentra en **estabil
 
 ### Dentro del alcance
 
-- Plataforma **Android** (minSdk 24, targetSdk 34), un único módulo `:app`.
+- Plataforma **Android** (minSdk 24, targetSdk 36), un único módulo `:app`.
 - **Teléfonos** como dispositivo prioritario.
 - Modo **local vs IA**: completo y estable.
 - Modo **online**: experimental, con las limitaciones documentadas en [`firebase-online-schema.md`](../firebase-online-schema.md).

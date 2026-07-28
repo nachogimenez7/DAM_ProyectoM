@@ -1,6 +1,5 @@
 ﻿package com.traidores.juego
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
@@ -27,11 +26,9 @@ class LocalModeActivity : BaseActivity() {
         MusicManager.playMenuMusic(this)
     }
 
-    private fun savedPlayerName(): String {
-        return getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-            .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-            .orEmpty()
-    }
+    // Tambien contra la IA: el perfil muestra un solo nombre, y para un invitado ese nombre es
+    // su alias. Leer la preferencia directo dejaria dos nombres distintos para la misma persona.
+    private fun savedPlayerName(): String = PlayerPublicIdentity.profileName(this)
 
     private fun startVsAi(difficulty: BotDifficulty) {
         startActivity(

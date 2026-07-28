@@ -175,6 +175,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineActionsListener: ListenerRegistration? = null
     private var onlineActiveHostId = ""
     private var onlineHostHandoffInProgress = false
+    private var onlineGuestHostWindowStartedAtMs = 0L
     private var onlinePresencePlayers = emptyList<OnlinePresencePlayer>()
     private var realtimePresence: RealtimeRoomPresence? = null
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
@@ -234,6 +235,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (isOnlineStartupPhase()) {
             refreshOnlineStartupGateFromLastStates()
         }
+    }
+    private val guestHostWindowRunnable = Runnable {
+        handleOnlineHostHandoff(onlinePresencePlayers)
     }
     private val onlineSyncWatchdogRunnable = object : Runnable {
         override fun run() {
@@ -487,7 +491,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val order: Int,
         val state: String,
         val activeInMatch: Boolean,
-        val lastSeenLocalMs: Long
+        val lastSeenLocalMs: Long,
+        /** Solo las cuentas registradas reservan `publicId`, asi que sirve de señal. */
+        val registered: Boolean
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -949,6 +955,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onStart() {
         super.onStart()
+        chatController.onRealtimeAccessUnavailable()
         startRealtimeGameplayPresence()
         markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
         startOnlinePlayersPresenceListener()
@@ -958,6 +965,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onStop() {
         stopOnlineSyncWatchdog()
+        chatController.onRealtimeAccessUnavailable()
         // Lobby and gameplay share the same online session. Keep the server-side
         // onDisconnect armed while Android switches activities; the lobby will
         // publish an explicit disconnect only when the player actually leaves.
@@ -970,6 +978,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         localPhaseResolutionToken += 1
         localPhaseResolutionInProgress = false
         localPhaseExecutor.shutdownNow()
+        // Solo aca y no en onPause: si la partida se queda sin anfitrion mientras el celular
+        // esta en segundo plano, el reintento tiene que seguir vivo o la mesa no destraba.
+        autoAdvanceHandler.removeCallbacks(guestHostWindowRunnable)
         autoAdvanceHandler.removeCallbacks(roleReadingTickRunnable)
         cancelReadyVoteBotCascade()
         autoAdvanceHandler.removeCallbacks(clearPhaseAdviceRunnable)
@@ -1235,7 +1246,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             if (isOnlineNightActionWindow()) {
                 recordOnlineSkippedNightAction(
                     before = currentActionSession,
-                    roleKey = RoleCatalog.ORACULO,
                     actionType = "guardar_poder"
                 )
                 return
@@ -1835,7 +1845,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun recordOnlineSkippedNightAction(
         before: GameSession,
-        roleKey: String,
         actionType: String
     ) {
         val actionKey = onlineDeferredActionKey()
@@ -1847,7 +1856,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             targetName = "",
             details = mapOf(
                 "accion" to actionType,
-                "rolActor" to roleKey,
                 "faseResultado" to before.phase.name,
                 "phaseIndexResultado" to before.phaseIndex
             ),
@@ -2015,8 +2023,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         "sincronizando" to onlineAwaitingHostAdvance,
                         FIELD_PRESENTATION_ACK_KEY to onlinePresentationAckKey,
                         "ultimaFaseAplicadaEnLocal" to latestAppliedPhaseLabel(),
-                        "jugador" to human.name,
-                        "rolKey" to human.role?.key.orEmpty(),
                         "anuncioPublico" to session.publicAnnouncement,
                         "ganador" to session.winner,
                         "actualizadaEnLocal" to System.currentTimeMillis()
@@ -2584,7 +2590,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onFailure: ((Exception) -> Unit)? = null
     ) {
         if (!isOnlineGameplay()) return
-        val human = GameEngine.humanPlayer(before)
         val actionType = when (before.phase) {
             GamePhase.NOCHE_ASESINO -> "matar"
             GamePhase.NOCHE_MERCENARIO -> "silenciar"
@@ -2602,7 +2607,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             targetName = targetName,
             details = mapOf(
                 "accion" to actionType,
-                "rolActor" to human.role?.key.orEmpty(),
                 "faseResultado" to after.phase.name,
                 "phaseIndexResultado" to after.phaseIndex
             ),
@@ -2726,9 +2730,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         showReactionBubble(playerName, spec)
     }
 
+    override fun onRealtimeContentAccessCancelled(error: Exception) {
+        OnlineDebugLog.e(
+            "rtdb_gameplay_content_cancelled roomId=$onlinePartidaId uid=$onlinePlayerId",
+            error
+        )
+        realtimePresence?.refresh()
+    }
+
     private fun startRealtimeGameplayPresence() {
         if (!isOnlineGameplay() || realtimePresence != null) return
-        realtimePresence = RealtimeRoomPresence(
+        val presence = RealtimeRoomPresence(
             database = FirebaseDatabase.getInstance(),
             roomId = onlinePartidaId,
             uid = onlinePlayerId,
@@ -2737,13 +2749,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 realtimePresenceBaselineReady = true
                 refreshGameplayPresenceFromRealtime()
             },
+            onOwnPresenceReady = {
+                if (realtimePresence != null && !isFinishing) {
+                    chatController.onRealtimeAccessReady()
+                }
+            },
+            onOwnPresenceUnavailable = {
+                chatController.onRealtimeAccessUnavailable()
+            },
             onError = { error ->
                 OnlineDebugLog.e(
                     "rtdb_gameplay_presence_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
                     error
                 )
             }
-        ).also { it.start() }
+        )
+        realtimePresence = presence
+        presence.start()
     }
 
     private fun refreshGameplayPresenceFromRealtime() {
@@ -2904,7 +2926,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                             activeInMatch = document.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false,
                             lastSeenLocalMs = presence?.changedAtMs?.takeIf { it > 0L }
                                 ?: document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL)
-                                ?: 0L
+                                ?: 0L,
+                            registered = document
+                                .getString(PlayerPublicIdentity.FIELD_PUBLIC_ID)
+                                .orEmpty()
+                                .isNotBlank()
                         )
                     }
                     .filter { it.activeInMatch }
@@ -3024,16 +3050,54 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 activeInMatch = player.activeInMatch,
                 order = player.order,
                 lastSeenLocalMs = player.lastSeenLocalMs,
-                alive = session.players.getOrNull(player.order)?.alive == true
+                alive = session.players.getOrNull(player.order)?.alive == true,
+                registered = player.registered
             )
         }
-        val candidate = OnlineLobbyRules.hostHandoffCandidate(
+        if (!OnlineLobbyRules.needsHostHandoff(participants, activeHostId)) {
+            onlineGuestHostWindowStartedAtMs = 0L
+            return
+        }
+        val registeredCandidate = OnlineLobbyRules.hostHandoffCandidate(
             players = participants,
-            activeHostId = activeHostId
-        ) ?: return
+            activeHostId = activeHostId,
+            allowGuests = false
+        )
+        val candidate = if (registeredCandidate != null) {
+            onlineGuestHostWindowStartedAtMs = 0L
+            registeredCandidate
+        } else {
+            // No queda ninguna cuenta registrada viva y conectada. Antes de dejar que un
+            // invitado tome el relevo se espera un rato, por si el anfitrion vuelve o entra
+            // alguien con cuenta; pasado ese tiempo, un invitado de anfitrion es mejor que una
+            // partida congelada para toda la mesa.
+            if (onlineGuestHostWindowStartedAtMs == 0L) {
+                onlineGuestHostWindowStartedAtMs = System.currentTimeMillis()
+                OnlineDebugLog.w(
+                    "host_handoff_guest_window_open roomId=$onlinePartidaId uid=$onlinePlayerId"
+                )
+            }
+            val waitedMs = System.currentTimeMillis() - onlineGuestHostWindowStartedAtMs
+            if (waitedMs < GUEST_HOST_GRACE_MS) {
+                // El relevo se dispara por snapshots y puede no llegar ninguno mientras se
+                // espera: sin este reintento la ventana se cumple y nadie la mira.
+                scheduleGuestHostWindowRecheck(GUEST_HOST_GRACE_MS - waitedMs)
+                return
+            }
+            OnlineLobbyRules.hostHandoffCandidate(
+                players = participants,
+                activeHostId = activeHostId,
+                allowGuests = true
+            )
+        } ?: return
         if (candidate.id == onlinePlayerId) {
             claimOnlineHostHandoff(activeHostId)
         }
+    }
+
+    private fun scheduleGuestHostWindowRecheck(delayMs: Long) {
+        autoAdvanceHandler.removeCallbacks(guestHostWindowRunnable)
+        autoAdvanceHandler.postDelayed(guestHostWindowRunnable, delayMs.coerceAtLeast(0L))
     }
 
     private fun claimOnlineHostHandoff(previousHostId: String) {
@@ -8894,6 +8958,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val ONLINE_DEATH_REVEAL_BEAT_MS = 900L
         private const val PRESENTATION_GATE_TICK_MS = 250L
+        /**
+         * Cuanto se espera a que aparezca una cuenta registrada antes de dejar que un invitado
+         * tome el anfitrionazgo. Pasado ese tiempo, la unica alternativa es una partida que no
+         * avanza mas para nadie.
+         */
+        private const val GUEST_HOST_GRACE_MS = 20_000L
         private const val INFORMATION_FEEDBACK_DURATION_MS = 10_000L
         private const val PHASE_ADVICE_DURATION_MS = 8_000L
         private const val CENTRAL_PUBLIC_EVENT_DURATION_MS = 5_200L

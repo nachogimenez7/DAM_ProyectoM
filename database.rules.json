@@ -6,7 +6,7 @@
       "$roomId": {
         ".write": "auth != null && !newData.exists() && data.child('presencia').child(auth.uid).exists()",
         "chat": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
             ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
@@ -23,7 +23,7 @@
           }
         },
         "chat_traidores": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
             ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
@@ -41,7 +41,7 @@
           }
         },
         "chat_espectadores": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
             ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
@@ -59,7 +59,7 @@
           }
         },
         "emotes": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$emoteEventId": {
             ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
@@ -73,7 +73,7 @@
           }
         },
         "chat_lobby": {
-          ".read": "auth != null",
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
             ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",

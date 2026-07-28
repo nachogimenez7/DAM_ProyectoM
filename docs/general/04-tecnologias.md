@@ -4,7 +4,7 @@ Datos extraídos de `app/build.gradle`, `build.gradle`, `settings.gradle`, `grad
 
 ## Lenguajes
 
-- **Kotlin 1.9.22** — Activities, reglas de juego, estado de presentación, adapters, coordinadores de animación, persistencia local.
+- **Kotlin 2.3.0** — Activities, reglas de juego, estado de presentación, adapters, coordinadores de animación, persistencia local.
 - **XML** — layouts, temas, colores, drawables y manifest bajo `app/src/main/res/`.
 - **Groovy Gradle DSL** — configuración de build (`build.gradle`, `app/build.gradle`).
 
@@ -15,7 +15,7 @@ Datos extraídos de `app/build.gradle`, `build.gradle`, `settings.gradle`, `grad
 | `applicationId` | `com.traidores.juego` |
 | `namespace` | `com.traidores.juego` |
 | `minSdk` | 24 |
-| `targetSdk` / `compileSdk` | 34 |
+| `targetSdk` / `compileSdk` | 36 / 36.1 |
 | `versionCode` | 1 |
 | `versionName` | `0.1.0-alpha` |
 | Bytecode Java | 8 (`sourceCompatibility` / `targetCompatibility` / `jvmTarget = 1.8`) |
@@ -23,8 +23,8 @@ Datos extraídos de `app/build.gradle`, `build.gradle`, `settings.gradle`, `grad
 
 ## Build
 
-- **Gradle Wrapper 8.5**.
-- **Android Gradle Plugin 8.1.4**.
+- **Gradle Wrapper 8.13**.
+- **Android Gradle Plugin 8.13.0**.
 - Plugin **`com.google.gms.google-services`** (Google Services) → requiere `app/google-services.json`.
 - Kotlin official style habilitado (`gradle.properties`).
 - Sin version catalog ni lockfile de dependencias.

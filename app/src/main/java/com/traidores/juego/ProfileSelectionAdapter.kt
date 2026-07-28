@@ -12,7 +12,7 @@ data class ProfileSelectionOption(
     val key: String,
     val title: String,
     val subtitle: String,
-    @DrawableRes val drawableRes: Int
+    @param:DrawableRes val drawableRes: Int
 )
 
 enum class ProfileSelectionDisplay {

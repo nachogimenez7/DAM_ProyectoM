@@ -58,6 +58,7 @@ class GameplayChatController(
         fun renderPersonalStatus()
         fun chatLogDrawableRes(): Int
         fun onOnlineReactionReceived(playerName: String, emoteId: String)
+        fun onRealtimeContentAccessCancelled(error: Exception)
     }
 
     private data class OnlineChatEntry(
@@ -105,6 +106,7 @@ class GameplayChatController(
     private var onlineReactionListener: ValueEventListener? = null
     private var onlineReactionMatchId = ""
     private var onlineReactionBaselineReady = false
+    private var realtimeAccessReady = false
     private val seenOnlineReactionIds = linkedSetOf<String>()
     private var wasHumanAlive: Boolean? = null
     private var stagedEventReactionKey = ""
@@ -202,12 +204,6 @@ class GameplayChatController(
         renderChatPanelVisibility(animate = false)
         renderFeedFilterButton()
         renderChatTitle()
-        if (host.isOnlineGameplay()) {
-            startOnlineChatListener()
-            startOnlineTraitorChatListener()
-            startOnlineSpectatorChatListener()
-            startOnlineReactionListener()
-        }
     }
 
     fun onSessionUpdated() {
@@ -218,7 +214,7 @@ class GameplayChatController(
             host.showToast("Caíste. Ahora hablás en el Chat de los Muertos.")
         }
         wasHumanAlive = humanAlive
-        if (host.isOnlineGameplay()) {
+        if (host.isOnlineGameplay() && realtimeAccessReady) {
             // El rol del humano puede llegar despues de onCreate (reconstruccion online),
             // y la muerte puede llegar en una actualizacion posterior. Ambos listeners
             // condicionales se auto-protegen contra una doble suscripcion.
@@ -231,6 +227,20 @@ class GameplayChatController(
         applyKeyboardAwarePlayerPanel()
         renderChatBadge()
         stageEventReactionsForCurrentAnnouncement()
+    }
+
+    fun onRealtimeAccessReady() {
+        if (!host.isOnlineGameplay()) return
+        realtimeAccessReady = true
+        startOnlineChatListener()
+        startOnlineTraitorChatListener()
+        startOnlineSpectatorChatListener()
+        startOnlineReactionListener()
+    }
+
+    fun onRealtimeAccessUnavailable() {
+        realtimeAccessReady = false
+        stopOnlineContentListeners()
     }
 
     fun onBackPressed(): Boolean {
@@ -247,20 +257,7 @@ class GameplayChatController(
     fun onDestroy() {
         quickChatDialog?.dismiss()
         quickChatDialog = null
-        onlineChatListener?.let { listener -> onlineChatQuery?.removeEventListener(listener) }
-        onlineChatListener = null
-        onlineChatQuery = null
-        onlineTraitorChatListener?.let { listener ->
-            onlineTraitorChatQuery?.removeEventListener(listener)
-        }
-        onlineTraitorChatListener = null
-        onlineTraitorChatQuery = null
-        onlineSpectatorChatListener?.let { listener ->
-            onlineSpectatorChatQuery?.removeEventListener(listener)
-        }
-        onlineSpectatorChatListener = null
-        onlineSpectatorChatQuery = null
-        stopOnlineReactionListener()
+        onRealtimeAccessUnavailable()
         cancelPendingBotChat()
         handler.removeCallbacksAndMessages(null)
     }
@@ -331,6 +328,10 @@ class GameplayChatController(
 
     fun sendOnlineReaction(playerName: String, emoteId: String) {
         if (!host.isOnlineGameplay()) return
+        if (!realtimeAccessReady) {
+            host.showToast("Reconectando la partida...")
+            return
+        }
         val matchId = host.currentSession.onlineMatchId
         if (
             host.onlineRoomId.isBlank() ||
@@ -1905,6 +1906,11 @@ class GameplayChatController(
         }
         val rawMessage = chatInput.text.toString()
         if (host.isOnlineGameplay()) {
+            if (!realtimeAccessReady) {
+                GameplayEffects.play(root.context, GameplayEffect.ERROR)
+                host.showToast("Reconectando el chat...")
+                return
+            }
             when (activeChatChannel()) {
                 ChatChannel.PUBLICO -> sendOnlineHumanChatMessage(rawMessage)
                 ChatChannel.TRAIDORES -> sendOnlineTraitorChatMessage(rawMessage)
@@ -2116,7 +2122,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineReactionListener() {
-        if (!host.isOnlineGameplay() || host.onlineRoomId.isBlank()) return
+        if (!realtimeAccessReady || !host.isOnlineGameplay() || host.onlineRoomId.isBlank()) return
         val matchId = host.currentSession.onlineMatchId
         if (matchId.isBlank()) return
         if (onlineReactionListener != null && onlineReactionMatchId == matchId) return
@@ -2149,9 +2155,10 @@ class GameplayChatController(
             }
 
             override fun onCancelled(error: DatabaseError) {
-                OnlineDebugLog.e(
+                if (onlineReactionListener !== this) return
+                handleRealtimeAccessCancelled(
                     "emote_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId",
-                    error.toException()
+                    error
                 )
             }
         }
@@ -2167,7 +2174,11 @@ class GameplayChatController(
         // aparece en el primer callback como nuevo, sin reanimar eventos viejos al entrar tarde.
         query.get()
             .addOnSuccessListener { baseline ->
-                if (onlineReactionQuery !== query || onlineReactionMatchId != matchId) {
+                if (
+                    !realtimeAccessReady ||
+                    onlineReactionQuery !== query ||
+                    onlineReactionMatchId != matchId
+                ) {
                     return@addOnSuccessListener
                 }
                 onlineReactionEntries(baseline, matchId).forEach { entry ->
@@ -2182,7 +2193,11 @@ class GameplayChatController(
                     "emote_listener_baseline_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId",
                     error
                 )
-                if (onlineReactionQuery === query && onlineReactionMatchId == matchId) {
+                if (
+                    realtimeAccessReady &&
+                    onlineReactionQuery === query &&
+                    onlineReactionMatchId == matchId
+                ) {
                     // El primer callback del listener se convierte en baseline si la lectura
                     // inicial falla, priorizando no repetir el historial sobre mostrar algo viejo.
                     query.addValueEventListener(listener)
@@ -2231,8 +2246,38 @@ class GameplayChatController(
         seenOnlineReactionIds.clear()
     }
 
+    private fun stopOnlineContentListeners() {
+        onlineChatListener?.let { listener ->
+            onlineChatQuery?.removeEventListener(listener)
+        }
+        onlineChatListener = null
+        onlineChatQuery = null
+
+        onlineTraitorChatListener?.let { listener ->
+            onlineTraitorChatQuery?.removeEventListener(listener)
+        }
+        onlineTraitorChatListener = null
+        onlineTraitorChatQuery = null
+
+        onlineSpectatorChatListener?.let { listener ->
+            onlineSpectatorChatQuery?.removeEventListener(listener)
+        }
+        onlineSpectatorChatListener = null
+        onlineSpectatorChatQuery = null
+
+        stopOnlineReactionListener()
+    }
+
+    private fun handleRealtimeAccessCancelled(label: String, error: DatabaseError) {
+        val exception = error.toException()
+        OnlineDebugLog.e(label, exception)
+        if (!realtimeAccessReady) return
+        onRealtimeAccessUnavailable()
+        host.onRealtimeContentAccessCancelled(exception)
+    }
+
     private fun startOnlineChatListener() {
-        if (!host.isOnlineGameplay() || onlineChatListener != null) return
+        if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
         val query = FirebaseDatabase.getInstance()
             .getReference("salas/${host.onlineRoomId}/$RTDB_PUBLIC_CHAT_NODE")
@@ -2258,9 +2303,10 @@ class GameplayChatController(
             }
 
             override fun onCancelled(error: DatabaseError) {
-                OnlineDebugLog.e(
+                if (onlineChatListener !== this) return
+                handleRealtimeAccessCancelled(
                     "chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
-                    error.toException()
+                    error
                 )
             }
         }
@@ -2279,7 +2325,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineTraitorChatListener() {
-        if (!host.isOnlineGameplay() || onlineTraitorChatListener != null) return
+        if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineTraitorChatListener != null) return
         if (!GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(host.currentSession))) {
             return
         }
@@ -2308,9 +2354,10 @@ class GameplayChatController(
             }
 
             override fun onCancelled(error: DatabaseError) {
-                OnlineDebugLog.e(
+                if (onlineTraitorChatListener !== this) return
+                handleRealtimeAccessCancelled(
                     "traitor_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
-                    error.toException()
+                    error
                 )
             }
         }
@@ -2331,7 +2378,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineSpectatorChatListener() {
-        if (!host.isOnlineGameplay() || onlineSpectatorChatListener != null) return
+        if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineSpectatorChatListener != null) return
         if (GameEngine.humanPlayer(host.currentSession).alive) return
         OnlineDebugLog.i("spectator_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
         val query = FirebaseDatabase.getInstance()
@@ -2358,9 +2405,10 @@ class GameplayChatController(
             }
 
             override fun onCancelled(error: DatabaseError) {
-                OnlineDebugLog.e(
+                if (onlineSpectatorChatListener !== this) return
+                handleRealtimeAccessCancelled(
                     "spectator_chat_listener_failure roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}",
-                    error.toException()
+                    error
                 )
             }
         }

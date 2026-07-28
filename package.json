@@ -2,8 +2,9 @@
   "name": "traidores-firebase-rules",
   "private": true,
   "scripts": {
-    "test:firestore-rules": "firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules.cjs\"",
-    "test:database-rules": "firebase emulators:exec --project traidores-local --only database \"node scripts/test-database-rules.cjs\""
+    "test:firestore-rules": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules.cjs\"",
+    "test:database-rules": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only database \"node scripts/test-database-rules.cjs\"",
+    "test:firestore-rules-invitados": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules-invitados.cjs\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.3",

@@ -144,6 +144,7 @@ class LobbyActivity : BaseActivity() {
     private var realtimePresence: RealtimeRoomPresence? = null
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
+    private var lobbyRealtimeAccessReady = false
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
     private var practiceRoleIndex = 0
@@ -181,11 +182,9 @@ class LobbyActivity : BaseActivity() {
         recoveringOnlineMatch = intent.getBooleanExtra(EXTRA_RECOVERING_ONLINE, false)
         if (onlinePartidaId.isNotBlank()) {
             onlineTempUid = OnlineTempIdentity.getOrCreate(this)
-            onlinePlayerName = OnlineRoomFirestore.normalizedPlayerName(
-                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                    .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-                    .orEmpty()
-            )
+            // profileName devuelve el alias cuando no hay cuenta; leer la preferencia directo
+            // dejaria entrar a la sala con un nombre libre que las reglas rechazan.
+            onlinePlayerName = PlayerPublicIdentity.profileName(this)
         }
 
         val btnBack: ImageButton = findViewById(R.id.btnBack)
@@ -360,16 +359,18 @@ class LobbyActivity : BaseActivity() {
         super.onStart()
         if (isFirestoreOnlineLobby()) {
             enteringOnlineMatch = false
+            lobbyRealtimeAccessReady = false
             startRealtimePresence()
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
-            startLobbyChat()
         }
     }
 
     override fun onStop() {
         if (isFirestoreOnlineLobby()) {
+            lobbyRealtimeAccessReady = false
+            lobbyChatController?.stop()
             val shouldStopRealtimeAsDisconnected = !enteringOnlineMatch &&
                 (leavingOnlineLobby || onlineRemovalHandled || isFinishing)
             val shouldWriteLegacyDisconnected = shouldStopRealtimeAsDisconnected && !onlineRemovalHandled
@@ -722,6 +723,10 @@ class LobbyActivity : BaseActivity() {
                 },
                 onError = { error ->
                     OnlineDebugLog.e("lobby_chat_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
+                },
+                onAccessCancelled = {
+                    lobbyRealtimeAccessReady = false
+                    realtimePresence?.refresh()
                 }
             )
         }
@@ -859,6 +864,14 @@ class LobbyActivity : BaseActivity() {
             setOnClickListener {
                 val message = input.text?.toString().orEmpty()
                 if (message.isBlank()) return@setOnClickListener
+                if (!lobbyRealtimeAccessReady) {
+                    Toast.makeText(
+                        this@LobbyActivity,
+                        "Reconectando el chat...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@setOnClickListener
+                }
                 lobbyChatController?.sendText(message) { input.setText("") }
             }
         }
@@ -891,7 +904,17 @@ class LobbyActivity : BaseActivity() {
                 setBackgroundResource(R.drawable.bg_btn_dark_ripple)
                 contentDescription = "Enviar emote ${emote.label}"
                 setPadding(dp(5), dp(5), dp(5), dp(5))
-                setOnClickListener { lobbyChatController?.sendEmote(emote) }
+                setOnClickListener {
+                    if (!lobbyRealtimeAccessReady) {
+                        Toast.makeText(
+                            this@LobbyActivity,
+                            "Reconectando el chat...",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@setOnClickListener
+                    }
+                    lobbyChatController?.sendEmote(emote)
+                }
             }, LinearLayout.LayoutParams(dp(50), dp(50)).apply {
                 if (index > 0) marginStart = dp(9)
             })
@@ -969,7 +992,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun startRealtimePresence() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank() || realtimePresence != null) return
-        realtimePresence = RealtimeRoomPresence(
+        val presence = RealtimeRoomPresence(
             database = FirebaseDatabase.getInstance(),
             roomId = onlinePartidaId,
             uid = onlineTempUid,
@@ -981,13 +1004,25 @@ class LobbyActivity : BaseActivity() {
                     renderLobby()
                 }
             },
+            onOwnPresenceReady = {
+                if (realtimePresence != null && !isFinishing) {
+                    lobbyRealtimeAccessReady = true
+                    startLobbyChat()
+                }
+            },
+            onOwnPresenceUnavailable = {
+                lobbyRealtimeAccessReady = false
+                lobbyChatController?.stop()
+            },
             onError = { error ->
                 OnlineDebugLog.e(
                     "rtdb_lobby_presence_failure roomId=$onlinePartidaId uid=$onlineTempUid",
                     error
                 )
             }
-        ).also { it.start() }
+        )
+        realtimePresence = presence
+        presence.start()
     }
 
     private fun markOnlinePresence(state: String) {
@@ -1765,10 +1800,25 @@ class LobbyActivity : BaseActivity() {
             nowMs - lastSeenMs < LOBBY_HOST_DISCONNECT_GRACE_MS
     }
 
+    /**
+     * El anfitrion de una sala tiene que tener cuenta: es la autoridad de la partida y quien
+     * queda a cargo de moderar. El `publicId` solo lo tienen las cuentas registradas, asi que
+     * alcanza con mirarlo. Las reglas de Firestore hacen valer lo mismo del lado del servidor
+     * mirando los claims del token; esto es para no proponer un candidato que va a ser
+     * rechazado.
+     *
+     * En el lobby el filtro es duro: si no queda ningun registrado conectado, no hay traspaso
+     * y la sala se desarma, que es lo que ya pasaba cuando no quedaba nadie. En gameplay no se
+     * puede ser tan estricto, porque dejaria la partida sin quien publique las fases.
+     */
+    private fun canBeLobbyHost(player: OnlineLobbyPlayer): Boolean {
+        return player.publicId.isNotBlank()
+    }
+
     private fun onlineLobbyHostFallbackId(): String {
         return activeOnlinePlayers()
             .asSequence()
-            .filter(::isOnlinePlayerConnected)
+            .filter { isOnlinePlayerConnected(it) && canBeLobbyHost(it) }
             .sortedWith(compareBy<OnlineLobbyPlayer> { it.order }.thenBy { it.id })
             .firstOrNull()
             ?.id
@@ -1778,7 +1828,7 @@ class LobbyActivity : BaseActivity() {
     private fun onlineLobbyHostHandoffCandidate(excludeCurrent: Boolean = false): OnlineLobbyPlayer? {
         if (excludeCurrent) {
             return activeOnlinePlayers()
-                .filter { it.id != onlineTempUid && isOnlinePlayerConnected(it) }
+                .filter { it.id != onlineTempUid && isOnlinePlayerConnected(it) && canBeLobbyHost(it) }
                 .minWithOrNull(compareBy<OnlineLobbyPlayer> { it.order }.thenBy { it.id })
         }
         val candidateId = onlineLobbyHostFallbackId().takeIf { it.isNotBlank() } ?: return null

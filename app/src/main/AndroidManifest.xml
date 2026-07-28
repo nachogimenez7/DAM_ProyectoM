@@ -7,16 +7,22 @@
     <application
         android:name=".TraidoresApplication"
         android:allowBackup="true"
+        android:appCategory="game"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Traidores">
 
+        <meta-data
+            android:name="com.google.android.gms.games.APP_ID"
+            android:value="@string/game_services_project_id" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Traidores.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -39,6 +45,7 @@
         <activity android:name=".RolesActivity" android:screenOrientation="portrait" />
         <activity android:name=".AyudaActivity" android:screenOrientation="portrait" />
         <activity android:name=".OpcionesActivity" android:screenOrientation="portrait" />
+        <activity android:name=".AcercaDeActivity" android:screenOrientation="portrait" />
         <activity android:name=".ProfileActivity" android:screenOrientation="portrait" />
         <activity android:name=".ProfileSelectionActivity" android:screenOrientation="portrait" />
 

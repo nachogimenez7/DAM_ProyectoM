@@ -658,6 +658,48 @@
                     android:layout_marginBottom="0dp"
                     android:minHeight="48dp"
                     android:text="@string/profile_account_action" />
+
+                <Button
+                    android:id="@+id/btnDeleteAccount"
+                    style="@style/BtnDark"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="0dp"
+                    android:minHeight="48dp"
+                    android:text="@string/account_delete_action"
+                    android:textColor="#FF8A80"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:id="@+id/profilePlayGamesActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <Button
+                        android:id="@+id/btnPlayGamesAchievements"
+                        style="@style/BtnDark"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="48dp"
+                        android:text="@string/play_games_achievements_action" />
+
+                    <Button
+                        android:id="@+id/btnPlayGamesLeaderboards"
+                        style="@style/BtnDark"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="48dp"
+                        android:text="@string/play_games_leaderboards_action" />
+
+                    <Button
+                        android:id="@+id/btnPlayGamesFriends"
+                        style="@style/BtnDark"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="0dp"
+                        android:minHeight="48dp"
+                        android:text="@string/play_games_friends_action" />
+                </LinearLayout>
             </LinearLayout>
 
             <Button

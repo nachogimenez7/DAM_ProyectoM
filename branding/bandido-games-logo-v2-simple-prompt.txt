@@ -1,0 +1,13 @@
+Use case: precise-object-edit
+Asset type: simplified game-studio logo, square master artwork
+Input images: Image 1 is the edit target and current approved Bandido Games logo. Image 2 is a supporting identity reference for Bandido only.
+Primary request: Make Image 1 only a little simpler and cleaner. Preserve the successful dog portrait and overall identity, but reduce the amount of borders, frames, fills, bevels, and ornamental detail. Make the words substantially easier to read.
+Change only these elements:
+1. Replace the many layered gold borders and the large filled black plaque with one thin, elegant antique-gold circular outline around the dog portrait, plus at most one very small understated separator line.
+2. Place a clean free-standing wordmark below the portrait, without a heavy surrounding frame or plaque.
+3. Replace the highly decorative Western lettering with a clear, bold, classic uppercase serif display typeface: simple letterforms, moderate spacing, very high legibility, subtle game-fantasy character but no spikes or cutouts. Use nearly flat antique gold with only a restrained dark shadow; no thick bevel and no bulky outline.
+4. Keep the background plain near-black with only extremely subtle texture and more negative space.
+Text (verbatim): render exactly two lines and no other text: "BANDIDO" on the first line and "GAMES" smaller on the second. Correct spelling is mandatory: B-A-N-D-I-D-O and G-A-M-E-S. Every letter must be unmistakable at thumbnail size.
+Invariants: preserve Bandido's recognizable friendly face, cream-white shaggy fur, tan floppy ears, dark eyes, black nose, small visible tongue, dark-brown gaucho hat, burgundy neckerchief, forward-facing pose, warm painterly game-art finish, centered square composition, and the existing black/gold/burgundy palette. Do not redesign or change Bandido's expression.
+Constraints: premium yet restrained; strong silhouette; readable as an email avatar; no weapons, no skulls, no extra symbols, no stars, no flourishes, no duplicate outlines, no mockup, no watermark.
+Avoid: layered frames, filled nameplate, decorative side wings, oversized ornament, embossed 3D typography, blackletter, generic esports styling, misspelled or ambiguous letters.

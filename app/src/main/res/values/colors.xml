@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="bg_dark">#1a1510</color>
+    <color name="splash_background">#090909</color>
     <color name="bg_card">#2a2318</color>
     <color name="bg_overlay">#CC000000</color>
     <color name="btn_gold_start">#e8b84b</color>

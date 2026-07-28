@@ -62,6 +62,13 @@ Campos base:
 - `jugadoresEsperados`: cantidad fija definida por el host, de 5 a 15; en una sala de prueba, de 3 a 15.
 - `maxJugadores`: mismo limite visible que `jugadoresEsperados`.
 - `jugadoresActuales`: contador visible de jugadores registrados en la sala.
+- `soloCuentas`: opcional. Cuando es `true`, solo pueden entrar cuentas registradas. **Se fija
+  al crear la sala y no se puede cambiar despues** (`activeHostCanUpdateRoom` lo pinea): si se
+  pudiera prender con gente adentro, un invitado que ya estaba jugando quedaria en una sala
+  donde el servidor le rechaza cada escritura. Se hace valer en el alta de
+  `jugadores/{uid}`; como el campo no cambia, no hace falta revisarlo en cada update. Sirve
+  contra el griefer que reinstala: a un invitado expulsado le alcanza con borrar la app para
+  volver con otra identidad, y contra una cuenta con correo eso no funciona.
 - `modoPrueba`: habilita explicitamente salas experimentales con un minimo de 3 jugadores. El cliente lo controla, por lo que este limite es solo para pruebas entre amigos; App Check debera protegerlo antes de produccion.
 - `configLobby`: configuracion visible y sincronizada antes de iniciar (`transicionSeg`, `nocheSeg`, `discusionSeg`, `votacionSeg`, `revelarRolesAlMorir` y `votosIndividuales`). Sobrevive al traspaso de anfitrion.
 - `origen`: origen tecnico, por ejemplo `android-online-create`.
@@ -127,6 +134,66 @@ La eleccion de mapa online se resuelve dentro de la misma transaccion que crea
 `partidaInicial`: sin votos se conserva el mapa actual, con un lider unico gana ese mapa y,
 si hay empate, el anfitrion elige solamente entre los empatados. Su voto previo cuenta como
 un voto normal, sin peso extra.
+
+### Invitado contra cuenta registrada
+
+Las reglas distinguen las dos identidades con `isRegistered()`, que mira **dos** señales del
+token: `request.auth.token.firebase.sign_in_provider != 'anonymous'` **o**
+`request.auth.token.email != ''`. Hacen falta las dos porque despues de `linkWithCredential` el
+proveedor puede seguir diciendo `anonymous` en el token que el cliente ya tiene en mano,
+mientras que el correo aparece apenas se refresca. El cliente ademas fuerza `getIdToken(true)`
+al vincular (`AccountLink.refreshClaims`).
+
+Lo que el servidor hace valer:
+
+| | Invitado | Registrado |
+|---|---|---|
+| Crear sala (`partidas` create) | no | si |
+| Entrar a una sala con `soloCuentas` | no | si |
+| Anfitrion estable (`stableLobbyHostTransfer`) | no, ni recibiendola de otro | si |
+| `nombre`, `nombrePerfil`, `nombreSala` | alias de lista cerrada + numero de 4 digitos | texto libre, 18 caracteres |
+| `publicId` | no puede escribirlo | obligatorio |
+| `bioPerfil` | vacio | hasta 40 caracteres |
+
+El alias sale de una lista cerrada duplicada en dos lugares: `GuestIdentity.aliases` (Kotlin) y
+`isValidGuestName()` (reglas). **Al tocar una hay que tocar la otra**, o el nombre nuevo se
+rechaza; `scripts/test-firestore-rules-invitados.cjs` recorre la lista entera y falla si se
+desincronizan.
+
+El anfitrion activo **de gameplay** (`handoffUpdate`) no exige cuenta a proposito: si no queda
+ningun registrado vivo y conectado, nadie publicaria las fases y la partida se congelaria para
+toda la mesa. El cliente prefiere siempre a un registrado y recien despues de 20 segundos sin
+candidato habilita a los invitados (`GUEST_HOST_GRACE_MS`).
+
+### `partidas/{partidaId}/baneados/{uidTemporal}`
+
+Lista de expulsados permanentes de esa sala. La escribe el anfitrion (creador o activo) y la
+hace valer el servidor: `jugadores/{uid}` rechaza el alta y las escrituras de un uid que figure
+aca, asi que el baneo de sala no se evade reingresando.
+
+Campos:
+
+- `uidTemporal`: uid baneado. Debe coincidir con el id del documento.
+- `nombre`: nombre visible al momento del baneo, maximo 18 caracteres.
+- `motivo`: texto opcional, maximo 60 caracteres.
+- `baneadoPor`: uid del anfitrion que lo aplico. Debe coincidir con `request.auth.uid`.
+- `creadaEn`: timestamp de servidor; la regla exige `request.time`.
+
+Reglas de producto:
+
+- No se puede banear al creador de la sala ni a uno mismo.
+- El baneo **sobrevive a la revancha**: no se limpia junto con `partidaInicial` ni con los
+  chats. Solo se borra al desarmar la sala o cuando el anfitrion lo levanta a mano.
+- La interfaz todavia no existe: ver `docs/desarrollo/specs/SPEC-seguridad-y-moderacion-online.md`.
+
+### `bans/{uidTemporal}`
+
+Baneo global de cuenta. **Ningun cliente puede escribir aca** (`allow write: if false`): se crea
+a mano desde la consola de Firebase o con una credencial de servicio. Cada jugador solo puede
+leer el suyo, para poder mostrar el motivo en pantalla.
+
+Con que el documento exista alcanza: esa cuenta no puede crear salas ni entrar a ninguna. Para
+levantar el baneo, se borra el documento. El modo local contra la IA nunca se bloquea.
 
 ### `meta/public_ids`
 
@@ -367,12 +434,26 @@ cada reconexion. Lobby, listos, acciones nocturnas, presentaciones y handoff de 
 esta presencia. Los campos `estado` y `ultimaConexion*` de Firestore quedan como fallback
 legacy y no reciben heartbeats repetidos.
 
-Las reglas garantizan autenticacion, autoria y tamanos. La lectura del canal de traidores y
-el borrado completo de chats durante una revancha siguen siendo controles de confianza entre
-clientes autenticados. Para cerrar esos dos puntos en produccion hace falta un backend que
-refleje membresia, roles y autoridad del host.
+Las reglas garantizan autenticacion, autoria y tamanos. Los listeners de chat y emotes se
+enganchan recien cuando la presencia propia fue publicada; por eso RTDB exige un nodo de
+presencia en la sala para leer esos canales. El secreto entre canales dentro de una misma
+sala sigue siendo un control de confianza: cerrarlo por rol requiere un backend que refleje
+membresia, roles y autoridad del host.
 
 ## Limites actuales
+
+> Auditoria completa, con hallazgos priorizados y plan: [`seguridad-online.md`](seguridad-online.md).
+
+Barrido de autorizacion de julio de 2026 (ya publicado en `firestore.rules`):
+
+- El traspaso tecnico de anfitrion (`handoffUpdate`) exige ser **jugador activo de esa sala**.
+  Antes cualquier usuario autenticado podia tomar el `hostActivoId` de una sala ajena y, con
+  eso, editar jugadores, publicar estado falso o borrar la sala.
+- El contador `jugadoresActuales` exige membresia. Usa `existsAfter()` porque el alta de un
+  jugador crea su documento y actualiza el contador en la misma transaccion.
+- `meta/public_ids` solo acepta `nextId + 1`. Antes un solo cliente podia saltar el contador
+  hasta el maximo y quemar el espacio de `#` para siempre.
+- `pruebas/` quedo limitado al documento `conexion_inicial` y a sus cinco campos.
 
 Las reglas validan forma y tamanos, pero no pueden garantizar frecuencia fuerte de escritura. El cooldown local evita spam accidental, pero un cliente modificado podria seguir abusando.
 
@@ -385,11 +466,23 @@ Borrado en RTDB: vaciar un canal, borrar un mensaje o eliminar el nodo completo 
 exige tener nodo de presencia en esa sala. Antes bastaba con estar autenticado, asi que
 cualquiera podia vaciar el chat de una partida ajena.
 
+Ademas, cada cliente publica hoy su propio `rolKey` en `estadoClientes.{uid}` como dato de
+depuracion. Eso deja el rol de cada jugador servido y actualizado en un documento que cualquier
+cuenta autenticada puede leer: es el camino mas corto para hacer trampa y se saca en §B de la
+spec de seguridad.
+
 Pendiente para produccion:
 
-- Firebase Auth con **cuentas reales** (hoy ya hay Auth anónima; falta login persistente que reemplace el `uidTemporal` anónimo).
-- App Check para reducir clientes no autorizados.
-- Cloud Functions para validar frecuencia, resolver sala llena de forma centralizada y limpiar salas.
+- **App Check con Play Integrity** para que solo el APK real pueda hablar con Firebase. Es
+  gratuito y es la pieza que hace que cualquier validacion del cliente valga algo.
+- Sacar `rolKey`/`jugador` de `estadoClientes` y mover el reparto a `partidas/{id}/repartos/{uid}`,
+  legible solo por ese jugador y por el anfitrion activo.
+- Moderacion: silencio local, silencio por votacion de la mesa, expulsion y baneo de sala
+  (servidor listo), reportes y baneo global.
+- Firebase Auth con **cuentas reales** ya existe por correo (`AccountLink`), pero el online
+  todavia acepta identidad anonima: un baneo global se evade reinstalando.
+- Cloud Functions para validar frecuencia, resolver sala llena de forma centralizada y limpiar
+  salas. Desde febrero de 2026 exige plan Blaze (tarjeta asociada).
 - Reglas mas estrictas por rol, host y estado real de partida.
 
 ## Limpieza de salas

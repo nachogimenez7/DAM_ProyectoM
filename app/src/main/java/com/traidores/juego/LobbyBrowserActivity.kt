@@ -1,6 +1,5 @@
 package com.traidores.juego
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
@@ -104,7 +103,8 @@ class LobbyBrowserActivity : BaseActivity() {
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
             mapKey = mapKey,
-            canJoin = true
+            canJoin = true,
+            accountsOnly = document.getBoolean(OnlineRoomFirestore.FIELD_ACCOUNTS_ONLY) == true
         )
     }
 
@@ -118,8 +118,18 @@ class LobbyBrowserActivity : BaseActivity() {
 
     private fun createLobbyRow(lobby: OnlineLobby): View {
         val row = layoutInflater.inflate(R.layout.item_online_lobby, lobbyList, false)
-        row.findViewById<TextView>(R.id.lobbyName).text = lobby.name
-        row.findViewById<TextView>(R.id.lobbyMap).text = "${lobby.mapName} - Argentina"
+        // El candado va en el nombre y no en una vista nueva: la fila ya esta ajustada y
+        // sumarle un icono obligaria a rehacer el layout de una pantalla que hoy entra bien.
+        row.findViewById<TextView>(R.id.lobbyName).text = if (lobby.accountsOnly) {
+            "🔒 ${lobby.name}"
+        } else {
+            lobby.name
+        }
+        row.findViewById<TextView>(R.id.lobbyMap).text = if (lobby.accountsOnly) {
+            "${lobby.mapName} - Solo cuentas"
+        } else {
+            "${lobby.mapName} - Argentina"
+        }
         row.findViewById<TextView>(R.id.lobbyPlayers).text = "${lobby.players}/${lobby.limit}"
         row.findViewById<TextView>(R.id.lobbyStatus).apply {
             text = lobby.status
@@ -130,11 +140,27 @@ class LobbyBrowserActivity : BaseActivity() {
             alpha = if (isEnabled) 1f else 0.42f
             text = lobbyActionLabel(lobby)
             contentDescription = when {
+                lobby.accountsOnly && GuestIdentity.isGuest() ->
+                    "Sala ${lobby.name}, solo para cuentas registradas"
                 lobby.players >= lobby.limit -> "Intentar reingresar a la sala ${lobby.name}"
                 !lobby.canJoin -> "Sala ${lobby.name} en partida"
                 else -> "Entrar a la sala ${lobby.name}"
             }
-            setOnClickListener { enterLobby(lobby) }
+            setOnClickListener {
+                if (lobby.accountsOnly && GuestIdentity.isGuest()) {
+                    GameDialog.confirm(
+                        activity = this@LobbyBrowserActivity,
+                        title = "Solo cuentas",
+                        message = getString(R.string.online_room_accounts_only_blocked),
+                        positiveLabel = "IR AL PERFIL",
+                        negativeLabel = "AHORA NO"
+                    ) {
+                        startActivity(Intent(this@LobbyBrowserActivity, ProfileActivity::class.java))
+                    }
+                    return@setOnClickListener
+                }
+                enterLobby(lobby)
+            }
         }
         return row
     }
@@ -180,7 +206,10 @@ class LobbyBrowserActivity : BaseActivity() {
 
     private fun enterAuthenticatedLobby(lobby: OnlineLobby) {
         val existingPublicId = PlayerPublicIdentity.currentPublicId(this)
-        if (existingPublicId.isBlank()) {
+        // Un invitado nunca reserva numero, asi que este atajo no puede pedirlo: `onReady`
+        // vuelve a `enterLobby` y sin el chequeo de invitado quedaria dando vueltas para
+        // siempre esperando un `#` que no va a llegar.
+        if (existingPublicId.isBlank() && !GuestIdentity.isGuest()) {
             PlayerPublicIdentity.ensurePublicId(
                 context = this,
                 firestore = firestore,
@@ -191,11 +220,9 @@ class LobbyBrowserActivity : BaseActivity() {
             )
             return
         }
-        val playerName = OnlineRoomFirestore.normalizedPlayerName(
-            getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
-                .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
-                .orEmpty()
-        )
+        // profileName resuelve el alias del invitado; leer la preferencia directo devolveria
+        // el nombre libre que un invitado no puede usar.
+        val playerName = PlayerPublicIdentity.profileName(this)
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(lobby.id)
         val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION)
@@ -222,11 +249,15 @@ class LobbyBrowserActivity : BaseActivity() {
                 throw IllegalStateException("La sala esta llena.")
             }
 
-            val connectedData = mapOf(
+            // publicProfileFields omite el `publicId` cuando esta vacio (invitados) y de paso
+            // publica avatar, banner y frase, que esta rama no mandaba y dejaban el
+            // mini-perfil en blanco para quien entraba desde el navegador.
+            val connectedData = PlayerPublicIdentity.publicProfileFields(
+                this,
+                existingPublicId,
+                playerName
+            ) + mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
-                PlayerPublicIdentity.FIELD_PUBLIC_ID to existingPublicId,
-                PlayerPublicIdentity.FIELD_PROFILE_NAME to playerName,
-                PlayerPublicIdentity.FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(playerName, existingPublicId),
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "listo" to false,
                 "uidTemporal" to uidTemporal,
@@ -315,7 +346,9 @@ class LobbyBrowserActivity : BaseActivity() {
         val mapName: String,
         val status: String,
         val mapKey: String,
-        val canJoin: Boolean = true
+        val canJoin: Boolean = true,
+        /** Sala cerrada a cuentas registradas por decision del anfitrion. */
+        val accountsOnly: Boolean = false
     )
 
     companion object {

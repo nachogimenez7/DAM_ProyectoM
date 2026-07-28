@@ -4,14 +4,19 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.ImageButton
+import android.widget.TextView
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.traidores.juego.GameToast as Toast
 
 class MainActivity : BaseActivity() {
 
     private lateinit var btnMusic: ImageButton
+    private lateinit var bandidoIntro: BandidoIntroController
     private var isMusicOn = true
+    private var introVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -20,6 +25,7 @@ class MainActivity : BaseActivity() {
         val btnRoles: Button = findViewById(R.id.btnRoles)
         val btnHelp: Button = findViewById(R.id.btnHelp)
         val btnOptions: Button = findViewById(R.id.btnOptions)
+        val btnAbout: TextView = findViewById(R.id.btnAbout)
 
         // Bind bottom-bar action
         btnMusic = findViewById(R.id.btnMusic)
@@ -27,6 +33,24 @@ class MainActivity : BaseActivity() {
 
         val sharedPref = AudioPreferences.preferences(this)
         loadAudioState(sharedPref)
+
+        bandidoIntro = BandidoIntroController(this) {
+            introVisible = false
+            if (!isFinishing) MusicManager.playMenuMusic(this)
+        }
+        if (savedInstanceState == null) {
+            introVisible = true
+            MusicManager.pauseForTransition()
+            bandidoIntro.show()
+        }
+        if (intent.getBooleanExtra("account_deleted", false)) {
+            Toast.makeText(
+                this,
+                getString(R.string.account_delete_success),
+                Toast.LENGTH_LONG
+            ).show()
+            intent.removeExtra("account_deleted")
+        }
 
         // On clicks
         btnPlay.setOnClickListener {
@@ -43,6 +67,10 @@ class MainActivity : BaseActivity() {
 
         btnOptions.setOnClickListener {
             startActivity(Intent(this, OpcionesActivity::class.java))
+        }
+
+        btnAbout.setOnClickListener {
+            startActivity(Intent(this, AcercaDeActivity::class.java))
         }
 
         btnProfile.setOnClickListener {
@@ -62,8 +90,14 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        PlayGamesIdentity.ensureLinked(this)
         loadAudioState(AudioPreferences.preferences(this))
-        MusicManager.playMenuMusic(this)
+        if (!introVisible) MusicManager.playMenuMusic(this)
+    }
+
+    override fun onDestroy() {
+        if (::bandidoIntro.isInitialized) bandidoIntro.release()
+        super.onDestroy()
     }
 
     private fun loadAudioState(sharedPref: android.content.SharedPreferences) {

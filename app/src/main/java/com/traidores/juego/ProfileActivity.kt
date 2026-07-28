@@ -3,11 +3,13 @@ package com.traidores.juego
 import android.app.AlertDialog
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -17,11 +19,14 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.games.PlayGames
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -67,6 +72,19 @@ class ProfileActivity : BaseActivity() {
     ) { result ->
         applyProfileSelectionResult(result) { draftProfile.favoriteRoleKey = it }
     }
+    private val playGamesFriendsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            loadPlayGamesFriends(forceReload = true)
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.play_games_friends_permission_denied),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     private lateinit var savedProfile: ProfileDraft
     private lateinit var draftProfile: ProfileDraft
@@ -92,6 +110,11 @@ class ProfileActivity : BaseActivity() {
     private lateinit var profileStatsHint: TextView
     private lateinit var accountStateText: TextView
     private lateinit var accountButton: Button
+    private lateinit var deleteAccountButton: Button
+    private lateinit var playGamesActions: View
+    private lateinit var playGamesAchievementsButton: Button
+    private lateinit var playGamesLeaderboardsButton: Button
+    private lateinit var playGamesFriendsButton: Button
     private var accountRequestInProgress = false
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
@@ -166,6 +189,10 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
         accountButton.setOnClickListener { showAccountDialog() }
+        deleteAccountButton.setOnClickListener { showDeleteAccountDialog() }
+        playGamesAchievementsButton.setOnClickListener { showPlayGamesAchievements() }
+        playGamesLeaderboardsButton.setOnClickListener { showPlayGamesLeaderboards() }
+        playGamesFriendsButton.setOnClickListener { loadPlayGamesFriends() }
 
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
         profilePublicId.setOnClickListener { showFixedPublicIdMessage() }
@@ -205,6 +232,11 @@ class ProfileActivity : BaseActivity() {
         profileStatsHint = findViewById(R.id.profileStatsHint)
         accountStateText = findViewById(R.id.profileAccountState)
         accountButton = findViewById(R.id.btnProfileAccount)
+        deleteAccountButton = findViewById(R.id.btnDeleteAccount)
+        playGamesActions = findViewById(R.id.profilePlayGamesActions)
+        playGamesAchievementsButton = findViewById(R.id.btnPlayGamesAchievements)
+        playGamesLeaderboardsButton = findViewById(R.id.btnPlayGamesLeaderboards)
+        playGamesFriendsButton = findViewById(R.id.btnPlayGamesFriends)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -243,21 +275,173 @@ class ProfileActivity : BaseActivity() {
         )
     }
 
+    /**
+     * Se consulta a Firebase en vez de guardarse en un campo: la cuenta puede vincularse desde
+     * esta misma pantalla y todo lo que depende del estado tiene que reflejarlo enseguida.
+     */
+    private val isGuestAccount: Boolean
+        get() = GuestIdentity.isGuest()
+
+    /**
+     * Puerta unica de la personalizacion. Devuelve `true` cuando el jugador es invitado, o
+     * sea cuando quien llama tiene que cortar lo que estaba por hacer.
+     *
+     * El invitado igual puede **mirar** los catalogos de avatar y banner: se lo frena recien
+     * al elegir. Ver algo lindo y chocar con la puerta explica mucho mejor para que sirve una
+     * cuenta que un boton que directamente no existe.
+     */
+    private fun requireAccountFor(action: String): Boolean {
+        if (!isGuestAccount) return false
+        GameDialog.confirm(
+            activity = this,
+            title = "Solo con cuenta",
+            message = "$action necesita una cuenta. Es gratis, tarda un minuto y no perdés " +
+                "nada de lo que ya jugaste: se te guarda todo tal cual está.",
+            positiveLabel = "CREAR CUENTA",
+            negativeLabel = "AHORA NO"
+        ) { showAccountDialog() }
+        return true
+    }
+
     private fun renderAccountSection() {
         val email = AccountLink.currentEmail()
-        val linked = email.isNotBlank()
-        accountStateText.text = if (linked) {
-            getString(R.string.profile_account_linked, email)
-        } else {
-            getString(R.string.profile_account_guest)
+        val emailLinked = email.isNotBlank()
+        val playGamesLinked = PlayGamesIdentity.hasPlayGamesProvider()
+        accountStateText.text = when {
+            emailLinked -> getString(R.string.profile_account_linked, email)
+            playGamesLinked -> getString(R.string.profile_account_play_games)
+            else -> getString(R.string.profile_account_guest)
         }
-        accountButton.isEnabled = !linked && !accountRequestInProgress
+        accountButton.isEnabled = !emailLinked && !accountRequestInProgress
         accountButton.alpha = if (accountButton.isEnabled) 1f else 0.5f
-        accountButton.text = if (linked) {
-            getString(R.string.profile_account_action_linked)
-        } else {
-            getString(R.string.profile_account_action)
+        accountButton.text = when {
+            emailLinked -> getString(R.string.profile_account_action_linked)
+            playGamesLinked -> getString(R.string.profile_account_action_add_email)
+            else -> getString(R.string.profile_account_action)
         }
+        deleteAccountButton.visibility = if (isGuestAccount) View.GONE else View.VISIBLE
+        deleteAccountButton.isEnabled = !accountRequestInProgress
+        deleteAccountButton.alpha = if (deleteAccountButton.isEnabled) 1f else 0.5f
+        playGamesActions.visibility = if (
+            playGamesLinked && PlayGamesConfig.isIdentityConfigured(this)
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+    }
+
+    private fun showPlayGamesAchievements() {
+        if (!PlayGamesIdentity.isReady(this)) return
+        PlayGames.getAchievementsClient(this)
+            .achievementsIntent
+            .addOnSuccessListener(::startActivity)
+            .addOnFailureListener {
+                Toast.makeText(
+                    this,
+                    getString(R.string.play_games_open_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    private fun showPlayGamesLeaderboards() {
+        if (!PlayGamesIdentity.isReady(this)) return
+        PlayGames.getLeaderboardsClient(this)
+            .allLeaderboardsIntent
+            .addOnSuccessListener(::startActivity)
+            .addOnFailureListener {
+                Toast.makeText(
+                    this,
+                    getString(R.string.play_games_open_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    private fun loadPlayGamesFriends(forceReload: Boolean = false) {
+        if (!PlayGamesIdentity.isReady(this)) return
+        PlayGamesFriends.load(this, forceReload) { result ->
+            when (result) {
+                is PlayGamesFriendsResult.Loaded -> showPlayGamesFriends(result.friends)
+                is PlayGamesFriendsResult.PermissionRequired -> {
+                    runCatching {
+                        playGamesFriendsPermissionLauncher.launch(
+                            IntentSenderRequest.Builder(result.resolution).build()
+                        )
+                    }.onFailure {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.play_games_open_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+                is PlayGamesFriendsResult.Failed -> {
+                    OnlineDebugLog.e("play_games_friends_failure", result.error)
+                    Toast.makeText(
+                        this,
+                        getString(R.string.play_games_friends_unavailable),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showPlayGamesFriends(friends: List<PlayGamesFriend>) {
+        val rows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        rows.addView(
+            TextView(this).apply {
+                text = getString(R.string.play_games_friends_title)
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 18f
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
+        if (friends.isEmpty()) {
+            rows.addView(
+                TextView(this).apply {
+                    text = getString(R.string.play_games_friends_empty)
+                    setTextColor(getColor(R.color.text_secondary))
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setPadding(dp(10), dp(18), dp(10), dp(18))
+                }
+            )
+        } else {
+            friends.forEach { friend ->
+                rows.addView(
+                    TextView(this).apply {
+                        text = friend.displayName.ifBlank {
+                            getString(R.string.play_games_friend_unknown)
+                        }
+                        setTextColor(getColor(R.color.text_primary))
+                        textSize = 16f
+                        gravity = Gravity.CENTER_VERTICAL
+                        setBackgroundResource(R.drawable.bg_btn_dark)
+                        minHeight = dp(48)
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(6) }
+                )
+            }
+        }
+        GameDialog.custom(
+            activity = this,
+            contentView = ScrollView(this).apply { addView(rows) },
+            widthDp = 420,
+            contentHeightDp = 360,
+            negativeLabel = getString(R.string.play_games_close)
+        )
     }
 
     /**
@@ -336,11 +520,136 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
+    private fun showDeleteAccountDialog() {
+        if (isGuestAccount || accountRequestInProgress) return
+        val hasEmail = AccountLink.currentEmail().isNotBlank()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        content.addView(
+            TextView(this).apply {
+                text = getString(R.string.account_delete_explanation)
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 14f
+                setLineSpacing(0f, 1.15f)
+            }
+        )
+        val confirmationInput = EditText(this).apply {
+            hint = AccountDeletion.CONFIRMATION_TEXT
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            setSingleLine(true)
+            setTextColor(getColor(R.color.text_primary))
+            setHintTextColor(getColor(R.color.text_muted))
+        }
+        content.addView(
+            confirmationInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
+        )
+        val passwordInput = if (hasEmail) {
+            EditText(this).apply {
+                hint = getString(R.string.account_delete_password_hint)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                setSingleLine(true)
+                setTextColor(getColor(R.color.text_primary))
+                setHintTextColor(getColor(R.color.text_muted))
+                content.addView(
+                    this,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(8) }
+                )
+            }
+        } else {
+            null
+        }
+        val errorText = TextView(this).apply {
+            visibility = View.GONE
+            setTextColor(Color.parseColor("#FF8A80"))
+            textSize = 13f
+            setPadding(0, dp(8), 0, 0)
+        }
+        content.addView(errorText)
+
+        val dialog = GameDialog.custom(
+            activity = this,
+            contentView = content,
+            widthDp = 420,
+            negativeLabel = getString(R.string.account_delete_cancel),
+            positiveLabel = getString(R.string.account_delete_action)
+        )
+        dialog.findViewById<Button>(R.id.gameDialogPositive)?.setOnClickListener {
+            if (confirmationInput.text.toString().trim() != AccountDeletion.CONFIRMATION_TEXT) {
+                errorText.text = getString(
+                    R.string.account_delete_confirmation_error,
+                    AccountDeletion.CONFIRMATION_TEXT
+                )
+                errorText.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            if (hasEmail && passwordInput?.text.isNullOrBlank()) {
+                errorText.text = getString(R.string.account_delete_password_error)
+                errorText.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            submitAccountDeletion(passwordInput?.text?.toString())
+        }
+    }
+
+    private fun submitAccountDeletion(password: String?) {
+        accountRequestInProgress = true
+        renderAccountSection()
+        GameNotice.show(
+            activity = this,
+            message = getString(R.string.account_delete_progress),
+            duration = GameNotice.Duration.LONG
+        )
+        AccountDeletion.delete(this, password) { result ->
+            accountRequestInProgress = false
+            if (isFinishing || isDestroyed) return@delete
+            when (result) {
+                AccountDeletionResult.Deleted -> {
+                    startActivity(
+                        Intent(this, MainActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            )
+                            putExtra("account_deleted", true)
+                        }
+                    )
+                    finish()
+                }
+                is AccountDeletionResult.Failed -> {
+                    result.error?.let {
+                        OnlineDebugLog.e("account_deletion_failure", it)
+                    }
+                    GameNotice.show(
+                        activity = this,
+                        message = result.message,
+                        duration = GameNotice.Duration.LONG
+                    )
+                    renderAccountSection()
+                }
+            }
+        }
+    }
+
     private fun renderProfile() {
         renderAccountSection()
         profileName.text = draftProfile.name
-        profilePublicId.text = draftProfile.publicId.takeIf { it.isNotBlank() }?.let { "#$it" }
-            ?: "#SIN ID"
+        // El `#` es de las cuentas. Al invitado se le muestra su condicion en ese lugar, en
+        // vez de un "#SIN ID" que parece un error del juego.
+        profilePublicId.text = when {
+            draftProfile.publicId.isNotBlank() -> "#${draftProfile.publicId}"
+            isGuestAccount -> "INVITADO"
+            else -> "#SIN ID"
+        }
         val hasBio = draftProfile.bio.isNotBlank()
         profileBio.text = if (hasBio) {
             "\"${draftProfile.bio}\""
@@ -542,6 +851,8 @@ class ProfileActivity : BaseActivity() {
 
     private fun ensureNumericPublicId() {
         if (draftProfile.publicId.isNotBlank()) return
+        // Un invitado no reserva numero: el `#` es la señal de que hay una cuenta detras.
+        if (isGuestAccount) return
         PlayerPublicIdentity.ensurePublicId(
             context = this,
             firestore = FirebaseFirestore.getInstance(),
@@ -595,7 +906,17 @@ class ProfileActivity : BaseActivity() {
 
     private fun setEditing(editing: Boolean) {
         isEditing = editing
-        editIcons.forEach { it.visibility = if (editing) View.VISIBLE else View.GONE }
+        val guest = isGuestAccount
+        editIcons.forEach { icon ->
+            icon.visibility = if (editing) View.VISIBLE else View.GONE
+            // El candado reemplaza al lapiz: el invitado ve que la opcion existe y que le
+            // falta algo para usarla, en vez de encontrarse una pantalla sin botones. El
+            // nombre queda con lapiz porque el alias si lo puede cambiar.
+            val locked = guest && icon.id != R.id.editName
+            (icon as? ImageButton)?.setImageResource(
+                if (locked) R.drawable.ic_lock_gold else R.drawable.ic_edit_pencil
+            )
+        }
         emoteViews.forEach {
             it.isClickable = editing
             it.isFocusable = editing
@@ -611,6 +932,14 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun saveChanges() {
+        // Un invitado no guarda nada: su alias ya se guardo al elegirlo y el resto del perfil
+        // esta bloqueado. Escribir aca ademas seria un error, porque dejaria el nombre
+        // derivado ("Aguafiestas 4821") como nombre propio el dia que se registre.
+        if (isGuestAccount) {
+            setEditing(false)
+            renderProfile()
+            return
+        }
         draftProfile.emoteLoadout = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
         preferences.edit()
             .putString(PREF_NAME, draftProfile.name)
@@ -627,8 +956,16 @@ class ProfileActivity : BaseActivity() {
         EmoteLoadout.save(this, draftProfile.emoteLoadout)
 
         savedProfile = copyProfile(draftProfile)
+        PlayGamesProgressSync.onProfileSaved(this)
         setEditing(false)
         Toast.makeText(this, "Perfil actualizado.", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onStop() {
+        if (!isChangingConfigurations && !isGuestAccount) {
+            PlayGamesProgressSync.onProfileSaved(this)
+        }
+        super.onStop()
     }
 
     private fun handleBack() {
@@ -718,6 +1055,13 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showNameEditor() {
+        // El invitado no escribe su nombre: elige un alias de la lista cerrada. Es la unica
+        // personalizacion que se le deja, porque no tiene forma de abusarse y sin ella los
+        // amigos no se distinguen entre si dentro de una sala.
+        if (isGuestAccount) {
+            showGuestAliasPicker()
+            return
+        }
         showTextEditor(
             title = "Editar nombre",
             currentValue = draftProfile.name,
@@ -734,6 +1078,85 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
+    /**
+     * Lista cerrada de alias para invitados. No hay campo de texto a proposito: es lo que
+     * hace imposible que un jugador sin cuenta entre a una sala con un nombre ofensivo, y es
+     * la unica parte del control de contenido que hoy se puede verificar en el servidor.
+     */
+    private fun showGuestAliasPicker() {
+        val number = GuestIdentity.guestNumber(this)
+        val current = GuestIdentity.selectedAlias(this)
+        var dialog: androidx.appcompat.app.AlertDialog? = null
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        container.addView(
+            TextView(this).apply {
+                text = "TU ALIAS DE INVITADO"
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 16f
+                gravity = Gravity.CENTER
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setPadding(0, 0, 0, dp(4))
+            }
+        )
+        container.addView(
+            TextView(this).apply {
+                text = "El número es tuyo y no cambia. Con una cuenta podés usar el nombre " +
+                    "que quieras."
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(10))
+            }
+        )
+
+        GuestIdentity.aliases.forEach { alias ->
+            val selected = alias == current
+            val option = TextView(this).apply {
+                text = "$alias $number"
+                setBackgroundResource(R.drawable.bg_btn_dark)
+                setTextColor(getColor(if (selected) R.color.accent_gold else R.color.text_primary))
+                textSize = 16f
+                gravity = Gravity.CENTER
+                minHeight = dp(48)
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                isClickable = true
+                isFocusable = true
+                contentDescription = if (selected) "$alias, alias actual" else alias
+                setOnClickListener {
+                    GuestIdentity.saveAlias(this@ProfileActivity, alias)
+                    val updatedName = GuestIdentity.displayName(this@ProfileActivity)
+                    draftProfile.name = updatedName
+                    savedProfile.name = updatedName
+                    renderProfile()
+                    dialog?.dismiss()
+                }
+            }
+            container.addView(
+                option,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            )
+        }
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(container)
+        }
+        dialog = GameDialog.custom(
+            activity = this,
+            contentView = scroll,
+            widthDp = 380,
+            contentHeightDp = 420,
+            negativeLabel = "CERRAR"
+        )
+    }
+
     private fun showFixedPublicIdMessage() {
         Toast.makeText(
             this,
@@ -743,6 +1166,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showBioEditor() {
+        if (requireAccountFor("Escribir tu frase")) return
         showTextEditor(
             title = "Editar frase",
             currentValue = draftProfile.bio,
@@ -773,6 +1197,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showEmoteSelector() {
+        if (requireAccountFor("Elegir tus emotes")) return
         val content = layoutInflater.inflate(R.layout.dialog_emote_selector, null)
         val counter: TextView = content.findViewById(R.id.emoteSelectorCounter)
         val themeContainer: LinearLayout = content.findViewById(R.id.emoteThemeContainer)
@@ -925,11 +1350,14 @@ class ProfileActivity : BaseActivity() {
             ?.getStringExtra(ProfileSelectionActivity.EXTRA_SELECTED_KEY)
             .orEmpty()
         if (selectedKey.isBlank()) return
+        // El invitado pudo recorrer el catalogo entero; el corte esta al elegir.
+        if (requireAccountFor("Quedarte con lo que elegiste")) return
         applySelection(selectedKey)
         renderProfile()
     }
 
     private fun showAchievementsSelector() {
+        if (requireAccountFor("Elegir que logros mostrar")) return
         val achievements = AchievementTracker.achievementsWithProgress(this)
         val unlockedNames = AchievementTracker.unlockedAchievements(this)
             .map { it.name }

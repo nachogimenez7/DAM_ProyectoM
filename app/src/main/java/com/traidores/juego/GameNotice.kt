@@ -6,7 +6,6 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.accessibility.AccessibilityEvent
 import android.widget.FrameLayout
 import android.widget.TextView
 import java.util.WeakHashMap
@@ -53,6 +52,7 @@ object GameNotice {
             translationY = activity.dp(12).toFloat()
             isClickable = true
             contentDescription = message
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE
         }
         val params = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -75,7 +75,6 @@ object GameNotice {
             .translationY(0f)
             .setDuration(170L)
             .start()
-        notice.sendAccessibilityEvent(AccessibilityEvent.TYPE_ANNOUNCEMENT)
         handler.postDelayed(dismiss, duration.milliseconds)
     }
 

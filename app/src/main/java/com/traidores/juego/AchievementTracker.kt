@@ -20,7 +20,13 @@ object AchievementTracker {
     private const val TOTAL_WINS = "achievement_total_wins"
     private const val MAX_PROCESSED_EVENTS = 120
 
+    /**
+     * El logro dice "Te registraste en Traidores", pero se otorgaba con solo abrir la pantalla
+     * de perfil. Ahora se otorga cuando hay cuenta de verdad, que es lo que el texto siempre
+     * dijo. Quien ya lo tenia desbloqueado lo conserva: el desbloqueo esta persistido.
+     */
     fun ensureProfileOpened(context: Context): List<ProfileAchievement> {
+        if (GuestIdentity.isGuest()) return emptyList()
         return unlock(context, ProfileCustomizationCatalog.ACH_PROFILE_CREATED)
             ?.let(::listOf)
             .orEmpty()
@@ -211,6 +217,7 @@ object AchievementTracker {
             .putBoolean(unlockedKey(achievementId), true)
             .putString(dateKey(achievementId), today())
             .apply()
+        PlayGamesProgressSync.unlockAchievement(context, achievementId)
         return achievementWithProgress(context, achievement)
     }
 
@@ -251,7 +258,7 @@ object AchievementTracker {
     private fun dateKey(id: String): String = "$DATE_PREFIX$id"
 
     private fun today(): String {
-        return SimpleDateFormat("dd/MM/yyyy", Locale("es", "AR")).format(Date())
+        return SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("es-AR")).format(Date())
     }
 
     private fun ProfileAchievement?.orEmptyList(): List<ProfileAchievement> {
