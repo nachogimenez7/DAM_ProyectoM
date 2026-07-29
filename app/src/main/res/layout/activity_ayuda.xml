@@ -65,27 +65,27 @@
 
             <TextView
                 style="@style/HelpSectionTitle"
-                android:text="DE QUE TRATA" />
+                android:text="DE QUÉ TRATA" />
 
             <TextView
                 style="@style/HelpBodyCard"
-                android:text="Traidores es un juego de deduccion social, engaño y debate para 5 a 15 jugadores. Cada participante recibe un rol secreto. Algunos protegen al pueblo; otros intentan controlarlo desde las sombras; y ciertos neutrales persiguen una victoria propia.\n\nNo alcanza con descubrir la verdad: tambien hay que lograr que los demas te crean." />
+                android:text="Traidores es un juego de deducción social, engaño y debate para 5 a 15 jugadores. Cada participante recibe un rol secreto. Algunos protegen al pueblo; otros intentan controlarlo desde las sombras; y ciertos neutrales persiguen una victoria propia.\n\nNo alcanza con descubrir la verdad: también hay que lograr que los demás te crean." />
 
             <TextView
                 style="@style/HelpSectionTitle"
-                android:text="COMO SE JUEGA" />
+                android:text="CÓMO SE JUEGA" />
 
             <TextView
                 style="@style/HelpBodyCard"
-                android:text="1. ROL SECRETO\nLee tu carta y recorda tu objetivo. No se la muestres a nadie.\n\n2. NOCHE\nEl pueblo duerme. Los roles nocturnos actuan en secreto: los Traidores atacan, el Detective investiga, el Medico protege y otros roles usan sus habilidades.\n\n3. AMANECER Y DEBATE\nSe anuncia lo ocurrido. Los sobrevivientes preguntan, acusan, se defienden y forman alianzas.\n\n4. VOTACION\nCada jugador habilitado elige a un sospechoso. El resultado puede expulsar a un jugador o activar una condicion especial.\n\n5. NUEVA RONDA\nSi ningun bando alcanzo su victoria, vuelve a caer la noche." />
+                android:text="1. ROL SECRETO\nLee tu carta y recordá tu objetivo. No se la muestres a nadie.\n\n2. NOCHE\nEl pueblo duerme. Los roles nocturnos actúan en secreto: los Traidores atacan, el Detective investiga, el Médico protege y otros roles usan sus habilidades.\n\n3. AMANECER Y DEBATE\nSe anuncia lo ocurrido. Los sobrevivientes preguntan, acusan, se defienden y forman alianzas.\n\n4. VOTACIÓN\nCada jugador habilitado elige a un sospechoso. El resultado puede expulsar a un jugador o activar una condición especial.\n\n5. NUEVA RONDA\nSi ningún bando alcanzó su victoria, vuelve a caer la noche." />
 
             <TextView
                 style="@style/HelpSectionTitle"
-                android:text="COMO SE GANA" />
+                android:text="CÓMO SE GANA" />
 
             <TextView
                 style="@style/HelpBodyCard"
-                android:text="PUEBLO\nGana cuando ya no queda ningun Asesino capaz de matar.\n\nTRAIDORES\nGanan cuando igualan o superan en numero al resto del pueblo.\n\nBUFON\nObtiene su victoria especial si el pueblo lo expulsa durante una votacion. La partida principal continua.\n\nDESERTOR\nDebe sobrevivir y conseguir que gane el bando que eligio finalmente." />
+                android:text="PUEBLO\nGana cuando ya no queda ningún Asesino capaz de matar.\n\nTRAIDORES\nGanan cuando igualan o superan en número a los jugadores del bando del Pueblo. Los neutrales no entran en esa cuenta.\n\nBUFÓN (neutral)\nObtiene su victoria especial si el pueblo lo expulsa durante una votación. La partida principal continúa.\n\nDESERTOR (neutral)\nDebe sobrevivir y conseguir que gane el bando que eligió finalmente." />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -93,7 +93,7 @@
 
             <TextView
                 style="@style/HelpHighlightCard"
-                android:text="Se permite mentir sobre tu rol, inventar una investigacion, negar una accion, acusar para desviar sospechas o fingir que tienes informacion.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar informacion externa para demostrar que dices la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
+                android:text="Se permite mentir sobre tu rol, inventar una investigación, negar una acción, acusar para desviar sospechas o fingir que tienes información.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar información externa para demostrar que dices la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -101,7 +101,7 @@
 
             <TextView
                 style="@style/HelpBodyCard"
-                android:text="- Tu rol es secreto hasta que una regla indique lo contrario.\n\n- Los jugadores eliminados no hablan ni votan. La excepcion es una voz invocada por el Oraculo: puede debatir, pero no votar ni usar habilidades.\n\n- Un jugador silenciado no puede hablar ni votar durante ese dia.\n\n- El Alcalde revelado tiene voto doble y puede resolver ciertos empates.\n\n- Las habilidades de uso unico no se recuperan en la ronda siguiente.\n\n- Mentir dentro del juego esta permitido; insultar, molestar fuera del personaje o atacar personalmente a otro jugador, no." />
+                android:text="- Tu rol es secreto hasta que una regla indique lo contrario.\n\n- Los jugadores eliminados no hablan ni votan. La excepción es una voz invocada por el Oráculo: puede debatir, pero no votar ni usar habilidades.\n\n- Un jugador silenciado no puede hablar ni votar durante ese día.\n\n- El Alcalde revelado tiene voto doble y puede resolver ciertos empates.\n\n- Las habilidades de uso único no se recuperan en la ronda siguiente.\n\n- Mentir dentro del juego está permitido; insultar, molestar fuera del personaje o atacar personalmente a otro jugador, no." />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -109,7 +109,7 @@
 
             <TextView
                 style="@style/HelpBodyCard"
-                android:text="- Presta atencion a quien acusa primero y quien cambia de version.\n\n- No reveles informacion privada sin pensar quien puede protegerte.\n\n- Hablar mucho no demuestra inocencia, pero guardar silencio tampoco.\n\n- Un aliado puede equivocarse y un enemigo puede decir la verdad.\n\n- Recorda las votaciones anteriores: suelen revelar alianzas mejor que los discursos." />
+                android:text="- Presta atención a quién acusa primero y quién cambia de versión.\n\n- No reveles información privada sin pensar quién puede protegerte.\n\n- Hablar mucho no demuestra inocencia, pero guardar silencio tampoco.\n\n- Un aliado puede equivocarse y un enemigo puede decir la verdad.\n\n- Recordá las votaciones anteriores: suelen revelar alianzas mejor que los discursos." />
 
             <TextView
                 style="@style/HelpSectionTitle"
@@ -120,7 +120,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="10dp"
                 android:fontFamily="sans-serif"
-                android:text="Toca un rol para consultar su funcion y su consejo."
+                android:text="Toca un rol para consultar su función y su consejo."
                 android:textColor="@color/text_secondary"
                 android:textSize="17sp" />
 

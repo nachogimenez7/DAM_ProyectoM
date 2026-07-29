@@ -108,6 +108,8 @@ service cloud.firestore {
         && (!('limpiezaPendiente' in data) || data.limpiezaPendiente is bool)
         // Opcional: las salas creadas antes de existir esta opcion no lo traen y valen igual.
         && (!('soloCuentas' in data) || data.soloCuentas is bool)
+        // Las salas viejas sin campo se interpretan como publicas durante la migracion.
+        && (!('visibilidad' in data) || data.visibilidad in ['publica', 'privada'])
         && data.modoPrueba is bool
         && data.jugadoresEsperados is int
         && ((data.modoPrueba == true && data.jugadoresEsperados >= 3)
@@ -289,6 +291,10 @@ service cloud.firestore {
         // a un invitado que ya estaba jugando en una sala donde cada escritura suya se rechaza.
         && request.resource.data.get('soloCuentas', false)
           == resource.data.get('soloCuentas', false)
+        // Publica/privada se decide al crear. Cambiarla en caliente haria que el navegador
+        // y el codigo compartido discrepen sobre quien puede descubrir la sala.
+        && request.resource.data.get('visibilidad', 'publica')
+          == resource.data.get('visibilidad', 'publica')
         && request.resource.data.origen == resource.data.origen
         && (!(request.resource.data.estado == 'esperando'
           && resource.data.estado != 'esperando') || request.auth.uid == resource.data.hostId)
@@ -490,12 +496,48 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Reportes inmutables y sin lectura desde el cliente. El id determinista evita que una
+    // misma cuenta pueda inundar el backend reportando varias veces al mismo jugador por match.
+    match /reportes/{reporteId} {
+      allow read, update, delete: if false;
+      allow create: if signedIn()
+        && reporteId == request.resource.data.matchId + '_'
+          + request.auth.uid + '_' + request.resource.data.reportadoId
+        && hasOnly(request.resource.data, [
+          'reportanteId',
+          'reportadoId',
+          'reportadoNombre',
+          'roomId',
+          'matchId',
+          'motivo',
+          'detalle',
+          'creadaEn'
+        ])
+        && hasAll(request.resource.data, [
+          'reportanteId',
+          'reportadoId',
+          'reportadoNombre',
+          'roomId',
+          'matchId',
+          'motivo',
+          'creadaEn'
+        ])
+        && request.resource.data.reportanteId == request.auth.uid
+        && request.resource.data.reportadoId != request.auth.uid
+        && isString(request.resource.data.reportadoId, 1, 128)
+        && isString(request.resource.data.reportadoNombre, 1, 18)
+        && isString(request.resource.data.roomId, 1, 80)
+        && isString(request.resource.data.matchId, 8, 80)
+        && request.resource.data.motivo in [
+          'toxicidad', 'trampa', 'spam', 'nombre_ofensivo', 'otro'
+        ]
+        && isOptionalString(request.resource.data, 'detalle', 140)
+        && request.resource.data.creadaEn == request.time;
+    }
+
     match /partidas/{partidaId} {
       // El navegador de salas necesita leer salas de las que todavia no sos miembro, asi
       // que la lectura no puede pedir membresia: se cierra hasta estar autenticado.
-      // OJO: partidaInicial incluye el rol de cada jugador. El secreto de roles sigue
-      // siendo honor-system y solo se cierra de verdad con un backend que reparta el rol
-      // por jugador (ver docs/firebase-online-schema.md).
       allow read: if signedIn();
 
       // Crear sala es de cuentas registradas: el creador arranca de anfitrion, y el anfitrion
@@ -577,6 +619,28 @@ service cloud.firestore {
 
         allow update: if false;
         allow delete: if isRoomHostAny(partidaId) || roomTeardownAllowed(partidaId);
+      }
+
+      // Reparto privado: cada cliente solo puede leer su documento. El anfitrión activo
+      // puede enumerarlos porque es quien ejecuta el motor autoritativo de la partida.
+      match /repartos/{uidJugador} {
+        allow get: if isSelf(uidJugador) || isRoomHostAny(partidaId);
+        allow list: if isRoomHostAny(partidaId);
+        allow create: if isRoomHostAny(partidaId)
+          && hasOnly(request.resource.data, [
+            'matchId', 'uidTemporal', 'rolesVisibles', 'creadaEn'
+          ])
+          && hasAll(request.resource.data, [
+            'matchId', 'uidTemporal', 'rolesVisibles', 'creadaEn'
+          ])
+          && request.resource.data.uidTemporal == uidJugador
+          && isString(request.resource.data.matchId, 8, 80)
+          && request.resource.data.rolesVisibles is list
+          && request.resource.data.rolesVisibles.size() >= 1
+          && request.resource.data.rolesVisibles.size() <= 15
+          && request.resource.data.creadaEn == request.time;
+        allow update: if false;
+        allow delete: if cleanupDeleteAllowed(partidaId) || roomTeardownAllowed(partidaId);
       }
 
       match /acciones/{accionId} {
@@ -729,11 +793,9 @@ service cloud.firestore {
       }
 
       match /chat_traidores/{mensajeId} {
-        // Canal secreto del equipo asesino. Hoy la lectura es honor-system, igual que el
-        // secreto de roles en online (partidaInicial es world-readable). Para cerrar la
-        // lectura a nivel servidor, reemplazar `allow read: if true` por una funcion que
-        // haga get() sobre partidaInicial y verifique que request.auth.uid tiene un rol
-        // traidor. Requiere confirmar el shape del rol por uid en partidaInicial.
+        // Firestore limita el canal a miembros activos. La comprobacion exacta del rol vive
+        // en `repartos`, pero no puede expresarse para este listener sin acoplar cada lectura
+        // a un get adicional; RTDB aplica la misma barrera mediante presencia.
         allow read: if isActiveRoomMember(partidaId);
 
         allow create: if isActiveRoomMember(partidaId)

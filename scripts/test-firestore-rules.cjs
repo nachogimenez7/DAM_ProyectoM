@@ -45,6 +45,7 @@ const roomData = (
   maxJugadores: expectedPlayers,
   jugadoresActuales: 1,
   modoPrueba: modePrueba,
+  visibilidad: "publica",
   configLobby: {
     transicionSeg: 3,
     nocheSeg: 30,
@@ -112,6 +113,9 @@ async function main() {
 
     await assertFails(setDoc(doc(anon, "partidas", "room_no_auth"), roomData("host_uid")));
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create"), roomData("host_uid")));
+    const invalidVisibility = roomData("host_uid");
+    invalidVisibility.visibilidad = "secreta";
+    await assertFails(setDoc(doc(host, "partidas", "room_invalid_visibility"), invalidVisibility));
     await assertFails(setDoc(doc(blocked, "partidas", "room_blocked"), roomData("blocked_uid")));
     const legacyCreate = roomData("host_uid");
     delete legacyCreate.limpiezaPendiente;
@@ -147,6 +151,10 @@ async function main() {
     }));
 
     await seedRoom(testEnv);
+    await assertFails(updateDoc(doc(host, "partidas", "room_auth"), {
+      visibilidad: "privada",
+      actualizadaEn: serverTimestamp(),
+    }));
 
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
@@ -591,6 +599,42 @@ async function main() {
       { estado: "desconectado" }
     ));
 
+    // --- Repartos privados y reportes inmutables ---
+    const reparto = {
+      matchId: "match_private_1",
+      uidTemporal: "guest_uid",
+      rolesVisibles: [{
+        orden: 1,
+        rolKey: "policia",
+        rolNombre: "Policia",
+        rolEquipo: "Pueblo",
+        rolImagen: "role_policia",
+      }],
+      creadaEn: serverTimestamp(),
+    };
+    const repartoRef = doc(host, "partidas", "room_bans", "repartos", "guest_uid");
+    await assertSucceeds(setDoc(repartoRef, reparto));
+    await assertSucceeds(getDoc(doc(guest, repartoRef.path)));
+    await assertFails(getDoc(doc(intruder, repartoRef.path)));
+    await assertSucceeds(getDocs(collection(host, "partidas", "room_bans", "repartos")));
+    await assertFails(getDocs(collection(intruder, "partidas", "room_bans", "repartos")));
+
+    const reportId = "match_private_1_guest_uid_host_uid";
+    const report = {
+      reportanteId: "guest_uid",
+      reportadoId: "host_uid",
+      reportadoNombre: "Host",
+      roomId: "room_bans",
+      matchId: "match_private_1",
+      motivo: "toxicidad",
+      detalle: "Insultos en el chat",
+      creadaEn: serverTimestamp(),
+    };
+    await assertSucceeds(setDoc(doc(guest, "reportes", reportId), report));
+    await assertFails(getDoc(doc(guest, "reportes", reportId)));
+    await assertFails(setDoc(doc(guest, "reportes", `${reportId}_duplicado`), report));
+    await assertFails(setDoc(doc(intruder, "reportes", reportId), report));
+
     // --- Cierre completo de salas vacias (teardown) ---
     await seedRoom(testEnv, "room_teardown_empty", "host_uid");
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -627,6 +671,7 @@ async function main() {
     const browserQuery = query(
       collection(guest, "partidas"),
       where("estado", "==", "esperando"),
+      where("visibilidad", "==", "publica"),
       orderBy("actualizadaEn", "desc"),
       limit(30)
     );

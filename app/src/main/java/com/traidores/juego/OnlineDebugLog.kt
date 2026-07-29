@@ -4,12 +4,19 @@ import android.util.Log
 
 object OnlineDebugLog {
     const val TAG = "TraidoresOnline"
+    @Volatile private var verbose = true
+
+    fun configure(debuggable: Boolean) {
+        verbose = debuggable
+    }
 
     fun i(message: String) {
+        if (!verbose) return
         Log.i(TAG, message)
     }
 
     fun w(message: String, error: Throwable? = null) {
+        if (!verbose) return
         if (error == null) {
             Log.w(TAG, message)
         } else {

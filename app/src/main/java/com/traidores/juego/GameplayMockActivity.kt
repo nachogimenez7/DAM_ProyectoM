@@ -154,6 +154,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         get() = onlinePartidaId
     override val onlinePlayerUid: String
         get() = onlinePlayerId
+    override fun isOnlineActorLocallyMuted(actorId: String): Boolean {
+        if (actorId.isBlank()) return false
+        val index = session.onlinePlayerUids.indexOf(actorId)
+        val player = session.players.getOrNull(index)
+        val publicId = player?.let { session.playerProfiles[it.name]?.publicId }.orEmpty()
+        return LocalMuteStore.isMuted(this, publicId, actorId)
+    }
+    override fun isOwnPlayerTableSilenced(): Boolean = ownPlayerTableSilenced
     private var onlinePartidaId = ""
     private var onlinePlayerId = ""
     private var onlineIsHost = false
@@ -178,6 +186,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineGuestHostWindowStartedAtMs = 0L
     private var onlinePresencePlayers = emptyList<OnlinePresencePlayer>()
     private var realtimePresence: RealtimeRoomPresence? = null
+    private var realtimeTableSilence: RealtimeTableSilence? = null
+    private var ownPlayerTableSilenced = false
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
@@ -971,6 +981,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         // publish an explicit disconnect only when the player actually leaves.
         realtimePresence?.stop(markDisconnected = false)
         realtimePresence = null
+        realtimeTableSilence?.stop()
+        realtimeTableSilence = null
         super.onStop()
     }
 
@@ -2101,7 +2113,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "desertorCambioBando" to session.desertorChangedTeam,
                 "historialPublico" to session.publicHistory,
                 "jugadores" to session.players.mapIndexed { index, player ->
-                    mapOf(
+                    buildMap<String, Any?> {
+                        putAll(mapOf(
                         "orden" to index,
                         "nombre" to player.name,
                         "vivo" to player.alive,
@@ -2110,7 +2123,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         "afkNoche" to player.consecutiveNightAfk,
                         "afkVoto" to player.consecutiveVoteAfk,
                         "causaEliminacion" to player.deathCause.name
-                    )
+                        ))
+                        val roleCanBePublic = session.winner.isNotBlank() ||
+                            (session.revealRolesOnDeath && !player.alive)
+                        if (roleCanBePublic) {
+                            player.role?.let { role ->
+                                put("rolKey", role.key)
+                                put("rolNombre", role.name)
+                                put("rolEquipo", role.team)
+                                put("rolImagen", role.imageResName)
+                            }
+                        }
+                    }
                 },
                 "actualizadaEnLocal" to System.currentTimeMillis(),
                 "actualizadaPor" to onlinePlayerId
@@ -2752,6 +2776,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onOwnPresenceReady = {
                 if (realtimePresence != null && !isFinishing) {
                     chatController.onRealtimeAccessReady()
+                    startRealtimeTableSilence()
                 }
             },
             onOwnPresenceUnavailable = {
@@ -2766,6 +2791,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
         realtimePresence = presence
         presence.start()
+    }
+
+    private fun startRealtimeTableSilence() {
+        if (!isOnlineGameplay() || realtimeTableSilence != null) return
+        realtimeTableSilence = RealtimeTableSilence(
+            activity = this,
+            roomId = onlinePartidaId,
+            ownUid = onlinePlayerId,
+            ownName = { GameEngine.humanPlayer(session).name },
+            isOwnPlayerAlive = { GameEngine.humanPlayer(session).alive },
+            aliveCount = { session.players.count { it.alive } },
+            onOwnSilenceChanged = { silenced ->
+                val changed = ownPlayerTableSilenced != silenced
+                ownPlayerTableSilenced = silenced
+                chatController.refreshUi()
+                if (changed && silenced) {
+                    GameNotice.show(
+                        this,
+                        "La mesa silenció tu texto libre. Todavía podés usar respuestas rápidas.",
+                        GameNotice.Duration.LONG
+                    )
+                }
+            }
+        ).also { it.start() }
     }
 
     private fun refreshGameplayPresenceFromRealtime() {
@@ -5506,7 +5555,57 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (reactionUiBlocked()) return
         GameplayEffects.play(this, GameplayEffect.PANEL)
         val profile = PlayerProfileStore.profileFor(this, session, player)
-        PlayerProfileDialog.showMini(this, profile)
+        val playerIndex = session.players.indexOfFirst { it.name == player.name }
+        val targetUid = session.onlinePlayerUids.getOrNull(playerIndex).orEmpty()
+        val actions = buildList {
+            if (isOnlineGameplay() && targetUid.isNotBlank() && targetUid != onlinePlayerId) {
+                val muted = LocalMuteStore.isMuted(this@GameplayMockActivity, profile.publicId, targetUid)
+                add(
+                    PlayerProfileAction(
+                        label = if (muted) "VOLVER A ESCUCHAR" else "SILENCIAR PARA MÍ"
+                    ) {
+                        val nowMuted = LocalMuteStore.toggle(
+                            this@GameplayMockActivity,
+                            profile.publicId,
+                            targetUid
+                        )
+                        GameNotice.show(
+                            this@GameplayMockActivity,
+                            if (nowMuted) {
+                                "Ya no verás el chat ni los emotes de ${player.name}."
+                            } else {
+                                "Volverás a ver el chat y los emotes de ${player.name}."
+                            }
+                        )
+                        chatController.restartRealtimeContentListeners()
+                    }
+                )
+                add(
+                    PlayerProfileAction(label = "REPORTAR", dangerous = true) {
+                        PlayerModeration.showReportDialog(
+                            activity = this@GameplayMockActivity,
+                            roomId = onlinePartidaId,
+                            matchId = session.onlineMatchId,
+                            reportedUid = targetUid,
+                            reportedName = player.name
+                        )
+                    }
+                )
+                val canProposeSilence = player.alive &&
+                    GameEngine.humanPlayer(session).alive &&
+                    session.players.count { it.alive } >= 5 &&
+                    targetUid != onlineActiveHostId &&
+                    session.phase in setOf(GamePhase.DIA_DEBATE, GamePhase.VOTACION)
+                if (canProposeSilence) {
+                    add(
+                        PlayerProfileAction(label = "PROPONER SILENCIO DE MESA") {
+                            realtimeTableSilence?.propose(targetUid, player.name)
+                        }
+                    )
+                }
+            }
+        }
+        PlayerProfileDialog.showMini(this, profile, actions)
     }
 
     private fun showEliminatedPlayerCard(player: GamePlayer) {
@@ -8720,7 +8819,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     // Cuando el humano queda fuera (muerto o expulsado) y la partida sigue, o gano como Bufon,
-    // le ofrecemos quedarse a mirar (con la partida acelerada) o volver al menu. Solo local.
+    // le ofrecemos quedarse a mirar (con la partida acelerada) o volver a la sala. Solo local.
     private fun maybeOfferSpectatorChoice(): Boolean {
         if (spectatorChoiceOffered) return false
         if (isOnlineGameplay()) return false
@@ -8743,9 +8842,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         val title = if (wonAsJester) "¡GANASTE COMO BUFÓN!" else "TE ELIMINARON"
         val message = if (wonAsJester) {
-            "El pueblo te expulsó y cumpliste tu objetivo. Podés quedarte a ver cómo termina la partida o volver al menú."
+            "El pueblo te expulsó y cumpliste tu objetivo. Podés quedarte a ver cómo termina la partida o volver a la sala."
         } else {
-            "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver al menú."
+            "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver a la sala."
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -8800,7 +8899,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             gravity = Gravity.CENTER
         }
         val continueButton = dialogButton("SEGUIR MIRANDO", gold = true)
-        val menuButton = dialogButton("VOLVER AL MENÚ", gold = false)
+        val menuButton = dialogButton("VOLVER A SALA", gold = false)
         val availableButtonRowWidthDp = resources.configuration.screenWidthDp - 32 - 48 - 12
         val buttonWidth = (availableButtonRowWidthDp / 2).coerceIn(112, 138)
         buttonRow.addView(

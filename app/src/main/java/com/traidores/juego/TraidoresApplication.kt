@@ -1,6 +1,7 @@
 package com.traidores.juego
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import com.google.android.gms.games.PlayGamesSdk
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
@@ -11,6 +12,9 @@ import com.google.firebase.firestore.MemoryCacheSettings
 class TraidoresApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        OnlineDebugLog.configure(
+            (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        )
         configureAppCheck()
         configurePlayGames()
         configureFirestore()

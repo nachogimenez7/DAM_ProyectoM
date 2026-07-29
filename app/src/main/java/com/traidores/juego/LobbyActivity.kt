@@ -101,6 +101,9 @@ class LobbyActivity : BaseActivity() {
     private var onlineCleanupPending = false
     private var onlineInitialMatch: Map<String, Any?>? = null
     private var onlineMatchState: Map<String, Any?>? = null
+    private var onlinePrivateRoleAssignments: List<Map<String, Any?>> = emptyList()
+    private var onlinePrivateRolesMatchId = ""
+    private var onlinePrivateRolesLoading = false
     private var onlineStartedNoticeShown = false
     private var onlineClientStates: Map<String, Any?> = emptyMap()
     private var onlineEntryReleasedMatchId = ""
@@ -119,6 +122,7 @@ class LobbyActivity : BaseActivity() {
     private var recoveringOnlineMatch = false
     private var onlineRoomDeletedHandled = false
     private var onlineRemovalHandled = false
+    private var ownRoomBanListener: ListenerRegistration? = null
     private var leavingOnlineLobby = false
     private var enteringOnlineMatch = false
     private var onlineHostHandoffInProgress = false
@@ -364,6 +368,7 @@ class LobbyActivity : BaseActivity() {
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
+            listenToOwnRoomBan()
         }
     }
 
@@ -382,6 +387,7 @@ class LobbyActivity : BaseActivity() {
         }
         roomListener?.remove()
         playersListener?.remove()
+        ownRoomBanListener?.remove()
         lobbyChatController?.stop()
         if (::startButton.isInitialized) {
             startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
@@ -394,6 +400,7 @@ class LobbyActivity : BaseActivity() {
         onlineEntryReleaseTimeoutScheduled = false
         roomListener = null
         playersListener = null
+        ownRoomBanListener = null
         super.onStop()
     }
 
@@ -458,7 +465,7 @@ class LobbyActivity : BaseActivity() {
         renderOnlineMapVoting()
         playersContainer.removeAllViews()
         onlinePlayersContainer.removeAllViews()
-        timingOptionsButton.text = "Opciones de testeo"
+        timingOptionsButton.text = "Opciones de partida"
         btnAdvancedOptions.text = "Opciones avanzadas"
         renderPracticeRoleSummary()
 
@@ -1077,7 +1084,7 @@ class LobbyActivity : BaseActivity() {
                 OnlineDebugLog.e("rtdb_room_teardown_failure roomId=$roomId", error)
             }
         cleanupOnlineMatchCollections(
-            collectionNames = listOf(ONLINE_PLAYERS_COLLECTION, "acciones"),
+            collectionNames = listOf(ONLINE_PLAYERS_COLLECTION, "acciones", "baneados", "repartos"),
             index = 0,
             onComplete = {
                 FirebaseFirestore.getInstance()
@@ -1303,7 +1310,7 @@ class LobbyActivity : BaseActivity() {
             player.id != onlineTempUid
     }
 
-    private fun removeOnlinePlayer(player: OnlineLobbyPlayer) {
+    private fun removeOnlinePlayer(player: OnlineLobbyPlayer, banFromRoom: Boolean = false) {
         if (!canCurrentHostRemoveOnlinePlayer(player)) {
             Toast.makeText(this, "No se puede expulsar a ese jugador ahora.", Toast.LENGTH_SHORT).show()
             return
@@ -1311,6 +1318,7 @@ class LobbyActivity : BaseActivity() {
         val firestore = FirebaseFirestore.getInstance()
         val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
         val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id)
+        val banReference = roomReference.collection("baneados").document(player.id)
         OnlineDebugLog.w(
             "online_kick_requested roomId=$onlinePartidaId hostId=$onlineTempUid target=${player.id}"
         )
@@ -1350,6 +1358,18 @@ class LobbyActivity : BaseActivity() {
                     OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
                 )
             )
+            if (banFromRoom) {
+                transaction.set(
+                    banReference,
+                    mapOf(
+                        "uidTemporal" to player.id,
+                        "nombre" to player.name.take(18),
+                        "motivo" to "Expulsado por el anfitrión",
+                        "baneadoPor" to onlineTempUid,
+                        "creadaEn" to FieldValue.serverTimestamp()
+                    )
+                )
+            }
             val currentPlayers = (room.getLong(OnlineRoomFirestore.FIELD_CURRENT_PLAYERS)
                 ?: activeOnlinePlayers().size.toLong()).toInt()
             transaction.update(
@@ -1364,7 +1384,15 @@ class LobbyActivity : BaseActivity() {
             OnlineDebugLog.w(
                 "online_kick_success roomId=$onlinePartidaId hostId=$onlineTempUid target=${player.id} removed=$removed"
             )
-            Toast.makeText(this, "${player.name} fue expulsado de la sala.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                if (banFromRoom) {
+                    "${player.name} fue expulsado y no podrá volver a esta sala."
+                } else {
+                    "${player.name} fue expulsado de la sala."
+                },
+                Toast.LENGTH_SHORT
+            ).show()
             renderLobby()
         }.addOnFailureListener { error ->
             OnlineDebugLog.e(
@@ -1488,6 +1516,33 @@ class LobbyActivity : BaseActivity() {
             }
     }
 
+    private fun listenToOwnRoomBan() {
+        ownRoomBanListener?.remove()
+        if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        ownRoomBanListener = FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection("baneados")
+            .document(onlineTempUid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    OnlineDebugLog.e("own_room_ban_listener_failure roomId=$onlinePartidaId", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot?.exists() != true || onlineRemovalHandled) return@addSnapshotListener
+                onlineRemovalHandled = true
+                leavingOnlineLobby = true
+                GameDialog.confirm(
+                    activity = this,
+                    title = "Fuiste expulsado",
+                    message = snapshot.getString("motivo")
+                        ?: "El anfitrión bloqueó tu acceso a esta sala.",
+                    positiveLabel = "VOLVER",
+                    negativeLabel = ""
+                ) { finish() }.setCancelable(false)
+            }
+    }
+
     private fun applyOnlineRoomSnapshot(snapshot: DocumentSnapshot) {
         val previousActiveHostId = onlineActiveHostId
         val previousLobbyConfig = onlineLobbyConfig
@@ -1572,7 +1627,7 @@ class LobbyActivity : BaseActivity() {
             liveOnlineMatch &&
             !onlineStartedNoticeShown
         ) {
-            coordinateOnlineMatchEntry()
+            ensurePrivateRolesLoaded()
         }
         maybeStartAfterExpectedPlayersUpdate()
         maybeClaimOnlineLobbyHostHandoff()
@@ -2318,6 +2373,29 @@ class LobbyActivity : BaseActivity() {
             )
             val initialMatch = initialMatchPayload(assignedSession, activePlayersAtStart)
             val matchState = matchStatePayload(assignedSession)
+            activePlayersAtStart.forEachIndexed { playerIndex, onlinePlayer ->
+                val ownRole = assignedSession.players[playerIndex].role
+                    ?: throw IllegalStateException("El reparto quedó incompleto.")
+                val visibleRoles = assignedSession.players.mapIndexedNotNull { index, candidate ->
+                    val role = candidate.role ?: return@mapIndexedNotNull null
+                    val visible = index == playerIndex ||
+                        (
+                            ownRole.team == GameRules.TRAITOR_WINNER &&
+                                role.team == GameRules.TRAITOR_WINNER
+                            )
+                    if (!visible) return@mapIndexedNotNull null
+                    roleAssignmentPayload(index, role)
+                }
+                transaction.set(
+                    roomReference.collection("repartos").document(onlinePlayer.id),
+                    mapOf(
+                        "matchId" to onlineMatchId,
+                        "uidTemporal" to onlinePlayer.id,
+                        "rolesVisibles" to visibleRoles,
+                        "creadaEn" to FieldValue.serverTimestamp()
+                    )
+                )
+            }
             transaction.update(
                 roomReference,
                 mapOf(
@@ -2381,6 +2459,11 @@ class LobbyActivity : BaseActivity() {
         ) {
             return
         }
+        val matchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
+        if (onlinePrivateRolesMatchId != matchId || onlinePrivateRoleAssignments.isEmpty()) {
+            ensurePrivateRolesLoaded()
+            return
+        }
         val rebuiltSession = onlineInitialMatch?.let(::sessionFromInitialMatch)
         val entryProblem = rebuiltSession?.let(::onlineMatchEntryProblem)
         if (rebuiltSession == null || entryProblem != null) {
@@ -2391,8 +2474,8 @@ class LobbyActivity : BaseActivity() {
             )
             return
         }
-        val matchId = rebuiltSession.onlineMatchId
-        if (matchId.isBlank()) {
+        val rebuiltMatchId = rebuiltSession.onlineMatchId
+        if (rebuiltMatchId.isBlank()) {
             scheduleOnlineMatchEntryRetry("La partida compartida no incluye un identificador.")
             return
         }
@@ -2402,14 +2485,14 @@ class LobbyActivity : BaseActivity() {
             startOnlineMatch()
             return
         }
-        if (onlineEntryBarrierMatchId != matchId) {
+        if (onlineEntryBarrierMatchId != rebuiltMatchId) {
             if (::startButton.isInitialized) {
                 startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
                 onlineEntryAckRunnable?.let(startButton::removeCallbacks)
             }
             onlineEntryAckRunnable = null
             onlineEntryReleaseTimeoutScheduled = false
-            onlineEntryBarrierMatchId = matchId
+            onlineEntryBarrierMatchId = rebuiltMatchId
             onlineEntryBarrierStartedAtMs = SystemClock.elapsedRealtime()
             onlineEntryAckMatchId = ""
             onlineEntryAckInProgress = false
@@ -2786,7 +2869,7 @@ class LobbyActivity : BaseActivity() {
         if (session.players.none { it.isHuman }) {
             return "No se encontro tu jugador en esta partida. Reingresa por codigo."
         }
-        if (session.players.any { it.role == null }) {
+        if (GameEngine.humanPlayer(session).role == null) {
             return "El reparto online llego incompleto. Creen una sala nueva."
         }
         return null
@@ -2828,15 +2911,74 @@ class LobbyActivity : BaseActivity() {
                     "publicId" to onlinePlayer.publicId,
                     "simulado" to false,
                     "nombre" to player.name,
-                    "inicial" to player.initial,
-                    "rolKey" to player.role?.key.orEmpty(),
-                    "rolNombre" to player.role?.name.orEmpty(),
-                    "rolEquipo" to player.role?.team.orEmpty(),
-                    "rolImagen" to player.role?.imageResName.orEmpty()
+                    "inicial" to player.initial
                 )
             }
         )
     }
+
+    private fun ensurePrivateRolesLoaded() {
+        val matchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
+        if (matchId.isBlank() || onlinePrivateRolesLoading) return
+        if (onlinePrivateRolesMatchId == matchId && onlinePrivateRoleAssignments.isNotEmpty()) {
+            coordinateOnlineMatchEntry()
+            return
+        }
+        onlinePrivateRolesLoading = true
+        val repartos = FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection("repartos")
+        if (currentUserIsOnlineHost()) {
+            repartos.get()
+                .addOnSuccessListener { snapshot ->
+                    applyPrivateRoleDocuments(matchId, snapshot.documents)
+                }
+                .addOnFailureListener { error -> handlePrivateRoleLoadFailure(matchId, error) }
+        } else {
+            repartos.document(onlineTempUid).get()
+                .addOnSuccessListener { document ->
+                    applyPrivateRoleDocuments(matchId, listOf(document))
+                }
+                .addOnFailureListener { error -> handlePrivateRoleLoadFailure(matchId, error) }
+        }
+    }
+
+    private fun applyPrivateRoleDocuments(matchId: String, documents: List<DocumentSnapshot>) {
+        onlinePrivateRolesLoading = false
+        val assignments = documents
+            .filter { it.exists() && it.getString("matchId") == matchId }
+            .flatMap { document ->
+                (document.get("rolesVisibles") as? List<*>)
+                    .orEmpty()
+                    .mapNotNull { it.asStringAnyMap() }
+            }
+            .distinctBy { (it["orden"] as? Number)?.toInt() }
+        if (assignments.isEmpty()) {
+            scheduleOnlineMatchEntryRetry("El reparto privado todavía se está sincronizando.")
+            return
+        }
+        onlinePrivateRoleAssignments = assignments
+        onlinePrivateRolesMatchId = matchId
+        coordinateOnlineMatchEntry()
+    }
+
+    private fun handlePrivateRoleLoadFailure(matchId: String, error: Exception) {
+            onlinePrivateRolesLoading = false
+            OnlineDebugLog.e("private_roles_load_failure roomId=$onlinePartidaId match=$matchId", error)
+            scheduleOnlineMatchEntryRetry(
+                OnlineErrorMessages.forAction("No se pudo leer tu rol privado", error)
+            )
+    }
+
+    private fun roleAssignmentPayload(order: Int, role: GameRole): Map<String, Any?> =
+        mapOf(
+            "orden" to order,
+            "rolKey" to role.key,
+            "rolNombre" to role.name,
+            "rolEquipo" to role.team,
+            "rolImagen" to role.imageResName
+        )
 
     private fun initialMatchPlayerIds(): LinkedHashSet<String> {
         val players = onlineInitialMatch?.get("jugadores") as? List<*> ?: return linkedSetOf()
@@ -2868,7 +3010,8 @@ class LobbyActivity : BaseActivity() {
             fallbackMapKey = currentMap().key,
             fallbackMapName = currentMap().name,
             revealRolesOnDeath = session.revealRolesOnDeath,
-            showIndividualVotes = session.showIndividualVotes
+            showIndividualVotes = session.showIndividualVotes,
+            privateRoleAssignments = onlinePrivateRoleAssignments
         )
         return when (result) {
             is OnlineMatchSessionResult.Success -> {
@@ -3059,7 +3202,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun cleanupOnlineActionsThenFinish() {
         cleanupOnlineMatchCollections(
-            collectionNames = listOf("acciones"),
+            collectionNames = listOf("acciones", "repartos"),
             index = 0,
             onComplete = { finishOnlineCleanup() },
             onFailure = { error ->
@@ -3101,7 +3244,11 @@ class LobbyActivity : BaseActivity() {
             LobbyChatController.NODE to null,
             RTDB_PUBLIC_CHAT_NODE to null,
             RTDB_TRAITOR_CHAT_NODE to null,
-            RTDB_SPECTATOR_CHAT_NODE to null
+            RTDB_SPECTATOR_CHAT_NODE to null,
+            "emotes" to null,
+            "propuesta_silencio" to null,
+            "votos_silencio" to null,
+            "silenciados" to null
         )
         FirebaseDatabase.getInstance()
             .getReference("salas/$onlinePartidaId")
@@ -3514,8 +3661,8 @@ class LobbyActivity : BaseActivity() {
         var botsNeverVote = session.debugBotsNeverVoteHuman
         val isDebugBuild = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val content = dialogColumn()
-        content.addView(dialogTitle("OPCIONES DE TESTEO"))
-        content.addView(dialogSectionTitle("PRUEBA RAPIDA"))
+        content.addView(dialogTitle("OPCIONES DE PARTIDA"))
+        content.addView(dialogSectionTitle("RITMO"))
 
         fun addTestSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
             content.addView(SwitchCompat(this).apply {
@@ -3536,9 +3683,9 @@ class LobbyActivity : BaseActivity() {
             })
         }
 
-        addTestSwitch("Modo test rapido", quickTestMode) { quickTestMode = it }
+        addTestSwitch("Partida rápida", quickTestMode) { quickTestMode = it }
         content.addView(TextView(this).apply {
-            text = "Permite saltear fases sin accion humana y acelera las votaciones."
+            text = "Saltea las fases en las que no te toca actuar y acelera las votaciones."
             setTextColor(getColor(R.color.text_secondary))
             textSize = 11f
             setPadding(dp(4), 0, dp(4), dp(8))
@@ -4035,6 +4182,17 @@ class LobbyActivity : BaseActivity() {
         content.addView(dialogSectionTitle("TIEMPOS"))
         val timingEditor = buildTimingEditor(session.timingConfig)
         content.addView(timingEditor.view)
+        if (currentUserIsOnlineHost()) {
+            content.addView(Button(this).apply {
+                text = "ADMINISTRAR BLOQUEADOS"
+                setTextColor(getColor(R.color.text_primary))
+                setBackgroundResource(R.drawable.bg_btn_dark_ripple)
+                setOnClickListener { showBannedPlayersDialog() }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44)
+            ).apply { topMargin = dp(12) })
+        }
         if (!canEdit) setViewTreeEnabled(timingEditor.view, false)
         val scroll = ScrollView(this).apply {
             isFillViewport = true
@@ -4061,6 +4219,56 @@ class LobbyActivity : BaseActivity() {
                 null
             }
         )
+    }
+
+    private fun showBannedPlayersDialog() {
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection("baneados")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (snapshot.isEmpty) {
+                    GameNotice.show(this, "No hay jugadores bloqueados en esta sala.")
+                    return@addOnSuccessListener
+                }
+                val documents = snapshot.documents
+                GameDialog.choose(
+                    activity = this,
+                    title = "BLOQUEADOS DE ESTA SALA",
+                    message = "Tocá un jugador para permitirle volver a entrar.",
+                    options = documents.map {
+                        "DESBLOQUEAR ${it.getString("nombre").orEmpty().uppercase()}"
+                    }
+                ) { selected ->
+                    val document = documents[selected]
+                    GameDialog.confirm(
+                        activity = this,
+                        title = "Permitir reingreso",
+                        message = "¿Desbloquear a ${document.getString("nombre").orEmpty()}?",
+                        positiveLabel = "DESBLOQUEAR"
+                    ) {
+                        document.reference.delete()
+                            .addOnSuccessListener {
+                                GameNotice.show(this, "El jugador puede volver a entrar.")
+                            }
+                            .addOnFailureListener { error ->
+                                GameNotice.show(
+                                    this,
+                                    OnlineErrorMessages.forAction("No se pudo desbloquear", error),
+                                    GameNotice.Duration.LONG
+                                )
+                            }
+                    }
+                }
+            }
+            .addOnFailureListener { error ->
+                GameNotice.show(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo cargar la lista", error),
+                    GameNotice.Duration.LONG
+                )
+            }
     }
 
     private fun advancedOptionsContentHeightDp(): Int =
@@ -4275,14 +4483,13 @@ class LobbyActivity : BaseActivity() {
                 Toast.makeText(this, "No se puede expulsar a ese jugador ahora.", Toast.LENGTH_SHORT).show()
                 return
             }
-            GameDialog.confirm(
+            GameDialog.choose(
                 activity = this,
                 title = "Expulsar participante online",
-                message = "¿Quitar a ${onlinePlayer.name} de la sala? " +
-                    "Su cupo quedará liberado y no podrá iniciar esta partida.",
-                positiveLabel = "EXPULSAR"
-            ) {
-                removeOnlinePlayer(onlinePlayer)
+                message = "¿Qué querés hacer con ${onlinePlayer.name}?",
+                options = listOf("EXPULSAR", "EXPULSAR Y BLOQUEAR ESTA SALA")
+            ) { selected ->
+                removeOnlinePlayer(onlinePlayer, banFromRoom = selected == 1)
             }
             return
         }

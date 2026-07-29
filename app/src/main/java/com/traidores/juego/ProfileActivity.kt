@@ -27,6 +27,7 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.games.PlayGames
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -193,6 +194,10 @@ class ProfileActivity : BaseActivity() {
         playGamesAchievementsButton.setOnClickListener { showPlayGamesAchievements() }
         playGamesLeaderboardsButton.setOnClickListener { showPlayGamesLeaderboards() }
         playGamesFriendsButton.setOnClickListener { loadPlayGamesFriends() }
+        if (intent.getBooleanExtra(EXTRA_OPEN_ACCOUNT, false)) {
+            intent.removeExtra(EXTRA_OPEN_ACCOUNT)
+            accountButton.post { showAccountDialog() }
+        }
 
         profileName.setOnClickListener { if (isEditing) showNameEditor() }
         profilePublicId.setOnClickListener { showFixedPublicIdMessage() }
@@ -455,6 +460,7 @@ class ProfileActivity : BaseActivity() {
         val emailInput = content.findViewById<EditText>(R.id.accountEmailInput)
         val passwordInput = content.findViewById<EditText>(R.id.accountPasswordInput)
         val errorText = content.findViewById<TextView>(R.id.accountDialogError)
+        val googleButton = content.findViewById<Button>(R.id.accountGoogleButton)
 
         val dialog = GameDialog.custom(
             activity = this,
@@ -476,6 +482,42 @@ class ProfileActivity : BaseActivity() {
             }
             dialog.dismiss()
             submitAccountRequest(email, password)
+        }
+        googleButton.setOnClickListener {
+            dialog.dismiss()
+            submitGoogleAccountRequest()
+        }
+    }
+
+    private fun submitGoogleAccountRequest() {
+        accountRequestInProgress = true
+        renderAccountSection()
+        GoogleAccountLink.linkOrSignIn(this) { result ->
+            accountRequestInProgress = false
+            if (isFinishing || isDestroyed) return@linkOrSignIn
+            when (result) {
+                is GoogleAccountResult.Linked -> GameNotice.show(
+                    this,
+                    "Listo. Tu perfil quedó vinculado a ${result.email.ifBlank { "Google" }}.",
+                    GameNotice.Duration.LONG
+                )
+                is GoogleAccountResult.SignedIn -> {
+                    draftProfile.publicId = result.recoveredPublicId
+                    savedProfile.publicId = result.recoveredPublicId
+                    renderProfile()
+                    GameNotice.show(
+                        this,
+                        "Entraste con Google y recuperaste tu perfil #${result.recoveredPublicId}.",
+                        GameNotice.Duration.LONG
+                    )
+                }
+                GoogleAccountResult.Cancelled -> Unit
+                is GoogleAccountResult.Failed -> {
+                    result.error?.let { OnlineDebugLog.e("google_account_failure", it) }
+                    GameNotice.show(this, result.message, GameNotice.Duration.LONG)
+                }
+            }
+            renderAccountSection()
         }
     }
 
@@ -522,7 +564,9 @@ class ProfileActivity : BaseActivity() {
 
     private fun showDeleteAccountDialog() {
         if (isGuestAccount || accountRequestInProgress) return
-        val hasEmail = AccountLink.currentEmail().isNotBlank()
+        val hasPasswordProvider = FirebaseAuth.getInstance().currentUser
+            ?.providerData
+            ?.any { it.providerId == "password" } == true
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(4), dp(8), dp(4))
@@ -549,7 +593,7 @@ class ProfileActivity : BaseActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(12) }
         )
-        val passwordInput = if (hasEmail) {
+        val passwordInput = if (hasPasswordProvider) {
             EditText(this).apply {
                 hint = getString(R.string.account_delete_password_hint)
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -591,7 +635,7 @@ class ProfileActivity : BaseActivity() {
                 errorText.visibility = View.VISIBLE
                 return@setOnClickListener
             }
-            if (hasEmail && passwordInput?.text.isNullOrBlank()) {
+            if (hasPasswordProvider && passwordInput?.text.isNullOrBlank()) {
                 errorText.text = getString(R.string.account_delete_password_error)
                 errorText.visibility = View.VISIBLE
                 return@setOnClickListener
@@ -1799,7 +1843,8 @@ class ProfileActivity : BaseActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private companion object {
+    companion object {
+        const val EXTRA_OPEN_ACCOUNT = "open_account"
         const val PREFS_NAME = "TraidoresPrefs"
         const val PREF_NAME = "profile_name"
         const val PREF_BIO = "profile_bio"

@@ -62,7 +62,7 @@
                 android:layout_marginBottom="22dp"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
-                android:text="Ajusta el juego para que sea comodo de leer y escuchar."
+                android:text="Ajusta el juego para que sea cómodo de leer y escuchar."
                 android:textColor="@color/text_secondary"
                 android:textSize="17sp" />
 
@@ -91,7 +91,7 @@
                     android:layout_height="48dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center_vertical"
-                    android:text="Musica"
+                    android:text="Música"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:thumb="@drawable/switch_thumb_traidores"
@@ -104,7 +104,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="14dp"
                     android:fontFamily="sans-serif"
-                    android:text="Controla por separado la musica y los efectos del juego."
+                    android:text="Controla por separado la música y los efectos del juego."
                     android:textColor="@color/text_muted"
                     android:textSize="14sp" />
 
@@ -113,7 +113,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif"
-                    android:text="Musica: 80%"
+                    android:text="Música: 80%"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp" />
 
@@ -166,7 +166,7 @@
                     android:layout_marginTop="4dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center_vertical"
-                    android:text="Vibracion al interactuar"
+                    android:text="Vibración al interactuar"
                     android:textColor="@color/text_primary"
                     android:textSize="17sp"
                     android:thumb="@drawable/switch_thumb_traidores"
@@ -206,7 +206,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:fontFamily="sans-serif"
-                        android:text="Tamano del texto"
+                        android:text="Tamaño del texto"
                         android:textColor="@color/text_primary"
                         android:textSize="17sp" />
 
@@ -287,7 +287,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
                         android:fontFamily="sans-serif"
-                        android:text="La traduccion completa sigue en desarrollo."
+                        android:text="La traducción completa sigue en desarrollo."
                         android:textColor="@color/text_muted"
                         android:textSize="14sp" />
                 </LinearLayout>

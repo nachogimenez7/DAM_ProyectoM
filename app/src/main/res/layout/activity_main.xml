@@ -89,7 +89,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Desconfia de todos."
+            android:text="Desconfía de todos."
             android:textColor="@color/text_secondary"
             android:textSize="17sp"
             android:fontFamily="sans-serif"
@@ -136,7 +136,7 @@
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="@drawable/bg_btn_dark"
-            android:contentDescription="Silenciar musica"
+            android:contentDescription="Silenciar música"
             android:padding="10dp"
             android:src="@drawable/ic_music_note"
             app:tint="@color/text_secondary" />

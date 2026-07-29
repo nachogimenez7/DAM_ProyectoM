@@ -28,6 +28,7 @@ class OnlineModeActivity : BaseActivity() {
     private lateinit var btnJoinCode: Button
     private lateinit var btnRecoverRoom: Button
     private var pendingRecoveredRoom: OnlineRecoveredRoom? = null
+    private var accessCheckInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,13 +89,56 @@ class OnlineModeActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
-        refreshRecoveredRoomButton()
+        verifyOnlineAccess()
+    }
+
+    private fun verifyOnlineAccess() {
+        if (accessCheckInProgress) return
+        accessCheckInProgress = true
+        setOnlineActionsEnabled(false)
+        OnlineAccessGate.verify(
+            context = this,
+            onAllowed = {
+                accessCheckInProgress = false
+                setOnlineActionsEnabled(true)
+                refreshRecoveredRoomButton()
+            },
+            onBlocked = { ban ->
+                accessCheckInProgress = false
+                GameDialog.confirm(
+                    activity = this,
+                    title = "Acceso online suspendido",
+                    message = ban.reason,
+                    positiveLabel = "VOLVER",
+                    negativeLabel = ""
+                ) { finish() }.setCancelable(false)
+            },
+            onFailure = { error ->
+                accessCheckInProgress = false
+                OnlineDebugLog.e("online_access_gate_failure", error)
+                GameNotice.show(
+                    this,
+                    OnlineErrorMessages.forAction("No pudimos verificar tu acceso online", error),
+                    GameNotice.Duration.LONG
+                )
+                setOnlineActionsEnabled(true)
+                refreshRecoveredRoomButton()
+            }
+        )
+    }
+
+    private fun setOnlineActionsEnabled(enabled: Boolean) {
+        if (::btnCreate.isInitialized) btnCreate.isEnabled = enabled
+        if (::btnJoinCode.isInitialized) btnJoinCode.isEnabled = enabled
+        if (::btnRecoverRoom.isInitialized) btnRecoverRoom.isEnabled = enabled
+        findViewById<Button>(R.id.btnSearch)?.isEnabled = enabled
     }
 
     private fun showCreateRoomDialog() {
         var expectedPlayers = OnlineRoomFirestore.DEFAULT_EXPECTED_PLAYERS
         var modePrueba = false
         var accountsOnly = false
+        var roomVisibility = OnlineRoomFirestore.VISIBILITY_PUBLIC
         val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         var selectedMap = OnlineRoomFirestore.selectedMapFromKey(
             preferences.getString(OpcionesActivity.PREF_LAST_SELECTED_MAP, null).orEmpty()
@@ -183,6 +227,57 @@ class OnlineModeActivity : BaseActivity() {
             setPadding(0, 0, 0, dp(4))
         })
         accountsOnlySwitch.setOnCheckedChangeListener { _, checked -> accountsOnly = checked }
+
+        content.addView(TextView(this).apply {
+            text = "VISIBILIDAD"
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(6))
+        })
+        val visibilityButtons = linkedMapOf<String, Button>()
+        val visibilityRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun refreshVisibilityButtons() {
+            visibilityButtons.forEach { (visibility, button) ->
+                val selected = visibility == roomVisibility
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(
+                    resources.getColor(if (selected) R.color.bg_dark else R.color.text_primary, theme)
+                )
+            }
+        }
+        listOf(
+            OnlineRoomFirestore.VISIBILITY_PUBLIC to "PÚBLICA",
+            OnlineRoomFirestore.VISIBILITY_PRIVATE to "PRIVADA"
+        ).forEachIndexed { index, (visibility, label) ->
+            val button = dialogButton(label, gold = visibility == roomVisibility)
+            visibilityButtons[visibility] = button
+            button.setOnClickListener {
+                roomVisibility = visibility
+                refreshVisibilityButtons()
+            }
+            visibilityRow.addView(
+                button,
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    if (index > 0) leftMargin = dp(8)
+                }
+            )
+        }
+        refreshVisibilityButtons()
+        content.addView(visibilityRow)
+        content.addView(TextView(this).apply {
+            text = "Pública: aparece en Buscar partida. Privada: entran únicamente con el código."
+            setTextColor(resources.getColor(R.color.text_secondary, theme))
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(2))
+        })
 
         content.addView(TextView(this).apply {
             text = "MAPA"
@@ -283,7 +378,13 @@ class OnlineModeActivity : BaseActivity() {
             preferences.edit()
                 .putString(OpcionesActivity.PREF_LAST_SELECTED_MAP, selectedMap.key)
                 .apply()
-            createOnlineRoom(expectedPlayers, selectedMap, modePrueba, accountsOnly)
+            createOnlineRoom(
+                expectedPlayers,
+                selectedMap,
+                modePrueba,
+                accountsOnly,
+                roomVisibility
+            )
         }
         refreshCount()
         dialog.show()
@@ -302,7 +403,8 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
-        accountsOnly: Boolean
+        accountsOnly: Boolean,
+        roomVisibility: String
     ) {
         btnCreate.isEnabled = false
         btnCreate.text = "PREPARANDO..."
@@ -317,6 +419,7 @@ class OnlineModeActivity : BaseActivity() {
                             selectedMap,
                             modePrueba,
                             accountsOnly,
+                            roomVisibility,
                             publicId
                         )
                     },
@@ -342,6 +445,7 @@ class OnlineModeActivity : BaseActivity() {
         selectedMap: GameMap,
         modePrueba: Boolean,
         accountsOnly: Boolean,
+        roomVisibility: String,
         publicId: String
     ) {
         createOnlineRoomWithPublicId(
@@ -349,6 +453,7 @@ class OnlineModeActivity : BaseActivity() {
             selectedMap,
             modePrueba,
             accountsOnly,
+            roomVisibility,
             publicId,
             remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
         )
@@ -359,6 +464,7 @@ class OnlineModeActivity : BaseActivity() {
         selectedMap: GameMap,
         modePrueba: Boolean,
         accountsOnly: Boolean,
+        roomVisibility: String,
         publicId: String,
         remainingCodeAttempts: Int
     ) {
@@ -386,6 +492,7 @@ class OnlineModeActivity : BaseActivity() {
                             selectedMap = selectedMap,
                             modePrueba = modePrueba,
                             accountsOnly = accountsOnly,
+                            roomVisibility = roomVisibility,
                             publicId = publicId,
                             remainingCodeAttempts = remainingCodeAttempts - 1
                         )
@@ -404,6 +511,7 @@ class OnlineModeActivity : BaseActivity() {
                     expectedPlayers = expectedPlayers,
                     modePrueba = modePrueba,
                     accountsOnly = accountsOnly,
+                    roomVisibility = roomVisibility,
                     publicId = publicId,
                     playerName = playerName,
                     uidTemporal = uidTemporal,
@@ -427,6 +535,7 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         modePrueba: Boolean,
         accountsOnly: Boolean,
+        roomVisibility: String,
         publicId: String,
         playerName: String,
         uidTemporal: String,
@@ -444,6 +553,7 @@ class OnlineModeActivity : BaseActivity() {
             expectedPlayers = expectedPlayers,
             modePrueba = modePrueba,
             accountsOnly = accountsOnly,
+            visibility = roomVisibility,
             roomCode = roomCode
         )
 
@@ -620,6 +730,60 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     private fun openRecoveredGameplay(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
+        val uid = OnlineTempIdentity.getOrCreate(this)
+        val repartos = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(room.roomId)
+            .collection("repartos")
+        val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uid ||
+            snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uid ||
+            room.isHost
+        if (isHost) {
+            repartos.get()
+                .addOnSuccessListener { query ->
+                    val assignments = query.documents.flatMap(::visibleRolesFromReparto)
+                        .distinctBy { (it["orden"] as? Number)?.toInt() }
+                    openRecoveredGameplayWithRoles(room, snapshot, assignments)
+                }
+                .addOnFailureListener { error -> showPrivateRoleRecoveryError(room, error) }
+        } else {
+            repartos.document(uid).get()
+                .addOnSuccessListener { reparto ->
+                    openRecoveredGameplayWithRoles(
+                        room,
+                        snapshot,
+                        visibleRolesFromReparto(reparto)
+                    )
+                }
+                .addOnFailureListener { error -> showPrivateRoleRecoveryError(room, error) }
+        }
+    }
+
+    private fun visibleRolesFromReparto(reparto: DocumentSnapshot): List<Map<String, Any?>> =
+        (reparto.get("rolesVisibles") as? List<*>)
+            .orEmpty()
+            .mapNotNull { raw ->
+                (raw as? Map<*, *>)?.entries
+                    ?.mapNotNull { entry ->
+                        val key = entry.key as? String ?: return@mapNotNull null
+                        key to entry.value
+                    }
+                    ?.toMap()
+            }
+
+    private fun showPrivateRoleRecoveryError(room: OnlineRecoveredRoom, error: Exception) {
+                OnlineDebugLog.e("recover_private_role_failure roomId=${room.roomId}", error)
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo recuperar tu rol privado", error),
+                    Toast.LENGTH_LONG
+                ).show()
+    }
+
+    private fun openRecoveredGameplayWithRoles(
+        room: OnlineRecoveredRoom,
+        snapshot: DocumentSnapshot,
+        privateRoles: List<Map<String, Any?>>
+    ) {
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         val mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
             ?.takeIf { it.isNotBlank() }
@@ -645,7 +809,8 @@ class OnlineModeActivity : BaseActivity() {
             fallbackMapKey = selectedMap.key,
             fallbackMapName = selectedMap.name,
             revealRolesOnDeath = defaults.revealRolesOnDeath,
-            showIndividualVotes = defaults.showIndividualVotes
+            showIndividualVotes = defaults.showIndividualVotes,
+            privateRoleAssignments = privateRoles
         )
         when (result) {
             is OnlineMatchSessionResult.Success -> {

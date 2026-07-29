@@ -100,8 +100,9 @@ object AccountDeletion {
             onDone(IllegalStateException("La sesión ya no está disponible."))
             return
         }
+        val providers = user.providerData.map { it.providerId }.toSet()
         val email = user.email.orEmpty()
-        if (email.isNotBlank()) {
+        if ("password" in providers) {
             if (emailPassword.isNullOrBlank()) {
                 onDone(IllegalArgumentException("Ingresá tu contraseña para continuar."))
                 return
@@ -109,6 +110,13 @@ object AccountDeletion {
             user.reauthenticate(EmailAuthProvider.getCredential(email, emailPassword))
                 .addOnSuccessListener { onDone(null) }
                 .addOnFailureListener(onDone)
+            return
+        }
+        if (GoogleAccountLink.hasGoogleProvider()) {
+            GoogleAccountLink.reauthenticate(
+                activity as androidx.appcompat.app.AppCompatActivity,
+                onDone
+            )
             return
         }
         if (PlayGamesIdentity.hasPlayGamesProvider()) {

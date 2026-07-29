@@ -26,12 +26,11 @@ Los **tres problemas de fondo**, en orden:
 1. **Cualquier usuario autenticado podía tomar el control de cualquier sala.** Era el agujero
    más grave y es de autorización pura, no de diseño. **Arreglado hoy** en `firestore.rules`
    (ver sección 4).
-2. **El secreto de roles no existe a nivel servidor.** El reparto completo vive en
-   `partidaInicial`, que cualquier cuenta autenticada puede leer; y además cada cliente
-   publica su propio `rolKey` en `estadoClientes`. Un jugador con un APK modificado ve la
-   partida entera. Esto **no se cierra con reglas**: requiere cambiar dónde vive el rol.
-3. **No hay moderación.** No se puede reportar, silenciar ni banear. Para un lanzamiento
-   público esto no es opcional.
+2. **El reparto público fue reemplazado por repartos privados.** `partidaInicial` conserva
+   metadatos públicos; cada jugador lee `repartos/{uid}` y el anfitrión activo puede enumerar
+   todos los repartos para ejecutar el motor.
+3. **Ya existe una primera capa de moderación.** Incluye silencio local, votación para bloquear
+   texto libre, reportes, expulsión/baneo por sala y baneo global manual.
 
 Y el **límite duro que hay que mirar antes de publicar**: el plan gratuito de Realtime
 Database permite **100 conexiones simultáneas**. Con salas de hasta 15 jugadores eso es
@@ -107,35 +106,21 @@ botón de Opciones.
 
 | ID | Sev | Hallazgo | Estado |
 |----|-----|----------|--------|
-| B1 | CRÍTICO | `partidaInicial` expone el reparto completo | requiere rediseño (spec) |
-| B2 | CRÍTICO | `estadoClientes.rolKey` filtra el rol en vivo | fix barato (spec) |
-| B3 | ALTO | Chat de traidores y de muertos: lectura honor-system | requiere cambio coordinado (spec) |
+| B1 | CRÍTICO | `partidaInicial` exponía el reparto completo | resuelto con repartos privados |
+| B2 | CRÍTICO | `estadoClientes.rolKey` filtraba el rol en vivo | resuelto |
+| B3 | ALTO | Canales secretos limitados a miembros, no al rol | riesgo residual |
 | B4 | ALTO | El anfitrión es la autoridad del juego | inherente al modelo P2P |
 
-**B1 — El reparto completo es legible.** `partidas/{id}` permite `read: if signedIn()` y
-`partidaInicial` contiene el rol de cada jugador. Esto ya está documentado en el comentario de
-las reglas y en `firebase-online-schema.md`, así que no es una sorpresa; lo que sí conviene
-decir con todas las letras es que **no hay ninguna regla que pueda arreglarlo**, porque el
-navegador de salas necesita leer salas de las que todavía no sos miembro y las reglas no
-filtran campos, sólo documentos.
-*Camino sin costo:* mover el rol a `partidas/{id}/repartos/{uid}`, legible **sólo por ese uid y
-por el anfitrión activo**. No es secreto perfecto —el anfitrión sigue viendo todo, porque es él
-quien resuelve la partida—, pero cambia el problema de "cualquiera de los 8 mil millones puede
-ver los roles" a "la persona que creó la sala puede ver los roles". Detalle en la spec.
+**B1 — Resuelto.** `partidaInicial` conserva únicamente metadatos públicos. El rol se guarda en
+`repartos/{uid}`, legible por su dueño y por el anfitrión activo. El anfitrión sigue viendo el
+reparto completo porque ejecuta el motor autoritativo; eliminar ese último grado de confianza
+requiere backend.
 
-**B2 — El rol viaja en vivo, en claro, en el documento de sala.** Cada cliente publica
-`estadoClientes.{uid}.rolKey` y `.jugador` en cada fase
-([GameplayMockActivity.kt:2018](app/src/main/java/com/traidores/juego/GameplayMockActivity.kt:2018)).
-Son campos de depuración, están documentados como tales, y son **el camino más corto para
-hacer trampa**: no hay que interpretar el reparto, el rol de cada jugador se lee servido y
-actualizado. Incluso si mañana se arregla B1, esto seguiría filtrando todo.
-*Arreglo:* borrar los dos campos del payload. Es la mejor relación beneficio/esfuerzo de toda
-la auditoría. No lo aplico yo porque toca el cliente y no compilo acá; va como primer punto de
-la spec.
+**B2 — Resuelto.** `estadoClientes` ya no publica `rolKey` ni el jugador completo.
 
-**B3 — Lectura de los canales secretos.** En RTDB, `chat_traidores` y `chat_espectadores`
-tienen `.read: "auth != null"`. Cualquier autenticado que conozca el `roomId` lee el plan de
-los asesinos. La escritura sí está bien cerrada.
+**B3 — Riesgo residual.** Los canales ya exigen presencia/membresía y los listeners arrancan
+después de publicar presencia. RTDB no puede consultar el reparto privado de Firestore, así que
+un miembro con cliente modificado todavía podría intentar leer un canal que su rol no muestra.
 *Arreglo:* exigir nodo de presencia en esa sala para leer, igual que ya se exige para escribir
 y borrar. **No lo aplico hoy** porque hay una carrera real: en
 [LobbyActivity.kt:363-367](app/src/main/java/com/traidores/juego/LobbyActivity.kt:363) la
@@ -157,7 +142,7 @@ handoff de host restringido a miembros (ya hecho en A1).
 
 | ID | Sev | Hallazgo | Estado |
 |----|-----|----------|--------|
-| C1 | ALTO | Sin reportar, silenciar ni banear | servidor listo, falta UI (spec) |
+| C1 | ALTO | Sin reportar, silenciar ni banear | resuelto en cliente y reglas |
 | C2 | MEDIO | Sin límite de frecuencia del lado del servidor | spec |
 | C3 | MEDIO | Nombres y biografías sin filtro | spec |
 | C4 | MEDIO | Las sanciones se evaden reinstalando | spec |
@@ -187,8 +172,8 @@ dejando el juego con amigos por código de sala accesible sin cuenta.
 
 | ID | Sev | Hallazgo | Estado |
 |----|-----|----------|--------|
-| D1 | ALTO | Sin App Check: cualquier script es un cliente válido | spec (fase 0) |
-| D2 | ALTO | `minifyEnabled false` en release | spec |
+| D1 | ALTO | App Check todavía debe registrarse/observarse en consola | código integrado, no aplicado |
+| D2 | ALTO | `minifyEnabled false` en release | resuelto |
 | D3 | MEDIO | `google-services.json` versionado en git | decisión tuya |
 | D4 | BAJO | Logs con nombres, uids y estado de partida | spec |
 

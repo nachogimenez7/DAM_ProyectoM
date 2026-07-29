@@ -26,7 +26,8 @@ object OnlineMatchSessionBuilder {
         fallbackMapKey: String,
         fallbackMapName: String,
         revealRolesOnDeath: Boolean,
-        showIndividualVotes: Boolean
+        showIndividualVotes: Boolean,
+        privateRoleAssignments: List<Map<String, Any?>> = emptyList()
     ): OnlineMatchSessionResult {
         val initialMatch = initialMatchRaw.asStringAnyMap()
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_INITIAL_MATCH)
@@ -37,14 +38,22 @@ object OnlineMatchSessionBuilder {
         val sortedPlayerPayloads = playerPayloads
             .mapNotNull { it.asStringAnyMap() }
             .sortedBy { (it["orden"] as? Number)?.toInt() ?: Int.MAX_VALUE }
-        val players = sortedPlayerPayloads.mapNotNull { playerMap ->
+        val rolesByOrder = privateRoleAssignments.associateBy {
+            (it["orden"] as? Number)?.toInt() ?: -1
+        }
+        val players = sortedPlayerPayloads.mapIndexedNotNull { index, playerMap ->
                 val name = (playerMap["nombre"] as? String)
                     ?.takeIf { it.isNotBlank() }
-                    ?: return@mapNotNull null
-                val roleKey = (playerMap["rolKey"] as? String).orEmpty()
-                val roleName = (playerMap["rolNombre"] as? String).orEmpty()
-                val roleTeam = (playerMap["rolEquipo"] as? String).orEmpty()
-                val roleImage = (playerMap["rolImagen"] as? String).orEmpty()
+                    ?: return@mapIndexedNotNull null
+                val privateRole = rolesByOrder[index]
+                val roleKey = (privateRole?.get("rolKey") as? String)
+                    ?: (playerMap["rolKey"] as? String).orEmpty()
+                val roleName = (privateRole?.get("rolNombre") as? String)
+                    ?: (playerMap["rolNombre"] as? String).orEmpty()
+                val roleTeam = (privateRole?.get("rolEquipo") as? String)
+                    ?: (playerMap["rolEquipo"] as? String).orEmpty()
+                val roleImage = (privateRole?.get("rolImagen") as? String)
+                    ?: (playerMap["rolImagen"] as? String).orEmpty()
                 GamePlayer(
                     name = name,
                     initial = (playerMap["inicial"] as? String)?.takeIf { it.isNotBlank() }
@@ -162,6 +171,7 @@ object OnlineMatchSessionBuilder {
         val updatedPlayers = base.players.mapIndexed { index, player ->
             val playerState = playerStatesByOrder[index] ?: playerStatesByName[player.name] ?: return@mapIndexed player
             player.copy(
+                role = roleFromState(playerState) ?: player.role,
                 alive = (playerState["vivo"] as? Boolean) ?: player.alive,
                 muted = (playerState["muteado"] as? Boolean) ?: player.muted,
                 lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt(),
@@ -210,6 +220,17 @@ object OnlineMatchSessionBuilder {
                 ?: emptyList(),
             alcaldeRevealed = (state["alcaldeRevelado"] as? Boolean) ?: base.alcaldeRevealed,
             alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: base.alcaldeCorruption
+        )
+    }
+
+    private fun roleFromState(state: Map<String, Any?>): GameRole? {
+        val key = (state["rolKey"] as? String).orEmpty()
+        if (key.isBlank()) return null
+        return GameRole(
+            key = key,
+            name = (state["rolNombre"] as? String).orEmpty().ifBlank { key },
+            team = (state["rolEquipo"] as? String).orEmpty(),
+            imageResName = (state["rolImagen"] as? String).orEmpty()
         )
     }
 

@@ -16,6 +16,7 @@ const chatMessage = (actorId) => ({
   fase: "DISCUSION",
   ronda: 1,
   isGod: false,
+  tipo: "texto",
   ts: Date.now(),
 });
 
@@ -38,6 +39,7 @@ async function main() {
   try {
     const alice = testEnv.authenticatedContext("alice").database();
     const bob = testEnv.authenticatedContext("bob").database();
+    const carol = testEnv.authenticatedContext("carol").database();
     const guest = testEnv.unauthenticatedContext().database();
 
     // Los canales se enganchan recién después de publicar la presencia propia. Estar
@@ -108,6 +110,45 @@ async function main() {
     await assertSucceeds(bob.ref(`salas/${roomId}/chat_lobby`).once("value"));
     await assertSucceeds(bob.ref(`salas/${roomId}/chat_espectadores`).once("value"));
 
+    await assertSucceeds(
+      carol.ref(`salas/${roomId}/presencia/carol`).set({
+        estado: "conectado",
+        ts: Date.now(),
+      })
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/propuesta_silencio`).set({
+        objetivoUid: "bob",
+        objetivoNombre: "Bob",
+        proponenteUid: "alice",
+        proponenteNombre: "Alice",
+        ts: Date.now(),
+      })
+    );
+    for (const voter of [["alice", alice], ["carol", carol]]) {
+      await assertSucceeds(
+        voter[1].ref(`salas/${roomId}/votos_silencio/bob/${voter[0]}`).set(Date.now())
+      );
+    }
+    await assertFails(
+      bob.ref(`salas/${roomId}/votos_silencio/alice/bob`).set(Date.now())
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/silenciados/bob`).set({
+        ts: Date.now(),
+        votos: 3,
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat/message-muted-text`).set(chatMessage("bob"))
+    );
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/chat/message-muted-quick`).set({
+        ...chatMessage("bob"),
+        tipo: "rapida",
+      })
+    );
+
     // Rematch cleanup: authenticated clients can delete chat nodes but cannot
     // overwrite or impersonate message authors.
     await assertSucceeds(
@@ -120,6 +161,7 @@ async function main() {
       bob.ref(`salas/${roomId}/chat_espectadores/message-spectator`).set({
         ...chatMessage("bob"),
         canal: "espectadores",
+        tipo: "rapida",
       })
     );
     await assertFails(

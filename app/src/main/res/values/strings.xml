@@ -91,6 +91,10 @@
     <string name="play_games_close">CERRAR</string>
     <string name="profile_account_dialog_title">Tu cuenta</string>
     <string name="profile_account_dialog_message">Con una cuenta elegís tu nombre, personalizás el perfil y conservás todo aunque cambies de celular. No perdés nada de lo que ya jugaste.</string>
+    <string name="account_invitation_title">Tu identidad en Traidores</string>
+    <string name="account_invitation_intro">Vinculá tu cuenta y construí un perfil que crezca con cada partida.</string>
+    <string name="account_invitation_benefits">✦ Seguí tus partidas, victorias y porcentaje.\n✦ Personalizá tu nombre, avatar y presentación.\n✦ Conservá tu número # y recuperá tu perfil.\n✦ Creá tus propias salas online.</string>
+    <string name="account_invitation_guest_hint">También podés seguir como invitado y vincularla cuando quieras desde tu perfil.</string>
     <string name="profile_account_email_hint">Correo</string>
     <string name="profile_account_password_hint">Contraseña</string>
     <string name="profile_account_linked_toast">Listo. Tu perfil y tu número quedaron guardados en %1$s.</string>

@@ -697,7 +697,7 @@
                     android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:includeFontPadding="false"
-                    android:text="Nadie murio esta noche."
+                    android:text="Nadie murió esta noche."
                     android:textColor="@color/accent_gold"
                     android:textSize="12sp"
                     android:textStyle="bold" />

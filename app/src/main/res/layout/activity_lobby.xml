@@ -453,7 +453,7 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:fontFamily="sans-serif"
-                        android:text="VOTACION DE MAPA"
+                        android:text="VOTACIÓN DE MAPA"
                         android:textColor="@color/accent_gold"
                         android:textSize="13sp"
                         android:textStyle="bold" />
@@ -761,7 +761,7 @@
                         android:background="@drawable/bg_btn_dark_ripple"
                         android:maxLines="1"
                         android:singleLine="true"
-                        android:text="TIEMPOS"
+                        android:text="OPCIONES DE PARTIDA"
                         android:textSize="11sp"
                         app:autoSizeMaxTextSize="11sp"
                         app:autoSizeMinTextSize="8sp"

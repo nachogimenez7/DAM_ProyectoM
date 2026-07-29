@@ -310,7 +310,7 @@
                 android:layout_marginTop="8dp"
                 android:fontFamily="sans-serif"
                 android:gravity="center"
-                android:text="Las estadisticas se mostraran cuando este perfil tenga progreso registrado."
+                android:text="Las estadísticas se mostrarán cuando este perfil tenga progreso registrado."
                 android:textColor="@color/text_primary"
                 android:textSize="14sp" />
 
@@ -321,7 +321,7 @@
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_profile_stat"
                 android:clickable="true"
-                android:contentDescription="Ver informacion del rol Detective"
+                android:contentDescription="Ver información del rol Detective"
                 android:focusable="true"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"

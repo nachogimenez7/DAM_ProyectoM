@@ -25,4 +25,20 @@ class OnlineRoomFirestoreTest {
             OnlineRoomFirestore.normalizedExpectedPlayers(3, modePrueba = false)
         )
     }
+
+    @Test
+    fun roomVisibilityAcceptsPrivateAndDefaultsEverythingElseToPublic() {
+        assertEquals(
+            OnlineRoomFirestore.VISIBILITY_PRIVATE,
+            OnlineRoomFirestore.normalizedVisibility(OnlineRoomFirestore.VISIBILITY_PRIVATE)
+        )
+        assertEquals(
+            OnlineRoomFirestore.VISIBILITY_PUBLIC,
+            OnlineRoomFirestore.normalizedVisibility(OnlineRoomFirestore.VISIBILITY_PUBLIC)
+        )
+        assertEquals(
+            OnlineRoomFirestore.VISIBILITY_PUBLIC,
+            OnlineRoomFirestore.normalizedVisibility("valor_invalido")
+        )
+    }
 }

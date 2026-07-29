@@ -1,6 +1,9 @@
 # Firebase online experimental
 
-El modo online de Traidores sigue siendo experimental. Esta documentacion define el contrato actual para poder probar sin perder de vista los limites: **sí hay Firebase Auth anónima** (`OnlineTempIdentity.ensureAuthenticated` hace `signInAnonymously`; el `uidTemporal` es el uid anónimo y las reglas exigen `request.auth.uid`), pero todavia no hay Auth con cuentas reales, Cloud Functions, App Check ni backend autoritativo completo.
+El modo online de Traidores sigue siendo experimental. Firebase Auth anónima permite entrar como
+invitado y una identidad puede vincularse con Google sin perder uid, perfil ni salas. App Check
+está integrado (Debug en debug y Play Integrity en release), pero todavía debe registrarse,
+observarse y aplicarse gradualmente desde Firebase Console. No hay Cloud Functions.
 
 ## Objetivo actual
 
@@ -70,6 +73,12 @@ Campos base:
   contra el griefer que reinstala: a un invitado expulsado le alcanza con borrar la app para
   volver con otra identidad, y contra una cuenta con correo eso no funciona.
 - `modoPrueba`: habilita explicitamente salas experimentales con un minimo de 3 jugadores. El cliente lo controla, por lo que este limite es solo para pruebas entre amigos; App Check debera protegerlo antes de produccion.
+- `visibilidad`: `publica` o `privada`, fijada al crear. Las publicas aparecen en el navegador
+  de salas; las privadas se omiten de esa consulta y se accede a ellas con el codigo. Es una
+  decision independiente de `soloCuentas`: una privada puede aceptar invitados y una publica
+  puede exigir cuenta. Las salas antiguas sin campo se aceptan como publicas durante la
+  migracion, aunque el navegador nuevo solo consulta documentos que ya tengan
+  `visibilidad: publica`.
 - `configLobby`: configuracion visible y sincronizada antes de iniciar (`transicionSeg`, `nocheSeg`, `discusionSeg`, `votacionSeg`, `revelarRolesAlMorir` y `votosIndividuales`). Sobrevive al traspaso de anfitrion.
 - `origen`: origen tecnico, por ejemplo `android-online-create`.
 - `creadaEn`: timestamp de servidor.
@@ -104,6 +113,17 @@ celulares, incluido un reingreso, reconstruyan la misma partida:
 
 Las salas creadas antes de incorporar `config` siguen siendo compatibles: usan los
 tiempos predeterminados y las reglas locales recibidas como fallback.
+
+### `partidas/{partidaId}/repartos/{uidTemporal}`
+
+Documento privado creado en la misma transacción que inicia la partida:
+
+- `matchId` y `uidTemporal` identifican reparto y dueño.
+- `rolesVisibles` contiene el rol propio y, para un traidor, sus compañeros conocidos.
+- El jugador solo puede leer su documento. El anfitrión activo puede enumerar la colección
+  completa porque ejecuta el motor autoritativo.
+- No admite actualizaciones. Se elimina al preparar una revancha o destruir la sala.
+- El reingreso exige recuperar este documento; nunca vuelve a repartir localmente.
 
 ### `partidas/{partidaId}/jugadores/{uidTemporal}`
 
@@ -149,6 +169,7 @@ Lo que el servidor hace valer:
 | | Invitado | Registrado |
 |---|---|---|
 | Crear sala (`partidas` create) | no | si |
+| Entrar a sala publica o privada por codigo | si | si |
 | Entrar a una sala con `soloCuentas` | no | si |
 | Anfitrion estable (`stableLobbyHostTransfer`) | no, ni recibiendola de otro | si |
 | `nombre`, `nombrePerfil`, `nombreSala` | alias de lista cerrada + numero de 4 digitos | texto libre, 18 caracteres |
@@ -457,28 +478,22 @@ Barrido de autorizacion de julio de 2026 (ya publicado en `firestore.rules`):
 
 Las reglas validan forma y tamanos, pero no pueden garantizar frecuencia fuerte de escritura. El cooldown local evita spam accidental, pero un cliente modificado podria seguir abusando.
 
-Lectura: desde el barrido de reglas, `partidas`, `jugadores`, `acciones`, `perfiles_publicos`
-y `meta/public_ids` exigen sesion iniciada. Ya no se puede leer una sala sin autenticarse,
-pero **cualquier usuario autenticado sigue pudiendo leer cualquier sala**, y `partidaInicial`
-incluye el rol de cada jugador: el secreto de roles sigue siendo honor-system.
+Lectura: `partidas`, `jugadores`, `perfiles_publicos` y `meta/public_ids` exigen sesión.
+Las acciones exigen membresía activa. El navegador todavía necesita leer documentos de sala,
+pero `partidaInicial` ya no incluye roles; el reparto sensible está en la subcolección privada.
 
 Borrado en RTDB: vaciar un canal, borrar un mensaje o eliminar el nodo completo de una sala
 exige tener nodo de presencia en esa sala. Antes bastaba con estar autenticado, asi que
 cualquiera podia vaciar el chat de una partida ajena.
 
-Ademas, cada cliente publica hoy su propio `rolKey` en `estadoClientes.{uid}` como dato de
-depuracion. Eso deja el rol de cada jugador servido y actualizado en un documento que cualquier
-cuenta autenticada puede leer: es el camino mas corto para hacer trampa y se saca en §B de la
-spec de seguridad.
+`estadoClientes.{uid}` ya no publica `rolKey` ni el jugador completo. `partidaInicial.jugadores`
+solo contiene metadatos públicos y el reparto vive en `partidas/{id}/repartos/{uid}`.
 
 Pendiente para produccion:
 
-- **App Check con Play Integrity** para que solo el APK real pueda hablar con Firebase. Es
-  gratuito y es la pieza que hace que cualquier validacion del cliente valga algo.
-- Sacar `rolKey`/`jugador` de `estadoClientes` y mover el reparto a `partidas/{id}/repartos/{uid}`,
-  legible solo por ese jugador y por el anfitrion activo.
-- Moderacion: silencio local, silencio por votacion de la mesa, expulsion y baneo de sala
-  (servidor listo), reportes y baneo global.
+- Registrar la app en Firebase App Check, agregar tokens debug, observar métricas durante una
+  semana y recién después aplicar Firestore/Realtime Database.
+- Automatizar revisión de reportes y sanciones cuando el volumen lo justifique.
 - Firebase Auth con **cuentas reales** ya existe por correo (`AccountLink`), pero el online
   todavia acepta identidad anonima: un baneo global se evade reinstalando.
 - Cloud Functions para validar frecuencia, resolver sala llena de forma centralizada y limpiar

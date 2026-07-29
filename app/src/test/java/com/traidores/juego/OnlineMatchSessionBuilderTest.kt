@@ -238,6 +238,39 @@ class OnlineMatchSessionBuilderTest {
         }
     }
 
+    @Test
+    fun buildUsesPrivateRoleAssignmentsWhenPublicPayloadHasNoRoles() {
+        val publicPlayers = defaultPlayers().map {
+            it - setOf("rolKey", "rolNombre", "rolEquipo", "rolImagen")
+        }
+        val police = RoleCatalog.gameRole(RoleCatalog.POLICIA, RoleMap.GREECE)
+        val result = OnlineMatchSessionBuilder.build(
+            initialMatchRaw = initialMatch(publicPlayers),
+            matchStateRaw = initialState(),
+            uidTemporal = "uid_2",
+            expectedPlayers = 5,
+            fallbackRoomId = "room",
+            fallbackRoomCode = "",
+            fallbackMapKey = "grecia",
+            fallbackMapName = "Grecia",
+            revealRolesOnDeath = false,
+            showIndividualVotes = true,
+            privateRoleAssignments = listOf(
+                mapOf(
+                    "orden" to 1,
+                    "rolKey" to police.key,
+                    "rolNombre" to police.name,
+                    "rolEquipo" to police.team,
+                    "rolImagen" to police.imageResName
+                )
+            )
+        )
+
+        val session = (result as OnlineMatchSessionResult.Success).session
+        assertEquals(RoleCatalog.POLICIA, GameEngine.humanPlayer(session).role?.key)
+        assertEquals(1, session.players.count { it.role != null })
+    }
+
     private fun buildSession(
         uidTemporal: String,
         initialMatch: Map<String, Any?> = initialMatch(players = defaultPlayers())

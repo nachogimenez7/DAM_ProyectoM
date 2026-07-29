@@ -21,6 +21,12 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import java.util.WeakHashMap
 
+data class PlayerProfileAction(
+    val label: String,
+    val dangerous: Boolean = false,
+    val onClick: () -> Unit
+)
+
 object PlayerProfileDialog {
     private val openDialogs = WeakHashMap<Activity, MutableSet<AlertDialog>>()
 
@@ -32,7 +38,13 @@ object PlayerProfileDialog {
     }
 
     fun showFull(activity: Activity, profile: PlayerProfile, canEdit: Boolean) {
-        val content = profileView(activity, profile, compact = false, canEdit = canEdit)
+        val content = profileView(
+            activity,
+            profile,
+            compact = false,
+            canEdit = canEdit,
+            actions = emptyList()
+        )
         val dialog = AlertDialog.Builder(activity).setView(content).create()
         content.findViewWithTag<View>("close")?.setOnClickListener { dialog.dismiss() }
         content.findViewWithTag<View>("edit")?.setOnClickListener {
@@ -54,13 +66,29 @@ object PlayerProfileDialog {
         showTracked(activity, dialog)
     }
 
-    fun showMini(activity: Activity, profile: PlayerProfile) {
-        val content = profileView(activity, profile, compact = true, canEdit = false)
+    fun showMini(
+        activity: Activity,
+        profile: PlayerProfile,
+        actions: List<PlayerProfileAction> = emptyList()
+    ) {
+        val content = profileView(
+            activity,
+            profile,
+            compact = true,
+            canEdit = false,
+            actions = actions
+        )
         val dialog = AlertDialog.Builder(activity).setView(content).create()
         content.findViewWithTag<View>("close")?.setOnClickListener { dialog.dismiss() }
         content.findViewWithTag<View>("expand")?.setOnClickListener {
             dialog.dismiss()
             showFull(activity, profile, canEdit = false)
+        }
+        actions.forEachIndexed { index, action ->
+            content.findViewWithTag<View>("profile_action_$index")?.setOnClickListener {
+                dialog.dismiss()
+                action.onClick()
+            }
         }
         dialog.setOnShowListener {
             dialog.window?.apply {
@@ -79,7 +107,8 @@ object PlayerProfileDialog {
         activity: Activity,
         profile: PlayerProfile,
         compact: Boolean,
-        canEdit: Boolean
+        canEdit: Boolean,
+        actions: List<PlayerProfileAction>
     ): View {
         val rootScroll = ScrollView(activity).apply {
             isFillViewport = !compact
@@ -120,6 +149,7 @@ object PlayerProfileDialog {
 
         if (compact) {
             root.addView(compactFavoriteRole(activity, profile.favoriteRoleKey))
+            if (actions.isNotEmpty()) root.addView(moderationButtons(activity, actions))
             root.addView(miniButtons(activity))
         } else {
             root.addView(sectionTitle(activity, "ROL FAVORITO"))
@@ -134,6 +164,43 @@ object PlayerProfileDialog {
         }
 
         return rootScroll
+    }
+
+    private fun moderationButtons(
+        activity: Activity,
+        actions: List<PlayerProfileAction>
+    ): View {
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(activity, 10), 0, 0)
+            actions.forEachIndexed { index, action ->
+                addView(
+                    Button(activity).apply {
+                        tag = "profile_action_$index"
+                        text = action.label
+                        textSize = 11f
+                        typeface = Typeface.DEFAULT_BOLD
+                        minHeight = 0
+                        minWidth = 0
+                        setTextColor(
+                            Color.parseColor(if (action.dangerous) "#FFB4AB" else "#F3D488")
+                        )
+                        background = chipBackground(
+                            activity,
+                            if (action.dangerous) "#351616" else "#251A10",
+                            if (action.dangerous) "#8F2633" else "#6B4F2A",
+                            9
+                        )
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(activity, 40)
+                    ).apply {
+                        if (index > 0) topMargin = dp(activity, 6)
+                    }
+                )
+            }
+        }
     }
 
     private fun topBar(activity: Activity): View {

@@ -15,6 +15,24 @@
       ]
     },
     {
+      "collectionGroup": "partidas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibilidad",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "actualizadaEn",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "chat",
       "queryScope": "COLLECTION",
       "fields": [

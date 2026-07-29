@@ -41,6 +41,8 @@ class GameplayChatController(
     private val host: ChatHost,
     private val root: RelativeLayout
 ) {
+    fun refreshUi() = renderChatPanel()
+
     interface ChatHost {
         var currentSession: GameSession
         val gameplayTextScale: Float
@@ -59,10 +61,13 @@ class GameplayChatController(
         fun chatLogDrawableRes(): Int
         fun onOnlineReactionReceived(playerName: String, emoteId: String)
         fun onRealtimeContentAccessCancelled(error: Exception)
+        fun isOnlineActorLocallyMuted(actorId: String): Boolean
+        fun isOwnPlayerTableSilenced(): Boolean
     }
 
     private data class OnlineChatEntry(
         val id: String,
+        val actorId: String,
         val speaker: String,
         val message: String,
         val isGod: Boolean
@@ -533,10 +538,15 @@ class GameplayChatController(
         renderChatMessages(activeChannelMessages(channel), channel)
 
         val canChat = canHumanChatInChannel(channel)
-        chatInput.isEnabled = canChat
-        btnSendChat.isEnabled = canChat
-        chatInput.hint = chatInputHint(canChat, channel)
-        btnSendChat.alpha = if (canChat) 1f else 0.45f
+        val canWriteText = canChat && !(host.isOnlineGameplay() && host.isOwnPlayerTableSilenced())
+        chatInput.isEnabled = canWriteText
+        btnSendChat.isEnabled = canWriteText
+        chatInput.hint = if (canChat && !canWriteText) {
+            "La mesa silenció tu texto; usá respuestas rápidas"
+        } else {
+            chatInputHint(canChat, channel)
+        }
+        btnSendChat.alpha = if (canWriteText) 1f else 0.45f
         renderQuickReplies(channel, canChat)
         renderChatCharacterCount(chatInput.text.length)
         renderNewChatMessageNotice()
@@ -1304,7 +1314,7 @@ class GameplayChatController(
     private fun sendQuickChatMessage(message: QuickChatMessage) {
         chatInput.setText(message.text)
         chatInput.setSelection(chatInput.text.length)
-        sendHumanChatMessage(message.intentHint)
+        sendHumanChatMessage(message.intentHint, quickReply = true)
     }
 
     private fun renderSpectatorHeaderChip() {
@@ -1898,7 +1908,10 @@ class GameplayChatController(
         }
     }
 
-    private fun sendHumanChatMessage(intentHint: HumanMessageIntent? = null) {
+    private fun sendHumanChatMessage(
+        intentHint: HumanMessageIntent? = null,
+        quickReply: Boolean = false
+    ) {
         val session = host.currentSession
         if (host.isTransitionLocked(session.phaseIndex)) {
             host.showToast("El chat se habilita al comenzar la fase.")
@@ -1912,9 +1925,9 @@ class GameplayChatController(
                 return
             }
             when (activeChatChannel()) {
-                ChatChannel.PUBLICO -> sendOnlineHumanChatMessage(rawMessage)
-                ChatChannel.TRAIDORES -> sendOnlineTraitorChatMessage(rawMessage)
-                ChatChannel.ESPECTADORES -> sendOnlineSpectatorChatMessage(rawMessage)
+                ChatChannel.PUBLICO -> sendOnlineHumanChatMessage(rawMessage, quickReply)
+                ChatChannel.TRAIDORES -> sendOnlineTraitorChatMessage(rawMessage, quickReply)
+                ChatChannel.ESPECTADORES -> sendOnlineSpectatorChatMessage(rawMessage, quickReply)
             }
             return
         }
@@ -1945,10 +1958,14 @@ class GameplayChatController(
         renderChatBadge()
     }
 
-    private fun sendOnlineHumanChatMessage(rawMessage: String) {
+    private fun sendOnlineHumanChatMessage(rawMessage: String, quickReply: Boolean) {
         val session = host.currentSession
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         if (message.isBlank()) return
+        if (host.isOwnPlayerTableSilenced() && !quickReply) {
+            host.showToast("La mesa silenció tu texto libre. Podés usar respuestas rápidas.")
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastOnlineChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
             GameplayEffects.play(root.context, GameplayEffect.ERROR)
@@ -1978,6 +1995,7 @@ class GameplayChatController(
                     "fase" to session.phase.name,
                     "ronda" to session.round,
                     "isGod" to false,
+                    "tipo" to if (quickReply) "rapida" else "texto",
                     "ts" to ServerValue.TIMESTAMP
                 )
             )
@@ -2003,10 +2021,14 @@ class GameplayChatController(
             }
     }
 
-    private fun sendOnlineTraitorChatMessage(rawMessage: String) {
+    private fun sendOnlineTraitorChatMessage(rawMessage: String, quickReply: Boolean) {
         val session = host.currentSession
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         if (message.isBlank()) return
+        if (host.isOwnPlayerTableSilenced() && !quickReply) {
+            host.showToast("La mesa silenció tu texto libre. Podés usar respuestas rápidas.")
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastOnlineTraitorChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
             GameplayEffects.play(root.context, GameplayEffect.ERROR)
@@ -2037,6 +2059,7 @@ class GameplayChatController(
                     "ronda" to session.round,
                     "isGod" to false,
                     "canal" to "traidores",
+                    "tipo" to if (quickReply) "rapida" else "texto",
                     "ts" to ServerValue.TIMESTAMP
                 )
             )
@@ -2062,10 +2085,14 @@ class GameplayChatController(
             }
     }
 
-    private fun sendOnlineSpectatorChatMessage(rawMessage: String) {
+    private fun sendOnlineSpectatorChatMessage(rawMessage: String, quickReply: Boolean) {
         val session = host.currentSession
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(CHAT_MESSAGE_MAX_LENGTH)
         if (message.isBlank()) return
+        if (host.isOwnPlayerTableSilenced() && !quickReply) {
+            host.showToast("La mesa silenció tu texto libre. Podés usar respuestas rápidas.")
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastOnlineSpectatorChatSentAtMs < ONLINE_CHAT_COOLDOWN_MS) {
             GameplayEffects.play(root.context, GameplayEffect.ERROR)
@@ -2096,6 +2123,7 @@ class GameplayChatController(
                     "ronda" to session.round,
                     "isGod" to false,
                     "canal" to "espectadores",
+                    "tipo" to if (quickReply) "rapida" else "texto",
                     "ts" to ServerValue.TIMESTAMP
                 )
             )
@@ -2149,7 +2177,9 @@ class GameplayChatController(
                     if (!seenOnlineReactionIds.add(entry.id)) return@forEach
                     if (entry.actorId == host.onlinePlayerUid) return@forEach
                     if (EmoteCatalog.byId(entry.emoteId) == null) return@forEach
+                if (!host.isOnlineActorLocallyMuted(entry.actorId)) {
                     host.onOnlineReactionReceived(entry.playerName, entry.emoteId)
+                }
                 }
                 trimSeenOnlineReactionIds()
             }
@@ -2268,6 +2298,12 @@ class GameplayChatController(
         stopOnlineReactionListener()
     }
 
+    fun restartRealtimeContentListeners() {
+        if (!realtimeAccessReady) return
+        onRealtimeAccessUnavailable()
+        onRealtimeAccessReady()
+    }
+
     private fun handleRealtimeAccessCancelled(label: String, error: DatabaseError) {
         val exception = error.toException()
         OnlineDebugLog.e(label, exception)
@@ -2291,6 +2327,7 @@ class GameplayChatController(
                     if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
                     OnlineChatEntry(
                         id = child.key.orEmpty(),
+                        actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
                         isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
@@ -2316,7 +2353,9 @@ class GameplayChatController(
     }
 
     private fun applyOnlineChatEntries(entries: List<OnlineChatEntry>) {
-        val onlineMessages = entries.map { GameChatMessage(it.speaker, it.message, it.isGod) }
+        val onlineMessages = entries
+            .filterNot { host.isOnlineActorLocallyMuted(it.actorId) }
+            .map { GameChatMessage(it.speaker, it.message, it.isGod) }
         mergeOnlineChannelMessages(
             channel = ChatChannel.PUBLICO,
             onlineMessages = onlineMessages,
@@ -2342,6 +2381,7 @@ class GameplayChatController(
                     if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
                     OnlineChatEntry(
                         id = child.key.orEmpty(),
+                        actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
                         isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
@@ -2367,7 +2407,9 @@ class GameplayChatController(
     }
 
     private fun applyOnlineTraitorChatEntries(entries: List<OnlineChatEntry>) {
-        val onlineTraitorMessages = entries.map {
+        val onlineTraitorMessages = entries
+            .filterNot { host.isOnlineActorLocallyMuted(it.actorId) }
+            .map {
             GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.TRAIDORES)
         }
         mergeOnlineChannelMessages(
@@ -2393,6 +2435,7 @@ class GameplayChatController(
                     if (currentMatchId.isNotBlank() && matchId != currentMatchId) return@mapNotNull null
                     OnlineChatEntry(
                         id = child.key.orEmpty(),
+                        actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
                         isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
@@ -2418,7 +2461,9 @@ class GameplayChatController(
     }
 
     private fun applyOnlineSpectatorChatEntries(entries: List<OnlineChatEntry>) {
-        val onlineSpectatorMessages = entries.map {
+        val onlineSpectatorMessages = entries
+            .filterNot { host.isOnlineActorLocallyMuted(it.actorId) }
+            .map {
             GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.ESPECTADORES)
         }
         mergeOnlineChannelMessages(

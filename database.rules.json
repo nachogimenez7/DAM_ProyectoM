@@ -9,8 +9,8 @@
           ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
-            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'ts'])",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid && (newData.child('tipo').val() === 'rapida' || !root.child('salas').child($roomId).child('silenciados').child(auth.uid).exists())) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
+            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'tipo', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
             "speaker": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
@@ -18,6 +18,7 @@
             "fase": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
             "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
             "isGod": { ".validate": "newData.val() === false" },
+            "tipo": { ".validate": "newData.val() === 'texto' || newData.val() === 'rapida'" },
             "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
             "$other": { ".validate": false }
           }
@@ -26,8 +27,8 @@
           ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
-            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'ts'])",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid && (newData.child('tipo').val() === 'rapida' || !root.child('salas').child($roomId).child('silenciados').child(auth.uid).exists())) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
+            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'tipo', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
             "speaker": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
@@ -36,6 +37,7 @@
             "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
             "isGod": { ".validate": "newData.val() === false" },
             "canal": { ".validate": "newData.val() === 'traidores'" },
+            "tipo": { ".validate": "newData.val() === 'texto' || newData.val() === 'rapida'" },
             "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
             "$other": { ".validate": false }
           }
@@ -44,8 +46,8 @@
           ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
           "$messageId": {
-            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
-            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'ts'])",
+            ".write": "auth != null && ((!data.exists() && newData.child('actorId').val() === auth.uid && (newData.child('tipo').val() === 'rapida' || !root.child('salas').child($roomId).child('silenciados').child(auth.uid).exists())) || (data.exists() && !newData.exists() && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()))",
+            ".validate": "newData.hasChildren(['matchId', 'actorId', 'speaker', 'mensaje', 'fase', 'ronda', 'isGod', 'canal', 'tipo', 'ts'])",
             "matchId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
             "speaker": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
@@ -54,6 +56,7 @@
             "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
             "isGod": { ".validate": "newData.val() === false" },
             "canal": { ".validate": "newData.val() === 'espectadores'" },
+            "tipo": { ".validate": "newData.val() === 'texto' || newData.val() === 'rapida'" },
             "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
             "$other": { ".validate": false }
           }
@@ -94,6 +97,36 @@
             ".validate": "newData.hasChildren(['estado', 'ts'])",
             "estado": { ".validate": "newData.val() === 'conectado' || newData.val() === 'desconectado'" },
             "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "$other": { ".validate": false }
+          }
+        },
+        "propuesta_silencio": {
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists() && newData.child('proponenteUid').val() === auth.uid",
+          ".validate": "newData.hasChildren(['objetivoUid', 'objetivoNombre', 'proponenteUid', 'proponenteNombre', 'ts']) && newData.child('objetivoUid').val() !== auth.uid && root.child('salas').child($roomId).child('presencia').child(newData.child('objetivoUid').val()).exists()",
+          "objetivoUid": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128" },
+          "objetivoNombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
+          "proponenteUid": { ".validate": "newData.val() === auth.uid" },
+          "proponenteNombre": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 18" },
+          "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+          "$other": { ".validate": false }
+        },
+        "votos_silencio": {
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
+          "$targetUid": {
+            "$voterUid": {
+              ".write": "auth != null && auth.uid === $voterUid && $targetUid !== auth.uid && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists() && root.child('salas').child($roomId).child('propuesta_silencio').child('objetivoUid').val() === $targetUid",
+              ".validate": "newData.isNumber() && newData.val() <= now"
+            }
+          }
+        },
+        "silenciados": {
+          ".read": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists()",
+          "$targetUid": {
+            ".write": "auth != null && root.child('salas').child($roomId).child('presencia').child(auth.uid).exists() && root.child('salas').child($roomId).child('propuesta_silencio').child('objetivoUid').val() === $targetUid",
+            ".validate": "newData.hasChildren(['ts', 'votos'])",
+            "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "votos": { ".validate": "newData.isNumber() && newData.val() >= 3 && newData.val() <= 15" },
             "$other": { ".validate": false }
           }
         }

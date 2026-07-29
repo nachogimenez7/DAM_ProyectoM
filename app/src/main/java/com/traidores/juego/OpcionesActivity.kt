@@ -311,7 +311,7 @@ class OpcionesActivity : BaseActivity() {
             labelMusic.text = "Music: ${seekMusic.progress}%"
             labelVoices.text = "Effects: ${seekVoices.progress}%"
         } else {
-            labelMusic.text = "Musica: ${seekMusic.progress}%"
+            labelMusic.text = "Música: ${seekMusic.progress}%"
             labelVoices.text = "Efectos: ${seekVoices.progress}%"
         }
     }
@@ -356,18 +356,18 @@ class OpcionesActivity : BaseActivity() {
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
-            subtitleOptions.text = "Ajusta el juego para que sea comodo de leer y escuchar."
+            subtitleOptions.text = "Ajusta el juego para que sea cómodo de leer y escuchar."
             titleAudio.text = "SONIDO Y RESPUESTA"
-            switchMusic.text = "Musica"
+            switchMusic.text = "Música"
             switchEffects.text = "Efectos de sonido"
-            descSound.text = "Controla por separado la musica y los efectos del juego."
-            switchVibration.text = "Vibracion al interactuar"
+            descSound.text = "Controla por separado la música y los efectos del juego."
+            switchVibration.text = "Vibración al interactuar"
             titleTextSize.text = "LECTURA Y ACCESIBILIDAD"
-            labelTextSize.text = "Tamano del texto"
+            labelTextSize.text = "Tamaño del texto"
             descTextSize.text = "Se aplica a mensajes, botones y datos durante la partida."
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
-            descLanguage.text = "La traduccion completa sigue en desarrollo."
+            descLanguage.text = "La traducción completa sigue en desarrollo."
             titleAccount.text = "ONLINE Y PERFIL"
             accountStatus.text = "ONLINE EXPERIMENTAL"
             accountDescription.text =

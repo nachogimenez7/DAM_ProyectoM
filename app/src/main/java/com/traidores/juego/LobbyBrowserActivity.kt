@@ -51,6 +51,10 @@ class LobbyBrowserActivity : BaseActivity() {
         OnlineDebugLog.i("lobby_browser_listen_start")
         lobbyListener = firestore.collection(ONLINE_ROOMS_COLLECTION)
             .whereEqualTo(FIELD_STATE, ONLINE_ROOM_STATE_WAITING)
+            .whereEqualTo(
+                OnlineRoomFirestore.FIELD_VISIBILITY,
+                OnlineRoomFirestore.VISIBILITY_PUBLIC
+            )
             .orderBy(FIELD_UPDATED_AT, Query.Direction.DESCENDING)
             .limit(BROWSER_ROOM_LIMIT)
             .addSnapshotListener { snapshot, error ->
@@ -80,6 +84,11 @@ class LobbyBrowserActivity : BaseActivity() {
     private fun parseLobby(document: DocumentSnapshot): OnlineLobby? {
         val status = document.getString(FIELD_STATE) ?: return null
         if (status != ONLINE_ROOM_STATE_WAITING) return null
+        if (
+            OnlineRoomFirestore.normalizedVisibility(
+                document.getString(OnlineRoomFirestore.FIELD_VISIBILITY).orEmpty()
+            ) != OnlineRoomFirestore.VISIBILITY_PUBLIC
+        ) return null
         val updatedAtMs = document.getTimestamp(FIELD_UPDATED_AT)?.toDate()?.time ?: 0L
         if (!OnlineLobbyRules.isRoomFresh(updatedAtMs, System.currentTimeMillis(), ROOM_VISIBILITY_MS)) {
             return null

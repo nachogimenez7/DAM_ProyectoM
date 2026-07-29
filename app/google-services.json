@@ -13,7 +13,20 @@
           "package_name": "com.traidores.juego"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "99323018581-f2v0c4sqgige48m5i3fm2jh20s7lj84k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.traidores.juego",
+            "certificate_hash": "035d4108afa44b341d6b2b99d5c31ec44a458edc"
+          }
+        },
+        {
+          "client_id": "99323018581-97udanqc1d907vq4jnk78teup4kfi33a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCEJtj3U2WU6kBGuM4_Fyfs_4CU7NSJTWc"
@@ -21,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "99323018581-97udanqc1d907vq4jnk78teup4kfi33a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

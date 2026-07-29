@@ -37,6 +37,9 @@ object OnlineRoomFirestore {
      * app para volver con otra identidad, y contra una cuenta con correo eso no funciona.
      */
     const val FIELD_ACCOUNTS_ONLY = "soloCuentas"
+    const val FIELD_VISIBILITY = "visibilidad"
+    const val VISIBILITY_PUBLIC = "publica"
+    const val VISIBILITY_PRIVATE = "privada"
     const val FIELD_MAX_PLAYERS = "maxJugadores"
     const val FIELD_CURRENT_PLAYERS = "jugadoresActuales"
     const val FIELD_HOST_ID = "hostId"
@@ -86,6 +89,7 @@ object OnlineRoomFirestore {
         expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
         modePrueba: Boolean = false,
         accountsOnly: Boolean = false,
+        visibility: String = VISIBILITY_PUBLIC,
         roomCode: String = generateRoomCode()
     ): OnlineRoomCreation {
         val roomReference = firestore.collection(ROOMS_COLLECTION).document()
@@ -112,6 +116,7 @@ object OnlineRoomFirestore {
             FIELD_CURRENT_PLAYERS to 1,
             FIELD_TEST_MODE to modePrueba,
             FIELD_ACCOUNTS_ONLY to accountsOnly,
+            FIELD_VISIBILITY to normalizedVisibility(visibility),
             OnlineLobbyConfig.FIELD_ROOM_CONFIG to OnlineLobbyConfig().toFirestore(),
             "origen" to origin,
             FIELD_CREATED_AT to FieldValue.serverTimestamp(),
@@ -156,6 +161,9 @@ object OnlineRoomFirestore {
             }
         }
     }
+
+    fun normalizedVisibility(value: String): String =
+        if (value == VISIBILITY_PRIVATE) VISIBILITY_PRIVATE else VISIBILITY_PUBLIC
 
     fun normalizedExpectedPlayers(expectedPlayers: Int, modePrueba: Boolean): Int {
         val minimum = if (modePrueba) {
