@@ -64,10 +64,6 @@ internal object LocalBotAi {
     internal fun chooseAssassinTargetWithoutPlan(session: GameSession, assassin: GamePlayer): String {
         val candidates = GameEngine.alivePlayers(session)
             .filter { GameEngine.isValidKillTarget(session, it.name, assassin) }
-        if (session.quickTestMode && !session.debugBotsNeverKillHuman) {
-            val humanName = GameEngine.humanPlayer(session).name
-            if (candidates.any { it.name == humanName }) return humanName
-        }
         val preferredCandidates = withoutHumanIfDebug(session.debugBotsNeverKillHuman, candidates)
         return preferredCandidates
             .sortedWith(

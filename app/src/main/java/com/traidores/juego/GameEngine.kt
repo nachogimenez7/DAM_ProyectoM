@@ -1045,7 +1045,7 @@ object GameEngine {
                 session.oracleInvitedPlayer == human.name ->
                 " El Oráculo te devolvió la voz durante este debate. Puedes hablar, pero no votar."
             !human.alive -> " Estás eliminado. Observa la partida y usa el chat si el rol lo permite."
-            human.muted -> " Estás silenciado durante el día. No puedes hablar ni votar."
+            human.muted -> " Te silenciaron. No podés hablar, votar ni hacer gestos durante el día. Sí podés marcar que estás listo para avanzar."
             else -> ""
         }
         return "${role.name} - ${role.team}.$statusHint$espiaKillerHint$alcaldeHint$desertorHint$policeHint"

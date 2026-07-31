@@ -159,6 +159,29 @@
                 android:textIsSelectable="true"
                 android:textSize="13sp" />
 
+            <View
+                android:id="@+id/accountDeletionDivider"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="24dp"
+                android:background="#456B4F2A"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btnDeleteAccount"
+                style="@style/BtnDark"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="8dp"
+                android:minHeight="0dp"
+                android:minWidth="0dp"
+                android:paddingHorizontal="22dp"
+                android:text="@string/account_delete_action"
+                android:textColor="#D8A09A"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
         </LinearLayout>
     </ScrollView>
 

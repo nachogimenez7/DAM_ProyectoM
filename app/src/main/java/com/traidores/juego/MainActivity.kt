@@ -12,6 +12,7 @@ import android.widget.TextView
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.content.res.ResourcesCompat
 import com.traidores.juego.GameToast as Toast
+import java.util.concurrent.TimeoutException
 
 class MainActivity : BaseActivity() {
 
@@ -30,7 +31,7 @@ class MainActivity : BaseActivity() {
         val btnRoles: Button = findViewById(R.id.btnRoles)
         val btnHelp: Button = findViewById(R.id.btnHelp)
         val btnOptions: Button = findViewById(R.id.btnOptions)
-        val btnAbout: TextView = findViewById(R.id.btnAbout)
+        val btnAbout: View = findViewById(R.id.btnAbout)
 
         // Bind bottom-bar action
         btnMusic = findViewById(R.id.btnMusic)
@@ -197,38 +198,43 @@ class MainActivity : BaseActivity() {
         }
         dialog.findViewById<Button>(R.id.gameDialogPositive)?.setOnClickListener {
             dialog.dismiss()
-            GoogleAccountLink.linkOrSignIn(this) { result ->
-                if (isFinishing || isDestroyed) return@linkOrSignIn
-                when (result) {
-                    is GoogleAccountResult.Linked -> GameNotice.show(
-                        this,
-                        "Tu perfil ya quedó guardado con Google.",
-                        GameNotice.Duration.LONG
-                    )
-                    is GoogleAccountResult.SignedIn -> GameNotice.show(
-                        this,
-                        "Recuperaste tu perfil #${result.recoveredPublicId}.",
-                        GameNotice.Duration.LONG
-                    )
-                    GoogleAccountResult.Cancelled -> Unit
-                    is GoogleAccountResult.Failed -> GameDialog.confirm(
-                        activity = this,
-                        title = "No pudimos conectar con Google",
-                        message = result.message,
-                        positiveLabel = "ABRIR MI PERFIL",
-                        negativeLabel = "MÁS TARDE",
-                        onConfirm = ::openAccountProfile
-                    )
-                }
-            }
+            submitOnboardingGoogleRequest()
         }
     }
 
-    private fun openAccountProfile() {
-        startActivity(
-            Intent(this, ProfileActivity::class.java)
-                .putExtra(ProfileActivity.EXTRA_OPEN_ACCOUNT, true)
-        )
+    private fun submitOnboardingGoogleRequest(useAlternativePicker: Boolean = false) {
+        GoogleAccountFlow.start(
+            activity = this,
+            useAlternativePicker = useAlternativePicker
+        ) { result ->
+            when (result) {
+                is GoogleAccountResult.Linked -> AccountLinkedDialog.show(this)
+                is GoogleAccountResult.SignedIn -> AccountLinkedDialog.show(
+                    activity = this,
+                    recoveredPublicId = result.recoveredPublicId
+                )
+                GoogleAccountResult.Cancelled -> Unit
+                is GoogleAccountResult.Failed -> GameDialog.confirm(
+                    activity = this,
+                    title = getString(
+                        if (result.error is TimeoutException) {
+                            R.string.account_google_timeout_title
+                        } else {
+                            R.string.account_google_failure_title
+                        }
+                    ),
+                    message = result.message,
+                    positiveLabel = getString(R.string.account_google_retry),
+                    negativeLabel = "MÁS TARDE",
+                    onConfirm = {
+                        submitOnboardingGoogleRequest(
+                            useAlternativePicker =
+                                result.retryWithAlternativePicker
+                        )
+                    }
+                )
+            }
+        }
     }
 
     private fun dp(value: Int): Int =

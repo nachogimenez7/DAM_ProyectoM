@@ -32,6 +32,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeoutException
 
 class ProfileActivity : BaseActivity() {
 
@@ -40,6 +41,7 @@ class ProfileActivity : BaseActivity() {
         var publicId: String,
         var bio: String,
         var avatarKey: String,
+        var localPhotoEnabled: Boolean,
         var bannerKey: String,
         var favoriteRoleKey: String,
         var achievements: List<String>,
@@ -61,7 +63,28 @@ class ProfileActivity : BaseActivity() {
     private val avatarSelectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        applyProfileSelectionResult(result) { draftProfile.avatarKey = it }
+        applyProfileSelectionResult(result) {
+            draftProfile.avatarKey = it
+            draftProfile.localPhotoEnabled = false
+        }
+    }
+    private val localPhotoLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        LocalProfilePhotoStore.importPending(this, uri)
+            .onSuccess {
+                draftProfile.localPhotoEnabled = true
+                renderProfile()
+            }
+            .onFailure { error ->
+                OnlineDebugLog.e("local_profile_photo_import", error)
+                GameNotice.show(
+                    activity = this,
+                    message = "No pudimos preparar esa foto. Probá con otra imagen.",
+                    duration = GameNotice.Duration.LONG
+                )
+            }
     }
     private val bannerSelectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -111,7 +134,6 @@ class ProfileActivity : BaseActivity() {
     private lateinit var profileStatsHint: TextView
     private lateinit var accountStateText: TextView
     private lateinit var accountButton: Button
-    private lateinit var deleteAccountButton: Button
     private lateinit var playGamesActions: View
     private lateinit var playGamesAchievementsButton: Button
     private lateinit var playGamesLeaderboardsButton: Button
@@ -190,7 +212,6 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
         accountButton.setOnClickListener { showAccountDialog() }
-        deleteAccountButton.setOnClickListener { showDeleteAccountDialog() }
         playGamesAchievementsButton.setOnClickListener { showPlayGamesAchievements() }
         playGamesLeaderboardsButton.setOnClickListener { showPlayGamesLeaderboards() }
         playGamesFriendsButton.setOnClickListener { loadPlayGamesFriends() }
@@ -237,7 +258,6 @@ class ProfileActivity : BaseActivity() {
         profileStatsHint = findViewById(R.id.profileStatsHint)
         accountStateText = findViewById(R.id.profileAccountState)
         accountButton = findViewById(R.id.btnProfileAccount)
-        deleteAccountButton = findViewById(R.id.btnDeleteAccount)
         playGamesActions = findViewById(R.id.profilePlayGamesActions)
         playGamesAchievementsButton = findViewById(R.id.btnPlayGamesAchievements)
         playGamesLeaderboardsButton = findViewById(R.id.btnPlayGamesLeaderboards)
@@ -271,6 +291,8 @@ class ProfileActivity : BaseActivity() {
             publicId = profile.publicId,
             bio = profile.bio,
             avatarKey = profile.avatarKey,
+            localPhotoEnabled = preferences.getBoolean(PREF_LOCAL_PHOTO_ENABLED, false) &&
+                LocalProfilePhotoStore.hasSavedPhoto(this),
             bannerKey = profile.bannerKey,
             favoriteRoleKey = profile.favoriteRoleKey,
             achievements = profile.featuredAchievementIds
@@ -310,23 +332,26 @@ class ProfileActivity : BaseActivity() {
 
     private fun renderAccountSection() {
         val email = AccountLink.currentEmail()
-        val emailLinked = email.isNotBlank()
+        val passwordLinked = AccountLink.hasPasswordProvider()
+        val googleLinked = GoogleAccountLink.hasGoogleProvider()
         val playGamesLinked = PlayGamesIdentity.hasPlayGamesProvider()
         accountStateText.text = when {
-            emailLinked -> getString(R.string.profile_account_linked, email)
+            googleLinked -> getString(
+                R.string.profile_account_google_linked,
+                email.ifBlank { "Google" }
+            )
+            passwordLinked -> getString(R.string.profile_account_email_only, email)
             playGamesLinked -> getString(R.string.profile_account_play_games)
             else -> getString(R.string.profile_account_guest)
         }
-        accountButton.isEnabled = !emailLinked && !accountRequestInProgress
+        accountButton.isEnabled = !googleLinked && !accountRequestInProgress
         accountButton.alpha = if (accountButton.isEnabled) 1f else 0.5f
         accountButton.text = when {
-            emailLinked -> getString(R.string.profile_account_action_linked)
+            googleLinked -> getString(R.string.profile_account_action_linked)
+            passwordLinked -> getString(R.string.profile_account_action_link_google)
             playGamesLinked -> getString(R.string.profile_account_action_add_email)
             else -> getString(R.string.profile_account_action)
         }
-        deleteAccountButton.visibility = if (isGuestAccount) View.GONE else View.VISIBLE
-        deleteAccountButton.isEnabled = !accountRequestInProgress
-        deleteAccountButton.alpha = if (deleteAccountButton.isEnabled) 1f else 0.5f
         playGamesActions.visibility = if (
             playGamesLinked && PlayGamesConfig.isIdentityConfigured(this)
         ) {
@@ -455,33 +480,45 @@ class ProfileActivity : BaseActivity() {
      * no es el de la sesion, que es justo el escenario que rompe la identidad.
      */
     private fun showAccountDialog() {
-        if (accountRequestInProgress || AccountLink.currentEmail().isNotBlank()) return
+        if (accountRequestInProgress || GoogleAccountLink.hasGoogleProvider()) return
+        val passwordLinked = AccountLink.hasPasswordProvider()
         val content = layoutInflater.inflate(R.layout.dialog_account_link, null)
+        val message = content.findViewById<TextView>(R.id.accountDialogMessage)
+        val emailDivider = content.findViewById<TextView>(R.id.accountEmailDivider)
         val emailInput = content.findViewById<EditText>(R.id.accountEmailInput)
         val passwordInput = content.findViewById<EditText>(R.id.accountPasswordInput)
         val errorText = content.findViewById<TextView>(R.id.accountDialogError)
         val googleButton = content.findViewById<Button>(R.id.accountGoogleButton)
 
+        if (passwordLinked) {
+            message.setText(R.string.account_google_existing_email_message)
+            emailDivider.visibility = View.GONE
+            emailInput.visibility = View.GONE
+            passwordInput.visibility = View.GONE
+            googleButton.setText(R.string.profile_account_action_link_google)
+        }
         val dialog = GameDialog.custom(
             activity = this,
             contentView = content,
             widthDp = 400,
             negativeLabel = "CANCELAR",
-            positiveLabel = "CONTINUAR"
+            positiveLabel = if (passwordLinked) null else "CONTINUAR"
         )
         // El boton positivo de GameDialog cierra siempre. Se reemplaza su accion para que un
         // error de tipeo no borre lo que el jugador ya escribio.
-        dialog.findViewById<Button>(R.id.gameDialogPositive)?.setOnClickListener {
-            val email = emailInput.text.toString()
-            val password = passwordInput.text.toString()
-            val problem = AccountCredentials.validationError(email, password)
-            if (problem != null) {
-                errorText.text = problem
-                errorText.visibility = View.VISIBLE
-                return@setOnClickListener
+        if (!passwordLinked) {
+            dialog.findViewById<Button>(R.id.gameDialogPositive)?.setOnClickListener {
+                val email = emailInput.text.toString()
+                val password = passwordInput.text.toString()
+                val problem = AccountCredentials.validationError(email, password)
+                if (problem != null) {
+                    errorText.text = problem
+                    errorText.visibility = View.VISIBLE
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                submitAccountRequest(email, password)
             }
-            dialog.dismiss()
-            submitAccountRequest(email, password)
         }
         googleButton.setOnClickListener {
             dialog.dismiss()
@@ -489,32 +526,48 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun submitGoogleAccountRequest() {
-        accountRequestInProgress = true
-        renderAccountSection()
-        GoogleAccountLink.linkOrSignIn(this) { result ->
-            accountRequestInProgress = false
-            if (isFinishing || isDestroyed) return@linkOrSignIn
+    private fun submitGoogleAccountRequest(useAlternativePicker: Boolean = false) {
+        GoogleAccountFlow.start(
+            activity = this,
+            useAlternativePicker = useAlternativePicker,
+            onBusyChanged = { busy ->
+                accountRequestInProgress = busy
+                if (!isFinishing && !isDestroyed) renderAccountSection()
+            }
+        ) { result ->
             when (result) {
-                is GoogleAccountResult.Linked -> GameNotice.show(
-                    this,
-                    "Listo. Tu perfil quedó vinculado a ${result.email.ifBlank { "Google" }}.",
-                    GameNotice.Duration.LONG
-                )
+                is GoogleAccountResult.Linked -> AccountLinkedDialog.show(this)
                 is GoogleAccountResult.SignedIn -> {
                     draftProfile.publicId = result.recoveredPublicId
                     savedProfile.publicId = result.recoveredPublicId
                     renderProfile()
-                    GameNotice.show(
-                        this,
-                        "Entraste con Google y recuperaste tu perfil #${result.recoveredPublicId}.",
-                        GameNotice.Duration.LONG
+                    AccountLinkedDialog.show(
+                        activity = this,
+                        recoveredPublicId = result.recoveredPublicId
                     )
                 }
                 GoogleAccountResult.Cancelled -> Unit
                 is GoogleAccountResult.Failed -> {
                     result.error?.let { OnlineDebugLog.e("google_account_failure", it) }
-                    GameNotice.show(this, result.message, GameNotice.Duration.LONG)
+                    GameDialog.confirm(
+                        activity = this,
+                        title = getString(
+                            if (result.error is TimeoutException) {
+                                R.string.account_google_timeout_title
+                            } else {
+                                R.string.account_google_failure_title
+                            }
+                        ),
+                        message = result.message,
+                        positiveLabel = getString(R.string.account_google_retry),
+                        negativeLabel = "MÁS TARDE",
+                        onConfirm = {
+                            submitGoogleAccountRequest(
+                                useAlternativePicker =
+                                    result.retryWithAlternativePicker
+                            )
+                        }
+                    )
                 }
             }
             renderAccountSection()
@@ -529,24 +582,15 @@ class ProfileActivity : BaseActivity() {
             if (isFinishing || isDestroyed) return@linkOrSignIn
             when (result) {
                 is AccountLinkResult.Linked -> {
-                    GameNotice.show(
-                        activity = this,
-                        message = getString(R.string.profile_account_linked_toast, result.email),
-                        duration = GameNotice.Duration.LONG
-                    )
+                    AccountLinkedDialog.show(this)
                 }
                 is AccountLinkResult.SignedIn -> {
                     // El uid cambio: el `#` que se muestra es el de la cuenta recuperada.
                     draftProfile.publicId = result.recoveredPublicId
                     savedProfile.publicId = result.recoveredPublicId
-                    GameNotice.show(
+                    AccountLinkedDialog.show(
                         activity = this,
-                        message = getString(
-                            R.string.profile_account_recovered_toast,
-                            result.email,
-                            result.recoveredPublicId
-                        ),
-                        duration = GameNotice.Duration.LONG
+                        recoveredPublicId = result.recoveredPublicId
                     )
                     renderProfile()
                 }
@@ -702,9 +746,10 @@ class ProfileActivity : BaseActivity() {
         }
         profileBio.setTextColor(getColor(R.color.text_primary))
 
-        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
-        setRoleImage(profileAvatar, avatarEntry.role)
-        alignAvatarToFocus(profileAvatar, avatarEntry.verticalFocus)
+        renderAvatar(
+            image = profileAvatar,
+            allowPendingPhoto = isEditing
+        )
 
         profileBanner.setBackgroundResource(
             ProfileCustomizationCatalog.banner(draftProfile.bannerKey).drawableRes
@@ -938,11 +983,26 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun setRoleImage(image: ImageView, role: Role) {
+        image.scaleType = ImageView.ScaleType.MATRIX
         val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
         image.setImageResource(if (resId != 0) resId else android.R.drawable.ic_menu_gallery)
     }
 
+    private fun renderAvatar(image: ImageView, allowPendingPhoto: Boolean): Boolean {
+        if (
+            draftProfile.localPhotoEnabled &&
+            LocalProfilePhotoStore.render(this, image, preferPending = allowPendingPhoto)
+        ) {
+            return true
+        }
+        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+        setRoleImage(image, avatarEntry.role)
+        alignAvatarToFocus(image, avatarEntry.verticalFocus)
+        return false
+    }
+
     private fun startEditing() {
+        LocalProfilePhotoStore.discardPending(this)
         draftProfile = copyProfile(savedProfile)
         setEditing(true)
         renderProfile()
@@ -980,8 +1040,21 @@ class ProfileActivity : BaseActivity() {
         // esta bloqueado. Escribir aca ademas seria un error, porque dejaria el nombre
         // derivado ("Aguafiestas 4821") como nombre propio el dia que se registre.
         if (isGuestAccount) {
+            LocalProfilePhotoStore.discardPending(this)
             setEditing(false)
             renderProfile()
+            return
+        }
+        if (
+            draftProfile.localPhotoEnabled &&
+            LocalProfilePhotoStore.hasPendingPhoto(this) &&
+            !LocalProfilePhotoStore.commitPending(this)
+        ) {
+            GameNotice.show(
+                activity = this,
+                message = "No pudimos guardar la foto. Probá nuevamente.",
+                duration = GameNotice.Duration.LONG
+            )
             return
         }
         draftProfile.emoteLoadout = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
@@ -990,6 +1063,7 @@ class ProfileActivity : BaseActivity() {
             .putString(OpcionesActivity.PREF_PLAYER_NAME, draftProfile.name)
             .putString(PREF_BIO, draftProfile.bio)
             .putString(PREF_AVATAR, draftProfile.avatarKey)
+            .putBoolean(PREF_LOCAL_PHOTO_ENABLED, draftProfile.localPhotoEnabled)
             .putString(PREF_BANNER, draftProfile.bannerKey)
             .putString(PREF_FAVORITE_ROLE, draftProfile.favoriteRoleKey)
             .putString(
@@ -997,6 +1071,9 @@ class ProfileActivity : BaseActivity() {
                 draftProfile.achievements.joinToString(ACHIEVEMENT_SEPARATOR)
             )
             .apply()
+        if (!draftProfile.localPhotoEnabled) {
+            LocalProfilePhotoStore.deleteSavedPhoto(this)
+        }
         EmoteLoadout.save(this, draftProfile.emoteLoadout)
 
         savedProfile = copyProfile(draftProfile)
@@ -1025,6 +1102,7 @@ class ProfileActivity : BaseActivity() {
             positiveLabel = "DESCARTAR",
             negativeLabel = "SEGUIR EDITANDO"
         ) {
+            LocalProfilePhotoStore.discardPending(this)
             draftProfile = copyProfile(savedProfile)
             setEditing(false)
             renderProfile()
@@ -1039,6 +1117,7 @@ class ProfileActivity : BaseActivity() {
             outState.putString(STATE_DRAFT_PUBLIC_ID, draftProfile.publicId)
             outState.putString(STATE_DRAFT_BIO, draftProfile.bio)
             outState.putString(STATE_DRAFT_AVATAR, draftProfile.avatarKey)
+            outState.putBoolean(STATE_DRAFT_LOCAL_PHOTO_ENABLED, draftProfile.localPhotoEnabled)
             outState.putString(STATE_DRAFT_BANNER, draftProfile.bannerKey)
             outState.putString(STATE_DRAFT_FAVORITE_ROLE, draftProfile.favoriteRoleKey)
             outState.putStringArrayList(
@@ -1056,8 +1135,10 @@ class ProfileActivity : BaseActivity() {
     private fun showExpandedAvatar() {
         val content = layoutInflater.inflate(R.layout.dialog_profile_avatar, null)
         val expandedAvatar: ImageView = content.findViewById(R.id.expandedProfileAvatar)
-        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
-        setRoleImage(expandedAvatar, avatarEntry.role)
+        val showingLocalPhoto = renderAvatar(
+            image = expandedAvatar,
+            allowPendingPhoto = isEditing
+        )
         val dialog = AlertDialog.Builder(this)
             .setView(content)
             .create()
@@ -1073,12 +1154,35 @@ class ProfileActivity : BaseActivity() {
             // Mismo encuadre tipo retrato que el avatar chico (alignAvatarToFocus),
             // en vez de centerCrop plano: consistencia visual y evita que la version
             // ampliada muestre la imagen sin recortar dentro del marco circular.
-            alignAvatarToFocus(expandedAvatar, avatarEntry.verticalFocus)
+            if (!showingLocalPhoto) {
+                val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+                alignAvatarToFocus(expandedAvatar, avatarEntry.verticalFocus)
+            }
         }
         dialog.show()
     }
 
     private fun showAvatarSelector() {
+        GameDialog.choose(
+            activity = this,
+            title = "Foto de perfil",
+            message = "La foto de galería se guarda solamente en este dispositivo.",
+            options = listOf(
+                "Elegir una foto de la galería",
+                "Usar un avatar ilustrado"
+            )
+        ) { choice ->
+            when (choice) {
+                0 -> {
+                    if (requireAccountFor("Usar una foto de tu galería")) return@choose
+                    localPhotoLauncher.launch("image/*")
+                }
+                1 -> showIllustratedAvatarSelector()
+            }
+        }
+    }
+
+    private fun showIllustratedAvatarSelector() {
         avatarSelectionLauncher.launch(
             ProfileSelectionActivity.intent(
                 this,
@@ -1765,6 +1869,10 @@ class ProfileActivity : BaseActivity() {
             avatarKey = savedInstanceState
                 .getString(STATE_DRAFT_AVATAR, savedProfile.avatarKey)
                 .orEmpty(),
+            localPhotoEnabled = savedInstanceState.getBoolean(
+                STATE_DRAFT_LOCAL_PHOTO_ENABLED,
+                savedProfile.localPhotoEnabled
+            ),
             bannerKey = savedInstanceState
                 .getString(STATE_DRAFT_BANNER, savedProfile.bannerKey)
                 .orEmpty(),
@@ -1849,6 +1957,7 @@ class ProfileActivity : BaseActivity() {
         const val PREF_NAME = "profile_name"
         const val PREF_BIO = "profile_bio"
         const val PREF_AVATAR = "profile_avatar"
+        const val PREF_LOCAL_PHOTO_ENABLED = "profile_local_photo_enabled"
         const val PREF_BANNER = "profile_banner"
         const val PREF_FAVORITE_ROLE = "profile_favorite_role"
         const val ROLE_THUMBNAIL_ZOOM = 0.90f
@@ -1869,6 +1978,8 @@ class ProfileActivity : BaseActivity() {
         const val STATE_DRAFT_PUBLIC_ID = "profile_state_draft_public_id"
         const val STATE_DRAFT_BIO = "profile_state_draft_bio"
         const val STATE_DRAFT_AVATAR = "profile_state_draft_avatar"
+        const val STATE_DRAFT_LOCAL_PHOTO_ENABLED =
+            "profile_state_draft_local_photo_enabled"
         const val STATE_DRAFT_BANNER = "profile_state_draft_banner"
         const val STATE_DRAFT_FAVORITE_ROLE = "profile_state_draft_favorite_role"
         const val STATE_DRAFT_ACHIEVEMENTS = "profile_state_draft_achievements"

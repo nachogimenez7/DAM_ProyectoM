@@ -659,16 +659,6 @@
                     android:minHeight="48dp"
                     android:text="@string/profile_account_action" />
 
-                <Button
-                    android:id="@+id/btnDeleteAccount"
-                    style="@style/BtnDark"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="0dp"
-                    android:minHeight="48dp"
-                    android:text="@string/account_delete_action"
-                    android:textColor="#FF8A80"
-                    android:visibility="gone" />
-
                 <LinearLayout
                     android:id="@+id/profilePlayGamesActions"
                     android:layout_width="match_parent"
@@ -700,6 +690,7 @@
                         android:minHeight="48dp"
                         android:text="@string/play_games_friends_action" />
                 </LinearLayout>
+
             </LinearLayout>
 
             <Button

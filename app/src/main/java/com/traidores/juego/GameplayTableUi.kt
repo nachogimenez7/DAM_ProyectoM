@@ -407,6 +407,19 @@ object GameplayTableUi {
     }
 
     fun centralPhaseMessage(session: GameSession, fallback: String): String {
+        val human = GameEngine.humanPlayer(session)
+        if (
+            session.winner.isBlank() &&
+            human.alive &&
+            human.muted &&
+            session.phase in setOf(
+                GamePhase.DIA_DEBATE,
+                GamePhase.VOTACION,
+                GamePhase.DESEMPATE_VOTACION
+            )
+        ) {
+            return "Te silenciaron. No podés hablar, votar ni hacer gestos durante el día."
+        }
         if (session.winner.isNotBlank()) {
             return "Fin de partida. Ganó ${session.winner}."
         }

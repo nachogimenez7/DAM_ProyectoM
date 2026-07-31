@@ -15,11 +15,27 @@
       },
       "oauth_client": [
         {
+          "client_id": "99323018581-28api0it1bmsgahsgtafn5thpkaegpf8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.traidores.juego",
+            "certificate_hash": "ac3f4bb5b73dc97e5646634156a22bc5c21a7d24"
+          }
+        },
+        {
           "client_id": "99323018581-f2v0c4sqgige48m5i3fm2jh20s7lj84k.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.traidores.juego",
             "certificate_hash": "035d4108afa44b341d6b2b99d5c31ec44a458edc"
+          }
+        },
+        {
+          "client_id": "99323018581-sa4etqv9j6f9afnpifc51uumc48bncnd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.traidores.juego",
+            "certificate_hash": "1424f4854bebed55653efaff6170048527e34ec0"
           }
         },
         {

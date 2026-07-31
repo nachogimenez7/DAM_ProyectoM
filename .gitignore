@@ -9,11 +9,15 @@ app/build/
 .externalNativeBuild
 .cxx
 *.apk
+*.aab
 *.ap_
 *.dex
+*.jks
+*.keystore
 .env
 .env.*
 .idea/
+.kotlin/
 traidores-*.png
 window.xml
 lobby.xml

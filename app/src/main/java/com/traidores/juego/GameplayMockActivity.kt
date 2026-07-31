@@ -54,6 +54,7 @@ import com.google.firebase.database.FirebaseDatabase
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
@@ -62,6 +63,15 @@ import kotlin.math.ceil
 private data class RevealPanelTheme(
     val frame: Int,
     val innerColor: Int
+)
+
+private data class TraitorRevealCardMetrics(
+    val columns: Int,
+    val slotWidthDp: Int,
+    val cardWidthDp: Int,
+    val cardHeightDp: Int,
+    val nameTextSp: Float,
+    val roleTextSp: Float
 )
 
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
@@ -83,7 +93,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isDeathRevealRunning = false
     private var isSilenceRevealRunning = false
     private var isNoDeathRevealRunning = false
+    private var isPayadorRevealVisible = false
     private var isOracleRevealVisible = false
+    private var lastPresentedPayadorRevealKey: String? = null
+    private var activePayadorRevealKey: String? = null
     private var isRolePreviewOpen = false
     private var initialRoleReadingActive = false
     private var roleReadingReadyAtElapsedMs = 0L
@@ -234,6 +247,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val feedbackBannerDismissRunnable = Runnable { hideActionFeedbackBanner() }
     private val deathRevealContinueTimeoutRunnable = Runnable { continueDeathReveal() }
     private val centralPublicEventDismissRunnable = Runnable { hideCentralPublicEventBanner() }
+    private val payadorRevealAutoDismissRunnable = Runnable { dismissPayadorReveal() }
+    private val oracleRevealAutoDismissRunnable = Runnable { dismissOracleReveal() }
     private val botReactionRunnable = object : Runnable {
         override fun run() {
             botReactionScheduled = false
@@ -395,15 +410,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var deathRevealAnimator: DeathRevealAnimator
     private lateinit var silenceRevealAnimator: SilenceRevealAnimator
     private lateinit var noDeathRevealAnimator: NoDeathRevealAnimator
+    private lateinit var payadorRevealOverlay: FrameLayout
+    private lateinit var payadorRevealPanel: LinearLayout
+    private lateinit var payadorRevealFirstPlayer: TextView
+    private lateinit var payadorRevealSecondPlayer: TextView
+    private lateinit var payadorRevealProgress: View
     private lateinit var oracleRevealOverlay: FrameLayout
     private lateinit var oracleRevealPanel: FrameLayout
     private lateinit var oracleRevealPlayer: TextView
-    private lateinit var btnContinueOracleReveal: Button
+    private lateinit var oracleRevealProgress: View
     private lateinit var traitorRevealCardsScroll: HorizontalScrollView
-    private lateinit var traitorRevealCards: LinearLayout
+    private lateinit var traitorRevealCards: GridLayout
     private lateinit var traitorRevealContent: LinearLayout
     private lateinit var traitorRevealOverlay: FrameLayout
     private lateinit var btnContinueJesterVictory: Button
+    private lateinit var btnReturnJesterVictory: Button
+    private lateinit var jesterVictoryActions: LinearLayout
     private lateinit var jesterConfettiLayer: FrameLayout
     private lateinit var jesterHornLeft: ImageView
     private lateinit var jesterHornRight: ImageView
@@ -412,6 +434,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var jesterVictoryOverlay: FrameLayout
     private lateinit var jesterVictoryPanel: FrameLayout
     private lateinit var jesterVictoryPlayer: TextView
+    private var jesterVictoryOffersLocalSpectatorActions = false
     private lateinit var winnerRevealBackground: ImageView
     private lateinit var winnerRevealCards: LinearLayout
     private lateinit var winnerRevealContent: LinearLayout
@@ -586,6 +609,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
+        lastPresentedPayadorRevealKey =
+            savedInstanceState?.getString(STATE_PAYADOR_REVEAL_KEY)
         lastNoDeathRevealRound =
             savedInstanceState?.getInt(STATE_LAST_NO_DEATH_REVEAL_ROUND, -1) ?: -1
         isEventLogExpanded = false
@@ -774,11 +799,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             dp = ::dp,
             onFinished = ::finishNoDeathReveal
         )
+        payadorRevealOverlay = findViewById(R.id.payadorRevealOverlay)
+        payadorRevealPanel = findViewById(R.id.payadorRevealPanel)
+        payadorRevealFirstPlayer = findViewById(R.id.payadorRevealFirstPlayer)
+        payadorRevealSecondPlayer = findViewById(R.id.payadorRevealSecondPlayer)
+        payadorRevealProgress = findViewById(R.id.payadorRevealProgress)
+        payadorRevealOverlay.setOnClickListener { /* La revelacion se cierra sola. */ }
         oracleRevealOverlay = findViewById(R.id.oracleRevealOverlay)
         oracleRevealPanel = findViewById(R.id.oracleRevealPanel)
         oracleRevealPlayer = findViewById(R.id.oracleRevealPlayer)
-        btnContinueOracleReveal = findViewById(R.id.btnContinueOracleReveal)
-        btnContinueOracleReveal.setOnClickListener { dismissOracleReveal() }
+        oracleRevealProgress = findViewById(R.id.oracleRevealProgress)
+        oracleRevealOverlay.setOnClickListener { /* La revelacion se cierra sola. */ }
         voteResultOverlay = findViewById(R.id.voteResultOverlay)
         voteResultPanel = findViewById(R.id.voteResultPanel)
         voteResultCards = findViewById(R.id.voteResultCards)
@@ -838,6 +869,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
         applyTraitorRevealOverlayTheme()
         btnContinueJesterVictory = findViewById(R.id.btnContinueJesterVictory)
+        btnReturnJesterVictory = findViewById(R.id.btnReturnJesterVictory)
+        jesterVictoryActions = findViewById(R.id.jesterVictoryActions)
         jesterConfettiLayer = findViewById(R.id.jesterConfettiLayer)
         jesterHornLeft = findViewById(R.id.jesterHornLeft)
         jesterHornRight = findViewById(R.id.jesterHornRight)
@@ -846,13 +879,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         jesterVictoryOverlay = findViewById(R.id.jesterVictoryOverlay)
         jesterVictoryPanel = findViewById(R.id.jesterVictoryPanel)
         jesterVictoryPlayer = findViewById(R.id.jesterVictoryPlayer)
+        jesterVictoryPanel.layoutParams =
+            (jesterVictoryPanel.layoutParams as FrameLayout.LayoutParams).apply {
+                width = minOf(resources.displayMetrics.widthPixels - dp(28), dp(470))
+            }
         jesterVictoryAnimator = JesterVictoryAnimator(
             overlay = jesterVictoryOverlay,
             panel = jesterVictoryPanel,
             hornLeft = jesterHornLeft,
             hornRight = jesterHornRight,
             confettiLayer = jesterConfettiLayer,
-            continueButton = btnContinueJesterVictory
+            actionsView = jesterVictoryActions
         )
         winnerRevealBackground = findViewById(R.id.winnerRevealBackground)
         winnerRevealCards = findViewById(R.id.winnerRevealCards)
@@ -936,6 +973,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         traitorRevealOverlay.setOnClickListener { dismissTraitorReveal() }
         jesterVictoryOverlay.setOnClickListener { }
         btnContinueJesterVictory.setOnClickListener { dismissJesterVictory() }
+        btnReturnJesterVictory.setOnClickListener { returnToLobbyFromJesterVictory() }
         btnWinnerReturnLobby.setOnClickListener { returnToLobby() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -1000,6 +1038,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelNoDeathReveal(resumeMusic = false)
+        hidePayadorReveal()
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = false)
@@ -1059,6 +1098,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         cancelDeathReveal(resumeMusic = false)
         cancelSilenceReveal(resumeMusic = false)
         cancelNoDeathReveal(resumeMusic = false)
+        hidePayadorReveal()
         hideOracleReveal()
         cancelTraitorReveal()
         cancelJesterVictory(requeue = true)
@@ -1144,6 +1184,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         outState.putString(STATE_BLOCKING_FEEDBACK_PERIOD, blockingFeedbackPeriod?.name)
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
+        outState.putString(STATE_PAYADOR_REVEAL_KEY, lastPresentedPayadorRevealKey)
         outState.putInt(STATE_PRESENTED_SPECIAL_VICTORY_COUNT, presentedSpecialVictoryCount)
         outState.putInt(STATE_LAST_NO_DEATH_REVEAL_ROUND, lastNoDeathRevealRound)
         chatController.onSaveInstanceState(outState)
@@ -1196,6 +1237,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -1973,7 +2015,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
         publishAuthoritativeOnlineState()
-        if (maybeOfferSpectatorChoice()) {
+        if (!specialVictoryPending && maybeOfferSpectatorChoice()) {
             logSlowGameplayRender(renderStartedAtMs)
             return
         }
@@ -4002,6 +4044,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isRolePreviewOpen ||
             isVoteResultVisible ||
@@ -4358,8 +4401,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val human = GameEngine.humanPlayer(session)
         val visible = session.phase == GamePhase.DIA_DEBATE &&
             session.winner.isBlank() &&
-            human.alive &&
-            !human.muted
+            human.alive
         btnReadyToVote.visibility = if (visible) View.VISIBLE else View.GONE
         if (!visible) return
 
@@ -4430,7 +4472,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun eligibleReadyVoters(): List<GamePlayer> {
-        return session.players.filter { it.alive && !it.muted }
+        return session.players.filter { it.alive }
     }
 
     private fun readyVoteProgress(): Pair<Int, Int> {
@@ -5887,6 +5929,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isJesterVictoryVisible ||
@@ -6844,6 +6887,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -7162,6 +7206,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -7430,6 +7475,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isDeathRevealRunning ||
             isSilenceRevealRunning ||
             isNoDeathRevealRunning ||
+            isPayadorRevealVisible ||
             isOracleRevealVisible ||
             isVoteResultVisible ||
             isTieVoteVisible ||
@@ -7464,6 +7510,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         if (maybeShowNoDeathReveal()) return
         if (maybeShowNextSilenceReveal()) return
+        if (maybeShowPayadorReveal()) return
         if (maybeShowOracleReveal()) return
         if (maybeShowTieVote()) return
         if (maybeShowVoteResult()) return
@@ -8084,6 +8131,96 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
+    private fun payadorRevealKey(): String? {
+        if (session.phase != GamePhase.CONTRAPUNTO) return null
+        val players = session.contrapuntoPlayers.take(2)
+        if (!session.payadorUsed || players.size < 2) return null
+        return "${session.round}:${session.phaseIndex}:${players.joinToString("|")}"
+    }
+
+    private fun maybeShowPayadorReveal(): Boolean {
+        if (isPayadorRevealVisible) return true
+        val revealKey = payadorRevealKey() ?: return false
+        if (revealKey == lastPresentedPayadorRevealKey) return false
+        showPayadorReveal(revealKey)
+        return true
+    }
+
+    private fun showPayadorReveal(revealKey: String) {
+        dismissSecondaryUiForPriorityWindow()
+        pauseCountdown()
+        autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(payadorRevealAutoDismissRunnable)
+        dismissActionFeedbackBannerNow()
+        MusicManager.pauseForTransition()
+        isPayadorRevealVisible = true
+        activePayadorRevealKey = revealKey
+        payadorRevealFirstPlayer.text = session.contrapuntoPlayers[0].uppercase()
+        payadorRevealSecondPlayer.text = session.contrapuntoPlayers[1].uppercase()
+        payadorRevealOverlay.visibility = View.VISIBLE
+        payadorRevealOverlay.alpha = 0f
+        payadorRevealPanel.alpha = 0f
+        payadorRevealPanel.scaleX = 0.86f
+        payadorRevealPanel.scaleY = 0.86f
+        payadorRevealProgress.animate().cancel()
+        payadorRevealProgress.scaleX = 1f
+        payadorRevealOverlay.animate()
+            .alpha(1f)
+            .setDuration(260L)
+            .start()
+        payadorRevealPanel.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(620L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+        payadorRevealProgress.animate()
+            .scaleX(0f)
+            .setDuration(SPECIAL_ROLE_REVEAL_DURATION_MS)
+            .setInterpolator(LinearInterpolator())
+            .start()
+        GameplayAudioDirector.play(this, GameSound.PAYADOR)
+        autoAdvanceHandler.postDelayed(
+            payadorRevealAutoDismissRunnable,
+            SPECIAL_ROLE_REVEAL_DURATION_MS
+        )
+    }
+
+    private fun dismissPayadorReveal() {
+        if (!isPayadorRevealVisible) return
+        autoAdvanceHandler.removeCallbacks(payadorRevealAutoDismissRunnable)
+        payadorRevealProgress.animate().cancel()
+        lastPresentedPayadorRevealKey = activePayadorRevealKey
+        activePayadorRevealKey = null
+        isPayadorRevealVisible = false
+        payadorRevealOverlay.animate()
+            .alpha(0f)
+            .setDuration(220L)
+            .withEndAction {
+                payadorRevealOverlay.visibility = View.GONE
+                MusicManager.resumeGamePhaseAfterTransition(this, session)
+                renderGame()
+            }
+            .start()
+    }
+
+    private fun hidePayadorReveal() {
+        if (!::payadorRevealOverlay.isInitialized) return
+        autoAdvanceHandler.removeCallbacks(payadorRevealAutoDismissRunnable)
+        payadorRevealOverlay.animate().cancel()
+        payadorRevealPanel.animate().cancel()
+        payadorRevealProgress.animate().cancel()
+        payadorRevealOverlay.visibility = View.GONE
+        payadorRevealOverlay.alpha = 1f
+        payadorRevealPanel.alpha = 1f
+        payadorRevealPanel.scaleX = 1f
+        payadorRevealPanel.scaleY = 1f
+        payadorRevealProgress.scaleX = 1f
+        activePayadorRevealKey = null
+        isPayadorRevealVisible = false
+    }
+
     private fun maybeShowOracleReveal(): Boolean {
         if (isOracleRevealVisible) return true
         if (!session.oracleRevealPending || session.oracleInvitedPlayer.isBlank()) return false
@@ -8095,16 +8232,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         dismissSecondaryUiForPriorityWindow()
         pauseCountdown()
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+        autoAdvanceHandler.removeCallbacks(oracleRevealAutoDismissRunnable)
         dismissActionFeedbackBannerNow()
         MusicManager.pauseForTransition()
         GameplayAudioDirector.play(this, GameSound.ORACLE)
         isOracleRevealVisible = true
-        oracleRevealPlayer.text = session.oracleInvitedPlayer.uppercase()
+        oracleRevealPlayer.text = "${session.oracleInvitedPlayer.uppercase()}\nVOZ RECUPERADA"
         oracleRevealOverlay.visibility = View.VISIBLE
         oracleRevealOverlay.alpha = 0f
         oracleRevealPanel.alpha = 0f
         oracleRevealPanel.scaleX = 0.86f
         oracleRevealPanel.scaleY = 0.86f
+        oracleRevealProgress.animate().cancel()
+        oracleRevealProgress.scaleX = 1f
         oracleRevealOverlay.animate()
             .alpha(1f)
             .setDuration(260L)
@@ -8116,11 +8256,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             .setDuration(620L)
             .setInterpolator(DecelerateInterpolator())
             .start()
+        oracleRevealProgress.animate()
+            .scaleX(0f)
+            .setDuration(SPECIAL_ROLE_REVEAL_DURATION_MS)
+            .setInterpolator(LinearInterpolator())
+            .start()
+        autoAdvanceHandler.postDelayed(
+            oracleRevealAutoDismissRunnable,
+            SPECIAL_ROLE_REVEAL_DURATION_MS
+        )
     }
 
     private fun dismissOracleReveal() {
         if (!isOracleRevealVisible) return
-        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        autoAdvanceHandler.removeCallbacks(oracleRevealAutoDismissRunnable)
+        oracleRevealProgress.animate().cancel()
         session = GameEngine.acknowledgeOracleReveal(session)
         isOracleRevealVisible = false
         oracleRevealOverlay.animate()
@@ -8136,13 +8286,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun hideOracleReveal() {
         if (!::oracleRevealOverlay.isInitialized) return
+        autoAdvanceHandler.removeCallbacks(oracleRevealAutoDismissRunnable)
         oracleRevealOverlay.animate().cancel()
         oracleRevealPanel.animate().cancel()
+        oracleRevealProgress.animate().cancel()
         oracleRevealOverlay.visibility = View.GONE
         oracleRevealOverlay.alpha = 1f
         oracleRevealPanel.alpha = 1f
         oracleRevealPanel.scaleX = 1f
         oracleRevealPanel.scaleY = 1f
+        oracleRevealProgress.scaleX = 1f
         isOracleRevealVisible = false
     }
 
@@ -8173,20 +8326,27 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         jesterVictoryPlayer.text = "${victory.playerName.uppercase()} ERA EL BUFÓN"
         jesterVictoryMessage.text =
             "Consiguió que el pueblo lo expulsara durante la votación."
-        val player = session.players.firstOrNull { it.name == victory.playerName }
-        jesterVictoryImage.setImageResource(roleImageFor(player?.role))
+        val human = GameEngine.humanPlayer(session)
+        jesterVictoryOffersLocalSpectatorActions =
+            !isOnlineGameplay() &&
+                victory.playerName == human.name &&
+                !human.alive
+        btnContinueJesterVictory.text = if (jesterVictoryOffersLocalSpectatorActions) {
+            "SEGUIR MIRANDO"
+        } else {
+            "CONTINUAR PARTIDA"
+        }
+        btnReturnJesterVictory.visibility = if (jesterVictoryOffersLocalSpectatorActions) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         GameplayAudioDirector.play(this, GameSound.JESTER)
         jesterVictoryAnimator.show(JESTER_VICTORY_DURATION_MS)
     }
 
     private fun playResolvedActionSound(before: GameSession, after: GameSession) {
         when {
-            !before.payadorUsed && after.payadorUsed -> {
-                GameplayAudioDirector.play(this, GameSound.PAYADOR)
-            }
-            before.phase == GamePhase.NOCHE_ORACULO && after.oracleUsed && !before.oracleUsed -> {
-                GameplayAudioDirector.play(this, GameSound.ORACLE)
-            }
             before.phase == GamePhase.VOTACION ||
                 before.phase == GamePhase.DESEMPATE_VOTACION ||
                 before.phase == GamePhase.ALCALDE_DESEMPATE -> {
@@ -8196,18 +8356,41 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun dismissJesterVictory() {
-        if (!isJesterVictoryVisible || !btnContinueJesterVictory.isEnabled) return
+        if (!isJesterVictoryVisible || !jesterVictoryActions.isEnabled) return
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         jesterVictoryAnimator.hide()
         isJesterVictoryVisible = false
-        if (maybeOfferSpectatorChoice()) return
+        if (jesterVictoryOffersLocalSpectatorActions) {
+            spectatorChoiceOffered = true
+            jesterVictoryOffersLocalSpectatorActions = false
+            enterSpectatorFastForward()
+            return
+        }
+        jesterVictoryOffersLocalSpectatorActions = false
         renderGame()
+    }
+
+    private fun returnToLobbyFromJesterVictory() {
+        if (
+            !isJesterVictoryVisible ||
+            !jesterVictoryActions.isEnabled ||
+            !jesterVictoryOffersLocalSpectatorActions
+        ) {
+            return
+        }
+        GameplayEffects.play(this, GameplayEffect.CONFIRM)
+        jesterVictoryAnimator.hide()
+        isJesterVictoryVisible = false
+        jesterVictoryOffersLocalSpectatorActions = false
+        spectatorChoiceOffered = true
+        returnToLobby()
     }
 
     private fun cancelJesterVictory(requeue: Boolean) {
         if (!::jesterVictoryAnimator.isInitialized || !isJesterVictoryVisible) return
         jesterVictoryAnimator.hide()
         isJesterVictoryVisible = false
+        jesterVictoryOffersLocalSpectatorActions = false
         if (requeue) {
             presentedSpecialVictoryCount = (presentedSpecialVictoryCount - 1).coerceAtLeast(0)
         }
@@ -8442,23 +8625,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 32 -
                 pxToDp(traitorRevealContent.paddingLeft + traitorRevealContent.paddingRight)
         ).coerceAtLeast(220)
+        val cardMetrics = traitorRevealCardMetrics(
+            teammateCount = teammates.size,
+            viewportWidthDp = cardsViewportWidthDp
+        )
         traitorRevealCardsScroll.layoutParams =
             (traitorRevealCardsScroll.layoutParams as LinearLayout.LayoutParams).apply {
-                width = if (teammates.size >= 3) {
-                    dp(cardsViewportWidthDp)
-                } else {
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                }
+                width = dp(cardsViewportWidthDp)
             }
-        traitorRevealCards.minimumWidth = if (teammates.size >= 3) {
-            dp(cardsViewportWidthDp)
-        } else {
-            0
-        }
+        traitorRevealCards.minimumWidth = dp(cardsViewportWidthDp)
+        traitorRevealCards.columnCount = cardMetrics.columns
+        traitorRevealCards.rowCount =
+            ceil(teammates.size.toDouble() / cardMetrics.columns).toInt().coerceAtLeast(1)
         traitorRevealCardsScroll.scrollTo(0, 0)
 
         val cardViews = teammates.map { teammate ->
-            createTraitorRevealCard(teammate)
+            createTraitorRevealCard(teammate, cardMetrics)
         }
         traitorRevealAnimator.show(
             cardViews = cardViews,
@@ -8467,11 +8649,45 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
     }
 
-    private fun createTraitorRevealCard(player: GamePlayer): View {
+    private fun traitorRevealCardMetrics(
+        teammateCount: Int,
+        viewportWidthDp: Int
+    ): TraitorRevealCardMetrics {
+        val columns = when {
+            teammateCount <= 1 -> 1
+            teammateCount <= 3 -> teammateCount
+            else -> 2
+        }
+        val slotWidthDp = (viewportWidthDp / columns).coerceAtLeast(68)
+        val cardWidthDp = when (teammateCount) {
+            0, 1 -> minOf(104, slotWidthDp - 16)
+            2 -> minOf(92, slotWidthDp - 12)
+            3 -> minOf(76, slotWidthDp - 8)
+            else -> minOf(86, slotWidthDp - 14)
+        }.coerceAtLeast(58)
+        return TraitorRevealCardMetrics(
+            columns = columns,
+            slotWidthDp = slotWidthDp,
+            cardWidthDp = cardWidthDp,
+            cardHeightDp = cardWidthDp * 4 / 3,
+            nameTextSp = if (teammateCount >= 3) 12f else 14f,
+            roleTextSp = if (teammateCount >= 3) 10f else 11.5f
+        )
+    }
+
+    private fun createTraitorRevealCard(
+        player: GamePlayer,
+        metrics: TraitorRevealCardMetrics
+    ): View {
         val container = LinearLayout(this)
         container.orientation = LinearLayout.VERTICAL
         container.gravity = Gravity.CENTER
-        container.setPadding(dp(10), 0, dp(10), 0)
+        container.setPadding(dp(3), 0, dp(3), dp(8))
+        container.layoutParams = GridLayout.LayoutParams().apply {
+            width = dp(metrics.slotWidthDp)
+            height = GridLayout.LayoutParams.WRAP_CONTENT
+            setGravity(Gravity.CENTER)
+        }
 
         val cardFrame = FrameLayout(this).apply {
             setBackgroundResource(R.drawable.bg_role_card)
@@ -8485,7 +8701,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
-        container.addView(cardFrame, LinearLayout.LayoutParams(dp(96), dp(128)))
+        container.addView(
+            cardFrame,
+            LinearLayout.LayoutParams(dp(metrics.cardWidthDp), dp(metrics.cardHeightDp))
+        )
 
         val playerName = TextView(this)
         playerName.text = player.name
@@ -8494,10 +8713,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         playerName.maxLines = 1
         playerName.ellipsize = TextUtils.TruncateAt.END
         playerName.setTextColor(getColor(R.color.accent_gold))
-        playerName.textSize = 14f
+        playerName.textSize = metrics.nameTextSp
         playerName.setTypeface(null, Typeface.BOLD)
-        val nameParams = LinearLayout.LayoutParams(dp(124), LinearLayout.LayoutParams.WRAP_CONTENT)
-        nameParams.topMargin = dp(7)
+        val nameParams = LinearLayout.LayoutParams(
+            dp(metrics.slotWidthDp - 6),
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        nameParams.topMargin = dp(5)
         container.addView(playerName, nameParams)
 
         val roleLabel = TextView(this)
@@ -8506,10 +8728,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         roleLabel.includeFontPadding = false
         roleLabel.maxLines = 1
         roleLabel.setTextColor(getColor(R.color.text_secondary))
-        roleLabel.textSize = 11.5f
+        roleLabel.textSize = metrics.roleTextSp
         container.addView(
             roleLabel,
-            LinearLayout.LayoutParams(dp(124), LinearLayout.LayoutParams.WRAP_CONTENT)
+            LinearLayout.LayoutParams(
+                dp(metrics.slotWidthDp - 6),
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         )
         return container
     }
@@ -8824,6 +9049,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (spectatorChoiceOffered) return false
         if (isOnlineGameplay()) return false
         if (session.winner.isNotBlank()) return false
+        if (session.specialVictories.size > presentedSpecialVictoryCount) return false
         val human = GameEngine.humanPlayer(session)
         if (human.alive) return false
         if (hasPendingDawnRevealSequence()) return false
@@ -9042,6 +9268,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_TRAITOR_REVEAL_COMPLETED = "traitor_reveal_completed"
         private const val STATE_TRANSITION_KEY = "day_night_transition_key"
         private const val STATE_WINNER_REVEAL_PRESENTED = "winner_reveal_presented"
+        private const val STATE_PAYADOR_REVEAL_KEY = "payador_reveal_key"
         private const val STATE_LAST_NO_DEATH_REVEAL_ROUND = "last_no_death_reveal_round"
         private const val STATE_PRESENTED_SPECIAL_VICTORY_COUNT =
             "presented_special_victory_count"
@@ -9051,7 +9278,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
         private const val STATE_ONLINE_PRESENTATION_ACK_KEY = "online_presentation_ack_key"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
-        private const val JESTER_VICTORY_DURATION_MS = 5000L
+        private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L
+        private const val JESTER_VICTORY_DURATION_MS = 8000L
         private const val WINNER_AUTO_RETURN_MS = 45_000L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L

@@ -23,6 +23,26 @@ class PlayGamesIntegrationTest {
     }
 
     @Test
+    fun incrementalAchievementsMatchThePlayConsoleDraft() {
+        val expected = mapOf(
+            ProfileCustomizationCatalog.ACH_ASSASSIN_KILLS_25 to 25,
+            ProfileCustomizationCatalog.ACH_JESTER_WINS_5 to 5,
+            ProfileCustomizationCatalog.ACH_DESERTER_WINS_10 to 10,
+            ProfileCustomizationCatalog.ACH_MAYOR_POWER_WINS_15 to 15,
+            ProfileCustomizationCatalog.ACH_TOTAL_WINS_50 to 50
+        )
+
+        val configured = ProfileCustomizationCatalog.achievements
+            .mapNotNull { achievement ->
+                PlayGamesProgressSync.incrementalMaxSteps(achievement.id)
+                    ?.let { steps -> achievement.id to steps }
+            }
+            .toMap()
+
+        assertEquals(expected, configured)
+    }
+
+    @Test
     fun cloudConflictPrefersMoreMatchesThenNewestVersion() {
         val fewer = payload(matches = 3, updatedAt = 500)
         val more = payload(matches = 4, updatedAt = 100)

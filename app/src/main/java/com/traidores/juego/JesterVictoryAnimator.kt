@@ -10,7 +10,6 @@ import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import kotlin.random.Random
@@ -21,12 +20,12 @@ class JesterVictoryAnimator(
     private val hornLeft: ImageView,
     private val hornRight: ImageView,
     private val confettiLayer: FrameLayout,
-    private val continueButton: Button
+    private val actionsView: View
 ) {
     private val random = Random(73)
     private var entranceAnimator: AnimatorSet? = null
     private val runningAnimators = mutableListOf<Animator>()
-    private val finishRunnable = Runnable { revealContinueButton() }
+    private val finishRunnable = Runnable { revealActions() }
 
     fun show(durationMs: Long) {
         cancel(hideOverlay = false)
@@ -39,9 +38,9 @@ class JesterVictoryAnimator(
         hornRight.alpha = 0f
         hornLeft.translationX = -dp(42).toFloat()
         hornRight.translationX = dp(42).toFloat()
-        continueButton.visibility = View.INVISIBLE
-        continueButton.isEnabled = false
-        continueButton.alpha = 0f
+        actionsView.visibility = View.INVISIBLE
+        actionsView.isEnabled = false
+        actionsView.alpha = 0f
 
         entranceAnimator = AnimatorSet().apply {
             playTogether(
@@ -74,7 +73,7 @@ class JesterVictoryAnimator(
             panel.scaleY = 1f
             settleHorn(hornLeft)
             settleHorn(hornRight)
-            revealContinueButton()
+            revealActions()
         }
     }
 
@@ -188,11 +187,11 @@ class JesterVictoryAnimator(
         }
     }
 
-    private fun revealContinueButton() {
-        if (continueButton.visibility == View.VISIBLE && continueButton.isEnabled) return
-        continueButton.visibility = View.VISIBLE
-        continueButton.isEnabled = true
-        continueButton.animate()
+    private fun revealActions() {
+        if (actionsView.visibility == View.VISIBLE && actionsView.isEnabled) return
+        actionsView.visibility = View.VISIBLE
+        actionsView.isEnabled = true
+        actionsView.animate()
             .alpha(1f)
             .setDuration(300L)
             .setInterpolator(DecelerateInterpolator())
@@ -204,7 +203,7 @@ class JesterVictoryAnimator(
     }
 
     companion object {
-        private const val CONFETTI_COUNT = 72
+        private const val CONFETTI_COUNT = 28
         private val CONFETTI_COLORS = intArrayOf(
             Color.parseColor("#E7B83F"),
             Color.parseColor("#9C3029"),

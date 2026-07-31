@@ -35,17 +35,50 @@ object PlayGamesProgressSync {
     }
 
     fun unlockAchievement(context: Context, localAchievementId: String) {
+        val incrementalSteps = incrementalMaxSteps(localAchievementId)
+        if (incrementalSteps != null) {
+            setAchievementSteps(context, localAchievementId, incrementalSteps)
+            return
+        }
         val activity = context as? Activity ?: return
         if (!PlayGamesIdentity.isReady(activity)) return
         val remoteId = remoteAchievementId(activity, localAchievementId) ?: return
         PlayGames.getAchievementsClient(activity).unlock(remoteId)
     }
 
+    fun setAchievementSteps(
+        context: Context,
+        localAchievementId: String,
+        completedSteps: Int
+    ) {
+        val maxSteps = incrementalMaxSteps(localAchievementId) ?: return
+        val activity = context as? Activity ?: return
+        if (!PlayGamesIdentity.isReady(activity)) return
+        val remoteId = remoteAchievementId(activity, localAchievementId) ?: return
+        val safeSteps = completedSteps.coerceIn(0, maxSteps)
+        if (safeSteps == 0) return
+        PlayGames.getAchievementsClient(activity).setSteps(remoteId, safeSteps)
+    }
+
     fun syncAllAchievements(activity: Activity) {
         if (!PlayGamesIdentity.isReady(activity)) return
         val client = PlayGames.getAchievementsClient(activity)
-        AchievementTracker.unlockedAchievements(activity).forEach { achievement ->
-            remoteAchievementId(activity, achievement.id)?.let(client::unlock)
+        val unlockedIds = AchievementTracker.unlockedAchievements(activity)
+            .mapTo(mutableSetOf()) { it.id }
+        ProfileCustomizationCatalog.achievements.forEach { achievement ->
+            val remoteId = remoteAchievementId(activity, achievement.id) ?: return@forEach
+            val maxSteps = incrementalMaxSteps(achievement.id)
+            if (maxSteps == null) {
+                if (achievement.id in unlockedIds) client.unlock(remoteId)
+                return@forEach
+            }
+            val localSteps = if (achievement.id in unlockedIds) {
+                maxSteps
+            } else {
+                AchievementTracker.incrementalProgress(activity, achievement.id)
+                    .coerceAtMost(maxSteps)
+            }
+            if (localSteps > 0) client.setSteps(remoteId, localSteps)
         }
     }
 
@@ -85,6 +118,17 @@ object PlayGamesProgressSync {
                 R.string.play_games_achievement_total_wins_50
             ProfileCustomizationCatalog.ACH_TRAIDORES_SUPREMO ->
                 R.string.play_games_achievement_traidores_supremo
+            else -> null
+        }
+    }
+
+    internal fun incrementalMaxSteps(localAchievementId: String): Int? {
+        return when (localAchievementId) {
+            ProfileCustomizationCatalog.ACH_ASSASSIN_KILLS_25 -> 25
+            ProfileCustomizationCatalog.ACH_JESTER_WINS_5 -> 5
+            ProfileCustomizationCatalog.ACH_DESERTER_WINS_10 -> 10
+            ProfileCustomizationCatalog.ACH_MAYOR_POWER_WINS_15 -> 15
+            ProfileCustomizationCatalog.ACH_TOTAL_WINS_50 -> 50
             else -> null
         }
     }

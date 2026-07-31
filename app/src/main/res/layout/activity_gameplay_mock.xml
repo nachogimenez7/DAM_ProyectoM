@@ -940,14 +940,16 @@
                 android:overScrollMode="ifContentScrolls"
                 android:scrollbars="none">
 
-                <LinearLayout
+                <GridLayout
                     android:id="@+id/traitorRevealCards"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:alignmentMode="alignMargins"
                     android:clipChildren="false"
                     android:clipToPadding="false"
                     android:gravity="center"
-                    android:orientation="horizontal" />
+                    android:orientation="horizontal"
+                    android:useDefaultMargins="false" />
             </HorizontalScrollView>
 
             <TextView
@@ -1026,6 +1028,148 @@
     </FrameLayout>
 
     <FrameLayout
+        android:id="@+id/payadorRevealOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#E6000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/payadorRevealPanel"
+            android:layout_width="360dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_payador_reveal_panel"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="10dp"
+            android:paddingTop="14dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:maxLines="1"
+                android:text="¡COMIENZA EL CONTRAPUNTO!"
+                android:textColor="#F1C45D"
+                android:textSize="21sp"
+                android:textStyle="bold"
+                app:autoSizeMaxTextSize="21sp"
+                app:autoSizeMinTextSize="16sp"
+                app:autoSizeStepGranularity="1sp"
+                app:autoSizeTextType="uniform" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:text="El Payador ha elegido a dos voces"
+                android:textColor="#CDBB95"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="220dp"
+                android:layout_marginTop="11dp"
+                android:background="@drawable/bg_reveal_inner_panel"
+                android:padding="2dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="El Payador abre el Contrapunto"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/payador_contrapunto_scene" />
+
+                <TextView
+                    android:id="@+id/payadorRevealFirstPlayer"
+                    android:layout_width="112dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="7dp"
+                    android:layout_marginBottom="7dp"
+                    android:background="@drawable/bg_special_reveal_name"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:paddingHorizontal="5dp"
+                    android:text="PRIMERA VOZ"
+                    android:textColor="#F4CF7E"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="13sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+
+                <TextView
+                    android:id="@+id/payadorRevealSecondPlayer"
+                    android:layout_width="112dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="bottom|end"
+                    android:layout_marginEnd="7dp"
+                    android:layout_marginBottom="7dp"
+                    android:background="@drawable/bg_special_reveal_name"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:maxLines="2"
+                    android:paddingHorizontal="5dp"
+                    android:text="SEGUNDA VOZ"
+                    android:textColor="#F4CF7E"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="13sp"
+                    app:autoSizeMinTextSize="10sp"
+                    app:autoSizeStepGranularity="1sp"
+                    app:autoSizeTextType="uniform" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:text="Solo ellos podrán hablar durante el contrapunto."
+                android:textColor="#F0E3CA"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif"
+                android:gravity="center"
+                android:text="Al terminar, uno de los dos quedará señalado."
+                android:textColor="#AA997C"
+                android:textSize="12sp" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="5dp"
+                android:layout_marginHorizontal="18dp"
+                android:layout_marginTop="13dp"
+                android:background="@drawable/bg_special_reveal_progress_track">
+
+                <View
+                    android:id="@+id/payadorRevealProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_special_reveal_progress_payador"
+                    android:transformPivotX="0dp" />
+            </FrameLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <FrameLayout
         android:id="@+id/oracleRevealOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -1036,123 +1180,124 @@
 
         <FrameLayout
             android:id="@+id/oracleRevealPanel"
-            android:layout_width="320dp"
-            android:layout_height="322dp"
+            android:layout_width="360dp"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:background="@drawable/bg_oracle_reveal_panel"
-            android:clipToOutline="true"
             android:padding="5dp">
-
-            <ImageView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:contentDescription="@null"
-                android:scaleType="centerCrop"
-                android:src="@drawable/oracle_return_portal" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@drawable/bg_oracle_text_shade" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
                 android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:paddingHorizontal="24dp"
+                android:paddingHorizontal="7dp"
                 android:paddingTop="14dp"
                 android:paddingBottom="12dp">
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="24dp"
-                    android:background="@drawable/bg_oracle_reveal_badge"
-                    android:fontFamily="sans-serif"
-                    android:gravity="center"
-                    android:paddingHorizontal="18dp"
-                    android:text="EL ORÁCULO HA HABLADO"
-                    android:textColor="#EED89A"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
                     android:layout_width="match_parent"
-                    android:layout_height="38dp"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="sans-serif"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="serif"
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:maxLines="1"
-                    android:text="UNA VOZ REGRESA"
-                    android:textColor="#F4E6B2"
-                    android:textSize="27sp"
+                    android:text="¡UNA VOZ REGRESA!"
+                    android:textColor="#F0CF77"
+                    android:textSize="24sp"
                     android:textStyle="bold"
-                    app:autoSizeMaxTextSize="27sp"
-                    app:autoSizeMinTextSize="19sp"
+                    app:autoSizeMaxTextSize="24sp"
+                    app:autoSizeMinTextSize="17sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
                 <TextView
                     android:layout_width="match_parent"
-                    android:layout_height="42dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:fontFamily="sans-serif"
+                    android:gravity="center"
+                    android:text="El fuego recuerda su nombre"
+                    android:textColor="#BDD8E7"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="220dp"
+                    android:layout_marginTop="11dp"
+                    android:background="@drawable/bg_reveal_inner_panel"
+                    android:padding="2dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="El Oráculo recupera una voz"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/oracle_return_scene" />
+
+                    <TextView
+                        android:id="@+id/oracleRevealPlayer"
+                        android:layout_width="124dp"
+                        android:layout_height="50dp"
+                        android:layout_gravity="bottom|end"
+                        android:layout_marginEnd="7dp"
+                        android:layout_marginBottom="7dp"
+                        android:background="@drawable/bg_oracle_player_name"
+                        android:fontFamily="sans-serif"
+                        android:gravity="center"
+                        android:maxLines="2"
+                        android:paddingHorizontal="7dp"
+                        android:text="JUGADOR"
+                        android:textColor="#D8F5FF"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        app:autoSizeMaxTextSize="14sp"
+                        app:autoSizeMinTextSize="10sp"
+                        app:autoSizeStepGranularity="1sp"
+                        app:autoSizeTextType="uniform" />
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:maxLines="2"
-                    android:text="De los Campos Elíseos... o quizá del Inframundo."
-                    android:textColor="#C9D9E7"
-                    android:textSize="17sp"
-                    android:textStyle="italic"
-                    app:autoSizeMaxTextSize="17sp"
+                    android:text="Vuelve para hablar una vez más."
+                    android:textColor="#F1E8D1"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    app:autoSizeMaxTextSize="16sp"
                     app:autoSizeMinTextSize="13sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
                 <TextView
-                    android:id="@+id/oracleRevealPlayer"
                     android:layout_width="match_parent"
-                    android:layout_height="46dp"
-                    android:layout_marginTop="5dp"
-                    android:layout_marginHorizontal="8dp"
-                    android:background="@drawable/bg_oracle_player_name"
-                    android:fontFamily="sans-serif"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:paddingHorizontal="16dp"
-                    android:text="JUGADOR"
-                    android:textColor="#FFFFFF"
-                    android:textSize="24sp"
-                    android:textStyle="bold"
-                    app:autoSizeMaxTextSize="24sp"
-                    app:autoSizeMinTextSize="14sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="44dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:maxLines="2"
-                    android:text="Vuelve a la discusión durante este día. Puede hablar, pero no votar ni usar habilidades."
-                    android:textColor="#F2EEE2"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    app:autoSizeMaxTextSize="15sp"
-                    app:autoSizeMinTextSize="12sp"
-                    app:autoSizeStepGranularity="1sp"
-                    app:autoSizeTextType="uniform" />
+                    android:text="Puede hablar durante este día, pero no votar ni usar habilidades."
+                    android:textColor="#9FB1BD"
+                    android:textSize="12sp" />
 
-                <Button
-                    android:id="@+id/btnContinueOracleReveal"
-                    style="@style/BtnDark"
-                    android:layout_width="220dp"
-                    android:layout_height="38dp"
-                    android:layout_marginTop="5dp"
-                    android:text="ESCUCHAR AL REGRESADO"
-                    android:textSize="11sp" />
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="5dp"
+                    android:layout_marginHorizontal="18dp"
+                    android:layout_marginTop="13dp"
+                    android:background="@drawable/bg_special_reveal_progress_track">
+
+                    <View
+                        android:id="@+id/oracleRevealProgress"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_special_reveal_progress_oracle"
+                        android:transformPivotX="0dp" />
+                </FrameLayout>
             </LinearLayout>
         </FrameLayout>
     </FrameLayout>
@@ -1579,12 +1724,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="7dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
 
                     <FrameLayout
-                        android:layout_width="@dimen/reveal_card_width"
-                        android:layout_height="@dimen/reveal_card_height"
+                        android:layout_width="match_parent"
+                        android:layout_height="210dp"
                         android:background="@drawable/bg_jester_portrait_glow"
                         android:padding="4dp">
 
@@ -1592,18 +1737,15 @@
                             android:id="@+id/jesterVictoryImage"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:background="@drawable/bg_role_card"
                             android:contentDescription="Bufón revelado"
-                            android:padding="3dp"
-                            android:scaleType="fitCenter"
-                            android:src="@drawable/rol_bufon_medieval" />
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/jester_victory_scene" />
                     </FrameLayout>
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
+                        android:layout_marginTop="9dp"
                         android:gravity="center_horizontal"
                         android:orientation="vertical">
 
@@ -1649,22 +1791,50 @@
                     android:layout_marginTop="5dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
-                    android:text="El Bufón celebra su victoria, pero el destino del pueblo todavía no está decidido."
+                    android:text="La partida continúa, pero el Bufón ya consiguió su propia victoria."
                     android:textColor="#68472B"
                     android:textSize="13sp"
                     android:textStyle="italic" />
 
-                <Button
-                    android:id="@+id/btnContinueJesterVictory"
-                    style="@style/BtnDark"
-                    android:layout_width="210dp"
-                    android:layout_height="40dp"
-                    android:layout_marginTop="7dp"
+                <LinearLayout
+                    android:id="@+id/jesterVictoryActions"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="8dp"
                     android:alpha="0"
                     android:enabled="false"
-                    android:text="CONTINUAR PARTIDA"
-                    android:textSize="12sp"
-                    android:visibility="invisible" />
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:visibility="invisible">
+
+                    <Button
+                        android:id="@+id/btnContinueJesterVictory"
+                        style="@style/BtnGold"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginEnd="5dp"
+                        android:layout_marginBottom="0dp"
+                        android:layout_weight="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="4dp"
+                        android:text="SEGUIR MIRANDO"
+                        android:textSize="11sp" />
+
+                    <Button
+                        android:id="@+id/btnReturnJesterVictory"
+                        style="@style/BtnDark"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="5dp"
+                        android:layout_marginBottom="0dp"
+                        android:layout_weight="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="4dp"
+                        android:text="VOLVER A LA SALA"
+                        android:textSize="11sp" />
+                </LinearLayout>
             </LinearLayout>
         </FrameLayout>
 

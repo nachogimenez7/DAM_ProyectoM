@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Se completan con los IDs opacos creados en Play Console. -->
-    <string name="game_services_project_id" translatable="false">0</string>
-    <string name="play_games_web_client_id" translatable="false"></string>
+    <string name="game_services_project_id" translatable="false">99323018581</string>
+    <string name="play_games_web_client_id" translatable="false">99323018581-97udanqc1d907vq4jnk78teup4kfi33a.apps.googleusercontent.com</string>
 
-    <string name="play_games_achievement_profile_created" translatable="false"></string>
-    <string name="play_games_achievement_assassin_kills_25" translatable="false"></string>
-    <string name="play_games_achievement_jester_wins_5" translatable="false"></string>
-    <string name="play_games_achievement_expel_all_killers" translatable="false"></string>
-    <string name="play_games_achievement_deserter_wins_10" translatable="false"></string>
-    <string name="play_games_achievement_mercenary_same_target_3" translatable="false"></string>
-    <string name="play_games_achievement_villager_survives_12" translatable="false"></string>
-    <string name="play_games_achievement_mayor_power_wins_15" translatable="false"></string>
-    <string name="play_games_achievement_total_wins_50" translatable="false"></string>
-    <string name="play_games_achievement_traidores_supremo" translatable="false"></string>
+    <string name="play_games_achievement_profile_created" translatable="false">CgkI1frzgPICEAIQAQ</string>
+    <string name="play_games_achievement_assassin_kills_25" translatable="false">CgkI1frzgPICEAIQBA</string>
+    <string name="play_games_achievement_jester_wins_5" translatable="false">CgkI1frzgPICEAIQBQ</string>
+    <string name="play_games_achievement_expel_all_killers" translatable="false">CgkI1frzgPICEAIQAw</string>
+    <string name="play_games_achievement_deserter_wins_10" translatable="false">CgkI1frzgPICEAIQCA</string>
+    <string name="play_games_achievement_mercenary_same_target_3" translatable="false">CgkI1frzgPICEAIQBw</string>
+    <string name="play_games_achievement_villager_survives_12" translatable="false">CgkI1frzgPICEAIQCQ</string>
+    <string name="play_games_achievement_mayor_power_wins_15" translatable="false">CgkI1frzgPICEAIQAg</string>
+    <string name="play_games_achievement_total_wins_50" translatable="false">CgkI1frzgPICEAIQBg</string>
+    <string name="play_games_achievement_traidores_supremo" translatable="false">CgkI1frzgPICEAIQAA</string>
 
-    <string name="play_games_leaderboard_total_wins" translatable="false"></string>
-    <string name="play_games_leaderboard_total_matches" translatable="false"></string>
+    <string name="play_games_leaderboard_total_wins" translatable="false">CgkI1frzgPICEAIQCw</string>
+    <string name="play_games_leaderboard_total_matches" translatable="false">CgkI1frzgPICEAIQCg</string>
 </resources>

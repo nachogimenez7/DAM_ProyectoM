@@ -1106,17 +1106,20 @@ class GameEngineTest {
     }
 
     @Test
-    fun quickTestModeBotAssassinTargetsHumanWhenValid() {
-        val session = baseSession().copy(quickTestMode = true)
-        val assassin = session.players.first { it.role?.key == "asesino" }
+    fun quickTestModeDoesNotChangeAssassinTarget() {
+        val normalSession = baseSession()
+        val quickSession = normalSession.copy(quickTestMode = true)
+        val normalAssassin = normalSession.players.first { it.role?.key == "asesino" }
+        val quickAssassin = quickSession.players.first { it.role?.key == "asesino" }
 
-        val target = LocalBotAi.chooseAssassinTarget(session, assassin)
+        val normalTarget = LocalBotAi.chooseAssassinTarget(normalSession, normalAssassin)
+        val quickTarget = LocalBotAi.chooseAssassinTarget(quickSession, quickAssassin)
 
-        assertEquals("Humano", target)
+        assertEquals(normalTarget, quickTarget)
     }
 
     @Test
-    fun debugBotsNeverKillHumanOverridesQuickTestAssassinTarget() {
+    fun debugBotsNeverKillHumanAlsoWorksInQuickTestMode() {
         val session = baseSession().copy(
             quickTestMode = true,
             debugBotsNeverKillHuman = true

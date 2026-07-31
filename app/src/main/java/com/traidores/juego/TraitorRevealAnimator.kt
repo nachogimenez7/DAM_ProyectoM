@@ -6,6 +6,7 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.os.Handler
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -13,7 +14,7 @@ import android.widget.LinearLayout
 class TraitorRevealAnimator(
     private val overlay: FrameLayout,
     private val content: LinearLayout,
-    private val cards: LinearLayout,
+    private val cards: ViewGroup,
     private val handler: Handler
 ) {
     private var animator: AnimatorSet? = null

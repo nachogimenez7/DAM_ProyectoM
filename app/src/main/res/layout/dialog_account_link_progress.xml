@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:paddingHorizontal="8dp">
+
+    <ImageView
+        android:layout_width="58dp"
+        android:layout_height="58dp"
+        android:contentDescription="@null"
+        android:scaleType="fitCenter"
+        android:src="@drawable/logo_traidores_clean" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="@font/bree_serif"
+        android:gravity="center"
+        android:text="@string/account_google_progress_title"
+        android:textColor="@color/accent_gold"
+        android:textSize="20sp" />
+
+    <ProgressBar
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_marginTop="14dp"
+        android:indeterminateTint="@color/accent_gold" />
+
+    <TextView
+        android:id="@+id/accountGoogleProgressMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:text="@string/account_google_progress_opening"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp" />
+
+</LinearLayout>

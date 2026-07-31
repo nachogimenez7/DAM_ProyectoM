@@ -32,11 +32,17 @@ sealed class AccountLinkResult {
  * `#` publico de la cuenta vieja en vez de dejar el del invitado, que quedaria duplicado.
  */
 object AccountLink {
+    private const val PASSWORD_PROVIDER_ID = "password"
 
     fun isGuest(): Boolean {
         val user = FirebaseAuth.getInstance().currentUser
         return user == null || user.isAnonymous
     }
+
+    fun hasPasswordProvider(): Boolean =
+        FirebaseAuth.getInstance().currentUser?.providerData?.any {
+            it.providerId == PASSWORD_PROVIDER_ID
+        } == true
 
     fun currentEmail(): String {
         return FirebaseAuth.getInstance().currentUser

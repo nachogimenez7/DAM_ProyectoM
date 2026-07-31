@@ -1,6 +1,7 @@
 package com.traidores.juego
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
@@ -244,6 +245,7 @@ object PlayerProfileDialog {
 
     private fun identityRow(activity: Activity, profile: PlayerProfile, compact: Boolean): View {
         val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
+        val useLocalPhoto = hasLocalPhotoFor(activity, profile)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -260,10 +262,16 @@ object PlayerProfileDialog {
                 isClickable = true
                 isFocusable = true
                 contentDescription = "Ampliar foto de perfil"
-                setOnClickListener { showExpandedAvatar(activity, avatarEntry) }
+                setOnClickListener {
+                    showExpandedAvatar(activity, avatarEntry, useLocalPhoto)
+                }
             }
             val avatar = CircleProfileImageView(activity).apply {
-                scaleType = ImageView.ScaleType.MATRIX
+                scaleType = if (useLocalPhoto) {
+                    ImageView.ScaleType.CENTER_CROP
+                } else {
+                    ImageView.ScaleType.MATRIX
+                }
                 contentDescription = "Avatar de ${profile.name}"
             }
             avatarFrame.addView(
@@ -273,8 +281,10 @@ object PlayerProfileDialog {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             )
-            setRoleImage(activity, avatar, avatarEntry.role)
-            alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
+            if (!useLocalPhoto || !LocalProfilePhotoStore.render(activity, avatar, false)) {
+                setRoleImage(activity, avatar, avatarEntry.role)
+                alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
+            }
             addView(
                 avatarFrame,
                 LinearLayout.LayoutParams(avatarSize, avatarSize).apply {
@@ -552,10 +562,18 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun showExpandedAvatar(activity: Activity, avatarEntry: ProfileRoleCatalog.Entry) {
+    private fun showExpandedAvatar(
+        activity: Activity,
+        avatarEntry: ProfileRoleCatalog.Entry,
+        useLocalPhoto: Boolean
+    ) {
         val content = activity.layoutInflater.inflate(R.layout.dialog_profile_avatar, null)
         val avatar = content.findViewById<ImageView>(R.id.expandedProfileAvatar)
-        setRoleImage(activity, avatar, avatarEntry.role)
+        val showingLocalPhoto = useLocalPhoto &&
+            LocalProfilePhotoStore.render(activity, avatar, false)
+        if (!showingLocalPhoto) {
+            setRoleImage(activity, avatar, avatarEntry.role)
+        }
         val dialog = AlertDialog.Builder(activity).setView(content).create()
         content.setOnClickListener { dialog.dismiss() }
         dialog.setOnShowListener {
@@ -567,9 +585,20 @@ object PlayerProfileDialog {
                     .coerceAtLeast(dp(activity, 220))
                 setLayout(dp(activity, 320).coerceAtMost(maxW), dp(activity, 320).coerceAtMost(maxH))
             }
-            alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
+            if (!showingLocalPhoto) {
+                alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
+            }
         }
         showTracked(activity, dialog)
+    }
+
+    private fun hasLocalPhotoFor(activity: Activity, profile: PlayerProfile): Boolean {
+        val currentPublicId = PlayerPublicIdentity.currentPublicId(activity)
+        if (currentPublicId.isBlank() || currentPublicId != profile.publicId) return false
+        val enabled = activity
+            .getSharedPreferences(ProfileActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
+        return enabled && LocalProfilePhotoStore.hasSavedPhoto(activity)
     }
 
     private fun showEmotePreview(activity: Activity, spec: EmoteSpec) {

@@ -792,7 +792,7 @@ class VoteResultAnimator(
             }
         } else {
             ImageView(context).apply {
-                setImageResource(R.drawable.expulsion_seal)
+                setImageResource(R.drawable.seal_chronicle_vote)
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
         }).apply {

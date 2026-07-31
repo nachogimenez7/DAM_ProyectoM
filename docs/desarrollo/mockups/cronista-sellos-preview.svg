@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1180" viewBox="0 0 1400 1180">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#100d0a"/>
+      <stop offset="0.55" stop-color="#21170f"/>
+      <stop offset="1" stop-color="#0b0907"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0a9"/>
+      <stop offset="0.22" stop-color="#d9a93d"/>
+      <stop offset="0.55" stop-color="#6f4214"/>
+      <stop offset="0.78" stop-color="#efc967"/>
+      <stop offset="1" stop-color="#8a541a"/>
+    </linearGradient>
+    <linearGradient id="parchment" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6df9c"/>
+      <stop offset="1" stop-color="#c89743"/>
+    </linearGradient>
+    <pattern id="grain" width="64" height="64" patternUnits="userSpaceOnUse">
+      <circle cx="8" cy="9" r="1.2" fill="#d9a85b" opacity=".12"/>
+      <circle cx="37" cy="18" r=".8" fill="#fff3c4" opacity=".08"/>
+      <circle cx="54" cy="43" r="1.1" fill="#120a05" opacity=".16"/>
+      <path d="M2 49 C18 43 29 56 47 48" fill="none" stroke="#d7a75a" stroke-width=".7" opacity=".08"/>
+    </pattern>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".7"/>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000" flood-opacity=".65"/>
+    </filter>
+    <g id="seal">
+      <circle r="66" fill="#090705" stroke="#2b170a" stroke-width="8"/>
+      <circle r="59" fill="url(#gold)" stroke="#f3d27d" stroke-width="2"/>
+      <circle r="49" fill="currentColor" stroke="#492711" stroke-width="4"/>
+      <circle r="43" fill="none" stroke="#f5da91" stroke-width="1.4" opacity=".55"/>
+      <path d="M-42 -18 L-47 -5 L-42 8 M42 -18 L47 -5 L42 8 M-18 -42 L-5 -47 L8 -42 M-18 42 L-5 47 L8 42"
+            fill="none" stroke="#f2ce70" stroke-width="2" opacity=".65"/>
+    </g>
+    <style>
+      .title { font: 700 43px Georgia, serif; fill: #f0c863; letter-spacing: 2px; }
+      .subtitle { font: 400 20px Arial, sans-serif; fill: #bba98f; }
+      .label { font: 700 19px Arial, sans-serif; fill: #f2d27d; letter-spacing: 1px; }
+      .desc { font: 400 15px Arial, sans-serif; fill: #aa9b88; }
+      .symbol { fill: none; stroke: #ffe5a0; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .symbol-fill { fill: #ffe5a0; stroke: #4e2b13; stroke-width: 2; stroke-linejoin: round; }
+      .feed { font: 700 19px Georgia, serif; fill: #e7d7b7; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="1180" fill="url(#bg)"/>
+  <rect width="1400" height="1180" fill="url(#grain)"/>
+  <rect x="25" y="25" width="1350" height="1130" rx="30" fill="none" stroke="url(#gold)" stroke-width="3"/>
+  <text x="700" y="78" text-anchor="middle" class="title">SELLOS DEL CRONISTA</text>
+  <text x="700" y="112" text-anchor="middle" class="subtitle">Dirección visual propuesta · metal envejecido, cera y pictogramas de alto contraste</text>
+
+  <!-- Row 1 -->
+  <g transform="translate(185 230)" filter="url(#shadow)" style="color:#65471f">
+    <use href="#seal"/>
+    <path class="symbol-fill" d="M-27-27h48l8 9v42l-8 8h-48l-8-8v-42z"/>
+    <path d="M-20-13h36M-20-1h31M-20 11h24" stroke="#6b411c" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="23" cy="23" r="12" fill="#8f2e25" stroke="#f5cc68" stroke-width="3"/>
+  </g>
+  <text x="185" y="322" text-anchor="middle" class="label">PARTIDA</text>
+  <text x="185" y="346" text-anchor="middle" class="desc">Pergamino sellado</text>
+
+  <g transform="translate(530 230)" filter="url(#shadow)" style="color:#5c4321">
+    <use href="#seal"/>
+    <rect x="-31" y="-23" width="37" height="52" rx="5" class="symbol-fill" transform="rotate(-13)"/>
+    <rect x="-7" y="-29" width="39" height="55" rx="5" class="symbol-fill" transform="rotate(10)"/>
+    <path d="M4-10l9 7 9-7M4 4l9 7 9-7" fill="none" stroke="#8b2e25" stroke-width="4"/>
+  </g>
+  <text x="530" y="322" text-anchor="middle" class="label">ROLES</text>
+  <text x="530" y="346" text-anchor="middle" class="desc">Cartas enfrentadas</text>
+
+  <g transform="translate(875 230)" filter="url(#shadow)" style="color:#263453">
+    <use href="#seal"/>
+    <path d="M20-31A38 38 0 1 0 32 27A31 31 0 1 1 20-31Z" class="symbol-fill"/>
+    <circle cx="-25" cy="-27" r="3.5" fill="#fff1b1"/>
+    <circle cx="27" cy="-9" r="3" fill="#fff1b1"/>
+  </g>
+  <text x="875" y="322" text-anchor="middle" class="label">NOCHE</text>
+  <text x="875" y="346" text-anchor="middle" class="desc">Luna y estrellas</text>
+
+  <g transform="translate(1215 230)" filter="url(#shadow)" style="color:#765821">
+    <use href="#seal"/>
+    <path d="M-32 20a32 32 0 0 1 64 0" class="symbol"/>
+    <path d="M-42 21h84M0-36v18M-31-24l13 13M31-24L18-11M-45-2l18 7M45-2L27 5" class="symbol"/>
+  </g>
+  <text x="1215" y="322" text-anchor="middle" class="label">AMANECER</text>
+  <text x="1215" y="346" text-anchor="middle" class="desc">Sol sobre el horizonte</text>
+
+  <!-- Row 2 -->
+  <g transform="translate(185 500)" filter="url(#shadow)" style="color:#67251f">
+    <use href="#seal"/>
+    <path d="M-16-19h32v48h-32z" class="symbol-fill"/>
+    <path d="M-23 29h46M-13-20c-1-15 10-15 8-28 16 10 18 22 7 29" class="symbol"/>
+    <path d="M-2-44c13-7 18-15 14-24" fill="none" stroke="#c8b7a1" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <text x="185" y="592" text-anchor="middle" class="label">MUERTE</text>
+  <text x="185" y="616" text-anchor="middle" class="desc">Vela apagada</text>
+
+  <g transform="translate(530 500)" filter="url(#shadow)" style="color:#523249">
+    <use href="#seal"/>
+    <path d="M-24 17h48l-7-11v-19c0-13-8-22-17-22s-17 9-17 22V6zM-8 25c3 10 13 10 16 0" class="symbol"/>
+    <path d="M-35-33L35 34" stroke="#ffe5a0" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <text x="530" y="592" text-anchor="middle" class="label">SILENCIO</text>
+  <text x="530" y="616" text-anchor="middle" class="desc">Campana anulada</text>
+
+  <g transform="translate(875 500)" filter="url(#shadow)" style="color:#5e4722">
+    <use href="#seal"/>
+    <path d="M-46-25l17 2 5 8v33l-6 8-16 2z" fill="#8b5429" stroke="#f2c95f" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M-31-22l14 3 4 5v31l-5 7-13 2z" fill="#e1bd69" stroke="#fff0ac" stroke-width="3" stroke-linejoin="round"/>
+    <path class="symbol-fill"
+          d="M-18-18l11-2 10-7 8-6 28 1c8 0 12 5 11 11-1 6-6 9-12 9H10L22-5c8 4 8 13 1 17l-8 2 4 3c6 5 2 14-6 14H7c1 6-5 11-11 8l-14-8z"/>
+    <path d="M12-12l-5 7M7-5l11 7M0 4l12 7M-7 13l11 8"
+          fill="none" stroke="#8a4a23" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M24-26c6-2 12-1 16 1M-20-17v40" fill="none" stroke="#fff0ac" stroke-width="2.5" stroke-linecap="round" opacity=".8"/>
+    <path d="M10-5c3 1 6 3 9 5" fill="none" stroke="#6f391b" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="875" y="592" text-anchor="middle" class="label">VOTACIÓN</text>
+  <text x="875" y="616" text-anchor="middle" class="desc">Dedo acusador</text>
+
+  <g transform="translate(1215 500)" filter="url(#shadow)" style="color:#673b20">
+    <use href="#seal"/>
+    <circle cx="0" cy="-23" r="9" fill="#d59b48" stroke="#4e2b13" stroke-width="3"/>
+    <path d="M-14-4c2-10 7-15 14-15S12-14 14-4l4 34H-18z" fill="#d59b48" stroke="#4e2b13" stroke-width="3"/>
+    <path d="M-8 29l-4 13M8 29l4 13" fill="none" stroke="#d59b48" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="-30" cy="-17" r="8" class="symbol-fill"/>
+    <path d="M-42 34l3-32c1-10 5-15 10-15 7 0 10 7 12 18M-32 33l-3 9" fill="#ffe5a0" stroke="#4e2b13" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="30" cy="-17" r="8" class="symbol-fill"/>
+    <path d="M42 34L39 2c-1-10-5-15-10-15-7 0-10 7-12 18M32 33l3 9" fill="#ffe5a0" stroke="#4e2b13" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-30-2L-10-10M30-2L10-10" fill="none" stroke="#fff0ac" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="-9" cy="-10" r="4" fill="#fff0ac"/>
+    <circle cx="9" cy="-10" r="4" fill="#fff0ac"/>
+  </g>
+  <text x="1215" y="592" text-anchor="middle" class="label">EXPULSIÓN</text>
+  <text x="1215" y="616" text-anchor="middle" class="desc">Escoltado fuera</text>
+
+  <!-- Row 3 -->
+  <g transform="translate(185 770)" filter="url(#shadow)" style="color:#4d3d25">
+    <use href="#seal"/>
+    <path d="M0-31v58M-31-18h62M-31-18l-18 34h36zM31-18L13 16h36zM-18 31h36" class="symbol"/>
+  </g>
+  <text x="185" y="862" text-anchor="middle" class="label">EMPATE</text>
+  <text x="185" y="886" text-anchor="middle" class="desc">Balanza nivelada</text>
+
+  <g transform="translate(530 770)" filter="url(#shadow)" style="color:#55305e">
+    <use href="#seal"/>
+    <path d="M-38 3c9-4 13-17 14-33 10 7 18 13 24 25 6-12 14-18 24-25 1 16 5 29 14 33l-10 31h-56z" class="symbol-fill"/>
+    <circle cx="-25" cy="-29" r="8" fill="#9b332b" stroke="#f6d67d" stroke-width="3"/>
+    <circle cx="25" cy="-29" r="8" fill="#26706a" stroke="#f6d67d" stroke-width="3"/>
+    <circle cx="0" cy="-6" r="7" fill="#f6d67d"/>
+    <path d="M-17 15c11 10 23 10 34 0" fill="none" stroke="#7c2b25" stroke-width="5"/>
+  </g>
+  <text x="530" y="862" text-anchor="middle" class="label">VICTORIA ESPECIAL</text>
+  <text x="530" y="886" text-anchor="middle" class="desc">Gorro del Bufón</text>
+
+  <g transform="translate(875 770)" filter="url(#shadow)" style="color:#59261f">
+    <use href="#seal"/>
+    <g transform="rotate(-42)">
+      <path d="M-7-42H7L5 12 0 21-5 12Z" class="symbol-fill"/>
+      <path d="M-18 11H18V19H-18Z" class="symbol-fill"/>
+      <path d="M-5 19H5V38H-5Z" class="symbol-fill"/>
+      <circle cx="0" cy="41" r="6" class="symbol-fill"/>
+    </g>
+    <g transform="rotate(42)">
+      <path d="M-7-42H7L5 12 0 21-5 12Z" class="symbol-fill"/>
+      <path d="M-18 11H18V19H-18Z" class="symbol-fill"/>
+      <path d="M-5 19H5V38H-5Z" class="symbol-fill"/>
+      <circle cx="0" cy="41" r="6" class="symbol-fill"/>
+    </g>
+  </g>
+  <text x="875" y="862" text-anchor="middle" class="label">PLAN TRAIDOR</text>
+  <text x="875" y="886" text-anchor="middle" class="desc">Dagas cruzadas</text>
+
+  <g transform="translate(1215 770)" filter="url(#shadow)" style="color:#6a241d">
+    <use href="#seal"/>
+    <circle r="31" class="symbol"/>
+    <circle r="17" class="symbol"/>
+    <circle r="5" fill="#ffe5a0"/>
+    <path d="M0-44v16M0 28v16M-44 0h16M28 0h16" class="symbol"/>
+  </g>
+  <text x="1215" y="862" text-anchor="middle" class="label">OBJETIVO</text>
+  <text x="1215" y="886" text-anchor="middle" class="desc">Marca de cacería</text>
+
+  <!-- Feed preview -->
+  <g transform="translate(110 944)">
+    <rect width="1180" height="160" rx="22" fill="#17110c" stroke="#6c4b22" stroke-width="2" filter="url(#softShadow)"/>
+    <text x="30" y="36" class="label">VISTA APROXIMADA EN EL CRONISTA</text>
+
+    <g transform="translate(55 88) scale(.32)" style="color:#5e4722">
+      <use href="#seal"/>
+      <path d="M-46-25l17 2 5 8v33l-6 8-16 2z" fill="#8b5429" stroke="#f2c95f" stroke-width="3"/>
+      <path d="M-31-22l14 3 4 5v31l-5 7-13 2z" fill="#e1bd69" stroke="#fff0ac" stroke-width="3"/>
+      <path class="symbol-fill"
+            d="M-18-18l11-2 10-7 8-6 28 1c8 0 12 5 11 11-1 6-6 9-12 9H10L22-5c8 4 8 13 1 17l-8 2 4 3c6 5 2 14-6 14H7c1 6-5 11-11 8l-14-8z"/>
+    </g>
+    <text x="105" y="94" class="feed">El pueblo abre la votación.</text>
+
+    <g transform="translate(515 88) scale(.32)" style="color:#673b20">
+      <use href="#seal"/>
+      <circle cx="0" cy="-23" r="9" fill="#d59b48"/>
+      <path d="M-14-4c2-10 7-15 14-15S12-14 14-4l4 34H-18z" fill="#d59b48"/>
+      <circle cx="-30" cy="-17" r="8" class="symbol-fill"/>
+      <circle cx="30" cy="-17" r="8" class="symbol-fill"/>
+      <path d="M-42 34l3-32c1-10 5-15 10-15M42 34L39 2c-1-10-5-15-10-15M-30-2L-10-10M30-2L10-10"
+            fill="none" stroke="#ffe5a0" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <text x="565" y="94" class="feed">Juli fue expulsado del pueblo.</text>
+
+    <g transform="translate(985 88) scale(.32)" style="color:#67251f">
+      <use href="#seal"/>
+      <path d="M-16-19h32v48h-32z" class="symbol-fill"/>
+      <path d="M-23 29h46M-2-44c13-7 18-15 14-24" class="symbol"/>
+    </g>
+    <text x="1035" y="94" class="feed">Murió Juli.</text>
+  </g>
+</svg>

@@ -7,19 +7,27 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.lifecycleScope
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 sealed class GoogleAccountResult {
     data class Linked(val email: String) : GoogleAccountResult()
     data class SignedIn(val email: String, val recoveredPublicId: String) : GoogleAccountResult()
     object Cancelled : GoogleAccountResult()
-    data class Failed(val message: String, val error: Exception? = null) : GoogleAccountResult()
+    data class Failed(
+        val message: String,
+        val error: Exception? = null,
+        val retryWithAlternativePicker: Boolean = false
+    ) : GoogleAccountResult()
 }
 
 /**
@@ -39,10 +47,15 @@ object GoogleAccountLink {
 
     fun linkOrSignIn(
         activity: AppCompatActivity,
+        useAlternativePicker: Boolean = false,
+        onCredentialReady: () -> Unit = {},
         onResult: (GoogleAccountResult) -> Unit
-    ) {
-        requestFirebaseCredential(activity, onResult)
-    }
+    ): Job? = requestFirebaseCredential(
+        activity,
+        useAlternativePicker,
+        onCredentialReady,
+        onResult
+    )
 
     fun reauthenticate(
         activity: AppCompatActivity,
@@ -69,20 +82,33 @@ object GoogleAccountLink {
 
     private fun requestFirebaseCredential(
         activity: AppCompatActivity,
+        useAlternativePicker: Boolean,
+        onCredentialReady: () -> Unit,
         onResult: (GoogleAccountResult) -> Unit
-    ) {
-        requestGoogleCredential(activity) { result ->
+    ): Job? {
+        return requestGoogleCredential(activity, useAlternativePicker) { result ->
             when (result) {
                 CredentialResult.Cancelled -> onResult(GoogleAccountResult.Cancelled)
                 is CredentialResult.Failed -> onResult(
-                    GoogleAccountResult.Failed(result.message, result.error)
+                    GoogleAccountResult.Failed(
+                        result.message,
+                        result.error,
+                        result.retryWithAlternativePicker
+                    )
                 )
                 is CredentialResult.Ready -> {
+                    logStage("credential_ready")
+                    onCredentialReady()
                     OnlineTempIdentity.ensureAuthenticated(activity)
                         .addOnSuccessListener {
                             val user = FirebaseAuth.getInstance().currentUser
                             if (user == null) {
-                                onResult(GoogleAccountResult.Failed("No se pudo abrir la sesion."))
+                                onResult(
+                                    failure(
+                                        "No se pudo abrir la sesión.",
+                                        IllegalStateException("FirebaseAuth no devolvió un usuario")
+                                    )
+                                )
                                 return@addOnSuccessListener
                             }
                             if (hasGoogleProvider()) {
@@ -90,8 +116,16 @@ object GoogleAccountLink {
                                 return@addOnSuccessListener
                             }
                             val wasAnonymous = user.isAnonymous
+                            logStage(
+                                if (wasAnonymous) {
+                                    "link_anonymous_user"
+                                } else {
+                                    "link_registered_user"
+                                }
+                            )
                             user.linkWithCredential(result.credential)
                                 .addOnSuccessListener { authResult ->
+                                    logStage("firebase_link_success")
                                     finishLinkedAccount(
                                         activity,
                                         authResult.user?.email.orEmpty(),
@@ -107,7 +141,7 @@ object GoogleAccountLink {
                                         )
                                     } else {
                                         onResult(
-                                            GoogleAccountResult.Failed(
+                                            failure(
                                                 if (error is FirebaseAuthUserCollisionException) {
                                                     "Esa cuenta de Google ya pertenece a otro perfil de Traidores."
                                                 } else {
@@ -124,7 +158,7 @@ object GoogleAccountLink {
                         }
                         .addOnFailureListener { error ->
                             onResult(
-                                GoogleAccountResult.Failed(
+                                failure(
                                     OnlineErrorMessages.forAction(
                                         "No se pudo preparar el acceso",
                                         error
@@ -140,26 +174,47 @@ object GoogleAccountLink {
 
     private fun requestGoogleCredential(
         activity: AppCompatActivity,
+        useAlternativePicker: Boolean = false,
         onResult: (CredentialResult) -> Unit
-    ) {
+    ): Job? {
         val clientId = serverClientId(activity)
         if (clientId.isBlank()) {
+            val error = IllegalStateException("Falta default_web_client_id")
             onResult(
                 CredentialResult.Failed(
                     "Google todavia no esta configurado en Firebase. Podes usar correo mientras tanto.",
-                    IllegalStateException("Falta default_web_client_id")
+                    error
                 )
             )
-            return
+            recordFailure(error, "Google no está configurado")
+            return null
         }
-        activity.lifecycleScope.launch {
+        return activity.lifecycleScope.launch {
             try {
-                val option = GetSignInWithGoogleOption.Builder(clientId).build()
-                val response = CredentialManager.create(activity).getCredential(
-                    context = activity,
-                    request = GetCredentialRequest.Builder()
+                logStage(
+                    if (useAlternativePicker) {
+                        "alternative_credential_request_started"
+                    } else {
+                        "credential_request_started"
+                    }
+                )
+                val request = if (useAlternativePicker) {
+                    val option = GetGoogleIdOption.Builder()
+                        .setServerClientId(clientId)
+                        .setFilterByAuthorizedAccounts(false)
+                        .build()
+                    GetCredentialRequest.Builder()
                         .addCredentialOption(option)
                         .build()
+                } else {
+                    val option = GetSignInWithGoogleOption.Builder(clientId).build()
+                    GetCredentialRequest.Builder()
+                        .addCredentialOption(option)
+                        .build()
+                }
+                val response = CredentialManager.create(activity).getCredential(
+                    context = activity,
+                    request = request
                 )
                 val custom = response.credential as? CustomCredential
                 if (custom?.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
@@ -173,9 +228,25 @@ object GoogleAccountLink {
                 }
                 val token = GoogleIdTokenCredential.createFrom(custom.data).idToken
                 onResult(CredentialResult.Ready(GoogleAuthProvider.getCredential(token, null)))
-            } catch (_: GetCredentialCancellationException) {
+            } catch (_: CancellationException) {
                 onResult(CredentialResult.Cancelled)
+            } catch (error: GetCredentialCancellationException) {
+                recordFailure(error, "Credential Manager cerró la selección")
+                onResult(
+                    CredentialResult.Failed(
+                        if (useAlternativePicker) {
+                            "Google tampoco pudo confirmar la cuenta con el selector alternativo. " +
+                                "El intento quedó registrado para identificar la causa exacta."
+                        } else {
+                            "No recibimos la confirmación de Google después de elegir la cuenta. " +
+                                "Tocá Reintentar para probar con otro selector de cuentas."
+                        },
+                        error,
+                        retryWithAlternativePicker = !useAlternativePicker
+                    )
+                )
             } catch (error: GetCredentialException) {
+                recordFailure(error, "Credential Manager no pudo abrir Google")
                 onResult(
                     CredentialResult.Failed(
                         OnlineErrorMessages.forAction("No se pudo abrir Google", error),
@@ -183,6 +254,7 @@ object GoogleAccountLink {
                     )
                 )
             } catch (error: Exception) {
+                recordFailure(error, "No se pudo usar Google")
                 onResult(
                     CredentialResult.Failed(
                         OnlineErrorMessages.forAction("No se pudo usar Google", error),
@@ -220,7 +292,12 @@ object GoogleAccountLink {
                 val user = result.user
                 val uid = user?.uid.orEmpty()
                 if (uid.isBlank()) {
-                    onResult(GoogleAccountResult.Failed("No se pudo entrar con esa cuenta."))
+                    onResult(
+                        failure(
+                            "No se pudo entrar con esa cuenta.",
+                            IllegalStateException("Google no devolvió un uid")
+                        )
+                    )
                     return@addOnSuccessListener
                 }
                 OnlineTempIdentity.adopt(activity, uid)
@@ -239,7 +316,7 @@ object GoogleAccountLink {
             }
             .addOnFailureListener { error ->
                 onResult(
-                    GoogleAccountResult.Failed(
+                    failure(
                         OnlineErrorMessages.forAction("No se pudo entrar con Google", error),
                         error
                     )
@@ -256,10 +333,39 @@ object GoogleAccountLink {
         return if (resourceId == 0) "" else activity.getString(resourceId).trim()
     }
 
+    private fun failure(message: String, error: Exception): GoogleAccountResult.Failed {
+        recordFailure(error, message)
+        return GoogleAccountResult.Failed(message, error)
+    }
+
+    private fun recordFailure(error: Exception, stage: String) {
+        FirebaseCrashlytics.getInstance().apply {
+            setCustomKey("auth_flow", "google_account_link")
+            setCustomKey("auth_stage", stage.take(100))
+            setCustomKey("auth_error_type", error.javaClass.simpleName)
+            if (error is GetCredentialException) {
+                setCustomKey("auth_credential_type", error.type.take(120))
+            }
+            recordException(error)
+        }
+    }
+
+    private fun logStage(stage: String) {
+        FirebaseCrashlytics.getInstance().apply {
+            setCustomKey("auth_flow", "google_account_link")
+            setCustomKey("auth_stage", stage)
+            log("Google account link stage: $stage")
+        }
+    }
+
     private sealed class CredentialResult {
         data class Ready(val credential: com.google.firebase.auth.AuthCredential) :
             CredentialResult()
         object Cancelled : CredentialResult()
-        data class Failed(val message: String, val error: Exception) : CredentialResult()
+        data class Failed(
+            val message: String,
+            val error: Exception,
+            val retryWithAlternativePicker: Boolean = false
+        ) : CredentialResult()
     }
 }

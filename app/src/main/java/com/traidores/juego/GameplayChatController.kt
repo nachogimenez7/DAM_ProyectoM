@@ -871,16 +871,19 @@ class GameplayChatController(
         val iconView = ImageView(root.context).apply {
             setImageResource(event.iconRes)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setPadding(host.dp(2), host.dp(2), host.dp(2), host.dp(2))
+            val padding = if (event.usesSeal) 0 else host.dp(1)
+            setPadding(padding, padding, padding, padding)
             if (event.tintIcon) setColorFilter(event.iconColor)
         }
-        iconView.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = host.dp(5).toFloat()
-            setColor(event.backgroundColor)
-            setStroke(host.dp(1), event.strokeColor)
+        if (!event.usesSeal) {
+            iconView.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(event.backgroundColor)
+                setStroke(host.dp(1), event.strokeColor)
+            }
         }
-        row.addView(iconView, LinearLayout.LayoutParams(host.dp(18), host.dp(18)).apply {
+        val iconSize = if (event.usesSeal) 24 else 20
+        row.addView(iconView, LinearLayout.LayoutParams(host.dp(iconSize), host.dp(iconSize)).apply {
             marginEnd = host.dp(6)
         })
         row.addView(TextView(root.context).apply {
@@ -1344,7 +1347,8 @@ class GameplayChatController(
         val strokeColor: Int,
         val iconColor: Int,
         val iconRes: Int = R.drawable.ic_chronicle_crest,
-        val tintIcon: Boolean = true
+        val tintIcon: Boolean = true,
+        val usesSeal: Boolean = false
     )
 
     private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
@@ -1359,10 +1363,12 @@ class GameplayChatController(
                 strokeColor = root.context.getColor(R.color.traitor_red),
                 iconColor = bright,
                 iconRes = if (isTarget) {
-                    R.drawable.ic_chronicle_target
+                    R.drawable.seal_chronicle_objective
                 } else {
-                    R.drawable.ic_chronicle_dagger
-                }
+                    R.drawable.seal_chronicle_plan
+                },
+                tintIcon = false,
+                usesSeal = true
             )
         }
         if (channel == ChatChannel.ESPECTADORES) {
@@ -1381,74 +1387,90 @@ class GameplayChatController(
                 backgroundColor = Color.parseColor("#55401F"),
                 strokeColor = Color.parseColor("#D6AE52"),
                 iconColor = Color.parseColor("#F2D483"),
-                iconRes = R.drawable.ic_chronicle_roles
+                iconRes = R.drawable.seal_chronicle_roles,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.DEATH -> EventPresentation(
                 label = "MUERTE",
                 backgroundColor = Color.parseColor("#7A2A22"),
                 strokeColor = Color.parseColor("#B46A72"),
                 iconColor = Color.parseColor("#F0B2A8"),
-                iconRes = R.drawable.death_blood_splatter_art,
-                tintIcon = false
+                iconRes = R.drawable.seal_chronicle_death,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.EXPULSION -> EventPresentation(
                 label = "EXPULSION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
                 iconColor = gold,
-                iconRes = R.drawable.expulsion_seal,
-                tintIcon = false
+                iconRes = R.drawable.seal_chronicle_expulsion,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.VOTE -> EventPresentation(
                 label = "VOTACION",
                 backgroundColor = Color.parseColor("#5F4524"),
                 strokeColor = gold,
                 iconColor = gold,
-                iconRes = R.drawable.expulsion_seal,
-                tintIcon = false
+                iconRes = R.drawable.seal_chronicle_vote,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.NIGHT -> EventPresentation(
                 label = "NOCHE",
                 backgroundColor = Color.parseColor("#25334F"),
                 strokeColor = Color.parseColor("#6B86B8"),
                 iconColor = Color.parseColor("#B7C7E8"),
-                iconRes = R.drawable.ic_chronicle_moon
+                iconRes = R.drawable.seal_chronicle_night,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.DAWN -> EventPresentation(
                 label = "AMANECER",
                 backgroundColor = Color.parseColor("#6B5525"),
                 strokeColor = Color.parseColor("#E3C46F"),
                 iconColor = Color.parseColor("#F4D77D"),
-                iconRes = R.drawable.ic_chronicle_sun
+                iconRes = R.drawable.seal_chronicle_dawn,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.SILENCE -> EventPresentation(
                 label = "SILENCIO",
                 backgroundColor = Color.parseColor("#4F3140"),
                 strokeColor = Color.parseColor("#A26A88"),
                 iconColor = Color.parseColor("#E6B6CE"),
-                iconRes = R.drawable.ic_chronicle_silence
+                iconRes = R.drawable.seal_chronicle_silence,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.TIE -> EventPresentation(
                 label = "EMPATE",
                 backgroundColor = Color.parseColor("#4B3B22"),
                 strokeColor = gold,
                 iconColor = gold,
-                iconRes = R.drawable.ic_chronicle_balance
+                iconRes = R.drawable.seal_chronicle_tie,
+                tintIcon = false,
+                usesSeal = true
             )
             ChronicleEntryKind.SPECIAL_VICTORY -> EventPresentation(
                 label = "ESPECIAL",
                 backgroundColor = Color.parseColor("#493058"),
                 strokeColor = Color.parseColor("#C392E6"),
                 iconColor = Color.parseColor("#E2C8F8"),
-                iconRes = R.drawable.ic_chronicle_crown
+                iconRes = R.drawable.seal_chronicle_special,
+                tintIcon = false,
+                usesSeal = true
             )
             else -> EventPresentation(
                 label = "SUCESO",
                 backgroundColor = Color.parseColor("#4A3518"),
                 strokeColor = gold,
                 iconColor = gold,
-                iconRes = R.drawable.ic_chronicle_crest,
-                tintIcon = false
+                iconRes = R.drawable.seal_chronicle_game,
+                tintIcon = false,
+                usesSeal = true
             )
         }
     }
@@ -1719,7 +1741,10 @@ class GameplayChatController(
                 if (event.tintIcon) setColorFilter(event.iconColor)
                 contentDescription = null
             },
-            LinearLayout.LayoutParams(host.dp(17), host.dp(17)).apply {
+            LinearLayout.LayoutParams(
+                host.dp(if (event.usesSeal) 24 else 17),
+                host.dp(if (event.usesSeal) 24 else 17)
+            ).apply {
                 marginEnd = host.dp(5)
             }
         )

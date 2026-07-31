@@ -145,6 +145,7 @@ object AccountDeletion {
 
     private fun finishLocalDeletion(context: Context) {
         AccountDeletionPreferences.suppressAutoLink(context)
+        LocalProfilePhotoStore.deleteSavedPhoto(context)
         context.getSharedPreferences(LOCAL_PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()

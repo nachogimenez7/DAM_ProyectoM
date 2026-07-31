@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traidores — Nuevos anuncios del cronista</title>
+  <style>
+    :root {
+      --ink: #130f0b;
+      --paper: #d8c59c;
+      --paper-dim: #a6936c;
+      --gold: #d5a43f;
+      --gold-soft: #8e6728;
+      --red: #9b2f2f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(119, 73, 24, .22), transparent 33%),
+        repeating-linear-gradient(89deg, rgba(255, 255, 255, .015) 0 1px, transparent 1px 7px),
+        #0d0a08;
+    }
+
+    main {
+      width: 1120px;
+      margin: 0 auto;
+      padding: 44px 48px 54px;
+    }
+
+    h1 {
+      margin: 0;
+      color: #edc66d;
+      font-size: 34px;
+      letter-spacing: .06em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .lead {
+      margin: 10px 0 34px;
+      color: var(--paper-dim);
+      font: 18px/1.45 Arial, sans-serif;
+      text-align: center;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+
+    .card,
+    .chronicle {
+      position: relative;
+      border: 2px solid #6f5123;
+      border-radius: 16px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, .035), transparent 42%),
+        rgba(19, 14, 10, .94);
+      box-shadow:
+        inset 0 0 0 1px rgba(238, 191, 91, .15),
+        0 16px 35px rgba(0, 0, 0, .45);
+    }
+
+    .card {
+      min-height: 420px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .card img {
+      display: block;
+      width: 270px;
+      height: 270px;
+      margin: 0 auto 12px;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 15px rgba(0, 0, 0, .58));
+    }
+
+    .card h2 {
+      margin: 0 0 7px;
+      color: #e4b956;
+      font-size: 27px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .card p {
+      margin: 0 auto;
+      max-width: 390px;
+      color: #b9a985;
+      font: 16px/1.4 Arial, sans-serif;
+    }
+
+    h3 {
+      margin: 38px 0 14px;
+      color: #e4b956;
+      font-size: 21px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .chronicle {
+      padding: 18px 20px 20px;
+    }
+
+    .chronicle-title {
+      padding-bottom: 11px;
+      border-bottom: 1px solid rgba(213, 164, 63, .4);
+      color: #d8ac50;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: .035em;
+      text-transform: uppercase;
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 58px 1fr auto;
+      gap: 13px;
+      align-items: center;
+      min-height: 74px;
+      padding: 7px 3px;
+      border-bottom: 1px solid rgba(216, 197, 156, .1);
+    }
+
+    .event:last-child { border-bottom: 0; }
+
+    .event > img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      filter: drop-shadow(0 4px 5px rgba(0, 0, 0, .65));
+    }
+
+    .event strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #e9d6aa;
+      font: 700 17px/1.2 Arial, sans-serif;
+    }
+
+    .event span {
+      color: #a99670;
+      font: 14px/1.25 Arial, sans-serif;
+    }
+
+    .event time {
+      align-self: start;
+      padding-top: 8px;
+      color: #746346;
+      font: 12px Arial, sans-serif;
+    }
+
+    .sizes {
+      display: flex;
+      align-items: end;
+      gap: 26px;
+      min-height: 104px;
+      padding: 15px 22px;
+      border: 1px solid #4f3a20;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, .28);
+    }
+
+    .size {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .size img { object-fit: contain; }
+
+    .size small {
+      padding-bottom: 3px;
+      color: #9b8966;
+      font: 13px Arial, sans-serif;
+    }
+
+    .s32 { width: 32px; height: 32px; }
+    .s48 { width: 48px; height: 48px; }
+    .s64 { width: 64px; height: 64px; }
+
+    .divider {
+      width: 1px;
+      align-self: stretch;
+      background: rgba(216, 197, 156, .14);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dos nuevos anuncios</h1>
+    <p class="lead">Ilustraciones pictóricas 3D, pensadas para entenderse como pequeñas escenas y no como símbolos genéricos.</p>
+
+    <section class="cards">
+      <article class="card">
+        <img src="cronista-votacion-ilustrada.png" alt="Una mano deposita un voto sellado en una urna medieval">
+        <h2>Votación</h2>
+        <p>Una mano deposita el voto sellado en la urna del pueblo. La acción cuenta por sí sola qué está ocurriendo.</p>
+      </article>
+
+      <article class="card">
+        <img src="cronista-expulsion-ilustrada.png" alt="Una persona abandona el pueblo a través de sus puertas">
+        <h2>Expulsión</h2>
+        <p>La persona expulsada deja atrás la luz del pueblo y cruza sus puertas. Es dramática sin ser violenta.</p>
+      </article>
+    </section>
+
+    <h3>Cómo se verían dentro del cronista</h3>
+    <section class="chronicle">
+      <div class="chronicle-title">Qué se dice en la polis...</div>
+      <div class="event">
+        <img src="cronista-votacion-ilustrada.png" alt="">
+        <div>
+          <strong>El pueblo abre la votación.</strong>
+          <span>Decidí quién debe abandonar la plaza.</span>
+        </div>
+        <time>Ahora</time>
+      </div>
+      <div class="event">
+        <img src="cronista-expulsion-ilustrada.png" alt="">
+        <div>
+          <strong>Juli fue expulsado del pueblo.</strong>
+          <span>Su verdadera lealtad está por revelarse.</span>
+        </div>
+        <time>Hace 1 min</time>
+      </div>
+    </section>
+
+    <h3>Prueba de lectura reducida</h3>
+    <section class="sizes">
+      <div class="size">
+        <img class="s32" src="cronista-votacion-ilustrada.png" alt="">
+        <img class="s32" src="cronista-expulsion-ilustrada.png" alt="">
+        <small>32 px</small>
+      </div>
+      <div class="divider"></div>
+      <div class="size">
+        <img class="s48" src="cronista-votacion-ilustrada.png" alt="">
+        <img class="s48" src="cronista-expulsion-ilustrada.png" alt="">
+        <small>48 px</small>
+      </div>
+      <div class="divider"></div>
+      <div class="size">
+        <img class="s64" src="cronista-votacion-ilustrada.png" alt="">
+        <img class="s64" src="cronista-expulsion-ilustrada.png" alt="">
+        <small>64 px</small>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -74,7 +74,15 @@ object AchievementTracker {
         val humanWon = MatchOutcome.didHumanWin(session, human)
         val roleKey = human.role?.key.orEmpty()
         if (humanWon) {
-            if (incrementCounter(prefs, TOTAL_WINS, 1) >= 50) {
+            if (
+                incrementCounter(
+                    context,
+                    prefs,
+                    TOTAL_WINS,
+                    ProfileCustomizationCatalog.ACH_TOTAL_WINS_50,
+                    1
+                ) >= 50
+            ) {
                 unlocked += unlock(context, ProfileCustomizationCatalog.ACH_TOTAL_WINS_50)
                     .orEmptyList()
             }
@@ -84,14 +92,31 @@ object AchievementTracker {
             val kills = session.actionHistory.count {
                 it.actor == human.name && it.type == GameActionType.KILL
             }
-            if (kills > 0 && incrementCounter(prefs, ASSASSIN_KILLS, kills) >= 25) {
+            if (
+                kills > 0 &&
+                incrementCounter(
+                    context,
+                    prefs,
+                    ASSASSIN_KILLS,
+                    ProfileCustomizationCatalog.ACH_ASSASSIN_KILLS_25,
+                    kills
+                ) >= 25
+            ) {
                 unlocked += unlock(context, ProfileCustomizationCatalog.ACH_ASSASSIN_KILLS_25)
                     .orEmptyList()
             }
         }
 
         if (roleKey == RoleCatalog.DESERTOR && humanWon) {
-            if (incrementCounter(prefs, DESERTER_WINS, 1) >= 10) {
+            if (
+                incrementCounter(
+                    context,
+                    prefs,
+                    DESERTER_WINS,
+                    ProfileCustomizationCatalog.ACH_DESERTER_WINS_10,
+                    1
+                ) >= 10
+            ) {
                 unlocked += unlock(context, ProfileCustomizationCatalog.ACH_DESERTER_WINS_10)
                     .orEmptyList()
             }
@@ -113,7 +138,15 @@ object AchievementTracker {
         }
 
         if (roleKey == RoleCatalog.ALCALDE && humanWon && mayorDecidedExpulsion(session)) {
-            if (incrementCounter(prefs, MAYOR_POWER_WINS, 1) >= 15) {
+            if (
+                incrementCounter(
+                    context,
+                    prefs,
+                    MAYOR_POWER_WINS,
+                    ProfileCustomizationCatalog.ACH_MAYOR_POWER_WINS_15,
+                    1
+                ) >= 15
+            ) {
                 unlocked += unlock(context, ProfileCustomizationCatalog.ACH_MAYOR_POWER_WINS_15)
                     .orEmptyList()
             }
@@ -143,7 +176,15 @@ object AchievementTracker {
         val eventKey = "special:jester:${MatchOutcome.matchKey(session)}"
         if (eventKey in processedEvents(prefs)) return emptyList()
 
-        val unlocked = if (incrementCounter(prefs, JESTER_WINS, 1) >= 5) {
+        val unlocked = if (
+            incrementCounter(
+                context,
+                prefs,
+                JESTER_WINS,
+                ProfileCustomizationCatalog.ACH_JESTER_WINS_5,
+                1
+            ) >= 5
+        ) {
             unlock(context, ProfileCustomizationCatalog.ACH_JESTER_WINS_5)
                 .orEmptyList()
         } else {
@@ -221,13 +262,28 @@ object AchievementTracker {
         return achievementWithProgress(context, achievement)
     }
 
+    internal fun incrementalProgress(context: Context, achievementId: String): Int {
+        val key = when (achievementId) {
+            ProfileCustomizationCatalog.ACH_ASSASSIN_KILLS_25 -> ASSASSIN_KILLS
+            ProfileCustomizationCatalog.ACH_JESTER_WINS_5 -> JESTER_WINS
+            ProfileCustomizationCatalog.ACH_DESERTER_WINS_10 -> DESERTER_WINS
+            ProfileCustomizationCatalog.ACH_MAYOR_POWER_WINS_15 -> MAYOR_POWER_WINS
+            ProfileCustomizationCatalog.ACH_TOTAL_WINS_50 -> TOTAL_WINS
+            else -> return 0
+        }
+        return prefs(context).getInt(key, 0).coerceAtLeast(0)
+    }
+
     private fun incrementCounter(
+        context: Context,
         prefs: SharedPreferences,
         key: String,
+        achievementId: String,
         amount: Int
     ): Int {
         val updated = (prefs.getInt(key, 0) + amount).coerceAtLeast(0)
         prefs.edit().putInt(key, updated).apply()
+        PlayGamesProgressSync.setAchievementSteps(context, achievementId, updated)
         return updated
     }
 
