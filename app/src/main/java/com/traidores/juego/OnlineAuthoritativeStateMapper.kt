@@ -1,12 +1,48 @@
 package com.traidores.juego
 
 object OnlineAuthoritativeStateMapper {
+    const val CURRENT_SCHEMA_VERSION = 2
+
+    fun schemaVersionFromState(state: Map<String, Any?>): Int {
+        return (state["versionEstado"] as? Number)?.toInt() ?: 0
+    }
+
+    fun phaseDeadlineFromState(state: Map<String, Any?>): Long {
+        return (state["limiteFaseEpochMs"] as? Number)?.toLong() ?: 0L
+    }
+
+    fun phaseDeadlineIndexFromState(state: Map<String, Any?>): Int {
+        return (state["limiteFasePhaseIndex"] as? Number)?.toInt() ?: -1
+    }
+
+    fun remainingPhaseMillis(deadlineEpochMs: Long, nowEpochMs: Long): Long {
+        return (deadlineEpochMs - nowEpochMs).coerceAtLeast(0L)
+    }
+
     fun nightHadNoVictimFromState(state: Map<String, Any?>): Boolean {
         return (state["nocheSinVictima"] as? Boolean) ?: false
     }
 
     fun votePresentationFromState(state: Map<String, Any?>): String {
         return (state["presentacionVotacion"] as? String).orEmpty()
+    }
+
+    fun specialVictoriesFromState(state: Map<String, Any?>): List<GameSpecialVictory> {
+        return (state["victoriasEspeciales"] as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.mapNotNull { victory ->
+                val key = (victory["key"] as? String).orEmpty()
+                val playerName = (victory["jugador"] as? String).orEmpty()
+                val roleKey = (victory["rol"] as? String).orEmpty()
+                val round = (victory["ronda"] as? Number)?.toInt() ?: return@mapNotNull null
+                if (key.isBlank() || playerName.isBlank() || roleKey.isBlank()) {
+                    null
+                } else {
+                    GameSpecialVictory(key, playerName, roleKey, round)
+                }
+            }
+            .orEmpty()
+            .distinctBy { it.key }
     }
 
     fun playersFromState(

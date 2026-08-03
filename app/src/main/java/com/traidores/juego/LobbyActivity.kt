@@ -119,6 +119,7 @@ class LobbyActivity : BaseActivity() {
     private var onlineMatchEntryRetryMatchId = ""
     private var onlineMatchEntryRetryRunnable: Runnable? = null
     private var lastOnlineMatchRebuildFailureReason = ""
+    private var onlineIncompatibleNoticeShown = false
     private var recoveringOnlineMatch = false
     private var onlineRoomDeletedHandled = false
     private var onlineRemovalHandled = false
@@ -1503,7 +1504,12 @@ class LobbyActivity : BaseActivity() {
                         GamePlayer(
                             name = player.name,
                             initial = player.initial,
-                            isHuman = player.id == onlineTempUid
+                            isHuman = player.id == onlineTempUid,
+                            control = if (player.id == onlineTempUid) {
+                                PlayerControl.LOCAL
+                            } else {
+                                PlayerControl.REMOTE
+                            }
                         )
                     },
                     playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
@@ -2467,6 +2473,10 @@ class LobbyActivity : BaseActivity() {
         val rebuiltSession = onlineInitialMatch?.let(::sessionFromInitialMatch)
         val entryProblem = rebuiltSession?.let(::onlineMatchEntryProblem)
         if (rebuiltSession == null || entryProblem != null) {
+            if (lastOnlineMatchRebuildFailureReason == OnlineMatchSessionError.INCOMPATIBLE_STATE.name) {
+                showIncompatibleOnlineRoomNotice()
+                return
+            }
             scheduleOnlineMatchEntryRetry(
                 reason = entryProblem ?: lastOnlineMatchRebuildFailureReason.ifBlank {
                     "No se pudo reconstruir la partida compartida."
@@ -2752,6 +2762,10 @@ class LobbyActivity : BaseActivity() {
         val sharedSession = onlineInitialMatch?.let(::sessionFromInitialMatch)
         if (sharedSession == null) {
             onlineStartedNoticeShown = false
+            if (lastOnlineMatchRebuildFailureReason == OnlineMatchSessionError.INCOMPATIBLE_STATE.name) {
+                showIncompatibleOnlineRoomNotice()
+                return
+            }
             scheduleOnlineMatchEntryRetry(
                 lastOnlineMatchRebuildFailureReason.ifBlank {
                     "No se pudo reconstruir la partida compartida."
@@ -2804,7 +2818,12 @@ class LobbyActivity : BaseActivity() {
             GamePlayer(
                 name = player.name,
                 initial = player.initial,
-                isHuman = player.id == onlineTempUid
+                isHuman = player.id == onlineTempUid,
+                control = if (player.id == onlineTempUid) {
+                    PlayerControl.LOCAL
+                } else {
+                    PlayerControl.REMOTE
+                }
             )
         }
         val map = LocalGameFactory.maps.firstOrNull { it.key == mapKey } ?: currentMap()
@@ -2990,6 +3009,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun matchStatePayload(assignedSession: GameSession): Map<String, Any?> {
         return mapOf(
+            "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
             "fase" to assignedSession.phase.name,
             "ronda" to assignedSession.round,
             "phaseIndex" to assignedSession.phaseIndex,
@@ -3026,6 +3046,17 @@ class LobbyActivity : BaseActivity() {
                 null
             }
         }
+    }
+
+    private fun showIncompatibleOnlineRoomNotice() {
+        cancelOnlineMatchEntryRetry(resetAttempts = true)
+        if (onlineIncompatibleNoticeShown) return
+        onlineIncompatibleNoticeShown = true
+        Toast.makeText(
+            this,
+            OnlineMatchSessionError.INCOMPATIBLE_STATE.userMessage,
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun Any?.asStringAnyMap(): Map<String, Any?>? {

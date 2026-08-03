@@ -11,7 +11,8 @@ enum class OnlineMatchSessionError(val userMessage: String) {
     MISSING_PLAYERS("La sala no tiene jugadores suficientes para reconstruir la partida."),
     INCOMPLETE_PLAYERS("La sala todavía está sincronizando jugadores."),
     MISSING_HUMAN_PLAYER("No encontramos tu jugador en esta sala. Entren de nuevo con el codigo."),
-    INVALID_PHASE("La sala tiene una fase invalida. Creen una sala nueva.")
+    INVALID_PHASE("La sala tiene una fase invalida. Creen una sala nueva."),
+    INCOMPATIBLE_STATE("La sala pertenece a una version anterior. Creen una sala nueva.")
 }
 
 object OnlineMatchSessionBuilder {
@@ -33,6 +34,17 @@ object OnlineMatchSessionBuilder {
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_INITIAL_MATCH)
         val matchState = matchStateRaw.asStringAnyMap()
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_MATCH_STATE)
+        val phaseName = matchState["fase"] as? String
+            ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.INVALID_PHASE)
+        if (runCatching { GamePhase.valueOf(phaseName) }.getOrNull() == null) {
+            return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.INVALID_PHASE)
+        }
+        if (
+            OnlineAuthoritativeStateMapper.schemaVersionFromState(matchState) !=
+            OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION
+        ) {
+            return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.INCOMPATIBLE_STATE)
+        }
         val playerPayloads = initialMatch["jugadores"] as? List<*>
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_PLAYERS)
         val sortedPlayerPayloads = playerPayloads
@@ -71,7 +83,12 @@ object OnlineMatchSessionBuilder {
                     },
                     alive = true,
                     muted = false,
-                    isHuman = (playerMap["uidTemporal"] as? String) == uidTemporal
+                    isHuman = (playerMap["uidTemporal"] as? String) == uidTemporal,
+                    control = if ((playerMap["uidTemporal"] as? String) == uidTemporal) {
+                        PlayerControl.LOCAL
+                    } else {
+                        PlayerControl.REMOTE
+                    }
                 )
             }
         if (players.isEmpty()) {
@@ -219,7 +236,10 @@ object OnlineMatchSessionBuilder {
                 ?.mapNotNull { it as? String }
                 ?: emptyList(),
             alcaldeRevealed = (state["alcaldeRevelado"] as? Boolean) ?: base.alcaldeRevealed,
-            alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: base.alcaldeCorruption
+            alcaldeCorruption = (state["corrupcionAlcalde"] as? Boolean) ?: base.alcaldeCorruption,
+            onlinePhaseDeadlineEpochMs = OnlineAuthoritativeStateMapper.phaseDeadlineFromState(state),
+            onlinePhaseDeadlinePhaseIndex = OnlineAuthoritativeStateMapper
+                .phaseDeadlineIndexFromState(state)
         )
     }
 

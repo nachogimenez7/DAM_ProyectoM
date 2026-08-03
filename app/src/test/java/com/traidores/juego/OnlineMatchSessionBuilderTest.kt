@@ -22,6 +22,9 @@ class OnlineMatchSessionBuilderTest {
         assertEquals(1, session.players.count { it.role?.key == RoleCatalog.POLICIA })
         assertEquals(2, session.players.count { it.role?.key == RoleCatalog.ALDEANO })
         assertEquals(true, session.afkExpulsionEnabled)
+        assertEquals(1, session.players.count { it.control == PlayerControl.LOCAL })
+        assertEquals(4, session.players.count { it.control == PlayerControl.REMOTE })
+        assertEquals(0, session.players.count { it.control == PlayerControl.BOT })
     }
 
     @Test
@@ -97,6 +100,7 @@ class OnlineMatchSessionBuilderTest {
             )
         )
         val state = mapOf(
+            "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
             "fase" to GamePhase.DIA_DEBATE.name,
             "ronda" to 2,
             "phaseIndex" to 7,
@@ -229,6 +233,30 @@ class OnlineMatchSessionBuilderTest {
     }
 
     @Test
+    fun buildRejectsStateFromPreviousOnlineSchema() {
+        val result = OnlineMatchSessionBuilder.build(
+            initialMatchRaw = initialMatch(players = defaultPlayers()),
+            matchStateRaw = mapOf(
+                "versionEstado" to 1,
+                "fase" to GamePhase.REPARTO.name
+            ),
+            uidTemporal = "uid_1",
+            expectedPlayers = 5,
+            fallbackRoomId = "room",
+            fallbackRoomCode = "",
+            fallbackMapKey = "grecia",
+            fallbackMapName = "Grecia",
+            revealRolesOnDeath = false,
+            showIndividualVotes = true
+        )
+
+        assertEquals(
+            OnlineMatchSessionError.INCOMPATIBLE_STATE,
+            (result as OnlineMatchSessionResult.Failure).reason
+        )
+    }
+
+    @Test
     fun buildProducesSerializableSessionForActivityIntentExtras() {
         val result = buildSession(uidTemporal = "uid_2")
         val session = (result as OnlineMatchSessionResult.Success).session
@@ -302,6 +330,7 @@ class OnlineMatchSessionBuilderTest {
 
     private fun initialState(): Map<String, Any?> {
         return mapOf(
+            "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
             "fase" to GamePhase.REPARTO.name,
             "ronda" to 1,
             "phaseIndex" to 0,

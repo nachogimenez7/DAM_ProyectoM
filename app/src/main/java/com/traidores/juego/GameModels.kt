@@ -61,6 +61,8 @@ data class GameSession(
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0,
+    val onlinePhaseDeadlineEpochMs: Long = 0L,
+    val onlinePhaseDeadlinePhaseIndex: Int = -1,
     val publicDiscussionStartIndex: Int = 0
 ) : Serializable
 
@@ -201,8 +203,18 @@ data class GamePlayer(
     val consecutiveNightAfk: Int = 0,
     val consecutiveVoteAfk: Int = 0,
     val isHuman: Boolean = false,
-    val deathCause: DeathCause = DeathCause.NONE
+    val deathCause: DeathCause = DeathCause.NONE,
+    val control: PlayerControl = if (isHuman) PlayerControl.LOCAL else PlayerControl.BOT
 ) : Serializable
+
+enum class PlayerControl : Serializable {
+    LOCAL,
+    REMOTE,
+    BOT
+}
+
+val GamePlayer.isBotControlled: Boolean
+    get() = control == PlayerControl.BOT
 
 data class RoleRevealConfig(
     val mode: RoleRevealMode = RoleRevealMode.BALANCED,

@@ -34,8 +34,9 @@ object OnlineActionResolver {
             .filter { it.matchId == matchId }
             .filter { it.round == round }
             .filter { phaseIndex == null || it.phaseIndex == phaseIndex }
-            .filter { it.actorName.isNotBlank() && it.targetName.isNotBlank() }
             .filter { it.action in NIGHT_ACTIONS }
+            .filter { it.actorName.isNotBlank() }
+            .filter { it.action == "guardar_poder" || it.targetName.isNotBlank() }
             .sortedBy { it.createdAtLocal }
 
         return OnlineNightResolutionActions(
@@ -44,7 +45,9 @@ object OnlineActionResolver {
             mercenaryAction = latestAction(validNightRecords, "silenciar"),
             policeAction = latestAction(validNightRecords, "investigar"),
             medicAction = latestAction(validNightRecords, "salvar"),
-            oracleAction = latestAction(validNightRecords, "invitar_muerto"),
+            oracleAction = validNightRecords.firstOrNull {
+                it.action == "invitar_muerto" || it.action == "guardar_poder"
+            },
             validActionCount = validNightRecords.size
         )
     }
@@ -65,6 +68,29 @@ object OnlineActionResolver {
             .filter { it.actorName.isNotBlank() && it.targetName.isNotBlank() }
             .sortedBy { it.createdAtLocal }
             .associate { it.actorName to it.targetName }
+    }
+
+    fun payadorTargets(
+        records: List<OnlineActionRecord>,
+        matchId: String,
+        round: Int,
+        phaseIndex: Int,
+        actorName: String,
+        actorId: String,
+        validTargets: Set<String>
+    ): List<OnlineActionRecord> {
+        return records
+            .asSequence()
+            .filter { it.matchId == matchId }
+            .filter { it.round == round && it.phaseIndex == phaseIndex }
+            .filter { it.phaseName == GamePhase.DIA_DEBATE.name && it.action == "contrapunto" }
+            .filter { it.actorName == actorName }
+            .filter { actorId.isBlank() || it.actorId == actorId }
+            .filter { it.targetName in validTargets }
+            .sortedBy { it.createdAtLocal }
+            .distinctBy { it.targetName }
+            .take(2)
+            .toList()
     }
 
     private fun latestByActor(

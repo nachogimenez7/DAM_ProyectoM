@@ -66,4 +66,18 @@ class GameplayCountdownTest {
         assertEquals(45_000L, countdown.visualTotalMs(5_000L, 40_000L))
         assertEquals(43_000L, countdown.visualRemainingMs(40_000L))
     }
+
+    @Test
+    fun sharedDeadlineCanResynchronizeActiveCountdown() {
+        val countdown = GameplayCountdown()
+
+        countdown.syncActive(phaseIndex = 9, totalMs = 60_000L, remainingMs = 18_500L)
+
+        assertEquals(CountdownStage.ACTIVE, countdown.stage)
+        assertEquals(9, countdown.phaseIndex)
+        assertEquals(18_500L, countdown.remainingMs)
+        assertEquals(60_000L, countdown.totalMs)
+        assertEquals(GameplayCountdown.StartResult.STARTED, countdown.start(1_000L))
+        assertEquals(17_500L, countdown.tick(2_000L)?.remainingMs)
+    }
 }

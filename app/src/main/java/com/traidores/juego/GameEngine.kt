@@ -59,7 +59,7 @@ object GameEngine {
 
         val assassinVotes = killers.mapNotNull { killer ->
             val target = when {
-                killer.isHuman -> selectedTarget
+                !killer.isBotControlled -> selectedTarget
                 coordinatedHumanTarget != null -> coordinatedHumanTarget
                 else -> LocalBotAi.chooseAssassinTarget(plannedSession, killer)
             }
@@ -225,7 +225,11 @@ object GameEngine {
                 nightContinuesMessage(session)
             )
 
-        val target = if (mercenary.isHuman) selectedTarget else LocalBotAi.chooseSilenceTarget(session, mercenary)
+        val target = if (mercenary.isBotControlled) {
+            LocalBotAi.chooseSilenceTarget(session, mercenary)
+        } else {
+            selectedTarget
+        }
         if (!isValidSilenceTarget(session, target, mercenary)) {
             return if (mercenary.isHuman) {
                 session
@@ -257,7 +261,11 @@ object GameEngine {
         val police = alivePlayers(session).firstOrNull { it.role?.key == "policia" }
             ?: return advanceNight(session, GamePhase.NOCHE_MEDICO, nightContinuesMessage(session))
 
-        val target = if (police.isHuman) selectedTarget else LocalBotAi.chooseInvestigationTarget(session, police)
+        val target = if (police.isBotControlled) {
+            LocalBotAi.chooseInvestigationTarget(session, police)
+        } else {
+            selectedTarget
+        }
         if (!isValidNightTarget(session, target, police, allowSelf = false)) {
             return if (police.isHuman) {
                 session
@@ -273,9 +281,7 @@ object GameEngine {
             session.privateHint.ifBlank { privateRoleHint(session) }
         }
 
-        val updatedMemory = if (police.isHuman) {
-            session.tableMemory
-        } else {
+        val updatedMemory = if (police.isBotControlled) {
             BotTableMemory.recordPrivateInvestigation(
                 memory = session.tableMemory,
                 round = session.round,
@@ -283,6 +289,8 @@ object GameEngine {
                 target = target,
                 result = result
             )
+        } else {
+            session.tableMemory
         }
         val updated = session.copy(
             investigatedPlayer = target,
@@ -303,7 +311,11 @@ object GameEngine {
         val medic = alivePlayers(session).firstOrNull { it.role?.key == "medico" }
             ?: return advanceAfterMedic(session)
 
-        val target = if (medic.isHuman) selectedTarget else LocalBotAi.chooseProtectionTarget(session, medic)
+        val target = if (medic.isBotControlled) {
+            LocalBotAi.chooseProtectionTarget(session, medic)
+        } else {
+            selectedTarget
+        }
         if (!isValidNightTarget(session, target, medic, allowSelf = true)) {
             return if (medic.isHuman) {
                 session
@@ -346,10 +358,10 @@ object GameEngine {
             return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
         }
 
-        val target = if (oracle.isHuman) {
-            selectedTarget
-        } else {
+        val target = if (oracle.isBotControlled) {
             LocalBotAi.chooseOracleTarget(session, oracle)
+        } else {
+            selectedTarget
         }
         if (target.isBlank()) {
             return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
@@ -445,7 +457,7 @@ object GameEngine {
         if (!canResolve(session, GamePhase.DIA_DEBATE)) return session
 
         val botPayador = alivePlayers(session).firstOrNull {
-            it.role?.key == "payador" && !it.isHuman
+            it.role?.key == "payador" && it.isBotControlled
         }
         if (botPayador != null && !session.payadorUsed) {
             LocalBotAi.chooseBotContrapuntoPair(session, botPayador)?.let { (first, second) ->
@@ -454,6 +466,19 @@ object GameEngine {
             }
         }
 
+        return finishDayDebate(session)
+    }
+
+    /**
+     * Finaliza el debate online sin hacer que un jugador remoto sea controlado por la IA
+     * local del anfitrion. Las acciones opcionales deben llegar como acciones online.
+     */
+    fun resolveDayDebateWithoutOptionalBotActions(session: GameSession): GameSession {
+        if (!canResolve(session, GamePhase.DIA_DEBATE)) return session
+        return finishDayDebate(session)
+    }
+
+    private fun finishDayDebate(session: GameSession): GameSession {
         val muted = mutedSummary(session)
         val message = dayDebateMessage(session, muted)
         return session.copy(
@@ -572,10 +597,10 @@ object GameEngine {
         if (!canResolve(session, GamePhase.CONTRAPUNTO)) return session
         val payador = alivePlayers(session).firstOrNull { it.role?.key == "payador" }
             ?: return session.transitionTo(GamePhase.VOTACION, "El Contrapunto termino.", privateRoleHint(session))
-        val selected = if (payador.isHuman) {
-            suspiciousPlayer.takeIf { it in session.contrapuntoPlayers }.orEmpty()
-        } else {
+        val selected = if (payador.isBotControlled) {
             LocalBotAi.chooseBotContrapuntoSuspect(session, payador, session.contrapuntoPlayers)
+        } else {
+            suspiciousPlayer.takeIf { it in session.contrapuntoPlayers }.orEmpty()
         }
         if (selected.isBlank()) return session
 
@@ -598,7 +623,7 @@ object GameEngine {
     fun addEliminationLastWords(session: GameSession): GameSession {
         if (session.phase != GamePhase.RECUENTO_VOTOS || session.dayEliminationTarget.isBlank()) return session
         val target = playerByName(session, session.dayEliminationTarget)
-            ?.takeIf { !it.isHuman && it.alive }
+            ?.takeIf { it.isBotControlled && it.alive }
             ?: return session
         val message = LocalBotAi.eliminationLastWords(session, target) ?: return session
         if (
@@ -615,7 +640,9 @@ object GameEngine {
 
     fun resolveVotingWithRecordedVotes(session: GameSession, recordedVotes: Map<String, String>): GameSession {
         if (!canResolve(session, GamePhase.VOTACION)) return session
-        val votingSession = autoRevealBotAlcalde(session)
+        // Esta ruta usa votos autoritativos online: un jugador remoto no debe convertirse
+        // en bot solo porque no es el humano local del anfitrion.
+        val votingSession = session
         val votes = votingSession.players
             .filter { canVote(it) }
             .mapNotNull { voter ->
@@ -709,10 +736,10 @@ object GameEngine {
         )?.takeIf { votingSession.debugForceVoteTies }?.toMutableMap()
             ?: mutableMapOf<String, String>().apply {
                 votingSession.players.filter { canVote(it) }.forEach { voter ->
-                    val voteTarget = if (voter.isHuman) {
-                        selectedTarget
-                    } else {
+                    val voteTarget = if (voter.isBotControlled) {
                         LocalBotAi.chooseVoteTarget(votingSession, voter)
+                    } else {
+                        selectedTarget
                     }
                     if (isValidVoteTarget(votingSession, voteTarget, voter)) {
                         this[voter.name] = voteTarget
@@ -774,12 +801,12 @@ object GameEngine {
             ?.toMutableMap()
             ?: mutableMapOf<String, String>().apply {
                 session.players.filter { canVote(it) }.forEach { voter ->
-                    val preferred = if (voter.isHuman) {
-                        selectedTarget
-                    } else {
+                    val preferred = if (voter.isBotControlled) {
                         LocalBotAi.chooseVoteTarget(session, voter)
+                    } else {
+                        selectedTarget
                     }
-                    val fallbackCandidates = if (!voter.isHuman && session.debugBotsNeverVoteHuman) {
+                    val fallbackCandidates = if (voter.isBotControlled && session.debugBotsNeverVoteHuman) {
                         candidates.filterNot { candidate ->
                             playerByName(session, candidate)?.isHuman == true
                         }.ifEmpty { candidates }
@@ -880,7 +907,7 @@ object GameEngine {
                 ).transitionTo(GamePhase.RECUENTO_VOTOS, message, privateRoleHint(revealedSession))
                     .withPublicHistory(message)
             }
-            if (!alcalde.isHuman) {
+            if (alcalde.isBotControlled) {
                 val expelled = LocalBotAi.chooseVoteTarget(revealedSession, alcalde)
                     .takeIf { it in opponents }
                     ?: opponents.first()
@@ -908,7 +935,7 @@ object GameEngine {
             )
         }
 
-        if (alcalde.isHuman) {
+        if (!alcalde.isBotControlled) {
             val privateMessage = if (session.alcaldeRevealed) {
                 "Elige quién será expulsado entre ${candidates.joinToString(" o ")}."
             } else {
@@ -1191,6 +1218,45 @@ object GameEngine {
         }
     }
 
+    /** Resuelve toda la unica ventana nocturna local, incluida una posible omision humana. */
+    fun resolveLocalNightWindowTimeout(session: GameSession): GameSession {
+        if (session.winner.isNotBlank() || !isNightActionPhase(session.phase)) return session
+        val actionable = enterUnifiedNight(session)
+        return if (isNightActionPhase(actionable.phase) && requiresHumanInput(actionable)) {
+            resolveHumanTimeout(actionable)
+        } else {
+            actionable
+        }
+    }
+
+    /**
+     * Omite una accion nocturna online sin ejecutar decisiones de bots. En online todos los
+     * roles pertenecen a personas, aunque en la copia del anfitrion figuren como no humanos.
+     */
+    fun skipOnlineNightAction(session: GameSession): GameSession {
+        if (session.winner.isNotBlank()) return session
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO -> resolveAssassinWithRecordedVotes(session, emptyMap())
+            GamePhase.NOCHE_MERCENARIO -> advanceNight(
+                session,
+                GamePhase.NOCHE_POLICIA,
+                nightContinuesMessage(session)
+            )
+            GamePhase.NOCHE_POLICIA -> advanceNight(
+                session,
+                GamePhase.NOCHE_MEDICO,
+                nightContinuesMessage(session)
+            )
+            GamePhase.NOCHE_MEDICO -> advanceAfterMedic(session)
+            GamePhase.NOCHE_ORACULO -> advanceNight(
+                session,
+                GamePhase.AMANECER,
+                dawnApproachesMessage(session)
+            )
+            else -> session
+        }
+    }
+
     fun resolveContrapuntoTimeout(session: GameSession): GameSession {
         if (!canResolve(session, GamePhase.CONTRAPUNTO)) return session
         val message = "El Contrapunto terminó sin un señalamiento."
@@ -1281,6 +1347,22 @@ object GameEngine {
         }
         if (validRequiredIndexes.isEmpty()) return session
 
+        val tentativeExpelledIndexes = validRequiredIndexes.filterTo(mutableSetOf()) { index ->
+            val player = session.players[index]
+            val acted = index in actedPlayerIndexes
+            val currentStreak = when (opportunity) {
+                AfkOpportunity.NIGHT -> player.consecutiveNightAfk
+                AfkOpportunity.VOTE -> player.consecutiveVoteAfk
+            }
+            !acted && currentStreak + 1 >= 2
+        }
+        val aliveIndexes = session.players.indices.filterTo(mutableSetOf()) { index ->
+            session.players[index].alive
+        }
+        // Nunca dejar la partida sin jugadores vivos: produciria una partida sin ganador
+        // posible y, por lo tanto, un bloqueo permanente del flujo online.
+        val suppressBatchExpulsion = tentativeExpelledIndexes.isNotEmpty() &&
+            tentativeExpelledIndexes.containsAll(aliveIndexes)
         val expelledIndexes = mutableListOf<Int>()
         val updatedPlayers = session.players.mapIndexed { index, player ->
             if (index !in validRequiredIndexes) return@mapIndexed player
@@ -1291,7 +1373,7 @@ object GameEngine {
                 AfkOpportunity.VOTE -> player.consecutiveVoteAfk
             }
             val nextStreak = if (acted) 0 else currentStreak + 1
-            val expelled = !acted && nextStreak >= 2
+            val expelled = !suppressBatchExpulsion && !acted && nextStreak >= 2
             if (expelled) expelledIndexes += index
 
             player.copy(
@@ -1397,7 +1479,7 @@ object GameEngine {
     ): GameSession {
         val message = rawMessage.trim().replace(Regex("\\s+"), " ").take(140)
         val bot = playerByName(session, speaker)
-        if (message.isBlank() || bot == null || bot.isHuman) return session
+        if (message.isBlank() || bot == null || !bot.isBotControlled) return session
         if (channel == ChatChannel.TRAIDORES) {
             if (!canSeeTraitorChat(bot) || !isTraitorChatWritable(session)) return session
             return session.withChatMessage(bot.name, message, channel = ChatChannel.TRAIDORES)
@@ -2166,6 +2248,9 @@ object GameEngine {
     }
 
     private fun GameSession.withPreparedTraitorPlan(force: Boolean = false): GameSession {
+        if (players.none { it.isBotControlled }) {
+            return if (traitorPlan == null) this else copy(traitorPlan = null)
+        }
         if (!isTraitorChatUnlocked(this)) {
             return if (traitorPlan == null) this else copy(traitorPlan = null)
         }
@@ -2346,7 +2431,7 @@ object GameEngine {
     private fun autoRevealBotAlcalde(session: GameSession): GameSession {
         if (session.alcaldeRevealed) return session
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
-        if (alcalde.isHuman || session.round < 2) return session
+        if (!alcalde.isBotControlled || session.round < 2) return session
         val message = "${alcalde.name} se revelo como Alcalde. Su voto vale doble y decidira los empates."
         return session.copy(alcaldeRevealed = true).withPublicHistory(message)
     }
@@ -2354,7 +2439,7 @@ object GameEngine {
     private fun autoResolveBotDesertorChoice(session: GameSession): GameSession {
         val desertor = session.players.firstOrNull { it.role?.key == "desertor" } ?: return session
         if (
-            desertor.isHuman ||
+            !desertor.isBotControlled ||
             !desertor.alive ||
             session.desertorChangedTeam ||
             session.desertorTeam.isBlank() ||

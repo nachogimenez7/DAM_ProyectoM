@@ -713,6 +713,51 @@ class GameEngineTest {
     }
 
     @Test
+    fun remotePlayersAreNeverResolvedAsBots() {
+        val session = GameSession(
+            code = "ONLINE-HUMANS",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            phase = GamePhase.NOCHE_MERCENARIO,
+            players = listOf(
+                GamePlayer(
+                    "Local",
+                    "L",
+                    role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"),
+                    isHuman = true,
+                    control = PlayerControl.LOCAL
+                ),
+                GamePlayer(
+                    "Remoto",
+                    "R",
+                    role = role(RoleCatalog.MERCENARIO, "Mercenario", "Traidores"),
+                    control = PlayerControl.REMOTE
+                ),
+                GamePlayer(
+                    "Objetivo",
+                    "O",
+                    role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"),
+                    control = PlayerControl.REMOTE
+                ),
+                GamePlayer(
+                    "Asesino remoto",
+                    "A",
+                    role = role(RoleCatalog.ASESINO, "Asesino", "Traidores"),
+                    control = PlayerControl.REMOTE
+                )
+            )
+        )
+
+        val resolved = GameEngine.resolveMercenary(session, "")
+        val startedNight = GameEngine.startNight(session.copy(phase = GamePhase.REPARTO))
+
+        assertEquals(GamePhase.NOCHE_POLICIA, resolved.phase)
+        assertEquals("", resolved.nightSilenceTarget)
+        assertTrue(resolved.actionHistory.isEmpty())
+        assertEquals(null, startedNight.traitorPlan)
+    }
+
+    @Test
     fun onlineRecordedVotingMissingVotesAreAbstentions() {
         val session = baseSession().copy(phase = GamePhase.VOTACION)
 
@@ -723,6 +768,19 @@ class GameEngineTest {
 
         assertEquals(GamePhase.RECUENTO_VOTOS, resolved.phase)
         assertEquals(mapOf("Humano" to "Asesino"), resolved.votes)
+    }
+
+    @Test
+    fun onlineRecordedVotingDoesNotAutoRevealRemoteMayor() {
+        val session = sessionWithHumanAdvancedRole(RoleCatalog.ALDEANO).copy(
+            phase = GamePhase.VOTACION,
+            round = 2,
+            alcaldeRevealed = false
+        )
+
+        val resolved = GameEngine.resolveVotingWithRecordedVotes(session, emptyMap())
+
+        assertFalse(resolved.alcaldeRevealed)
     }
 
     @Test
@@ -3660,6 +3718,92 @@ class GameEngineTest {
         )
 
         assertEquals(session, resolved)
+    }
+
+    @Test
+    fun oneLocalNightTimeoutSkipsPendingHumanPowerAndReachesDawn() {
+        val session = sessionWithHumanRole(RoleCatalog.POLICIA).copy(
+            phase = GamePhase.NOCHE_ASESINO,
+            afkExpulsionEnabled = true
+        )
+
+        val resolved = GameEngine.resolveLocalNightWindowTimeout(session)
+        val human = GameEngine.humanPlayer(resolved)
+
+        assertEquals(GamePhase.AMANECER, resolved.phase)
+        assertEquals("", resolved.investigatedPlayer)
+        assertEquals(1, human.consecutiveNightAfk)
+    }
+
+    @Test
+    fun onlineDebateTimeoutDoesNotLetHostAiUseRemotePayador() {
+        val session = payadorBotSession()
+
+        val resolved = GameEngine.resolveDayDebateWithoutOptionalBotActions(session)
+
+        assertEquals(GamePhase.VOTACION, resolved.phase)
+        assertFalse(resolved.payadorUsed)
+        assertTrue(resolved.contrapuntoPlayers.isEmpty())
+    }
+
+    @Test
+    fun skippedOnlineNightActionsNeverInventBotTargets() {
+        var resolved = baseSession().copy(phase = GamePhase.NOCHE_MERCENARIO)
+
+        repeat(4) {
+            resolved = GameEngine.skipOnlineNightAction(resolved)
+        }
+
+        assertEquals(GamePhase.AMANECER, resolved.phase)
+        assertEquals("", resolved.nightSilenceTarget)
+        assertEquals("", resolved.investigatedPlayer)
+        assertEquals("", resolved.protectedPlayer)
+        assertEquals("", resolved.oracleInvitedPlayer)
+    }
+
+    @Test
+    fun onlineAfkNeverExpelsEveryAlivePlayerInSameWindow() {
+        val initial = GameSession(
+            code = "AFK",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            afkExpulsionEnabled = true,
+            players = listOf(
+                GamePlayer(
+                    "Aldeano",
+                    "A",
+                    role = role(RoleCatalog.ALDEANO, "Aldeano", "Pueblo"),
+                    consecutiveVoteAfk = 1,
+                    isHuman = true
+                ),
+                GamePlayer(
+                    "Asesino",
+                    "T",
+                    role = role(RoleCatalog.ASESINO, "Asesino", "Traidores"),
+                    consecutiveVoteAfk = 1
+                )
+            )
+        )
+
+        val allMiss = GameEngine.applyOnlineAfkOpportunity(
+            session = initial,
+            opportunity = AfkOpportunity.VOTE,
+            requiredPlayerIndexes = setOf(0, 1),
+            actedPlayerIndexes = emptySet()
+        )
+
+        assertTrue(allMiss.players.all { it.alive })
+        assertTrue(allMiss.players.all { it.consecutiveVoteAfk == 2 })
+
+        val oneReturns = GameEngine.applyOnlineAfkOpportunity(
+            session = allMiss,
+            opportunity = AfkOpportunity.VOTE,
+            requiredPlayerIndexes = setOf(0, 1),
+            actedPlayerIndexes = setOf(0)
+        )
+
+        assertTrue(oneReturns.players[0].alive)
+        assertFalse(oneReturns.players[1].alive)
     }
 
     private fun sessionWithHumanAdvancedRole(roleKey: String): GameSession {

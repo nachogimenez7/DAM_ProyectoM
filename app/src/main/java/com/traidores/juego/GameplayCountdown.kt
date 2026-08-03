@@ -79,6 +79,15 @@ internal class GameplayCountdown {
         deadlineMs = 0L
     }
 
+    fun syncActive(phaseIndex: Int, totalMs: Long, remainingMs: Long) {
+        this.phaseIndex = phaseIndex
+        stage = CountdownStage.ACTIVE
+        this.totalMs = totalMs.coerceAtLeast(0L)
+        this.remainingMs = remainingMs.coerceIn(0L, this.totalMs)
+        running = false
+        deadlineMs = 0L
+    }
+
     fun clear() {
         stage = null
         phaseIndex = NO_PHASE

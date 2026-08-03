@@ -25,6 +25,7 @@ class OnlineAuthoritativeStateMapperTest {
     fun missingPublicPresentationFieldsUseSafeDefaults() {
         assertFalse(OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(emptyMap()))
         assertEquals("", OnlineAuthoritativeStateMapper.votePresentationFromState(emptyMap()))
+        assertEquals(0, OnlineAuthoritativeStateMapper.schemaVersionFromState(emptyMap()))
     }
 
     @Test
@@ -80,5 +81,33 @@ class OnlineAuthoritativeStateMapperTest {
         assertEquals(1, mapped[0].consecutiveNightAfk)
         assertEquals(2, mapped[1].consecutiveVoteAfk)
         assertEquals(DeathCause.AFK, mapped[1].deathCause)
+    }
+
+    @Test
+    fun specialVictoriesAreRestoredAndInvalidEntriesIgnored() {
+        val state = mapOf(
+            "victoriasEspeciales" to listOf(
+                mapOf("key" to "bufon:2:Ana", "jugador" to "Ana", "rol" to "bufon", "ronda" to 2),
+                mapOf("key" to "incompleta", "jugador" to "", "rol" to "bufon", "ronda" to 2)
+            )
+        )
+
+        assertEquals(
+            listOf(GameSpecialVictory("bufon:2:Ana", "Ana", "bufon", 2)),
+            OnlineAuthoritativeStateMapper.specialVictoriesFromState(state)
+        )
+    }
+
+    @Test
+    fun sharedPhaseDeadlineUsesSafeRemainingTime() {
+        val state = mapOf(
+            "limiteFaseEpochMs" to 50_000L,
+            "limiteFasePhaseIndex" to 7
+        )
+
+        assertEquals(50_000L, OnlineAuthoritativeStateMapper.phaseDeadlineFromState(state))
+        assertEquals(7, OnlineAuthoritativeStateMapper.phaseDeadlineIndexFromState(state))
+        assertEquals(12_000L, OnlineAuthoritativeStateMapper.remainingPhaseMillis(50_000L, 38_000L))
+        assertEquals(0L, OnlineAuthoritativeStateMapper.remainingPhaseMillis(50_000L, 60_000L))
     }
 }
