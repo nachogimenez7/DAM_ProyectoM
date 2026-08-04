@@ -212,9 +212,7 @@ class OnlineModeActivity : BaseActivity() {
             gravity = Gravity.CENTER
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             filters = arrayOf(InputFilter.LengthFilter(OnlineRoomFirestore.MAX_ROOM_NAME_LENGTH))
-            hint = "Ej.: Los futboleros"
             setTextColor(resources.getColor(R.color.text_primary, theme))
-            setHintTextColor(resources.getColor(R.color.text_muted, theme))
             textSize = 16f
             setPadding(dp(12), 0, dp(12), 0)
             setBackgroundResource(R.drawable.bg_btn_dark)
