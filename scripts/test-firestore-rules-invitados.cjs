@@ -276,7 +276,7 @@ async function main() {
         actualizadaEn: serverTimestamp(),
       })
     );
-    // --- Salas solo para cuentas registradas ---
+    // --- Compatibilidad con el campo viejo `soloCuentas` ---
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       await setDoc(doc(db, "partidas", "room_solo_cuentas"), {
@@ -288,23 +288,22 @@ async function main() {
         registeredPlayer("reg_host_uid", "Host", 0)
       );
     });
-    // El invitado no entra ni con un nombre perfectamente valido.
-    await assertFails(
+    // La opcion fue retirada: una sala vieja que conserve el campo ya no rechaza invitados.
+    await assertSucceeds(
       setDoc(
         doc(invitado, "partidas", "room_solo_cuentas", "jugadores", "guest_uid"),
         guestPlayer("guest_uid")
       )
     );
-    // Una cuenta si.
+    // Las cuentas registradas siguen entrando normalmente.
     await assertSucceeds(
       setDoc(
         doc(registered, "partidas", "room_solo_cuentas", "jugadores", "reg_uid"),
         registeredPlayer("reg_uid")
       )
     );
-    // Y el anfitrion no puede abrir la sala despues de creada: si pudiera, el caso inverso
-    // (cerrarla con invitados adentro) los dejaria sin poder escribir nada.
-    await assertFails(
+    // El campo obsoleto tampoco bloquea una actualizacion normal de la sala.
+    await assertSucceeds(
       updateDoc(doc(host, "partidas", "room_solo_cuentas"), {
         soloCuentas: false,
         actualizadaEn: serverTimestamp(),

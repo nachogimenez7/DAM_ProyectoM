@@ -84,6 +84,50 @@ class OnlineAuthoritativeStateMapperTest {
     }
 
     @Test
+    fun finalPublicStateRevealsRolesForEveryClientWinnerScreen() {
+        val players = listOf(
+            GamePlayer(name = "Ana", initial = "A"),
+            GamePlayer(name = "Bruno", initial = "B")
+        )
+        val state = mapOf(
+            "ganador" to GameRules.TRAITOR_WINNER,
+            "jugadores" to listOf(
+                mapOf(
+                    "orden" to 0,
+                    "rolKey" to "aldeano",
+                    "rolNombre" to "Aldeana",
+                    "rolEquipo" to "Pueblo",
+                    "rolImagen" to "rol_aldeano_medieval"
+                ),
+                mapOf(
+                    "orden" to 1,
+                    "rolKey" to "asesino",
+                    "rolNombre" to "Asesino",
+                    "rolEquipo" to "Traidores",
+                    "rolImagen" to "rol_asesino_medieval"
+                )
+            )
+        )
+
+        val mapped = OnlineAuthoritativeStateMapper.playersFromState(players, state)!!
+
+        assertEquals("aldeano", mapped[0].role?.key)
+        assertEquals("Pueblo", mapped[0].role?.team)
+        assertEquals("asesino", mapped[1].role?.key)
+        assertEquals("rol_asesino_medieval", mapped[1].role?.imageResName)
+        val presentation = GameplayTableUi.winnerPresentation(
+            GameSession(
+                code = "ONLINE",
+                mapKey = "medieval",
+                mapName = "Medieval",
+                players = mapped,
+                winner = GameRules.TRAITOR_WINNER
+            )
+        )
+        assertEquals(listOf("Bruno"), presentation.winningPlayers.map { it.name })
+    }
+
+    @Test
     fun specialVictoriesAreRestoredAndInvalidEntriesIgnored() {
         val state = mapOf(
             "victoriasEspeciales" to listOf(
@@ -102,10 +146,12 @@ class OnlineAuthoritativeStateMapperTest {
     fun sharedPhaseDeadlineUsesSafeRemainingTime() {
         val state = mapOf(
             "limiteFaseEpochMs" to 50_000L,
-            "limiteFasePhaseIndex" to 7
+            "limiteFasePhaseIndex" to 7,
+            "inicioAutomaticoEpochMs" to 42_000L
         )
 
         assertEquals(50_000L, OnlineAuthoritativeStateMapper.phaseDeadlineFromState(state))
+        assertEquals(42_000L, OnlineAuthoritativeStateMapper.startupDeadlineFromState(state))
         assertEquals(7, OnlineAuthoritativeStateMapper.phaseDeadlineIndexFromState(state))
         assertEquals(12_000L, OnlineAuthoritativeStateMapper.remainingPhaseMillis(50_000L, 38_000L))
         assertEquals(0L, OnlineAuthoritativeStateMapper.remainingPhaseMillis(50_000L, 60_000L))

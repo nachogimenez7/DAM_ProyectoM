@@ -26,12 +26,29 @@ object OnlineLobbyRules {
         return nowMs - updatedAtMs <= maxAgeMs
     }
 
+    fun connectedPresenceCount(states: Iterable<String?>): Int {
+        return states.count { it == "conectado" }
+    }
+
     fun activePlayers(players: List<OnlineLobbyParticipant>): List<OnlineLobbyParticipant> {
         return players.filter { it.activeInMatch }
     }
 
-    fun releasableDisconnectedPlayers(players: List<OnlineLobbyParticipant>): List<OnlineLobbyParticipant> {
-        return players.filter { it.activeInMatch && !it.connected }
+    fun releasableDisconnectedPlayers(
+        players: List<OnlineLobbyParticipant>,
+        protectedPlayerIds: Set<String> = emptySet()
+    ): List<OnlineLobbyParticipant> {
+        return players.filter {
+            it.activeInMatch && !it.connected && it.id !in protectedPlayerIds
+        }
+    }
+
+    fun shouldMarkGameplayDisconnected(
+        isOnlineGameplay: Boolean,
+        isChangingConfigurations: Boolean,
+        returningToLobby: Boolean
+    ): Boolean {
+        return isOnlineGameplay && !isChangingConfigurations && !returningToLobby
     }
 
     /**

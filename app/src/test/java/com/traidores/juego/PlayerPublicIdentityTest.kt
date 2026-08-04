@@ -6,6 +6,13 @@ import org.junit.Test
 class PlayerPublicIdentityTest {
 
     @Test
+    fun legacyGuestPublicIdIsIgnoredUntilAccountIsRegistered() {
+        assertEquals("", PlayerPublicIdentity.publicIdForSession("27", isGuest = true))
+        assertEquals("27", PlayerPublicIdentity.publicIdForSession("27", isGuest = false))
+        assertEquals("", PlayerPublicIdentity.publicIdForSession("#27", isGuest = false))
+    }
+
+    @Test
     fun publicProfileFieldsExposeBioAvatarAndFavoriteRole() {
         val profile = PlayerProfile(
             name = "Federico",

@@ -41,4 +41,20 @@ class OnlineRoomFirestoreTest {
             OnlineRoomFirestore.normalizedVisibility("valor_invalido")
         )
     }
+
+    @Test
+    fun customRoomNameIsTrimmedAndLegacyFallbackRemainsAvailable() {
+        assertEquals(
+            "Los futboleros del barrio",
+            OnlineRoomFirestore.normalizedRoomName(
+                "  Los   futboleros del barrio  ",
+                "Mama",
+                "2077"
+            )
+        )
+        assertEquals(
+            "Sala de Mama 2077",
+            OnlineRoomFirestore.normalizedRoomName("   ", "Mama", "2077")
+        )
+    }
 }

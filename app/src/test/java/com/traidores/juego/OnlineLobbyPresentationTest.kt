@@ -21,11 +21,28 @@ class OnlineLobbyPresentationTest {
     }
 
     @Test
+    fun `ready host can verify authoritative state when local list lags`() {
+        val state = startState(
+            activePlayers = 5,
+            expectedPlayers = 5,
+            missingReady = 3,
+            currentReady = true
+        )
+
+        assertEquals(OnlineLobbyStartCopy.VERIFY_READY, state.buttonCopy)
+        assertFalse(state.isGold)
+        assertEquals(
+            OnlineLobbyStartProgress(OnlineLobbyProgressKind.READY, current = 2, total = 5),
+            state.progress
+        )
+    }
+
+    @Test
     fun `full room switches progress from occupancy to ready players`() {
         val state = startState(activePlayers = 5, expectedPlayers = 5, missingReady = 2)
 
-        assertEquals(OnlineLobbyStartCopy.WAITING, state.buttonCopy)
-        assertFalse(state.isGold)
+        assertEquals(OnlineLobbyStartCopy.HOST_READY, state.buttonCopy)
+        assertTrue(state.isGold)
         assertEquals(
             OnlineLobbyStartProgress(OnlineLobbyProgressKind.READY, current = 3, total = 5),
             state.progress
@@ -61,7 +78,7 @@ class OnlineLobbyPresentationTest {
     }
 
     @Test
-    fun `guest ready action stays dark and has no host progress`() {
+    fun `guest ready action is gold while undo ready stays dark`() {
         val readyAction = startState(
             activePlayers = 3,
             expectedPlayers = 5,
@@ -78,7 +95,7 @@ class OnlineLobbyPresentationTest {
 
         assertEquals(OnlineLobbyStartCopy.READY, readyAction.buttonCopy)
         assertEquals(OnlineLobbyStartCopy.NOT_READY, undoReadyAction.buttonCopy)
-        assertFalse(readyAction.isGold)
+        assertTrue(readyAction.isGold)
         assertFalse(undoReadyAction.isGold)
         assertNull(readyAction.progress)
         assertNull(undoReadyAction.progress)

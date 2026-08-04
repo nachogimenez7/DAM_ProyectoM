@@ -79,6 +79,25 @@ const playerData = (uid, name = "Nacho", order = 0, isHost = false) => ({
   listo: true,
 });
 
+const guestPlayerData = (uid, name = "Mala Onda 4821", order = 1) => ({
+  nombre: name,
+  nombrePerfil: name,
+  nombreSala: name,
+  bioPerfil: "",
+  avatarPerfil: "aldeano",
+  bannerPerfil: "pampa",
+  rolFavoritoPerfil: "aldeano",
+  esHost: false,
+  estado: "conectado",
+  uidTemporal: uid,
+  unidoEn: serverTimestamp(),
+  ultimaConexion: serverTimestamp(),
+  ultimaConexionLocal: Date.now(),
+  orden: order,
+  activoEnPartida: true,
+  listo: false,
+});
+
 async function seedRoom(testEnv, roomId = "room_auth", hostUid = "host_uid") {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
@@ -100,6 +119,9 @@ async function main() {
   try {
     const host = testEnv.authenticatedContext("host_uid").firestore();
     const guest = testEnv.authenticatedContext("guest_uid").firestore();
+    const legacyGuest = testEnv.authenticatedContext("legacy_guest_uid", {
+      firebase: { sign_in_provider: "anonymous" },
+    }).firestore();
     const intruder = testEnv.authenticatedContext("intruder_uid").firestore();
     const blocked = testEnv.authenticatedContext("blocked_uid").firestore();
     const anon = testEnv.unauthenticatedContext().firestore();
@@ -117,6 +139,29 @@ async function main() {
     invalidVisibility.visibilidad = "secreta";
     await assertFails(setDoc(doc(host, "partidas", "room_invalid_visibility"), invalidVisibility));
     await assertFails(setDoc(doc(blocked, "partidas", "room_blocked"), roomData("blocked_uid")));
+
+    // Una instalacion vieja puede conservar un publicId de cuando tambien se asignaba a
+    // invitados. El primer patch debe borrarlo: sin ese delete, las reglas lo rechazan.
+    await seedRoom(testEnv, "room_legacy_guest", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "partidas", "room_legacy_guest", "jugadores", "legacy_guest_uid"),
+        { ...guestPlayerData("legacy_guest_uid"), publicId: "27" }
+      );
+    });
+    const legacyGuestPlayer = doc(
+      legacyGuest,
+      "partidas",
+      "room_legacy_guest",
+      "jugadores",
+      "legacy_guest_uid"
+    );
+    await assertFails(updateDoc(legacyGuestPlayer, { listo: true }));
+    await assertSucceeds(updateDoc(legacyGuestPlayer, {
+      publicId: deleteField(),
+      listo: true,
+      ultimaConexion: serverTimestamp(),
+    }));
     const legacyCreate = roomData("host_uid");
     delete legacyCreate.limpiezaPendiente;
     await assertSucceeds(setDoc(doc(host, "partidas", "room_create_legacy"), legacyCreate));
@@ -219,6 +264,81 @@ async function main() {
     await assertFails(updateDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), {
       votoMapa: "atlántida",
     }));
+
+    // Al volver de Gameplay, un jugador que fue liberado por una presencia obsoleta puede
+    // recuperar su propio cupo y reconciliar el contador en una sola transaccion.
+    await seedRoom(testEnv, "room_rematch_reactivate", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), "partidas", "room_rematch_reactivate", "jugadores", "guest_uid"),
+        { ...playerData("guest_uid", "Guest", 1), activoEnPartida: false, estado: "desconectado" }
+      );
+    });
+    await assertSucceeds(runTransaction(guest, async (transaction) => {
+      transaction.update(
+        doc(guest, "partidas", "room_rematch_reactivate", "jugadores", "guest_uid"),
+        {
+          activoEnPartida: true,
+          estado: "conectado",
+          listo: false,
+          ultimaConexion: serverTimestamp(),
+          ultimaConexionLocal: Date.now(),
+        }
+      );
+      transaction.update(doc(guest, "partidas", "room_rematch_reactivate"), {
+        jugadoresActuales: increment(1),
+        actualizadaEn: serverTimestamp(),
+      });
+    }));
+
+    // Salir voluntariamente del lobby libera el documento propio y el contador de la sala
+    // en la misma transaccion. Asi el navegador no sigue mostrando 5/5 despues de salir.
+    await seedRoom(testEnv, "room_self_release", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_self_release"), {
+        jugadoresActuales: 2,
+      });
+      await setDoc(
+        doc(db, "partidas", "room_self_release", "jugadores", "guest_uid"),
+        playerData("guest_uid", "Guest", 1)
+      );
+    });
+    await assertSucceeds(runTransaction(guest, async (transaction) => {
+      const roomRef = doc(guest, "partidas", "room_self_release");
+      const playerRef = doc(
+        guest,
+        "partidas",
+        "room_self_release",
+        "jugadores",
+        "guest_uid"
+      );
+      await transaction.get(roomRef);
+      await transaction.get(playerRef);
+      transaction.update(playerRef, {
+        activoEnPartida: false,
+        listo: false,
+        estado: "desconectado",
+        ultimaConexion: serverTimestamp(),
+        ultimaConexionLocal: Date.now(),
+      });
+      transaction.update(roomRef, {
+        jugadoresActuales: 1,
+        actualizadaEn: serverTimestamp(),
+      });
+    }));
+    const releasedRoom = await assertSucceeds(
+      getDoc(doc(guest, "partidas", "room_self_release"))
+    );
+    const releasedPlayer = await assertSucceeds(
+      getDoc(doc(guest, "partidas", "room_self_release", "jugadores", "guest_uid"))
+    );
+    if (releasedRoom.data().jugadoresActuales !== 1) {
+      throw new Error("La salida no decremento jugadoresActuales");
+    }
+    if (releasedPlayer.data().activoEnPartida !== false) {
+      throw new Error("La salida no libero el cupo del jugador");
+    }
 
     await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
       configLobby: {
@@ -422,7 +542,16 @@ async function main() {
     await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
       estado: "en_juego",
       partidaInicialCreada: true,
+      estadoPartida: { fase: "REPARTO" },
       actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
+      "estadoPartida.inicioAutomaticoEpochMs": Date.now() + 15_000,
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(guest, "partidas", "room_auth"), {
+      "estadoPartida.inicioAutomaticoEpochMs": Date.now() + 60_000,
+      ultimaActividadOnline: serverTimestamp(),
     }));
 
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_auth"), {

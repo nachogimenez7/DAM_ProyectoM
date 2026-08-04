@@ -37,9 +37,13 @@ object OnlinePresentationGate {
     fun shouldAdvance(
         isCoordinator: Boolean,
         elapsedMs: Long,
-        progress: OnlinePresentationProgress
+        progress: OnlinePresentationProgress,
+        coordinatorPresentationReady: Boolean = true
     ): Boolean {
         if (!isCoordinator) return false
+        // El timeout destraba esperas de red o jugadores que no confirman; nunca debe cortar
+        // una animacion obligatoria que todavia esta ejecutandose en el coordinador.
+        if (!coordinatorPresentationReady) return false
         if (elapsedMs >= MAXIMUM_DISPLAY_MS) return true
         return canAcknowledge(elapsedMs) && progress.allReady
     }

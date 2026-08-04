@@ -113,6 +113,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var isVoteResultVisible = false
     private var isTieVoteVisible = false
     private var voteExpulsionComplete = false
+    private var voteExpulsionAnimationKey = ""
     private var voteNoExpulsionPresented = false
     private var onlineVotePresentation = ""
     private var lastAppliedOnlineVotePresentation = ""
@@ -125,6 +126,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var blockingFeedbackPeriod: GameplayPeriod? = null
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
+    private var returningToOnlineLobby = false
     private var presentedSpecialVictoryCount = 0
     private val countdown = GameplayCountdown()
     private var lastCountdownSecond = -1
@@ -188,9 +190,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineIncompatibleStateHandled = false
     private var onlineAwaitingHostAdvance = false
     private var onlineInitialRoleRead = false
-    private var onlineStartupGateStartedAtMs = 0L
+    private var onlineStartupDeadlineEpochMs = 0L
+    private var onlineStartupDeadlinePublishInProgress = false
     private var onlineStartupGateResult: OnlineStartupGateResult? = null
-    private var onlineStartupForceAvailable = false
     private var lastOnlineStartupGateKey = ""
     private var lastOnlineStartupClientStates = emptyList<OnlineStartupClientState>()
     private var onlineNightResolutionInProgress = false
@@ -262,7 +264,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             scheduleBotReactionIfNeeded()
         }
     }
-    private val onlineStartupForceRefreshRunnable = Runnable {
+    private val onlineStartupTickRunnable = Runnable {
         if (isOnlineStartupPhase()) {
             refreshOnlineStartupGateFromLastStates()
         }
@@ -278,19 +280,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val roleReadingTickRunnable = object : Runnable {
         override fun run() {
             if (!initialRoleReadingActive || !::btnContinueRolePreview.isInitialized) return
-            val remainingMs = roleReadingRemainingMs()
-            btnContinueRolePreview.visibility = View.VISIBLE
-            btnContinueRolePreview.alpha = if (remainingMs > 0L) 0.72f else 1f
-            btnContinueRolePreview.isEnabled = remainingMs <= 0L
-            btnContinueRolePreview.text = if (remainingMs > 0L) {
-                "EMPEZAR (${ceil(remainingMs / 1000.0).toInt()})"
+            autoAdvanceHandler.removeCallbacks(this)
+            val readingRemainingMs = roleReadingRemainingMs()
+            val onlineCountdownSeconds = if (isOnlineStartupPhase()) {
+                onlineStartupCountdownSeconds()
             } else {
-                "EMPEZAR"
+                null
             }
-            if (remainingMs > 0L) {
+            btnContinueRolePreview.visibility = View.VISIBLE
+            btnContinueRolePreview.alpha = if (readingRemainingMs > 0L) 0.72f else 1f
+            btnContinueRolePreview.isEnabled = readingRemainingMs <= 0L
+            btnContinueRolePreview.text = when {
+                readingRemainingMs > 0L ->
+                    "EMPEZAR (${ceil(readingRemainingMs / 1000.0).toInt()})"
+                onlineCountdownSeconds != null -> "EMPEZAR ($onlineCountdownSeconds)"
+                else -> "EMPEZAR"
+            }
+            if (readingRemainingMs > 0L || onlineCountdownSeconds != null) {
+                val nextReadingTickMs = readingRemainingMs
+                    .takeIf { it > 0L }
+                    ?.let { minOf(1_000L, it) }
+                    ?: 1_000L
                 autoAdvanceHandler.postDelayed(
                     this,
-                    minOf(1_000L, remainingMs)
+                    nextReadingTickMs
                 )
             }
         }
@@ -417,7 +430,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var silenceRevealAnimator: SilenceRevealAnimator
     private lateinit var noDeathRevealAnimator: NoDeathRevealAnimator
     private lateinit var payadorRevealOverlay: FrameLayout
-    private lateinit var payadorRevealPanel: LinearLayout
+    // Solo se anima como una View; no dependemos del tipo concreto del contenedor XML.
+    // Esto evita que un cambio LinearLayout/FrameLayout vuelva a cerrar el gameplay al abrir.
+    private lateinit var payadorRevealPanel: View
     private lateinit var payadorRevealFirstPlayer: TextView
     private lateinit var payadorRevealSecondPlayer: TextView
     private lateinit var payadorRevealProgress: View
@@ -586,6 +601,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?: intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
         onlineInitialRoleRead = savedInstanceState?.getBoolean(STATE_ONLINE_INITIAL_ROLE_READ)
             ?: (session.phase != GamePhase.REPARTO)
+        onlineStartupDeadlineEpochMs = savedInstanceState
+            ?.getLong(STATE_ONLINE_STARTUP_DEADLINE_EPOCH_MS, 0L)
+            ?: 0L
         onlinePresentationAckKey = savedInstanceState
             ?.getString(STATE_ONLINE_PRESENTATION_ACK_KEY)
             .orEmpty()
@@ -1041,7 +1059,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         // La Activity detenida no puede avanzar contadores. Marcar la desconexion permite
         // que otro cliente asuma como anfitrion y evita congelar toda la mesa.
         realtimePresence?.stop(
-            markDisconnected = isOnlineGameplay() && !isChangingConfigurations
+            markDisconnected = OnlineLobbyRules.shouldMarkGameplayDisconnected(
+                isOnlineGameplay = isOnlineGameplay(),
+                isChangingConfigurations = isChangingConfigurations,
+                returningToLobby = returningToOnlineLobby
+            )
         )
         realtimePresence = null
         realtimeTableSilence?.stop()
@@ -1089,7 +1111,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         autoAdvanceHandler.removeCallbacks(botReactionRunnable)
         botReactionScheduled = false
-        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
+        autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         onlineStateListener?.remove()
@@ -1223,6 +1245,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         outState.putString(STATE_ONLINE_PLAYER_ID, onlinePlayerId)
         outState.putBoolean(STATE_ONLINE_IS_HOST, onlineIsHost)
         outState.putBoolean(STATE_ONLINE_INITIAL_ROLE_READ, onlineInitialRoleRead)
+        outState.putLong(
+            STATE_ONLINE_STARTUP_DEADLINE_EPOCH_MS,
+            onlineStartupDeadlineEpochMs
+        )
         outState.putString(STATE_ONLINE_PRESENTATION_ACK_KEY, onlinePresentationAckKey)
         outState.putBoolean(
             STATE_VOTE_NO_EXPULSION_PRESENTED,
@@ -1542,7 +1568,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             OnlinePresentationGate.shouldAdvance(
                 isCoordinator = onlineIsHost,
                 elapsedMs = elapsedMs,
-                progress = progress
+                progress = progress,
+                coordinatorPresentationReady = currentOnlinePresentationLocallyComplete()
             )
         ) {
             onlinePresentationAdvanceInProgress = true
@@ -1557,6 +1584,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         autoAdvanceHandler.postDelayed(onlinePresentationGateRunnable, PRESENTATION_GATE_TICK_MS)
+    }
+
+    private fun currentOnlinePresentationLocallyComplete(): Boolean {
+        if (!isVoteResultVisible) return true
+        return !onlineVotePresentation.startsWith("expulsion|") || voteExpulsionComplete
     }
 
     private fun currentOnlinePresentationKey(): String? {
@@ -2374,9 +2406,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 } else if (onlineActiveHostId != onlinePlayerId && onlineIsHost) {
                     demoteFromOnlineHost("room_snapshot")
                 }
-                val clientStates = snapshot.get("estadoClientes").asStringAnyMap()
-                handleOnlineStartupSnapshot(clientStates)
-                handleOnlinePresentationSnapshot(clientStates)
                 val state = snapshot.get("estadoPartida").asStringAnyMap()
                     ?: run {
                         handleMissingAuthoritativeOnlineState()
@@ -2389,6 +2418,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     handleIncompatibleOnlineState()
                     return@addSnapshotListener
                 }
+                handleOnlineStartupDeadlineSnapshot(state)
+                val clientStates = snapshot.get("estadoClientes").asStringAnyMap()
+                handleOnlineStartupSnapshot(clientStates)
+                handleOnlinePresentationSnapshot(clientStates)
                 applyAuthoritativeOnlineState(state)
             }
     }
@@ -2436,36 +2469,100 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         refreshOnlinePresentationGate()
     }
 
+    private fun handleOnlineStartupDeadlineSnapshot(state: Map<String, Any?>) {
+        if (!isOnlineStartupPhase()) return
+        val incomingDeadline = OnlineAuthoritativeStateMapper.startupDeadlineFromState(state)
+        if (incomingDeadline <= 0L || incomingDeadline == onlineStartupDeadlineEpochMs) return
+        onlineStartupDeadlineEpochMs = incomingDeadline
+        onlineStartupDeadlinePublishInProgress = false
+        OnlineDebugLog.i(
+            "startup_auto_deadline_received roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$incomingDeadline"
+        )
+    }
+
     private fun refreshOnlineStartupGateFromLastStates() {
         if (!isOnlineStartupPhase()) return
-        val elapsedMs = onlineStartupElapsedMs()
         val expectedPlayers = expectedOnlineStartupPlayers()
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = expectedPlayers,
-            clientStates = lastOnlineStartupClientStates,
-            elapsedMs = elapsedMs
+            clientStates = lastOnlineStartupClientStates
         )
         onlineStartupGateResult = result
-        onlineStartupForceAvailable = result.canForce
         val gateKey = listOf(
             result.loadedPlayers,
             result.readyPlayers,
             result.mismatchedPlayers,
             result.canStart,
-            result.canForce
+            result.canArmAutoStart,
+            onlineStartupDeadlineEpochMs
         ).joinToString("|")
         if (gateKey != lastOnlineStartupGateKey) {
             lastOnlineStartupGateKey = gateKey
             OnlineDebugLog.i(
-                "startup_gate roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost loaded=${result.loadedPlayers}/$expectedPlayers ready=${result.readyPlayers}/$expectedPlayers mismatched=${result.mismatchedPlayers} canStart=${result.canStart} canForce=${result.canForce}"
+                "startup_gate roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost loaded=${result.loadedPlayers}/$expectedPlayers ready=${result.readyPlayers}/$expectedPlayers mismatched=${result.mismatchedPlayers} canStart=${result.canStart} autoDeadline=$onlineStartupDeadlineEpochMs"
             )
         }
-        scheduleOnlineStartupForceRefresh()
         if (onlineIsHost && result.canStart) {
             startOnlineFirstNight("all_ready")
-        } else {
-            renderOnlineStartupHint()
+            return
         }
+        if (
+            onlineIsHost &&
+            result.canArmAutoStart &&
+            onlineStartupDeadlineEpochMs <= 0L &&
+            !onlineStartupDeadlinePublishInProgress
+        ) {
+            publishOnlineStartupDeadline()
+        }
+        val shouldAutoStart = result.canArmAutoStart && OnlineStartupGate.shouldAutoStart(
+            deadlineEpochMs = onlineStartupDeadlineEpochMs,
+            nowEpochMs = System.currentTimeMillis()
+        )
+        when {
+            onlineIsHost && shouldAutoStart -> startOnlineFirstNight("automatic_timeout")
+            else -> {
+                renderOnlineStartupHint()
+                scheduleOnlineStartupTick()
+            }
+        }
+    }
+
+    private fun publishOnlineStartupDeadline() {
+        if (!onlineIsHost || !isOnlineStartupPhase()) return
+        val deadline = System.currentTimeMillis() + OnlineStartupGate.AUTO_START_AFTER_MS
+        onlineStartupDeadlineEpochMs = deadline
+        onlineStartupDeadlinePublishInProgress = true
+        OnlineDebugLog.i(
+            "startup_auto_deadline_publish_requested roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
+        )
+        FirebaseFirestore.getInstance()
+            .collection("partidas")
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    "estadoPartida.$FIELD_STARTUP_AUTO_DEADLINE" to deadline,
+                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineStartupDeadlinePublishInProgress = false
+                OnlineDebugLog.i(
+                    "startup_auto_deadline_publish_success roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
+                )
+            }
+            .addOnFailureListener { error ->
+                if (onlineStartupDeadlineEpochMs == deadline) {
+                    onlineStartupDeadlineEpochMs = 0L
+                }
+                onlineStartupDeadlinePublishInProgress = false
+                OnlineDebugLog.e(
+                    "startup_auto_deadline_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+                if (!isFinishing && !isDestroyed) {
+                    autoAdvanceHandler.postDelayed(onlineStartupTickRunnable, 1_000L)
+                }
+            }
     }
 
     private fun onlineStartupClientState(uid: String, state: Map<String, Any?>?): OnlineStartupClientState? {
@@ -2489,21 +2586,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.i(
             "startup_role_read roomId=$onlinePartidaId uid=$onlinePlayerId visiblePlayers=${session.players.size}/${expectedOnlineStartupPlayers()}"
         )
-        GameNotice.show(this, "Esperando a que todos terminen de leer...")
+        GameNotice.show(this, "Listo. La primera noche comenzara automaticamente.")
         publishOnlineClientState()
     }
 
     private fun handleOnlineStartupAction(): Boolean {
         if (!isOnlineStartupPhase()) return false
-        if (onlineIsHost && onlineStartupForceAvailable) {
-            startOnlineFirstNight("forced_by_host")
-            return true
-        }
         GameplayEffects.play(this, GameplayEffect.ERROR)
-        GameNotice.show(
-            this,
-            onlineStartupGateResult?.waitingMessage ?: "Esperando sincronizacion online..."
-        )
+        GameNotice.show(this, onlineStartupHintText())
         renderGame()
         return true
     }
@@ -2513,11 +2603,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.i(
             "startup_first_night_start roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason players=${session.players.size}"
         )
-        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
+        autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
         val before = session
         session = GameEngine.startNight(session)
         onlineAwaitingHostAdvance = false
-        onlineStartupForceAvailable = false
+        onlineStartupDeadlinePublishInProgress = false
         onlineStartupGateResult = null
         recordOnlinePhaseAdvance(before, session)
         clearSelection()
@@ -2527,15 +2617,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun renderOnlineStartupHint() {
         if (!isOnlineStartupPhase() || !::currentPlayerHint.isInitialized) return
         currentPlayerHint.text = onlineStartupHintText()
+        if (initialRoleReadingActive && ::btnContinueRolePreview.isInitialized) {
+            roleReadingTickRunnable.run()
+        }
         renderAdvanceButton()
     }
 
     private fun onlineStartupHintText(): String {
         val gate = onlineStartupGateResult
+        val countdownSeconds = onlineStartupCountdownSeconds()
         return when {
             session.players.size < expectedOnlineStartupPlayers() -> "Sincronizando cartas..."
+            countdownSeconds != null && !onlineInitialRoleRead ->
+                "Lee tu rol. La noche empieza en $countdownSeconds s."
+            countdownSeconds != null -> "Listo. La noche empieza en $countdownSeconds s."
+            gate?.canArmAutoStart == true -> "Preparando la cuenta regresiva..."
             !onlineInitialRoleRead -> "Lee tu rol y toca EMPEZAR."
-            onlineIsHost && gate?.canForce == true -> "Falta alguien. Puedes forzar la primera noche."
             gate != null -> gate.waitingMessage
             else -> "Esperando a que todos terminen de leer..."
         }
@@ -2552,19 +2649,26 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return session.initialPlayerCount.coerceAtLeast(session.players.size)
     }
 
-    private fun onlineStartupElapsedMs(): Long {
-        if (onlineStartupGateStartedAtMs == 0L) {
-            onlineStartupGateStartedAtMs = SystemClock.elapsedRealtime()
-        }
-        return SystemClock.elapsedRealtime() - onlineStartupGateStartedAtMs
+    private fun onlineStartupCountdownSeconds(): Int? {
+        val remainingMs = OnlineStartupGate.remainingAutoStartMillis(
+            deadlineEpochMs = onlineStartupDeadlineEpochMs,
+            nowEpochMs = System.currentTimeMillis()
+        ) ?: return null
+        return ceil(remainingMs / 1000.0).toInt().coerceAtLeast(0)
     }
 
-    private fun scheduleOnlineStartupForceRefresh() {
-        autoAdvanceHandler.removeCallbacks(onlineStartupForceRefreshRunnable)
-        if (!isOnlineStartupPhase() || !onlineIsHost || onlineStartupForceAvailable) return
-        val remainingMs = OnlineStartupGate.STARTUP_FORCE_AFTER_MS - onlineStartupElapsedMs()
+    private fun scheduleOnlineStartupTick() {
+        autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
+        if (!isOnlineStartupPhase() || onlineStartupDeadlineEpochMs <= 0L) return
+        val remainingMs = OnlineStartupGate.remainingAutoStartMillis(
+            deadlineEpochMs = onlineStartupDeadlineEpochMs,
+            nowEpochMs = System.currentTimeMillis()
+        ) ?: return
         if (remainingMs > 0L) {
-            autoAdvanceHandler.postDelayed(onlineStartupForceRefreshRunnable, remainingMs)
+            autoAdvanceHandler.postDelayed(
+                onlineStartupTickRunnable,
+                minOf(1_000L, remainingMs)
+            )
         }
     }
 
@@ -2720,9 +2824,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     isVoteResultVisible = true
                     voteResultAnimator.show(session)
                 }
-                voteResultAnimator.playExpulsion(session) {
-                    voteExpulsionComplete = true
-                }
+                playVoteExpulsionOnce(presentation)
             }
             presentation.startsWith("sin_expulsion|") -> {
                 voteNoExpulsionPresented = true
@@ -2734,6 +2836,28 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         }
         refreshOnlinePresentationGate()
+    }
+
+    private fun playVoteExpulsionOnce(presentationKey: String) {
+        if (
+            presentationKey.isNotBlank() &&
+            voteExpulsionAnimationKey == presentationKey &&
+            !voteExpulsionComplete
+        ) {
+            OnlineDebugLog.w(
+                "vote_expulsion_duplicate_start_blocked roomId=$onlinePartidaId uid=$onlinePlayerId key=$presentationKey"
+            )
+            return
+        }
+        voteExpulsionAnimationKey = presentationKey
+        voteExpulsionComplete = false
+        voteResultAnimator.playExpulsion(session) {
+            voteExpulsionComplete = true
+            OnlineDebugLog.i(
+                "vote_expulsion_animation_complete roomId=$onlinePartidaId uid=$onlinePlayerId key=$presentationKey host=$onlineIsHost"
+            )
+            refreshOnlinePresentationGate()
+        }
     }
 
     private fun authoritativeStateAppliedLocally(): Boolean {
@@ -2763,7 +2887,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?.joinToString("#") {
                 "${it["orden"]}:${it["nombre"]}:${it["vivo"]}:${it["muteado"]}:" +
                     "${it["ultimaRondaSilenciado"]}:${it["afkNoche"]}:${it["afkVoto"]}:" +
-                    "${it["causaEliminacion"]}"
+                    "${it["causaEliminacion"]}:${it["rolKey"]}:${it["rolNombre"]}:" +
+                    "${it["rolEquipo"]}:${it["rolImagen"]}"
             }
             .orEmpty()
     }
@@ -4686,7 +4811,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val label = when {
             localPhaseResolutionInProgress -> localPhaseResolutionActionLabel
             session.winner.isNotBlank() -> "FINAL"
-            isOnlineStartupPhase() && onlineIsHost && onlineStartupForceAvailable -> "FORZAR NOCHE"
+            isOnlineStartupPhase() && onlineStartupCountdownSeconds() != null ->
+                "NOCHE EN ${onlineStartupCountdownSeconds()}"
             isOnlineStartupPhase() -> "ESPERANDO"
             onlineAwaitingHostAdvance -> "SINCRONIZANDO"
             selectedAction != null -> primaryTargetActionLabel(selectedAction, selectedTarget)
@@ -4713,7 +4839,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnAction.isEnabled = !localPhaseResolutionInProgress &&
             !transitionLocked &&
             session.winner.isBlank() &&
-            (!isOnlineStartupPhase() || (onlineIsHost && onlineStartupForceAvailable)) &&
+            !isOnlineStartupPhase() &&
             !onlineAwaitingHostAdvance &&
             (!mustWaitForPhaseTimer() || actionReadyDuringTimer || nightSkipReady) &&
             !mayorDebateOnlyReveal &&
@@ -6286,8 +6412,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         // El arranque de la primera noche online lo decide el gate de sincronizacion
-        // (startOnlineFirstNight cuando todos leyeron el rol, o FORZAR NOCHE del host), NO el
-        // countdown. REPARTO no tiene timer (activePhaseSeconds == null), asi que sin esta
+        // (todos terminaron o vencio la cuenta compartida), NO el countdown general de fases.
+        // REPARTO no tiene timer (activePhaseSeconds == null), asi que sin esta
         // guarda el countdown expira al instante y el host arranca la noche por la via
         // generica (when(REPARTO) -> startNight), salteando el gate y sin limpiar
         // onlineAwaitingHostAdvance. Ese flag queda en true y hace que activePhaseSeconds
@@ -8081,6 +8207,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         dismissActionFeedbackBannerNow()
         MusicManager.playGamePhase(this, session)
         voteExpulsionComplete = false
+        voteExpulsionAnimationKey = ""
         voteNoExpulsionPresented = false
         isVoteResultVisible = true
         hideCentralPublicEventBanner(immediate = true)
@@ -8405,18 +8532,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 renderGame()
                 return
             }
-            onlineVotePresentation = listOf(
+            val expulsionPresentation = listOf(
                 "expulsion",
                 session.round,
                 session.voteRound,
                 session.phaseIndex,
                 session.dayEliminationTarget
             ).joinToString("|")
+            onlineVotePresentation = expulsionPresentation
             lastPublishedAuthoritativeOnlineStateKey = ""
             publishAuthoritativeOnlineState()
-            voteResultAnimator.playExpulsion(session) {
-                voteExpulsionComplete = true
-            }
+            playVoteExpulsionOnce(expulsionPresentation)
             return
         }
 
@@ -8452,6 +8578,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         isVoteResultVisible = false
         voteExpulsionComplete = false
+        voteExpulsionAnimationKey = ""
         voteResultAnimator.hide()
         clearSelection()
         MusicManager.resumeGamePhaseAfterTransition(this, session)
@@ -8482,6 +8609,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         voteResultAnimator.hide()
         isVoteResultVisible = false
         voteExpulsionComplete = false
+        voteExpulsionAnimationKey = ""
     }
 
     private fun showSilenceReveal(player: GamePlayer) {
@@ -8967,6 +9095,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun returnToLobby() {
+        returningToOnlineLobby = true
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
         MusicManager.stopVictoryMusic()
@@ -9670,6 +9799,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_PLAYER_ID = "online_player_id"
         private const val STATE_ONLINE_IS_HOST = "online_is_host"
         private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
+        private const val STATE_ONLINE_STARTUP_DEADLINE_EPOCH_MS =
+            "online_startup_deadline_epoch_ms"
         private const val STATE_ONLINE_PRESENTATION_ACK_KEY = "online_presentation_ack_key"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L
@@ -9703,6 +9834,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val FIELD_READY_TO_VOTE_ROUND = "listoParaVotarRonda"
         private const val FIELD_READY_TO_VOTE_PHASE_INDEX = "listoParaVotarPhaseIndex"
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"
+        private const val FIELD_STARTUP_AUTO_DEADLINE = "inicioAutomaticoEpochMs"
         private const val ONLINE_ACTION_MAYOR_REVEAL = "revelar_alcalde"
         private const val ONLINE_ACTION_DESERTOR_TEAM = "elegir_bando"
         private const val ONLINE_ACTION_DESERTOR_RETHINK = "reconsiderar_bando"

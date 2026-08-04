@@ -2,6 +2,7 @@ package com.traidores.juego
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,12 +12,11 @@ class OnlineStartupGateTest {
     fun allPlayersLoadedAndReadCanStart() {
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,
-            clientStates = (0 until 5).map { state("p$it", roleRead = true) },
-            elapsedMs = 1_000L
+            clientStates = (0 until 5).map { state("p$it", roleRead = true) }
         )
 
         assertTrue(result.canStart)
-        assertFalse(result.canForce)
+        assertTrue(result.canArmAutoStart)
         assertEquals(5, result.loadedPlayers)
         assertEquals(5, result.readyPlayers)
     }
@@ -27,12 +27,11 @@ class OnlineStartupGateTest {
             expectedPlayers = 10,
             clientStates = (0 until 10).map {
                 state("p$it", visiblePlayers = 10, roleRead = true)
-            },
-            elapsedMs = 1_000L
+            }
         )
 
         assertTrue(result.canStart)
-        assertFalse(result.canForce)
+        assertTrue(result.canArmAutoStart)
         assertEquals(10, result.loadedPlayers)
         assertEquals(10, result.readyPlayers)
         assertEquals(0, result.missingPlayers)
@@ -42,12 +41,11 @@ class OnlineStartupGateTest {
     fun missingPlayerBlocksStart() {
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,
-            clientStates = (0 until 4).map { state("p$it", roleRead = true) },
-            elapsedMs = 1_000L
+            clientStates = (0 until 4).map { state("p$it", roleRead = true) }
         )
 
         assertFalse(result.canStart)
-        assertFalse(result.canForce)
+        assertFalse(result.canArmAutoStart)
         assertEquals(1, result.missingPlayers)
     }
 
@@ -58,11 +56,11 @@ class OnlineStartupGateTest {
 
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,
-            clientStates = states,
-            elapsedMs = 1_000L
+            clientStates = states
         )
 
         assertFalse(result.canStart)
+        assertFalse(result.canArmAutoStart)
         assertEquals(1, result.mismatchedPlayers)
         assertEquals("Sincronizando cartas...", result.waitingMessage)
     }
@@ -74,26 +72,31 @@ class OnlineStartupGateTest {
 
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,
-            clientStates = states,
-            elapsedMs = 1_000L
+            clientStates = states
         )
 
         assertFalse(result.canStart)
+        assertTrue(result.canArmAutoStart)
         assertEquals(5, result.loadedPlayers)
         assertEquals(4, result.readyPlayers)
         assertEquals("Esperando lectura de roles...", result.waitingMessage)
     }
 
     @Test
-    fun hostCanForceAfterTimeout() {
-        val result = OnlineStartupGate.evaluate(
-            expectedPlayers = 5,
-            clientStates = listOf(state("host", roleRead = true)),
-            elapsedMs = OnlineStartupGate.STARTUP_FORCE_AFTER_MS
-        )
+    fun sharedDeadlineExpiresAfterFifteenSeconds() {
+        val deadline = 30_000L
 
-        assertFalse(result.canStart)
-        assertTrue(result.canForce)
+        assertEquals(15_000L, OnlineStartupGate.AUTO_START_AFTER_MS)
+        assertEquals(1_000L, OnlineStartupGate.remainingAutoStartMillis(deadline, 29_000L))
+        assertFalse(OnlineStartupGate.shouldAutoStart(deadline, 29_999L))
+        assertTrue(OnlineStartupGate.shouldAutoStart(deadline, 30_000L))
+        assertEquals(0L, OnlineStartupGate.remainingAutoStartMillis(deadline, 31_000L))
+    }
+
+    @Test
+    fun missingDeadlineDoesNotAccidentallyStart() {
+        assertNull(OnlineStartupGate.remainingAutoStartMillis(0L, 30_000L))
+        assertFalse(OnlineStartupGate.shouldAutoStart(0L, 30_000L))
     }
 
     @Test
@@ -103,8 +106,7 @@ class OnlineStartupGateTest {
             clientStates = listOf(
                 state("host", roleRead = true),
                 state("night", phase = GamePhase.NOCHE_ASESINO.name, phaseIndex = 1, roleRead = true)
-            ),
-            elapsedMs = 1_000L
+            )
         )
 
         assertFalse(result.canStart)

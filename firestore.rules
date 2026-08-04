@@ -216,13 +216,6 @@ service cloud.firestore {
         && value.matches('^(Forastero|Mala Onda|Aguafiestas|Chamuyero|Careta|Mufa|Perejil|Metepatas|Don Nadie|El Colado|Sospechoso|Rezongón) [0-9]{4}$');
     }
 
-    // Sala que el anfitrion cerro a cuentas registradas. Solo se consulta cuando quien escribe
-    // es invitado, asi que una cuenta no paga nunca esta lectura.
-    function roomIsAccountsOnly(partidaId) {
-      return get(/databases/$(database)/documents/partidas/$(partidaId))
-        .data.get('soloCuentas', false) == true;
-    }
-
     // Todo lo que un invitado puede mostrarle al resto de la mesa. Los avatares, banners y
     // roles favoritos salen de catalogos cerrados, asi que el unico texto libre que quedaba
     // era la frase: un invitado la publica vacia.
@@ -287,10 +280,6 @@ service cloud.firestore {
         && request.resource.data.hostVersion >= resource.data.hostVersion
         && request.resource.data.hostVersion <= resource.data.hostVersion + 1
         && request.resource.data.modoPrueba == resource.data.modoPrueba
-        // `soloCuentas` se fija al crear y no se mueve mas: prenderlo con gente adentro dejaria
-        // a un invitado que ya estaba jugando en una sala donde cada escritura suya se rechaza.
-        && request.resource.data.get('soloCuentas', false)
-          == resource.data.get('soloCuentas', false)
         // Publica/privada se decide al crear. Cambiarla en caliente haria que el navegador
         // y el codigo compartido discrepen sobre quien puede descubrir la sala.
         && request.resource.data.get('visibilidad', 'publica')
@@ -571,13 +560,9 @@ service cloud.firestore {
 
         // Los dos chequeos de baneo miran a `request.auth.uid`, o sea a quien escribe: el
         // anfitrion sigue pudiendo editar el documento del jugador que acaba de banear.
-        // Alcanza con cerrar el alta: `soloCuentas` se fija al crear la sala, asi que un
-        // invitado nunca llega a tener documento adentro de una sala cerrada y no hace falta
-        // pagar la lectura en cada update.
         allow create: if isSelf(uidTemporal)
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
-          && (isRegistered() || !roomIsAccountsOnly(partidaId))
           && validPlayerDocument(request.resource.data, uidTemporal);
 
         allow update: if (isSelf(uidTemporal)

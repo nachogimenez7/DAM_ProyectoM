@@ -13,6 +13,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.app.AlertDialog
@@ -137,7 +138,6 @@ class OnlineModeActivity : BaseActivity() {
     private fun showCreateRoomDialog() {
         var expectedPlayers = OnlineRoomFirestore.DEFAULT_EXPECTED_PLAYERS
         var modePrueba = false
-        var accountsOnly = false
         var roomVisibility = OnlineRoomFirestore.VISIBILITY_PUBLIC
         val preferences = getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE)
         var selectedMap = OnlineRoomFirestore.selectedMapFromKey(
@@ -170,7 +170,7 @@ class OnlineModeActivity : BaseActivity() {
         val countLabel = TextView(this).apply {
             text = "$expectedPlayers JUGADORES"
             setTextColor(resources.getColor(R.color.accent_gold, theme))
-            textSize = 24f
+            textSize = 22f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -185,48 +185,80 @@ class OnlineModeActivity : BaseActivity() {
         selectorRow.addView(minus, LinearLayout.LayoutParams(dp(56), dp(44)))
         selectorRow.addView(
             countLabel,
-            LinearLayout.LayoutParams(dp(176), dp(44)).apply {
+            LinearLayout.LayoutParams(0, dp(44), 1f).apply {
                 leftMargin = dp(10)
                 rightMargin = dp(10)
             }
         )
         selectorRow.addView(plus, LinearLayout.LayoutParams(dp(56), dp(44)))
-        content.addView(selectorRow)
+        content.addView(
+            selectorRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        content.addView(TextView(this).apply {
+            text = "NOMBRE DE LA SALA"
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(5))
+        })
+        val roomNameInput = EditText(this).apply {
+            setSingleLine(true)
+            gravity = Gravity.CENTER
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            filters = arrayOf(InputFilter.LengthFilter(OnlineRoomFirestore.MAX_ROOM_NAME_LENGTH))
+            hint = "Ej.: Los futboleros"
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            setHintTextColor(resources.getColor(R.color.text_muted, theme))
+            textSize = 16f
+            setPadding(dp(12), 0, dp(12), 0)
+            setBackgroundResource(R.drawable.bg_btn_dark)
+        }
+        content.addView(
+            roomNameInput,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(46)
+            ).apply { bottomMargin = dp(12) }
+        )
 
         val testModeSwitch = SwitchCompat(this).apply {
             applyTraidoresSwitchStyle()
-            text = "SALA DE PRUEBA (POCOS JUGADORES)"
             isChecked = modePrueba
-            setTextColor(resources.getColor(R.color.text_primary, theme))
-            textSize = 14f
-            setPadding(dp(4), dp(16), dp(4), 0)
+            text = ""
+            contentDescription = "Activar sala de prueba"
         }
-        content.addView(testModeSwitch)
+        val testModeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(14), dp(4), 0)
+            addView(TextView(this@OnlineModeActivity).apply {
+                text = "SALA DE PRUEBA"
+                setTextColor(resources.getColor(R.color.text_primary, theme))
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(testModeSwitch)
+        }
+        content.addView(
+            testModeRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
         content.addView(TextView(this).apply {
-            text = "Solo para testeo: permite bajar el minimo a 3 jugadores."
+            text = "Permite iniciar con 3 o 4 jugadores para hacer pruebas. Una partida normal requiere al menos 5."
             setTextColor(resources.getColor(R.color.text_secondary, theme))
             textSize = 12f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(4))
+            setPadding(0, dp(3), 0, dp(4))
         })
-
-        val accountsOnlySwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = getString(R.string.online_room_accounts_only)
-            isChecked = accountsOnly
-            setTextColor(resources.getColor(R.color.text_primary, theme))
-            textSize = 14f
-            setPadding(dp(4), dp(12), dp(4), 0)
-        }
-        content.addView(accountsOnlySwitch)
-        content.addView(TextView(this).apply {
-            text = getString(R.string.online_room_accounts_only_hint)
-            setTextColor(resources.getColor(R.color.text_secondary, theme))
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(4))
-        })
-        accountsOnlySwitch.setOnCheckedChangeListener { _, checked -> accountsOnly = checked }
 
         content.addView(TextView(this).apply {
             text = "VISIBILIDAD"
@@ -270,9 +302,15 @@ class OnlineModeActivity : BaseActivity() {
             )
         }
         refreshVisibilityButtons()
-        content.addView(visibilityRow)
+        content.addView(
+            visibilityRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
         content.addView(TextView(this).apply {
-            text = "Pública: aparece en Buscar partida. Privada: entran únicamente con el código."
+            text = "Pública: aparece en Buscar partida. Privada: no aparece en la lista y se entra con el código."
             setTextColor(resources.getColor(R.color.text_secondary, theme))
             textSize = 12f
             gravity = Gravity.CENTER
@@ -319,7 +357,13 @@ class OnlineModeActivity : BaseActivity() {
             )
         }
         refreshMapButtons()
-        content.addView(mapRow)
+        content.addView(
+            mapRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         fun refreshCount() {
             countLabel.text = "$expectedPlayers JUGADORES"
@@ -361,16 +405,26 @@ class OnlineModeActivity : BaseActivity() {
         val createButton = dialogButton("CREAR", gold = true)
         buttonRow.addView(
             cancelButton,
-            LinearLayout.LayoutParams(dp(138), dp(44)).apply { rightMargin = dp(10) }
+            LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(5) }
         )
         buttonRow.addView(
             createButton,
-            LinearLayout.LayoutParams(dp(138), dp(44)).apply { leftMargin = dp(10) }
+            LinearLayout.LayoutParams(0, dp(44), 1f).apply { leftMargin = dp(5) }
         )
-        content.addView(buttonRow)
+        content.addView(
+            buttonRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
+        val scrollContent = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
         val dialog = AlertDialog.Builder(this)
-            .setView(content)
+            .setView(scrollContent)
             .create()
         cancelButton.setOnClickListener { dialog.dismiss() }
         createButton.setOnClickListener {
@@ -382,7 +436,7 @@ class OnlineModeActivity : BaseActivity() {
                 expectedPlayers,
                 selectedMap,
                 modePrueba,
-                accountsOnly,
+                roomNameInput.text.toString(),
                 roomVisibility
             )
         }
@@ -403,7 +457,7 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
-        accountsOnly: Boolean,
+        requestedRoomName: String,
         roomVisibility: String
     ) {
         btnCreate.isEnabled = false
@@ -418,7 +472,7 @@ class OnlineModeActivity : BaseActivity() {
                             expectedPlayers,
                             selectedMap,
                             modePrueba,
-                            accountsOnly,
+                            requestedRoomName,
                             roomVisibility,
                             publicId
                         )
@@ -444,7 +498,7 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
-        accountsOnly: Boolean,
+        requestedRoomName: String,
         roomVisibility: String,
         publicId: String
     ) {
@@ -452,7 +506,7 @@ class OnlineModeActivity : BaseActivity() {
             expectedPlayers,
             selectedMap,
             modePrueba,
-            accountsOnly,
+            requestedRoomName,
             roomVisibility,
             publicId,
             remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
@@ -463,7 +517,7 @@ class OnlineModeActivity : BaseActivity() {
         expectedPlayers: Int,
         selectedMap: GameMap,
         modePrueba: Boolean,
-        accountsOnly: Boolean,
+        requestedRoomName: String,
         roomVisibility: String,
         publicId: String,
         remainingCodeAttempts: Int
@@ -491,7 +545,7 @@ class OnlineModeActivity : BaseActivity() {
                             expectedPlayers = expectedPlayers,
                             selectedMap = selectedMap,
                             modePrueba = modePrueba,
-                            accountsOnly = accountsOnly,
+                            requestedRoomName = requestedRoomName,
                             roomVisibility = roomVisibility,
                             publicId = publicId,
                             remainingCodeAttempts = remainingCodeAttempts - 1
@@ -510,7 +564,7 @@ class OnlineModeActivity : BaseActivity() {
                 commitOnlineRoomCreation(
                     expectedPlayers = expectedPlayers,
                     modePrueba = modePrueba,
-                    accountsOnly = accountsOnly,
+                    requestedRoomName = requestedRoomName,
                     roomVisibility = roomVisibility,
                     publicId = publicId,
                     playerName = playerName,
@@ -534,7 +588,7 @@ class OnlineModeActivity : BaseActivity() {
     private fun commitOnlineRoomCreation(
         expectedPlayers: Int,
         modePrueba: Boolean,
-        accountsOnly: Boolean,
+        requestedRoomName: String,
         roomVisibility: String,
         publicId: String,
         playerName: String,
@@ -552,7 +606,7 @@ class OnlineModeActivity : BaseActivity() {
             origin = "android-online-create",
             expectedPlayers = expectedPlayers,
             modePrueba = modePrueba,
-            accountsOnly = accountsOnly,
+            requestedRoomName = requestedRoomName,
             visibility = roomVisibility,
             roomCode = roomCode
         )
@@ -1069,15 +1123,6 @@ class OnlineModeActivity : BaseActivity() {
             if (freshRoom.getString(OnlineRoomFirestore.FIELD_STATE) != OnlineRoomFirestore.STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta disponible.")
             }
-            // Las reglas lo rechazan igual; esto existe para que el mensaje diga el motivo real
-            // en vez de un error de permisos.
-            if (
-                freshRoom.getBoolean(OnlineRoomFirestore.FIELD_ACCOUNTS_ONLY) == true &&
-                GuestIdentity.isGuest()
-            ) {
-                throw IllegalStateException(getString(R.string.online_room_accounts_only_blocked))
-            }
-
             val playerSnapshot = transaction.get(playerReference)
             val alreadyJoined = playerSnapshot.exists()
             val wasActive = playerSnapshot.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false
@@ -1090,7 +1135,8 @@ class OnlineModeActivity : BaseActivity() {
                 throw IllegalStateException("La sala esta llena.")
             }
 
-            val connectedData = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName) + mapOf(
+            val profileCreateData = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName)
+            val connectionData = mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "listo" to false,
@@ -1100,10 +1146,15 @@ class OnlineModeActivity : BaseActivity() {
                 OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
             )
             if (alreadyJoined) {
+                val connectedUpdateData = PlayerPublicIdentity.publicProfileUpdateFields(
+                    this,
+                    publicId,
+                    playerName
+                ) + connectionData
                 val reactivatedData = if (wasActive) {
-                    connectedData
+                    connectedUpdateData
                 } else {
-                    connectedData + mapOf(
+                    connectedUpdateData + mapOf(
                         OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
                         OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
                     )
@@ -1119,7 +1170,7 @@ class OnlineModeActivity : BaseActivity() {
             } else {
                 transaction.set(
                     playerReference,
-                    connectedData + mapOf(
+                    profileCreateData + connectionData + mapOf(
                         OnlineRoomFirestore.FIELD_IS_HOST to false,
                         OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
                         OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()

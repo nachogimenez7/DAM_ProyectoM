@@ -11,6 +11,10 @@ object OnlineAuthoritativeStateMapper {
         return (state["limiteFaseEpochMs"] as? Number)?.toLong() ?: 0L
     }
 
+    fun startupDeadlineFromState(state: Map<String, Any?>): Long {
+        return (state["inicioAutomaticoEpochMs"] as? Number)?.toLong() ?: 0L
+    }
+
     fun phaseDeadlineIndexFromState(state: Map<String, Any?>): Int {
         return (state["limiteFasePhaseIndex"] as? Number)?.toInt() ?: -1
     }
@@ -60,6 +64,7 @@ object OnlineAuthoritativeStateMapper {
         return players.mapIndexed { index, player ->
             val playerState = playerStates[index] ?: return@mapIndexed player
             player.copy(
+                role = roleFromState(playerState) ?: player.role,
                 alive = (playerState["vivo"] as? Boolean) ?: player.alive,
                 muted = (playerState["muteado"] as? Boolean) ?: player.muted,
                 lastSilencedRound = (playerState["ultimaRondaSilenciado"] as? Number)?.toInt(),
@@ -73,6 +78,17 @@ object OnlineAuthoritativeStateMapper {
                 )
             )
         }
+    }
+
+    private fun roleFromState(state: Map<*, *>): GameRole? {
+        val key = (state["rolKey"] as? String).orEmpty()
+        if (key.isBlank()) return null
+        return GameRole(
+            key = key,
+            name = (state["rolNombre"] as? String).orEmpty().ifBlank { key },
+            team = (state["rolEquipo"] as? String).orEmpty(),
+            imageResName = (state["rolImagen"] as? String).orEmpty()
+        )
     }
 
     private fun deathCauseFromState(value: Any?, fallback: DeathCause): DeathCause {

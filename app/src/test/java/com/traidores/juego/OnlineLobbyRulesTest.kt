@@ -42,6 +42,20 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
+    fun browserCountsConnectedPlayersInsteadOfTrustingStoredOccupancy() {
+        assertEquals(
+            4,
+            OnlineLobbyRules.connectedPresenceCount(
+                listOf("conectado", "conectado", "desconectado", "conectado", "conectado")
+            )
+        )
+        assertEquals(
+            0,
+            OnlineLobbyRules.connectedPresenceCount(listOf("desconectado", null))
+        )
+    }
+
+    @Test
     fun activePlayersExcludeReleasedDisconnectedSlots() {
         val players = listOf(
             participant("host", connected = true, ready = true, active = true, order = 0),
@@ -61,6 +75,40 @@ class OnlineLobbyRulesTest {
         )
 
         assertEquals(listOf("gone"), OnlineLobbyRules.releasableDisconnectedPlayers(players).map { it.id })
+    }
+
+    @Test
+    fun currentHostCannotReleaseItsOwnSlotWhenPresenceIsTemporarilyStale() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("gone", connected = false, ready = false, active = true, order = 1)
+        )
+
+        assertEquals(
+            listOf("gone"),
+            OnlineLobbyRules.releasableDisconnectedPlayers(
+                players,
+                protectedPlayerIds = setOf("host")
+            ).map { it.id }
+        )
+    }
+
+    @Test
+    fun normalWinnerReturnDoesNotPublishAnIntermediateDisconnect() {
+        assertFalse(
+            OnlineLobbyRules.shouldMarkGameplayDisconnected(
+                isOnlineGameplay = true,
+                isChangingConfigurations = false,
+                returningToLobby = true
+            )
+        )
+        assertTrue(
+            OnlineLobbyRules.shouldMarkGameplayDisconnected(
+                isOnlineGameplay = true,
+                isChangingConfigurations = false,
+                returningToLobby = false
+            )
+        )
     }
 
     @Test

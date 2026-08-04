@@ -51,6 +51,7 @@
     <string name="lobby_start_with_present">JUGAR CON %1$d PRESENTES</string>
     <string name="lobby_start_waiting">ESPERANDO %1$d/%2$d</string>
     <string name="lobby_start_syncing">SINCRONIZANDO</string>
+    <string name="lobby_start_verify_ready">VERIFICAR LISTOS</string>
     <string name="lobby_start_not_ready">NO LISTO</string>
     <string name="lobby_start_host_ready">LISTO HOST</string>
     <string name="lobby_start_ready">LISTO</string>
@@ -71,9 +72,6 @@
     <string name="profile_account_guest">Jugás como invitado. Con una cuenta elegís tu nombre, personalizás el perfil y tenés tu número.</string>
     <string name="online_guest_cannot_create">Crear salas es para cuentas. Como invitado podés buscar salas y entrar por código.</string>
     <string name="online_guest_create_cta">Creá tu cuenta para armar tus propias salas y ser el anfitrión.</string>
-    <string name="online_room_accounts_only">SOLO CUENTAS REGISTRADAS</string>
-    <string name="online_room_accounts_only_hint">Los invitados no pueden entrar. Sirve para que una expulsión valga: un invitado vuelve con otra identidad, una cuenta no.</string>
-    <string name="online_room_accounts_only_blocked">Esta sala es solo para cuentas registradas. Creá la tuya y volvé a intentar.</string>
     <string name="profile_account_linked">Cuenta: %1$s</string>
     <string name="profile_account_play_games">Cuenta vinculada con Google Play Games.</string>
     <string name="profile_account_action">CREAR CUENTA O ENTRAR</string>

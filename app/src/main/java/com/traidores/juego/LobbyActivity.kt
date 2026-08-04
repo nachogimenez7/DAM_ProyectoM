@@ -32,6 +32,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.google.firebase.database.FirebaseDatabase
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import java.util.UUID
@@ -126,11 +127,16 @@ class LobbyActivity : BaseActivity() {
     private var ownRoomBanListener: ListenerRegistration? = null
     private var leavingOnlineLobby = false
     private var enteringOnlineMatch = false
+    private var returnedFromOnlineMatch = false
+    private var onlineRematchReactivationInProgress = false
+    private var onlineRematchReactivationCompleted = false
     private var onlineHostHandoffInProgress = false
     private var onlineHostHandoffCheckScheduled = false
     private var onlineRematchResetInProgress = false
     private var onlineCleanupInProgress = false
     private var onlineExpectedUpdateInProgress = false
+    private var onlinePlayersServerRefreshInProgress = false
+    private var onlineExitInProgress = false
     private var pendingExpectedPlayersForStart: Int? = null
     private var roomListener: ListenerRegistration? = null
     private var playersListener: ListenerRegistration? = null
@@ -157,6 +163,9 @@ class LobbyActivity : BaseActivity() {
     private val onlineEntryReleaseTimeoutRunnable = Runnable {
         onlineEntryReleaseTimeoutScheduled = false
         maybeReleaseOnlineMatchEntry(force = true)
+    }
+    private val readyReconcileRunnable = Runnable {
+        refreshOnlinePlayersFromServer("ready_settled")
     }
 
     private val practiceRoles = listOf(
@@ -363,6 +372,10 @@ class LobbyActivity : BaseActivity() {
     override fun onStart() {
         super.onStart()
         if (isFirestoreOnlineLobby()) {
+            if (enteringOnlineMatch) {
+                returnedFromOnlineMatch = true
+                onlineRematchReactivationCompleted = false
+            }
             enteringOnlineMatch = false
             lobbyRealtimeAccessReady = false
             startRealtimePresence()
@@ -392,6 +405,7 @@ class LobbyActivity : BaseActivity() {
         lobbyChatController?.stop()
         if (::startButton.isInitialized) {
             startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
+            startButton.removeCallbacks(readyReconcileRunnable)
             onlineEntryAckRunnable?.let(startButton::removeCallbacks)
             onlineMatchEntryRetryRunnable?.let(startButton::removeCallbacks)
         }
@@ -1044,11 +1058,12 @@ class LobbyActivity : BaseActivity() {
             FIELD_NAME to onlinePlayerName,
             FIELD_PLAYER_STATE to state,
             "uidTemporal" to onlineTempUid,
-            OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to !currentlyReleased,
             OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
             OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
         )
-        playerData.putAll(PlayerPublicIdentity.publicProfileFields(this, publicId, onlinePlayerName))
+        playerData.putAll(
+            PlayerPublicIdentity.publicProfileUpdateFields(this, publicId, onlinePlayerName)
+        )
         if (currentlyReleased) {
             playerData[FIELD_PLAYER_READY] = false
         }
@@ -1168,11 +1183,16 @@ class LobbyActivity : BaseActivity() {
             return
         }
         if (onlineCleanupPending) {
+            if (startAfterSnapshot) renderStartButtonState()
             Toast.makeText(this, "Terminando de limpiar la partida anterior...", Toast.LENGTH_SHORT).show()
             return
         }
         onlineExpectedUpdateInProgress = true
-        if (startAfterSnapshot) pendingExpectedPlayersForStart = normalizedTarget
+        if (startAfterSnapshot) {
+            pendingExpectedPlayersForStart = normalizedTarget
+            startButton.isEnabled = false
+            startButton.text = "AJUSTANDO..."
+        }
         renderOnlinePlayerTargetControls()
         val roomReference = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
@@ -1194,6 +1214,7 @@ class LobbyActivity : BaseActivity() {
             onlineExpectedUpdateInProgress = false
             pendingExpectedPlayersForStart = null
             renderOnlinePlayerTargetControls()
+            renderStartButtonState()
             OnlineDebugLog.e("lobby_expected_players_update_failure roomId=$onlinePartidaId", error)
             Toast.makeText(
                 this,
@@ -1204,18 +1225,53 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun playOnlineWithPresentPlayers() {
-        val players = activeOnlinePlayers()
-        val minimum = minimumOnlinePlayerLimit()
-        if (players.size < minimum) {
-            Toast.makeText(this, "Faltan jugadores para el minimo de $minimum.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val unavailable = players.count { !isOnlinePlayerConnected(it) || !it.ready }
-        if (unavailable > 0) {
-            Toast.makeText(this, "Todavia faltan $unavailable jugador(es) listos.", Toast.LENGTH_SHORT).show()
-            return
-        }
-        updateOnlineExpectedPlayers(players.size, startAfterSnapshot = true)
+        if (!currentUserIsOnlineHost()) return
+        startButton.isEnabled = false
+        startButton.text = "VERIFICANDO..."
+        refreshOnlinePlayersFromServer(
+            reason = "play_with_present",
+            onFailure = failure@{ error ->
+                if (isFinishing || isDestroyed) return@failure
+                startButton.isEnabled = true
+                renderStartButtonState()
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo verificar a los jugadores", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            },
+            onComplete = complete@{ serverPlayers ->
+                if (!currentUserIsOnlineHost() || isFinishing || isDestroyed) return@complete
+                val players = serverPlayers.filter { it.activeInMatch }
+                val minimum = minimumOnlinePlayerLimit()
+                if (players.size < minimum) {
+                    startButton.isEnabled = true
+                    renderStartButtonState()
+                    Toast.makeText(
+                        this,
+                        "Faltan jugadores para el minimo de $minimum.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@complete
+                }
+                val unavailable = players.count { !isOnlinePlayerConnected(it) || !it.ready }
+                if (unavailable > 0) {
+                    startButton.isEnabled = true
+                    renderStartButtonState()
+                    Toast.makeText(
+                        this,
+                        "Todavia faltan $unavailable jugador(es) listos.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@complete
+                }
+                if (players.size == onlineExpectedPlayers) {
+                    startOnlineRoomTransaction(hostTieBreakChoice = null, serverPlayersAtStart = players)
+                } else {
+                    updateOnlineExpectedPlayers(players.size, startAfterSnapshot = true)
+                }
+            }
+        )
     }
 
     private fun releaseDisconnectedOnlinePlayers() {
@@ -1457,10 +1513,73 @@ class LobbyActivity : BaseActivity() {
         ) {
             if (isHost && handoffCandidate != null) {
                 transferLobbyHostAndExit(handoffCandidate)
-            } else {
+            } else if (isHost) {
                 leavingOnlineLobby = true
                 finish()
+            } else {
+                releaseOwnOnlineSlotAndExit()
             }
+        }
+    }
+
+    private fun releaseOwnOnlineSlotAndExit() {
+        if (onlineExitInProgress || onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        onlineExitInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(onlineTempUid)
+        OnlineDebugLog.i(
+            "lobby_self_release_requested roomId=$onlinePartidaId uid=$onlineTempUid"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            val player = transaction.get(playerReference)
+            if (!room.exists() || !player.exists()) return@runTransaction false
+            if (player.getBoolean(FIELD_ACTIVE_IN_MATCH) == false) return@runTransaction false
+
+            transaction.update(
+                playerReference,
+                mapOf(
+                    FIELD_ACTIVE_IN_MATCH to false,
+                    FIELD_PLAYER_READY to false,
+                    FIELD_PLAYER_STATE to PLAYER_STATE_DISCONNECTED,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                )
+            )
+            if (room.getString(FIELD_STATE) == ONLINE_ROOM_STATE_WAITING) {
+                val currentPlayers = room.getLong(OnlineRoomFirestore.FIELD_CURRENT_PLAYERS) ?: 1L
+                transaction.update(
+                    roomReference,
+                    mapOf(
+                        OnlineRoomFirestore.FIELD_CURRENT_PLAYERS to
+                            (currentPlayers - 1L).coerceAtLeast(0L),
+                        OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                    )
+                )
+            }
+            true
+        }.addOnSuccessListener { released ->
+            onlineExitInProgress = false
+            onlineRemovalHandled = true
+            leavingOnlineLobby = true
+            realtimePresence?.setConnected(false)
+            OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+            OnlineDebugLog.i(
+                "lobby_self_release_success roomId=$onlinePartidaId uid=$onlineTempUid released=$released"
+            )
+            finish()
+        }.addOnFailureListener { error ->
+            onlineExitInProgress = false
+            OnlineDebugLog.e(
+                "lobby_self_release_failure roomId=$onlinePartidaId uid=$onlineTempUid",
+                error
+            )
+            Toast.makeText(
+                this,
+                OnlineErrorMessages.forAction("No se pudo salir de la sala", error),
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -1471,7 +1590,7 @@ class LobbyActivity : BaseActivity() {
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
             .collection(ONLINE_PLAYERS_COLLECTION)
-            .addSnapshotListener { snapshot, error ->
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) {
                     OnlineDebugLog.e("lobby_players_listen_failure roomId=$onlinePartidaId", error)
                     Toast.makeText(
@@ -1489,37 +1608,188 @@ class LobbyActivity : BaseActivity() {
                             .thenBy { it.id }
                     )
                     .orEmpty()
-                trackLobbyPlayerNotices(onlinePlayers, updatedPlayers)
-                onlinePlayers = updatedPlayers
-                if (onlinePlayers.firstOrNull { it.id == onlineTempUid }?.activeInMatch == false) {
-                    handleRemovedFromOnlineLobby()
-                    return@addSnapshotListener
-                }
-                OnlineDebugLog.i(
-                    "lobby_players_snapshot roomId=$onlinePartidaId players=${onlinePlayers.size} active=${activeOnlinePlayers().size} connected=${activeOnlinePlayers().count(::isOnlinePlayerConnected)}"
+                applyOnlinePlayersSnapshot(
+                    updatedPlayers = updatedPlayers,
+                    source = if (snapshot?.metadata?.isFromCache == true) "cache" else "listener_server",
+                    pendingWrites = snapshot?.metadata?.hasPendingWrites() == true
                 )
-                val visiblePlayers = activeOnlinePlayers()
-                session = PlayerProfileStore.withProfiles(this, session.copy(
-                    players = visiblePlayers.map { player ->
-                        GamePlayer(
-                            name = player.name,
-                            initial = player.initial,
-                            isHuman = player.id == onlineTempUid,
-                            control = if (player.id == onlineTempUid) {
-                                PlayerControl.LOCAL
-                            } else {
-                                PlayerControl.REMOTE
-                            }
-                        )
-                    },
-                    playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
-                ))
-                coordinateOnlineMatchEntry()
-                maybeClaimOnlineLobbyHostHandoff()
-                maybeResetFinishedOnlineRoomForRematch()
-                maybeContinuePendingOnlineCleanup()
-                renderLobby()
             }
+    }
+
+    private fun applyOnlinePlayersSnapshot(
+        updatedPlayers: List<OnlineLobbyPlayer>,
+        source: String,
+        pendingWrites: Boolean
+    ) {
+        if (!isFirestoreOnlineLobby() || isFinishing || isDestroyed) return
+        trackLobbyPlayerNotices(onlinePlayers, updatedPlayers)
+        onlinePlayers = updatedPlayers
+        val ownPlayer = onlinePlayers.firstOrNull { it.id == onlineTempUid }
+        if (ownPlayer?.activeInMatch == false) {
+            if (onlineExitInProgress || leavingOnlineLobby) return
+            val canRepairOwnSlot = returnedFromOnlineMatch ||
+                onlineHostId == onlineTempUid ||
+                (onlineHostId.isBlank() && lobbyMode == MODE_ONLINE_CREATE)
+            if (canRepairOwnSlot && !onlineRematchReactivationCompleted) {
+                reactivateOwnOnlineSlot()
+            } else {
+                handleRemovedFromOnlineLobby()
+            }
+            return
+        } else if (returnedFromOnlineMatch && ownPlayer?.activeInMatch == true) {
+            onlineRematchReactivationCompleted = true
+            returnedFromOnlineMatch = false
+        }
+        val visiblePlayers = activeOnlinePlayers()
+        OnlineDebugLog.i(
+            "lobby_players_snapshot roomId=$onlinePartidaId source=$source pending=$pendingWrites players=${onlinePlayers.size} active=${visiblePlayers.size} connected=${visiblePlayers.count(::isOnlinePlayerConnected)} ready=${visiblePlayers.count { it.ready }}"
+        )
+        session = PlayerProfileStore.withProfiles(this, session.copy(
+            players = visiblePlayers.map { player ->
+                GamePlayer(
+                    name = player.name,
+                    initial = player.initial,
+                    isHuman = player.id == onlineTempUid,
+                    control = if (player.id == onlineTempUid) {
+                        PlayerControl.LOCAL
+                    } else {
+                        PlayerControl.REMOTE
+                    }
+                )
+            },
+            playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
+        ))
+        coordinateOnlineMatchEntry()
+        maybeClaimOnlineLobbyHostHandoff()
+        maybeResetFinishedOnlineRoomForRematch()
+        maybeContinuePendingOnlineCleanup()
+        renderLobby()
+    }
+
+    private fun scheduleOnlinePlayersServerReconciliation() {
+        if (!::startButton.isInitialized) return
+        startButton.removeCallbacks(readyReconcileRunnable)
+        startButton.postDelayed(readyReconcileRunnable, READY_RECONCILE_DELAY_MS)
+    }
+
+    private fun refreshOnlinePlayersFromServer(
+        reason: String,
+        onFailure: ((Exception) -> Unit)? = null,
+        onComplete: ((List<OnlineLobbyPlayer>) -> Unit)? = null
+    ) {
+        if (onlinePlayersServerRefreshInProgress) {
+            if (onComplete != null && ::startButton.isInitialized) {
+                startButton.postDelayed(
+                    { refreshOnlinePlayersFromServer(reason, onFailure, onComplete) },
+                    PLAYERS_REFRESH_RETRY_MS
+                )
+            }
+            return
+        }
+        if (onlinePartidaId.isBlank() || isFinishing || isDestroyed) {
+            onFailure?.invoke(IllegalStateException("La sala ya no esta disponible."))
+            return
+        }
+        onlinePlayersServerRefreshInProgress = true
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(ONLINE_PLAYERS_COLLECTION)
+            .get(Source.SERVER)
+            .addOnSuccessListener { snapshot ->
+                onlinePlayersServerRefreshInProgress = false
+                val serverPlayers = snapshot.documents
+                    .mapNotNull(::parseOnlinePlayer)
+                    .sortedWith(
+                        compareBy<OnlineLobbyPlayer> { it.order }
+                            .thenBy { it.name.lowercase() }
+                            .thenBy { it.id }
+                    )
+                applyOnlinePlayersSnapshot(
+                    updatedPlayers = serverPlayers,
+                    source = "server_$reason",
+                    pendingWrites = false
+                )
+                onComplete?.invoke(serverPlayers)
+            }
+            .addOnFailureListener { error ->
+                onlinePlayersServerRefreshInProgress = false
+                OnlineDebugLog.e(
+                    "lobby_players_server_refresh_failure roomId=$onlinePartidaId reason=$reason",
+                    error
+                )
+                onFailure?.invoke(error)
+            }
+    }
+
+    private fun reactivateOwnOnlineSlot() {
+        if (onlineRematchReactivationInProgress || onlineRematchReactivationCompleted) return
+        onlineRematchReactivationInProgress = true
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val playerReference = roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(onlineTempUid)
+        OnlineDebugLog.w(
+            "rematch_self_reactivation_requested roomId=$onlinePartidaId uid=$onlineTempUid"
+        )
+        firestore.runTransaction { transaction ->
+            val room = transaction.get(roomReference)
+            val player = transaction.get(playerReference)
+            if (!room.exists() || !player.exists()) {
+                throw IllegalStateException("La sala o el jugador ya no existen.")
+            }
+            if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+                throw IllegalStateException("La sala todavía no está preparada para la revancha.")
+            }
+            if (player.getBoolean(FIELD_ACTIVE_IN_MATCH) != false) {
+                return@runTransaction false
+            }
+            val currentPlayers = room.getLong(OnlineRoomFirestore.FIELD_CURRENT_PLAYERS) ?: 0L
+            val limit = room.getLong(FIELD_EXPECTED_PLAYERS)
+                ?: room.getLong(FIELD_MAX_PLAYERS)
+                ?: OnlineRoomFirestore.DEFAULT_MAX_PLAYERS.toLong()
+            if (currentPlayers >= limit) {
+                throw IllegalStateException("La sala volvió a llenarse.")
+            }
+            transaction.update(
+                playerReference,
+                PlayerPublicIdentity.publicProfileUpdateFields(
+                    this,
+                    PlayerPublicIdentity.currentPublicId(this),
+                    onlinePlayerName
+                ) + mapOf(
+                    FIELD_NAME to onlinePlayerName,
+                    FIELD_PLAYER_STATE to PLAYER_STATE_CONNECTED,
+                    FIELD_PLAYER_READY to false,
+                    OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH to true,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                )
+            )
+            transaction.update(
+                roomReference,
+                mapOf(
+                    OnlineRoomFirestore.FIELD_CURRENT_PLAYERS to FieldValue.increment(1),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            true
+        }.addOnSuccessListener { reactivated ->
+            onlineRematchReactivationInProgress = false
+            onlineRematchReactivationCompleted = true
+            returnedFromOnlineMatch = false
+            if (reactivated == true) {
+                OnlineDebugLog.i(
+                    "rematch_self_reactivation_success roomId=$onlinePartidaId uid=$onlineTempUid"
+                )
+            }
+        }.addOnFailureListener { error ->
+            onlineRematchReactivationInProgress = false
+            OnlineDebugLog.e(
+                "rematch_self_reactivation_failure roomId=$onlinePartidaId uid=$onlineTempUid",
+                error
+            )
+            handleRemovedFromOnlineLobby()
+        }
     }
 
     private fun listenToOwnRoomBan() {
@@ -1788,7 +2058,13 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun releasableDisconnectedOnlinePlayers(): List<OnlineLobbyPlayer> {
-        val releasableIds = OnlineLobbyRules.releasableDisconnectedPlayers(onlineParticipants())
+        val protectedIds = setOf(onlineTempUid, onlineHostId, onlineActiveHostId)
+            .filter { it.isNotBlank() }
+            .toSet()
+        val releasableIds = OnlineLobbyRules.releasableDisconnectedPlayers(
+            onlineParticipants(),
+            protectedPlayerIds = protectedIds
+        )
             .map { it.id }
             .toSet()
         return onlinePlayers.filter { it.id in releasableIds }
@@ -2215,6 +2491,7 @@ class LobbyActivity : BaseActivity() {
                 onlineExpectedPlayers
             )
             OnlineLobbyStartCopy.SYNCING -> getString(R.string.lobby_start_syncing)
+            OnlineLobbyStartCopy.VERIFY_READY -> getString(R.string.lobby_start_verify_ready)
             OnlineLobbyStartCopy.NOT_READY -> getString(R.string.lobby_start_not_ready)
             OnlineLobbyStartCopy.HOST_READY -> getString(R.string.lobby_start_host_ready)
             OnlineLobbyStartCopy.READY -> getString(R.string.lobby_start_ready)
@@ -2248,7 +2525,11 @@ class LobbyActivity : BaseActivity() {
             activePlayers.size >= minimumOnlinePlayerLimit() &&
             activePlayers.size < onlineExpectedPlayers &&
             activePlayers.all { isOnlinePlayerConnected(it) && it.ready }
-        if (currentUserIsOnlineHost() && onlineRoomCanStart()) {
+        val currentPlayerReady = currentOnlinePlayer()?.ready == true
+        val hostShouldVerifyServerState = currentUserIsOnlineHost() &&
+            currentPlayerReady &&
+            activePlayers.size == onlineExpectedPlayers
+        if (currentUserIsOnlineHost() && (onlineRoomCanStart() || hostShouldVerifyServerState)) {
             startOnlineRoomForEveryone()
         } else if (canStartWithPresent) {
             playOnlineWithPresentPlayers()
@@ -2268,7 +2549,7 @@ class LobbyActivity : BaseActivity() {
             .collection(ONLINE_PLAYERS_COLLECTION)
             .document(onlineTempUid)
             .set(
-                PlayerPublicIdentity.publicProfileFields(this, publicId, onlinePlayerName) + mapOf(
+                PlayerPublicIdentity.publicProfileUpdateFields(this, publicId, onlinePlayerName) + mapOf(
                     FIELD_NAME to onlinePlayerName,
                     FIELD_PLAYER_STATE to PLAYER_STATE_CONNECTED,
                     FIELD_PLAYER_READY to nextReady,
@@ -2281,6 +2562,7 @@ class LobbyActivity : BaseActivity() {
             )
             .addOnSuccessListener {
                 OnlineDebugLog.i("ready_update_success roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
+                scheduleOnlinePlayersServerReconciliation()
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("ready_update_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
@@ -2297,12 +2579,8 @@ class LobbyActivity : BaseActivity() {
             Toast.makeText(this, "Solo el anfitrion puede iniciar.", Toast.LENGTH_SHORT).show()
             return
         }
-        val preflight = onlineStartPreflightMessage()
-        if (preflight != null) {
-            OnlineDebugLog.w(
-                "online_start_preflight_blocked roomId=$onlinePartidaId hostId=$onlineTempUid reason=$preflight players=${activeOnlinePlayers().size}/$onlineExpectedPlayers"
-            )
-            Toast.makeText(this, preflight, Toast.LENGTH_SHORT).show()
+        if (onlineRoomState != ONLINE_ROOM_STATE_WAITING || onlineCleanupPending) {
+            Toast.makeText(this, "La sala todavia no esta lista para iniciar.", Toast.LENGTH_SHORT).show()
             return
         }
         if (onlineInitialMatchCreated || onlineInitialMatch != null) {
@@ -2311,19 +2589,67 @@ class LobbyActivity : BaseActivity() {
             return
         }
         startButton.isEnabled = false
+        startButton.text = "VERIFICANDO..."
+        refreshOnlinePlayersFromServer(
+            reason = "start_preflight",
+            onFailure = failure@{ error ->
+                if (isFinishing || isDestroyed) return@failure
+                startButton.isEnabled = true
+                renderStartButtonState()
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo verificar a los jugadores", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            },
+            onComplete = complete@{ serverPlayers ->
+                if (!currentUserIsOnlineHost() || isFinishing || isDestroyed) {
+                    return@complete
+                }
+                val activePlayers = serverPlayers.filter { it.activeInMatch }
+                val problem = when {
+                    activePlayers.size != onlineExpectedPlayers ->
+                        "Faltan ${(onlineExpectedPlayers - activePlayers.size).coerceAtLeast(0)} jugadores para iniciar."
+                    activePlayers.any { !isOnlinePlayerConnected(it) } ->
+                        "Hay jugadores desconectados o todavia sincronizando."
+                    activePlayers.any { !it.ready } ->
+                        "Todavia faltan ${activePlayers.count { !it.ready }} jugador(es) listos."
+                    else -> null
+                }
+                if (problem != null) {
+                    OnlineDebugLog.w(
+                        "online_start_server_preflight_blocked roomId=$onlinePartidaId hostId=$onlineTempUid reason=$problem active=${activePlayers.size}/$onlineExpectedPlayers ready=${activePlayers.count { it.ready }}"
+                    )
+                    startButton.isEnabled = true
+                    renderStartButtonState()
+                    Toast.makeText(this, problem, Toast.LENGTH_SHORT).show()
+                    return@complete
+                }
+                startOnlineRoomTransaction(hostTieBreakChoice, activePlayers)
+            }
+        )
+    }
+
+    private fun startOnlineRoomTransaction(
+        hostTieBreakChoice: String?,
+        serverPlayersAtStart: List<OnlineLobbyPlayer>
+    ) {
         startButton.text = "INICIANDO..."
         val onlineMatchId = UUID.randomUUID().toString()
-        val activePlayersAtStart = activeOnlinePlayers()
         OnlineDebugLog.i(
-            "online_start_requested roomId=$onlinePartidaId code=${onlineRoomCode.ifBlank { "-" }} hostId=$onlineTempUid expected=$onlineExpectedPlayers active=${activePlayersAtStart.size} tieBreak=${hostTieBreakChoice ?: "-"}"
+            "online_start_requested roomId=$onlinePartidaId code=${onlineRoomCode.ifBlank { "-" }} hostId=$onlineTempUid expected=$onlineExpectedPlayers active=${serverPlayersAtStart.size} tieBreak=${hostTieBreakChoice ?: "-"}"
         )
         val firestore = FirebaseFirestore.getInstance()
         val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val playerReferences = serverPlayersAtStart
+            .map { player ->
+                roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id)
+            }
         val transactionAttempts = AtomicInteger(0)
         firestore.runTransaction { transaction ->
             val attempt = transactionAttempts.incrementAndGet()
             OnlineDebugLog.i(
-                "online_start_transaction_attempt roomId=$onlinePartidaId match=$onlineMatchId attempt=$attempt players=${activePlayersAtStart.size}"
+                "online_start_transaction_attempt roomId=$onlinePartidaId match=$onlineMatchId attempt=$attempt players=${serverPlayersAtStart.size}"
             )
             val room = transaction.get(roomReference)
             if (!room.exists()) {
@@ -2344,8 +2670,20 @@ class LobbyActivity : BaseActivity() {
                 throw IllegalStateException("Solo el anfitrion puede iniciar.")
             }
             val expectedPlayers = room.getLong(FIELD_EXPECTED_PLAYERS)?.toInt() ?: onlineExpectedPlayers
+            val activePlayersAtStart = playerReferences
+                .map { reference -> transaction.get(reference) }
+                .mapNotNull(::parseOnlinePlayer)
+                .filter { it.activeInMatch }
+                .sortedWith(
+                    compareBy<OnlineLobbyPlayer> { it.order }
+                        .thenBy { it.name.lowercase() }
+                        .thenBy { it.id }
+                )
             if (activePlayersAtStart.size != expectedPlayers) {
                 throw IllegalStateException("Faltan jugadores para iniciar.")
+            }
+            if (activePlayersAtStart.any { !it.ready }) {
+                throw IllegalStateException("Todavia faltan jugadores listos.")
             }
             val currentVotes = activePlayersAtStart.map { player ->
                 OnlineMapVote(
@@ -3124,6 +3462,7 @@ class LobbyActivity : BaseActivity() {
                     FIELD_MATCH_STATE to FieldValue.delete(),
                     FIELD_CLIENT_STATES to FieldValue.delete(),
                     FIELD_ENTRY_RELEASED_MATCH_ID to FieldValue.delete(),
+                    OnlineRoomFirestore.FIELD_CURRENT_PLAYERS to playersToReset.size,
                     OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp(),
                     "ultimaActividadOnline" to FieldValue.serverTimestamp()
                 )
@@ -4639,6 +4978,8 @@ class LobbyActivity : BaseActivity() {
         private const val ONLINE_ENTRY_RETRY_MS = 1_500L
         private const val ONLINE_ENTRY_ACK_JITTER_MAX_MS = 1_500L
         private const val ONLINE_MATCH_ENTRY_MAX_RETRIES = 3
+        private const val READY_RECONCILE_DELAY_MS = 1_800L
+        private const val PLAYERS_REFRESH_RETRY_MS = 250L
     }
 
     private data class OnlineLobbyPlayer(

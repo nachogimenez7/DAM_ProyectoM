@@ -54,6 +54,18 @@ class OnlinePresentationGateTest {
     }
 
     @Test
+    fun maximumDelayNeverInterruptsCoordinatorAnimation() {
+        assertFalse(
+            OnlinePresentationGate.shouldAdvance(
+                isCoordinator = true,
+                elapsedMs = OnlinePresentationGate.MAXIMUM_DISPLAY_MS * 10,
+                progress = OnlinePresentationProgress(ready = 3, total = 3),
+                coordinatorPresentationReady = false
+            )
+        )
+    }
+
+    @Test
     fun guestNeverPublishesTheSharedAdvance() {
         assertFalse(
             OnlinePresentationGate.shouldAdvance(

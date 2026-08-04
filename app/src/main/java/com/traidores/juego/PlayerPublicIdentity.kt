@@ -26,10 +26,20 @@ object PlayerPublicIdentity {
     private const val MAX_PUBLIC_BIO_LENGTH = 40
 
     fun currentPublicId(context: Context): String {
+        // Versiones anteriores reservaban un numero tambien para sesiones anonimas. Ese valor
+        // puede seguir en SharedPreferences despues de actualizar la app, pero las reglas
+        // actuales usan la ausencia de `publicId` como señal estable de invitado. Ignorarlo
+        // mientras Firebase diga que la sesion es anonima migra esas instalaciones sin obligar
+        // al jugador a borrar datos ni crear una cuenta nueva.
         val stored = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(PREF_PUBLIC_ID, "")
             .orEmpty()
-        return stored.takeIf(::isValidPublicId).orEmpty()
+        return publicIdForSession(stored, GuestIdentity.isGuest())
+    }
+
+    internal fun publicIdForSession(storedPublicId: String, isGuest: Boolean): String {
+        if (isGuest) return ""
+        return storedPublicId.takeIf(::isValidPublicId).orEmpty()
     }
 
     fun displayPublicId(context: Context): String {
@@ -150,6 +160,24 @@ object PlayerPublicIdentity {
             publicId = publicId,
             visibleName = visibleName
         )
+    }
+
+    /**
+     * Variante exclusiva para actualizar un documento existente. Ademas de publicar el perfil
+     * vigente, elimina un `publicId` residual cuando la sesion sigue siendo invitada. No debe
+     * usarse al crear documentos porque `FieldValue.delete()` solo tiene sentido en un patch.
+     */
+    fun publicProfileUpdateFields(
+        context: Context,
+        publicId: String,
+        visibleName: String = profileName(context)
+    ): Map<String, Any> {
+        val safePublicId = publicIdForSession(publicId, GuestIdentity.isGuest())
+        val fields = publicProfileFields(context, safePublicId, visibleName).toMutableMap()
+        if (safePublicId.isBlank()) {
+            fields[FIELD_PUBLIC_ID] = FieldValue.delete()
+        }
+        return fields
     }
 
     fun publicProfileFields(

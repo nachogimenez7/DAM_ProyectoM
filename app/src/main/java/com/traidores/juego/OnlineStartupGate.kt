@@ -15,11 +15,15 @@ data class OnlineStartupGateResult(
     val loadedPlayers: Int,
     val readyPlayers: Int,
     val mismatchedPlayers: Int,
-    val canStart: Boolean,
-    val canForce: Boolean
+    val canStart: Boolean
 ) {
     val missingPlayers: Int
         get() = (expectedPlayers - loadedPlayers).coerceAtLeast(0)
+
+    val canArmAutoStart: Boolean
+        get() = expectedPlayers > 0 &&
+            loadedPlayers >= expectedPlayers &&
+            mismatchedPlayers == 0
 
     val waitingMessage: String
         get() = when {
@@ -32,7 +36,7 @@ data class OnlineStartupGateResult(
 }
 
 object OnlineStartupGate {
-    const val STARTUP_FORCE_AFTER_MS = 30_000L
+    const val AUTO_START_AFTER_MS = 15_000L
     const val STARTUP_PHASE_SYNCING = "sincronizando"
     const val STARTUP_PHASE_READING = "leyendo_rol"
     const val STARTUP_PHASE_READY = "rol_leido"
@@ -40,9 +44,7 @@ object OnlineStartupGate {
 
     fun evaluate(
         expectedPlayers: Int,
-        clientStates: Collection<OnlineStartupClientState>,
-        elapsedMs: Long,
-        forceAfterMs: Long = STARTUP_FORCE_AFTER_MS
+        clientStates: Collection<OnlineStartupClientState>
     ): OnlineStartupGateResult {
         val safeExpectedPlayers = expectedPlayers.coerceAtLeast(0)
         val startupStates = clientStates
@@ -62,18 +64,22 @@ object OnlineStartupGate {
             loadedPlayers >= safeExpectedPlayers &&
             readyPlayers >= safeExpectedPlayers &&
             mismatchedPlayers == 0
-        val canForce = !canStart &&
-            safeExpectedPlayers > 0 &&
-            loadedPlayers > 0 &&
-            elapsedMs >= forceAfterMs
 
         return OnlineStartupGateResult(
             expectedPlayers = safeExpectedPlayers,
             loadedPlayers = loadedPlayers,
             readyPlayers = readyPlayers,
             mismatchedPlayers = mismatchedPlayers,
-            canStart = canStart,
-            canForce = canForce
+            canStart = canStart
         )
+    }
+
+    fun remainingAutoStartMillis(deadlineEpochMs: Long, nowEpochMs: Long): Long? {
+        if (deadlineEpochMs <= 0L) return null
+        return (deadlineEpochMs - nowEpochMs).coerceAtLeast(0L)
+    }
+
+    fun shouldAutoStart(deadlineEpochMs: Long, nowEpochMs: Long): Boolean {
+        return deadlineEpochMs > 0L && nowEpochMs >= deadlineEpochMs
     }
 }

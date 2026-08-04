@@ -14,12 +14,16 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import com.google.firebase.database.FirebaseDatabase
 
 class LobbyBrowserActivity : BaseActivity() {
 
     private val firestore = FirebaseFirestore.getInstance()
+    private val realtimeDatabase = FirebaseDatabase.getInstance()
     private var lobbyListener: ListenerRegistration? = null
     private var lobbies = emptyList<OnlineLobby>()
+    private var presenceValidationGeneration = 0
+    private var presenceRetryRunnable: Runnable? = null
 
     private lateinit var lobbyList: LinearLayout
     private lateinit var emptyState: TextView
@@ -41,6 +45,9 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     override fun onStop() {
+        presenceValidationGeneration += 1
+        presenceRetryRunnable?.let(lobbyList::removeCallbacks)
+        presenceRetryRunnable = null
         lobbyListener?.remove()
         lobbyListener = null
         super.onStop()
@@ -71,14 +78,110 @@ class LobbyBrowserActivity : BaseActivity() {
                     return@addSnapshotListener
                 }
 
-                lobbies = snapshot?.documents
+                val candidates = snapshot?.documents
                     ?.mapNotNull(::parseLobby)
                     ?.sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
                     .orEmpty()
-                OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
-                showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
-                renderLobbyList()
+                beginRoomPresenceValidation(candidates)
             }
+    }
+
+    private fun beginRoomPresenceValidation(candidates: List<OnlineLobby>) {
+        presenceRetryRunnable?.let(lobbyList::removeCallbacks)
+        presenceRetryRunnable = null
+        val generation = ++presenceValidationGeneration
+        lobbies = emptyList()
+        showBrowserMessage(
+            if (candidates.isEmpty()) {
+                "Todavia no hay partidas online. Crea una sala o intenta mas tarde."
+            } else {
+                "Comprobando salas disponibles..."
+            }
+        )
+        renderLobbyList()
+        validateRoomPresence(
+            candidates = candidates,
+            generation = generation,
+            retryMissingOnce = true,
+            confirmed = emptyList()
+        )
+    }
+
+    private fun validateRoomPresence(
+        candidates: List<OnlineLobby>,
+        generation: Int,
+        retryMissingOnce: Boolean,
+        confirmed: List<OnlineLobby>
+    ) {
+        if (generation != presenceValidationGeneration) return
+        if (candidates.isEmpty()) {
+            publishPresenceValidatedLobbies(confirmed, generation)
+            return
+        }
+        val visible = confirmed.toMutableList()
+        val missing = mutableListOf<OnlineLobby>()
+        var pending = candidates.size
+        candidates.forEach { lobby ->
+            realtimeDatabase
+                .getReference("salas/${lobby.id}/presencia")
+                .get()
+                .addOnCompleteListener { task ->
+                    if (generation != presenceValidationGeneration) return@addOnCompleteListener
+                    val connectedPlayers = if (task.isSuccessful) {
+                        OnlineLobbyRules.connectedPresenceCount(
+                            task.result.children.map { presence ->
+                                presence.child("estado").getValue(String::class.java)
+                            }
+                        )
+                    } else {
+                        0
+                    }
+                    if (connectedPlayers > 0) {
+                        val visiblePlayers = connectedPlayers.coerceAtMost(lobby.limit)
+                        visible += lobby.copy(
+                            players = visiblePlayers,
+                            status = if (visiblePlayers >= lobby.limit) "Llena" else "Esperando"
+                        )
+                    } else {
+                        missing += lobby
+                        if (!task.isSuccessful) {
+                            OnlineDebugLog.e(
+                                "lobby_browser_room_presence_failure roomId=${lobby.id}",
+                                task.exception ?: IllegalStateException("No se pudo leer la presencia")
+                            )
+                        }
+                    }
+                    pending -= 1
+                    if (pending != 0) return@addOnCompleteListener
+                    publishPresenceValidatedLobbies(visible, generation)
+                    if (retryMissingOnce && missing.isNotEmpty()) {
+                        val retry = Runnable {
+                            presenceRetryRunnable = null
+                            validateRoomPresence(
+                                candidates = missing,
+                                generation = generation,
+                                retryMissingOnce = false,
+                                confirmed = visible
+                            )
+                        }
+                        presenceRetryRunnable = retry
+                        lobbyList.postDelayed(retry, HOST_PRESENCE_RETRY_MS)
+                    }
+                }
+        }
+    }
+
+    private fun publishPresenceValidatedLobbies(
+        validated: List<OnlineLobby>,
+        generation: Int
+    ) {
+        if (generation != presenceValidationGeneration) return
+        lobbies = validated
+            .distinctBy { it.id }
+            .sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
+        OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
+        showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
+        renderLobbyList()
     }
 
     private fun parseLobby(document: DocumentSnapshot): OnlineLobby? {
@@ -112,8 +215,7 @@ class LobbyBrowserActivity : BaseActivity() {
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
             mapKey = mapKey,
-            canJoin = true,
-            accountsOnly = document.getBoolean(OnlineRoomFirestore.FIELD_ACCOUNTS_ONLY) == true
+            canJoin = true
         )
     }
 
@@ -127,18 +229,8 @@ class LobbyBrowserActivity : BaseActivity() {
 
     private fun createLobbyRow(lobby: OnlineLobby): View {
         val row = layoutInflater.inflate(R.layout.item_online_lobby, lobbyList, false)
-        // El candado va en el nombre y no en una vista nueva: la fila ya esta ajustada y
-        // sumarle un icono obligaria a rehacer el layout de una pantalla que hoy entra bien.
-        row.findViewById<TextView>(R.id.lobbyName).text = if (lobby.accountsOnly) {
-            "🔒 ${lobby.name}"
-        } else {
-            lobby.name
-        }
-        row.findViewById<TextView>(R.id.lobbyMap).text = if (lobby.accountsOnly) {
-            "${lobby.mapName} - Solo cuentas"
-        } else {
-            "${lobby.mapName} - Argentina"
-        }
+        row.findViewById<TextView>(R.id.lobbyName).text = lobby.name
+        row.findViewById<TextView>(R.id.lobbyMap).text = "${lobby.mapName} - Argentina"
         row.findViewById<TextView>(R.id.lobbyPlayers).text = "${lobby.players}/${lobby.limit}"
         row.findViewById<TextView>(R.id.lobbyStatus).apply {
             text = lobby.status
@@ -149,25 +241,11 @@ class LobbyBrowserActivity : BaseActivity() {
             alpha = if (isEnabled) 1f else 0.42f
             text = lobbyActionLabel(lobby)
             contentDescription = when {
-                lobby.accountsOnly && GuestIdentity.isGuest() ->
-                    "Sala ${lobby.name}, solo para cuentas registradas"
                 lobby.players >= lobby.limit -> "Intentar reingresar a la sala ${lobby.name}"
                 !lobby.canJoin -> "Sala ${lobby.name} en partida"
                 else -> "Entrar a la sala ${lobby.name}"
             }
             setOnClickListener {
-                if (lobby.accountsOnly && GuestIdentity.isGuest()) {
-                    GameDialog.confirm(
-                        activity = this@LobbyBrowserActivity,
-                        title = "Solo cuentas",
-                        message = getString(R.string.online_room_accounts_only_blocked),
-                        positiveLabel = "IR AL PERFIL",
-                        negativeLabel = "AHORA NO"
-                    ) {
-                        startActivity(Intent(this@LobbyBrowserActivity, ProfileActivity::class.java))
-                    }
-                    return@setOnClickListener
-                }
                 enterLobby(lobby)
             }
         }
@@ -261,11 +339,12 @@ class LobbyBrowserActivity : BaseActivity() {
             // publicProfileFields omite el `publicId` cuando esta vacio (invitados) y de paso
             // publica avatar, banner y frase, que esta rama no mandaba y dejaban el
             // mini-perfil en blanco para quien entraba desde el navegador.
-            val connectedData = PlayerPublicIdentity.publicProfileFields(
+            val profileCreateData = PlayerPublicIdentity.publicProfileFields(
                 this,
                 existingPublicId,
                 playerName
-            ) + mapOf(
+            )
+            val connectionData = mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "listo" to false,
@@ -275,10 +354,15 @@ class LobbyBrowserActivity : BaseActivity() {
                 OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
             )
             if (alreadyJoined) {
+                val connectedUpdateData = PlayerPublicIdentity.publicProfileUpdateFields(
+                    this,
+                    existingPublicId,
+                    playerName
+                ) + connectionData
                 val reactivatedData = if (wasActive) {
-                    connectedData
+                    connectedUpdateData
                 } else {
-                    connectedData + mapOf(
+                    connectedUpdateData + mapOf(
                         OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
                         OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
                     )
@@ -296,7 +380,7 @@ class LobbyBrowserActivity : BaseActivity() {
             } else {
                 transaction.set(
                     playerReference,
-                    connectedData + mapOf(
+                    profileCreateData + connectionData + mapOf(
                         OnlineRoomFirestore.FIELD_IS_HOST to false,
                         OnlineRoomFirestore.FIELD_PLAYER_ORDER to currentPlayers.toInt(),
                         OnlineRoomFirestore.FIELD_JOINED_AT to FieldValue.serverTimestamp()
@@ -355,9 +439,7 @@ class LobbyBrowserActivity : BaseActivity() {
         val mapName: String,
         val status: String,
         val mapKey: String,
-        val canJoin: Boolean = true,
-        /** Sala cerrada a cuentas registradas por decision del anfitrion. */
-        val accountsOnly: Boolean = false
+        val canJoin: Boolean = true
     )
 
     companion object {
@@ -377,5 +459,6 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val DEFAULT_MAX_PLAYERS = 10
         private const val BROWSER_ROOM_LIMIT = 30L
         private const val ROOM_VISIBILITY_MS = 30L * 60L * 1000L
+        private const val HOST_PRESENCE_RETRY_MS = 1_500L
     }
 }

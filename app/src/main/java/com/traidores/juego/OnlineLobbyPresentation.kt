@@ -6,6 +6,7 @@ enum class OnlineLobbyStartCopy {
     PLAY_WITH_PRESENT,
     WAITING,
     SYNCING,
+    VERIFY_READY,
     NOT_READY,
     HOST_READY,
     READY
@@ -67,7 +68,9 @@ object OnlineLobbyPresentation {
             canStartWithPresent -> OnlineLobbyStartCopy.PLAY_WITH_PRESENT
             isHost && missingPlayers > 0 -> OnlineLobbyStartCopy.WAITING
             isHost && disconnectedPlayers > 0 -> OnlineLobbyStartCopy.SYNCING
-            isHost && safeMissingReady > 0 -> OnlineLobbyStartCopy.WAITING
+            isHost && safeMissingReady > 0 && currentReady ->
+                OnlineLobbyStartCopy.VERIFY_READY
+            isHost && safeMissingReady > 0 -> OnlineLobbyStartCopy.HOST_READY
             isHost && initialMatchCreated -> OnlineLobbyStartCopy.SYNCING
             currentReady -> OnlineLobbyStartCopy.NOT_READY
             isHost -> OnlineLobbyStartCopy.HOST_READY
@@ -90,7 +93,12 @@ object OnlineLobbyPresentation {
         }
         return OnlineLobbyStartPresentation(
             buttonCopy = buttonCopy,
-            isGold = canStart || canStartWithPresent,
+            isGold = buttonCopy in setOf(
+                OnlineLobbyStartCopy.START_ONLINE,
+                OnlineLobbyStartCopy.PLAY_WITH_PRESENT,
+                OnlineLobbyStartCopy.HOST_READY,
+                OnlineLobbyStartCopy.READY
+            ),
             progress = progress
         )
     }

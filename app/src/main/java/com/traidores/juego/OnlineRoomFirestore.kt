@@ -28,15 +28,6 @@ object OnlineRoomFirestore {
     const val FIELD_STATE = "estado"
     const val FIELD_TEST_MODE = "modoPrueba"
 
-    /**
-     * Sala cerrada a cuentas registradas. Se define al crear y no cambia despues: si se pudiera
-     * prender con gente adentro, un invitado que ya estaba jugando quedaria en una sala donde
-     * el servidor le rechaza cada escritura.
-     *
-     * Sirve contra el griefer que reinstala: a un invitado expulsado le alcanza con borrar la
-     * app para volver con otra identidad, y contra una cuenta con correo eso no funciona.
-     */
-    const val FIELD_ACCOUNTS_ONLY = "soloCuentas"
     const val FIELD_VISIBILITY = "visibilidad"
     const val VISIBILITY_PUBLIC = "publica"
     const val VISIBILITY_PRIVATE = "privada"
@@ -65,12 +56,22 @@ object OnlineRoomFirestore {
     const val DEFAULT_EXPECTED_PLAYERS = LocalGameFactory.MIN_PLAYERS
     const val DEFAULT_MAX_PLAYERS = LocalGameFactory.MAX_PLAYERS
     const val ROOM_CODE_LENGTH = 6
+    const val MAX_ROOM_NAME_LENGTH = 40
     private const val DEFAULT_PLAYER_NAME = "Nacho"
 
     fun normalizedPlayerName(rawName: String): String {
         return rawName.trim()
             .take(18)
             .ifBlank { DEFAULT_PLAYER_NAME }
+    }
+
+    fun normalizedRoomName(rawName: String, fallbackPlayerName: String, roomNumber: String): String {
+        val customName = rawName.trim()
+            .replace(Regex("\\s+"), " ")
+            .take(MAX_ROOM_NAME_LENGTH)
+        return customName.ifBlank {
+            "Sala de ${normalizedPlayerName(fallbackPlayerName)} $roomNumber"
+        }
     }
 
     fun selectedMapFromKey(mapKey: String): GameMap {
@@ -88,7 +89,7 @@ object OnlineRoomFirestore {
         origin: String,
         expectedPlayers: Int = DEFAULT_EXPECTED_PLAYERS,
         modePrueba: Boolean = false,
-        accountsOnly: Boolean = false,
+        requestedRoomName: String = "",
         visibility: String = VISIBILITY_PUBLIC,
         roomCode: String = generateRoomCode()
     ): OnlineRoomCreation {
@@ -98,7 +99,7 @@ object OnlineRoomFirestore {
         val roomNumber = (System.currentTimeMillis() % 10000).toString().padStart(4, '0')
         val safePlayerName = normalizedPlayerName(playerName)
         val safeExpectedPlayers = normalizedExpectedPlayers(expectedPlayers, modePrueba)
-        val roomName = "Sala de $safePlayerName $roomNumber"
+        val roomName = normalizedRoomName(requestedRoomName, safePlayerName, roomNumber)
         val roomData = hashMapOf<String, Any>(
             FIELD_NAME to roomName,
             FIELD_ROOM_CODE to roomCode,
@@ -115,7 +116,6 @@ object OnlineRoomFirestore {
             FIELD_MAX_PLAYERS to safeExpectedPlayers,
             FIELD_CURRENT_PLAYERS to 1,
             FIELD_TEST_MODE to modePrueba,
-            FIELD_ACCOUNTS_ONLY to accountsOnly,
             FIELD_VISIBILITY to normalizedVisibility(visibility),
             OnlineLobbyConfig.FIELD_ROOM_CONFIG to OnlineLobbyConfig().toFirestore(),
             "origen" to origin,

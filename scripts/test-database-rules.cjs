@@ -51,6 +51,10 @@ async function main() {
         ts: Date.now(),
       })
     );
+    // El buscador cuenta presencias conectadas para no confiar en un jugadoresActuales viejo.
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/presencia`).once("value")
+    );
 
     await assertSucceeds(
       alice.ref(`salas/${roomId}/chat/message-a`).set(chatMessage("alice"))
