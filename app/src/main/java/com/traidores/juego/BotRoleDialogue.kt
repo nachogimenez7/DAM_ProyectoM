@@ -534,13 +534,13 @@ internal fun traitorHumanReplyLine(
                 "no tenia a nadie fijo todavia, va $target",
                 "me sirve, arrancamos por $target"
             )
-            plan?.killTarget == target -> listOf(
+            plan.killTarget == target -> listOf(
                 "de una, $target era lo que venia pensando",
                 "cerrado, $target"
             )
             else -> when (personality) {
                 BotPersonality.ANALITICO -> listOf(
-                    "yo venia con ${plan?.killTarget}, pero si lo tenes claro va $target"
+                    "yo venia con ${plan.killTarget}, pero si lo tenes claro va $target"
                 )
                 BotPersonality.DESCONFIADO -> listOf(
                     "$target no era mi lectura, igual te sigo"

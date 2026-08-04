@@ -54,11 +54,11 @@ internal fun relationshipRead(
         reasons += "me banco antes"
     }
     if (!playerMemory?.accusedBy.isNullOrEmpty()) {
-        score += playerMemory?.accusedBy.orEmpty().size.coerceAtMost(3) * 2
+        score += playerMemory.accusedBy.size.coerceAtMost(3) * 2
         reasons += "lo marcaron varios"
     }
     if (!playerMemory?.defendedBy.isNullOrEmpty()) {
-        score -= playerMemory?.defendedBy.orEmpty().size.coerceAtMost(2)
+        score -= playerMemory.defendedBy.size.coerceAtMost(2)
         reasons += "alguien lo banco"
     }
     playerMemory?.pendingQuestionFrom?.let { speaker ->

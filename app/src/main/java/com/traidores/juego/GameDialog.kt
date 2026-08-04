@@ -191,9 +191,16 @@ object GameDialog {
             }
         }
         show(activity, host.dialog)
-        host.dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        enableInputResize(host.dialog)
         input.requestFocus()
         return host.dialog
+    }
+
+    @Suppress("DEPRECATION")
+    private fun enableInputResize(dialog: AlertDialog) {
+        // No hay reemplazo directo para Dialog: mantener esta compatibilidad evita que el
+        // teclado tape el campo en Android 7-15 sin cambiar el layout edge-to-edge del juego.
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
     fun custom(
