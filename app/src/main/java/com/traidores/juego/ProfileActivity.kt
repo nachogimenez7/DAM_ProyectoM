@@ -985,7 +985,7 @@ class ProfileActivity : BaseActivity() {
     private fun setRoleImage(image: ImageView, role: Role) {
         image.scaleType = ImageView.ScaleType.MATRIX
         val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
-        image.setImageResource(if (resId != 0) resId else android.R.drawable.ic_menu_gallery)
+        image.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
     }
 
     private fun renderAvatar(image: ImageView, allowPendingPhoto: Boolean): Boolean {

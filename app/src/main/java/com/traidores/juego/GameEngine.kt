@@ -1354,7 +1354,7 @@ object GameEngine {
                 AfkOpportunity.NIGHT -> player.consecutiveNightAfk
                 AfkOpportunity.VOTE -> player.consecutiveVoteAfk
             }
-            !acted && currentStreak + 1 >= 2
+            !acted && currentStreak + 1 >= AfkPolicy.CONSECUTIVE_MISSES_BEFORE_EXPULSION
         }
         val aliveIndexes = session.players.indices.filterTo(mutableSetOf()) { index ->
             session.players[index].alive
@@ -1373,7 +1373,9 @@ object GameEngine {
                 AfkOpportunity.VOTE -> player.consecutiveVoteAfk
             }
             val nextStreak = if (acted) 0 else currentStreak + 1
-            val expelled = !suppressBatchExpulsion && !acted && nextStreak >= 2
+            val expelled = !suppressBatchExpulsion &&
+                !acted &&
+                nextStreak >= AfkPolicy.CONSECUTIVE_MISSES_BEFORE_EXPULSION
             if (expelled) expelledIndexes += index
 
             player.copy(
@@ -1659,7 +1661,8 @@ object GameEngine {
         } else {
             human.consecutiveVoteAfk + 1
         }
-        val expelled = session.afkExpulsionEnabled && nextStreak >= 2
+        val expelled = session.afkExpulsionEnabled &&
+            nextStreak >= AfkPolicy.CONSECUTIVE_MISSES_BEFORE_EXPULSION
         val updatedPlayers = session.players.map { player ->
             if (!player.isHuman) {
                 player
@@ -1679,13 +1682,8 @@ object GameEngine {
         }
 
         if (!expelled) {
-            val nextOpportunity = if (night) "próxima noche" else "próxima votación"
-            val action = if (night) "accion" else "voto"
-            val missHint = if (session.afkExpulsionEnabled) {
-                "Perdiste tu $action. Si vuelves a ausentarte en tu $nextOpportunity, serás expulsado por AFK."
-            } else {
-                "Perdiste tu $action de esta ronda."
-            }
+            val opportunity = if (night) AfkOpportunity.NIGHT else AfkOpportunity.VOTE
+            val missHint = AfkPolicy.warning(opportunity, session.afkExpulsionEnabled)
             return AfkMissResult(
                 session = session.copy(
                     players = updatedPlayers,

@@ -771,6 +771,25 @@ class GameEngineTest {
     }
 
     @Test
+    fun onlineVotingWithNobodyPlayingExpelsNobodyAndContinues() {
+        val voting = baseSession().copy(
+            phase = GamePhase.VOTACION,
+            round = 2
+        )
+
+        val recount = GameEngine.resolveVotingWithRecordedVotes(voting, emptyMap())
+        val result = GameEngine.continueAfterVoteRecount(recount)
+        val nextRound = GameEngine.resolveResult(result)
+
+        assertTrue(recount.votes.isEmpty())
+        assertEquals("", recount.dayEliminationTarget)
+        assertEquals(GamePhase.RESULTADO, result.phase)
+        assertTrue(result.publicAnnouncement.contains("Nadie será expulsado"))
+        assertTrue(nextRound.players.all { it.alive })
+        assertEquals(3, nextRound.round)
+    }
+
+    @Test
     fun onlineRecordedVotingDoesNotAutoRevealRemoteMayor() {
         val session = sessionWithHumanAdvancedRole(RoleCatalog.ALDEANO).copy(
             phase = GamePhase.VOTACION,
@@ -3795,8 +3814,18 @@ class GameEngineTest {
         assertTrue(allMiss.players.all { it.alive })
         assertTrue(allMiss.players.all { it.consecutiveVoteAfk == 2 })
 
-        val oneReturns = GameEngine.applyOnlineAfkOpportunity(
+        val allMissAgain = GameEngine.applyOnlineAfkOpportunity(
             session = allMiss,
+            opportunity = AfkOpportunity.VOTE,
+            requiredPlayerIndexes = setOf(0, 1),
+            actedPlayerIndexes = emptySet()
+        )
+
+        assertTrue(allMissAgain.players.all { it.alive })
+        assertTrue(allMissAgain.players.all { it.consecutiveVoteAfk == 3 })
+
+        val oneReturns = GameEngine.applyOnlineAfkOpportunity(
+            session = allMissAgain,
             opportunity = AfkOpportunity.VOTE,
             requiredPlayerIndexes = setOf(0, 1),
             actedPlayerIndexes = setOf(0)

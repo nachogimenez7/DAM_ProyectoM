@@ -3411,17 +3411,15 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun maybeResetFinishedOnlineRoomForRematch() {
-        val endedInGame = onlineRoomState == ONLINE_ROOM_STATE_IN_GAME &&
-            (
-                onlineMatchState == null ||
-                    (onlineMatchState?.get("ganador") as? String).orEmpty().isNotBlank()
-                )
-        if (
-            (onlineRoomState != OnlineRoomFirestore.STATE_FINISHED && !endedInGame) ||
-            !currentUserIsOnlineHost() ||
-            onlineRematchResetInProgress ||
-            onlineCleanupPending ||
-            onlinePlayers.isEmpty()
+        if (!OnlineLobbyRules.canPrepareRematch(
+                roomState = onlineRoomState,
+                hasAuthoritativeState = onlineMatchState != null,
+                winner = (onlineMatchState?.get("ganador") as? String).orEmpty(),
+                isHost = currentUserIsOnlineHost(),
+                resetInProgress = onlineRematchResetInProgress,
+                cleanupPending = onlineCleanupPending,
+                playerCount = onlinePlayers.size
+            )
         ) {
             return
         }
@@ -3439,12 +3437,12 @@ class LobbyActivity : BaseActivity() {
             }
             val roomState = room.getString(FIELD_STATE).orEmpty()
             val authoritativeState = room.get(FIELD_MATCH_STATE).asStringAnyMap()
-            val roomEndedInGame = roomState == ONLINE_ROOM_STATE_IN_GAME &&
-                (
-                    authoritativeState == null ||
-                        (authoritativeState["ganador"] as? String).orEmpty().isNotBlank()
-                    )
-            if (roomState != OnlineRoomFirestore.STATE_FINISHED && !roomEndedInGame) {
+            if (!OnlineLobbyRules.isRematchableRoom(
+                    roomState = roomState,
+                    hasAuthoritativeState = authoritativeState != null,
+                    winner = (authoritativeState?.get("ganador") as? String).orEmpty()
+                )
+            ) {
                 return@runTransaction false
             }
             val stableHostId = room.getString(FIELD_HOST_ID).orEmpty()

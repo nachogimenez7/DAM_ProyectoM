@@ -19,10 +19,10 @@ data class OnlineRoomCreation(
 object OnlineRoomFirestore {
     const val ROOMS_COLLECTION = "partidas"
     const val PLAYERS_COLLECTION = "jugadores"
-    const val STATE_WAITING = "esperando"
-    const val STATE_IN_GAME = "en_juego"
+    const val STATE_WAITING = OnlineLobbyRules.ROOM_STATE_WAITING
+    const val STATE_IN_GAME = OnlineLobbyRules.ROOM_STATE_IN_GAME
     const val STATE_ABANDONED = "abandonada"
-    const val STATE_FINISHED = "finalizada"
+    const val STATE_FINISHED = OnlineLobbyRules.ROOM_STATE_FINISHED
 
     const val FIELD_NAME = "nombre"
     const val FIELD_STATE = "estado"

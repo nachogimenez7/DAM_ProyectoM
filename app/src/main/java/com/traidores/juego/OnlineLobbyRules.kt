@@ -13,6 +13,10 @@ data class OnlineLobbyParticipant(
 )
 
 object OnlineLobbyRules {
+    const val ROOM_STATE_WAITING = "esperando"
+    const val ROOM_STATE_IN_GAME = "en_juego"
+    const val ROOM_STATE_FINISHED = "finalizada"
+
     fun displayedPlayerLimit(
         expectedPlayers: Int?,
         maximumPlayers: Int?,
@@ -95,5 +99,33 @@ object OnlineLobbyRules {
             activePlayers.size == expectedPlayers &&
             activePlayers.isNotEmpty() &&
             activePlayers.all { it.connected && it.ready }
+    }
+
+    fun isRematchableRoom(
+        roomState: String,
+        hasAuthoritativeState: Boolean,
+        winner: String
+    ): Boolean {
+        return roomState == ROOM_STATE_FINISHED ||
+            (
+                roomState == ROOM_STATE_IN_GAME &&
+                    (!hasAuthoritativeState || winner.isNotBlank())
+                )
+    }
+
+    fun canPrepareRematch(
+        roomState: String,
+        hasAuthoritativeState: Boolean,
+        winner: String,
+        isHost: Boolean,
+        resetInProgress: Boolean,
+        cleanupPending: Boolean,
+        playerCount: Int
+    ): Boolean {
+        return isRematchableRoom(roomState, hasAuthoritativeState, winner) &&
+            isHost &&
+            !resetInProgress &&
+            !cleanupPending &&
+            playerCount > 0
     }
 }

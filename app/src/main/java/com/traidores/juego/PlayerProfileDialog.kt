@@ -670,7 +670,7 @@ object PlayerProfileDialog {
 
     private fun setRoleImage(activity: Activity, image: ImageView, role: Role) {
         val resId = activity.resources.getIdentifier(role.imageResName, "drawable", activity.packageName)
-        image.setImageResource(if (resId != 0) resId else android.R.drawable.ic_menu_gallery)
+        image.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
     }
 
     private fun alignAvatarToFocus(image: ImageView, verticalFocus: Float) {

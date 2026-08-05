@@ -189,6 +189,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastAppliedAuthoritativePhaseLabel = ""
     private var onlineIncompatibleStateHandled = false
     private var onlineAwaitingHostAdvance = false
+    private var onlineAwaitingHostSinceMs = 0L
+    private var onlineSyncDelayReported = false
     private var onlineInitialRoleRead = false
     private var onlineStartupDeadlineEpochMs = 0L
     private var onlineStartupDeadlinePublishInProgress = false
@@ -1500,9 +1502,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderGame()
     }
 
+    private fun setOnlineAwaitingHostAdvance(
+        waiting: Boolean,
+        nowElapsedMs: Long = SystemClock.elapsedRealtime()
+    ) {
+        if (waiting && !onlineAwaitingHostAdvance) {
+            onlineAwaitingHostSinceMs = nowElapsedMs
+            onlineSyncDelayReported = false
+        } else if (!waiting) {
+            onlineAwaitingHostSinceMs = 0L
+            onlineSyncDelayReported = false
+        }
+        onlineAwaitingHostAdvance = waiting
+    }
+
     private fun blockOnlineGuestLocalPhaseAdvance(reason: String): Boolean {
         if (OnlinePhaseGate.canAdvanceLocally(isOnlineGameplay(), onlineIsHost)) return false
-        onlineAwaitingHostAdvance = true
+        setOnlineAwaitingHostAdvance(true)
         lastPublishedOnlineStateKey = ""
         OnlineDebugLog.i(
             "phase_client_syncing roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
@@ -2273,6 +2289,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ).joinToString("|")
         if (stateKey == lastPublishedAuthoritativeOnlineStateKey) return
         lastPublishedAuthoritativeOnlineStateKey = stateKey
+        OnlineDiagnostics.recordPhase(session, onlineIsHost, event = "host_publish")
 
         val roomUpdate = mutableMapOf<String, Any>(
             "estadoPartida" to mapOf(
@@ -2445,7 +2462,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "phase_missing_authoritative_state roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex}"
             )
         }
-        onlineAwaitingHostAdvance = true
+        setOnlineAwaitingHostAdvance(true)
         lastPublishedOnlineStateKey = ""
         renderGame()
     }
@@ -2581,7 +2598,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun markOnlineInitialRoleRead() {
         if (!isOnlineStartupPhase() || onlineInitialRoleRead) return
         onlineInitialRoleRead = true
-        onlineAwaitingHostAdvance = true
+        setOnlineAwaitingHostAdvance(true)
         lastPublishedOnlineStateKey = ""
         OnlineDebugLog.i(
             "startup_role_read roomId=$onlinePartidaId uid=$onlinePlayerId visiblePlayers=${session.players.size}/${expectedOnlineStartupPlayers()}"
@@ -2606,7 +2623,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
         val before = session
         session = GameEngine.startNight(session)
-        onlineAwaitingHostAdvance = false
+        setOnlineAwaitingHostAdvance(false)
         onlineStartupDeadlinePublishInProgress = false
         onlineStartupGateResult = null
         recordOnlinePhaseAdvance(before, session)
@@ -2780,12 +2797,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             specialVictories = OnlineAuthoritativeStateMapper.specialVictoriesFromState(state),
             privateHint = previousPrivateHint
         )
+        OnlineDiagnostics.recordPhase(session, onlineIsHost, event = "guest_apply")
         // El pedido ya llego a la mesa: se libera el candado local del dialogo para que la
         // ventana de reconsideracion pueda abrirse mas adelante.
         if (session.desertorTeam.isNotBlank()) {
             onlineDesertorChoiceSent = false
         }
-        onlineAwaitingHostAdvance = false
+        setOnlineAwaitingHostAdvance(false)
         lastAppliedAuthoritativePhaseLabel = latestAppliedPhaseLabel()
         if (phaseIndex != previousPhaseIndex) {
             if (previousPhaseIndex == 0 && phase != GamePhase.REPARTO) {
@@ -2793,7 +2811,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     "startup_first_night_received roomId=$onlinePartidaId uid=$onlinePlayerId phase=${phase.name} phaseIndex=$phaseIndex"
                 )
             }
-            onlineAwaitingHostAdvance = false
+            setOnlineAwaitingHostAdvance(false)
             onlineInitialRoleRead = phase != GamePhase.REPARTO || onlineInitialRoleRead
             clearOnlineAuthoritativePhaseUi()
             submittedOnlineNightActions.clear()
@@ -3275,6 +3293,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (onlineGameplayStartedAtMs == 0L) {
             onlineGameplayStartedAtMs = now
         }
+        if (onlineAwaitingHostAdvance && onlineAwaitingHostSinceMs == 0L) {
+            onlineAwaitingHostSinceMs = now
+        } else if (!onlineAwaitingHostAdvance) {
+            onlineAwaitingHostSinceMs = 0L
+            onlineSyncDelayReported = false
+        }
         val decision = OnlineSyncWatchdog.evaluate(
             isOnline = isOnlineGameplay(),
             isHost = onlineIsHost,
@@ -3283,6 +3307,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             awaitingHostAdvance = onlineAwaitingHostAdvance,
             lastPresencePulseElapsedMs = now - lastOnlinePresencePulseAtMs,
             elapsedSinceGameplayStartMs = now - onlineGameplayStartedAtMs,
+            elapsedAwaitingHostMs = if (onlineAwaitingHostSinceMs == 0L) {
+                0L
+            } else {
+                now - onlineAwaitingHostSinceMs
+            },
             presencePulseIntervalMs = onlinePresencePulseIntervalMs
         )
         if (decision.reason != "ok" && decision.reason != lastOnlineWatchdogReason) {
@@ -3292,11 +3321,38 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
         }
         if (decision.shouldForceSyncing) {
-            onlineAwaitingHostAdvance = true
+            setOnlineAwaitingHostAdvance(true, now)
             lastPublishedOnlineStateKey = ""
             renderGame()
-        } else if (decision.shouldPublishClientState) {
+        } else if (
+            decision.shouldPublishClientState &&
+            (
+                !decision.shouldReportLongWait ||
+                    !onlineSyncDelayReported ||
+                    decision.shouldPublishPresence
+                )
+        ) {
             publishOnlineClientState()
+        }
+        if (decision.shouldReportLongWait && !onlineSyncDelayReported) {
+            onlineSyncDelayReported = true
+            realtimePresence?.refresh()
+            OnlineDiagnostics.recordSyncDelay(
+                session = session,
+                isHost = onlineIsHost,
+                connectedPlayers = onlinePresencePlayers.count {
+                    it.activeInMatch &&
+                        isOnlineUidConnected(it.id, it.state == PLAYER_STATE_CONNECTED)
+                },
+                expectedPlayers = session.players.size,
+                reason = decision.reason
+            )
+            GameNotice.show(
+                activity = this,
+                message = "La sincronización está demorando. Reintentamos la conexión; " +
+                    "si continúa, vuelve al lobby y reingresa a la sala.",
+                duration = GameNotice.Duration.LONG
+            )
         }
         if (decision.shouldPublishPresence) {
             markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
@@ -3718,7 +3774,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "host_promoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} round=${session.round}"
         )
         if (onlineAwaitingHostAdvance) {
-            onlineAwaitingHostAdvance = false
+            setOnlineAwaitingHostAdvance(false)
             autoAdvanceHandler.post { renderGame() }
         }
         // Si un rol pidio algo mientras el anfitrion anterior se caia, el pedido ya esta
@@ -3734,7 +3790,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun demoteFromOnlineHost(reason: String) {
         if (!onlineIsHost) return
         onlineIsHost = false
-        onlineAwaitingHostAdvance = true
+        setOnlineAwaitingHostAdvance(true)
         lastPublishedAuthoritativeOnlineStateKey = ""
         OnlineDebugLog.w(
             "host_demoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason activeHost=$onlineActiveHostId phase=${session.phase.name} round=${session.round}"
@@ -3927,7 +3983,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun renderNarrator(phaseText: PhaseText, publicMessage: String, eventChanged: Boolean) {
+    private fun renderNarrator(
+        phaseText: GameplayPhaseText,
+        publicMessage: String,
+        eventChanged: Boolean
+    ) {
         phaseTitle.text = phaseText.title
         phaseSubtitle.text = publicMessage
         if (!eventChanged) return
@@ -3941,7 +4001,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             .start()
     }
 
-    private fun renderEventLog(publicMessage: String, phaseText: PhaseText) {
+    private fun renderEventLog(publicMessage: String, phaseText: GameplayPhaseText) {
         val allEvents = GameplayTableUi.publicEvents(
             session.publicHistory,
             publicMessage,
@@ -6311,75 +6371,22 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun phaseText(phase: GamePhase): PhaseText {
-        return when (phase) {
-            GamePhase.REPARTO -> PhaseText(
-                "TU ROL",
-                "Revisa tu carta. La primera noche empieza enseguida.",
-                "NOCHE"
-            )
-            GamePhase.NOCHE_ASESINO -> PhaseText(
-                "NOCHE ${session.round}",
-                nightSubtitle(),
-                if (isHumanRoleTurn("asesino")) "MATAR" else "ESPERAR"
-            )
-            GamePhase.NOCHE_MERCENARIO -> PhaseText(
-                "NOCHE ${session.round}",
-                nightSubtitle(),
-                if (isHumanRoleTurn("mercenario")) "SILENCIAR" else "ESPERAR"
-            )
-            GamePhase.NOCHE_POLICIA -> PhaseText(
-                "NOCHE ${session.round}",
-                nightSubtitle(),
-                if (isHumanRoleTurn("policia")) "INVESTIGAR" else "ESPERAR"
-            )
-            GamePhase.NOCHE_MEDICO -> PhaseText(
-                "NOCHE ${session.round}",
-                nightSubtitle(),
-                if (isHumanRoleTurn("medico")) "PROTEGER" else "ESPERAR"
-            )
-            GamePhase.NOCHE_ORACULO -> PhaseText(
-                "NOCHE ${session.round}",
-                nightSubtitle(),
-                if (isHumanRoleTurn(RoleCatalog.ORACULO)) {
-                    "GUARDAR PODER"
-                } else {
-                    "ESPERAR"
-                }
-            )
-            GamePhase.AMANECER -> PhaseText("AMANECER", "El pueblo despierta y escucha lo ocurrido.", "AMANECER")
-            GamePhase.DIA_DEBATE -> PhaseText("DÍA ${session.round}", "El pueblo debate antes de votar.", "VOTAR")
-            GamePhase.CONTRAPUNTO -> PhaseText(
-                "CONTRAPUNTO",
-                "Selecciona un participante y confirma el contrapunto.",
-                "SEÑALAR"
-            )
-            GamePhase.VOTACION -> PhaseText(
-                "VOTACIÓN",
-                "Selecciona un jugador y confirma tu voto.",
-                "VOTAR"
-            )
-            GamePhase.RECUENTO_VOTOS -> PhaseText(
-                "RECUENTO",
-                "El pueblo cuenta los votos.",
-                "CONTINUAR"
-            )
-            GamePhase.DESEMPATE_VOTACION -> PhaseText(
-                "DESEMPATE",
-                "Vota solamente entre los jugadores empatados.",
-                "VOTAR"
-            )
-            GamePhase.ALCALDE_DESEMPATE -> PhaseText(
-                "DESEMPATE",
-                "El Alcalde decide entre los jugadores empatados.",
-                "DECIDIR"
-            )
-            GamePhase.RESULTADO -> PhaseText(
-                "RESULTADO",
-                "El pueblo conoce el resultado.",
-                if (session.winner.isBlank()) "CONTINUAR" else "FINAL"
-            )
+    private fun phaseText(phase: GamePhase): GameplayPhaseText {
+        val roleForPhase = when (phase) {
+            GamePhase.NOCHE_ASESINO -> RoleCatalog.ASESINO
+            GamePhase.NOCHE_MERCENARIO -> RoleCatalog.MERCENARIO
+            GamePhase.NOCHE_POLICIA -> RoleCatalog.POLICIA
+            GamePhase.NOCHE_MEDICO -> RoleCatalog.MEDICO
+            GamePhase.NOCHE_ORACULO -> RoleCatalog.ORACULO
+            else -> null
         }
+        return GameplayPhasePresentation.phaseText(
+            phase = phase,
+            round = session.round,
+            winnerPresent = session.winner.isNotBlank(),
+            nightSubtitle = if (roleForPhase == null) "" else nightSubtitle(),
+            humanRoleTurn = roleForPhase?.let(::isHumanRoleTurn) == true
+        )
     }
 
     private fun scheduleAutoAdvanceIfNeeded() {
@@ -6576,7 +6583,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         clearCountdown()
         if (isOnlineGameplay()) {
             if (!onlineIsHost) {
-                onlineAwaitingHostAdvance = true
+                setOnlineAwaitingHostAdvance(true)
                 lastPublishedOnlineStateKey = ""
                 OnlineDebugLog.i(
                     "phase_gate_wait roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} reason=timer_expired_guest"
@@ -7012,11 +7019,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val updated = after.players.getOrNull(previousIndex) ?: return
         val message = when {
             previous.alive && !updated.alive && updated.deathCause == DeathCause.AFK ->
-                "Fuiste expulsado por AFK tras ausentarte dos veces seguidas."
+                AfkPolicy.selfExpelledMessage()
             updated.alive && updated.consecutiveNightAfk > previous.consecutiveNightAfk ->
-                "Perdiste tu acción. Si vuelves a ausentarte en tu próxima noche, serás expulsado por AFK."
+                AfkPolicy.warning(AfkOpportunity.NIGHT, expulsionEnabled = true)
             updated.alive && updated.consecutiveVoteAfk > previous.consecutiveVoteAfk ->
-                "Perdiste tu voto. Si vuelves a ausentarte en tu próxima votación, serás expulsado por AFK."
+                AfkPolicy.warning(AfkOpportunity.VOTE, expulsionEnabled = true)
             else -> return
         }
         GameNotice.show(
@@ -7490,19 +7497,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun roleFunction(roleKey: String): String = when (roleKey) {
-        "asesino" -> "Cada noche eliges una víctima para eliminar. Ganas cuando los Traidores logran controlar el pueblo."
-        "mercenario" -> "Cada noche silencias a un jugador. Esa persona no podrá hablar ni votar durante el día siguiente."
-        "policia" -> "Cada noche investigas a un jugador y recibes en privado una pista sobre su bando."
-        "medico" -> "Cada noche proteges a un jugador. Si los Traidores lo atacan, evitas su eliminación."
-        "alcalde" -> "Puedes revelar tu identidad durante el debate. Desde entonces tu voto vale doble y decides ciertos empates."
-        "payador" -> "Una vez por partida inicias un Contrapunto entre dos jugadores y agregas un voto al más sospechoso."
-        "desertor" -> "Eliges un bando al comenzar y ganas con ese equipo si sobrevives. Más adelante puedes cambiarlo una sola vez."
-        "espia" -> "Eliges la víctima cada noche junto a los Traidores, pero cuando te investiga el investigador apareces como inocente."
-        "bufon" -> "Tu objetivo es molestar, interrumpir y hacerte odiar para que el pueblo te expulse durante la votación. Esa es tu única condición de victoria."
-        "oraculo" -> "Durante la noche, una vez por partida, puedes invocar a un jugador muerto para el debate del día siguiente. Su rol permanece oculto: puede hablar, pero no votar ni usar habilidades."
-        else -> "No tienes una habilidad especial. Debes debatir, detectar contradicciones y votar para eliminar a los Traidores."
-    }
+    private fun roleFunction(roleKey: String): String =
+        GameplayPhasePresentation.roleFunction(roleKey)
 
     private fun refreshPhaseAdvice(publicMessage: String) {
         if (session.phase == GamePhase.REPARTO || session.winner.isNotBlank()) {
@@ -7612,7 +7608,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun currentNarratorMessage(phaseText: PhaseText = phaseText(session.phase)): String {
+    private fun currentNarratorMessage(
+        phaseText: GameplayPhaseText = phaseText(session.phase)
+    ): String {
         passiveNightMessage()?.let { return it }
         return GameplayTableUi.centralPhaseMessage(session, phaseText.subtitle)
     }
@@ -7626,36 +7624,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             return null
         }
-        val messages = passiveNightMessagesForMap(session.mapKey)
-        val index = (session.round * 31 + session.phaseIndex * 7 + session.phase.ordinal)
-            .let { kotlin.math.abs(it) % messages.size }
-        return messages[index]
-    }
-
-    private fun passiveNightMessagesForMap(mapKey: String): List<String> {
-        return when (mapKey) {
-            "grecia" -> listOf(
-                "La polis guarda silencio. En el agora, hasta las estatuas parecen escuchar.",
-                "El aceite de las lamparas tiembla. Alguien cruza el patio sin mirar al cielo.",
-                "Los dioses callan. Una sandalia roza la piedra y nadie pregunta de quien fue.",
-                "La noche cae sobre las columnas. Sobrevives contando sombras entre los olivos.",
-                "Un rumor sube desde el puerto. Nadie lo confirma, pero todos lo sienten."
-            )
-            "medieval" -> listOf(
-                "El castillo duerme. Una antorcha chispea donde nadie deberia estar despierto.",
-                "Se apagan voces en la taberna. Una puerta cruje y el patio queda inmovil.",
-                "La guardia mira hacia otro lado. En las murallas, una sombra cambia de rumbo.",
-                "La noche hace su trabajo. Sobrevives oyendo pasos detras de la piedra.",
-                "Un juglar calla a mitad de verso. Nadie rie, nadie pregunta."
-            )
-            else -> listOf(
-                "Cerras los ojos. Alguien pisa una rama y todos fingen no haber escuchado.",
-                "El pueblo duerme. Una sombra parece saber demasiado, pero no declara.",
-                "Se escuchan susurros, pasos y una puerta que nadie va a admitir haber abierto.",
-                "La noche hace su trabajo. Sobrevives mirando el techo.",
-                "Alguien se mueve en secreto. El mate queda frio y las sospechas calientes."
-            )
-        }
+        return GameplayPhasePresentation.passiveNightMessage(
+            mapKey = session.mapKey,
+            round = session.round,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase
+        )
     }
 
     private fun mustWaitForPhaseTimer(): Boolean {
@@ -9343,9 +9317,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun roleImageFor(role: GameRole?): Int {
-        if (role == null) return android.R.drawable.ic_menu_gallery
+        if (role == null) return R.drawable.placeholder_local
         val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
-        return if (resId != 0) resId else android.R.drawable.ic_menu_gallery
+        return if (resId != 0) resId else R.drawable.placeholder_local
     }
 
     private fun renderThemedBackground(period: GameplayPeriod) {
@@ -9755,12 +9729,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         dialog.show()
     }
-
-    private data class PhaseText(
-        val title: String,
-        val subtitle: String,
-        val actionLabel: String
-    )
 
     companion object {
         private const val PLAYER_STATE_CONNECTED = "conectado"

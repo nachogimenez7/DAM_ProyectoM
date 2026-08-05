@@ -97,7 +97,7 @@ class ProfileSelectionActivity : BaseActivity() {
                             entry.role.imageResName,
                             "drawable",
                             packageName
-                        ).takeIf { it != 0 } ?: android.R.drawable.ic_menu_gallery
+                        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
                     )
                 }
             ProfileSelectionDisplay.BANNER -> ProfileCustomizationCatalog.banners.map { banner ->

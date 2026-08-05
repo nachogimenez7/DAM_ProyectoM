@@ -73,6 +73,7 @@ class OnlineSyncWatchdogTest {
         assertTrue(decision.shouldPublishPresence)
         assertTrue(decision.shouldPublishClientState)
         assertFalse(decision.shouldForceSyncing)
+        assertFalse(decision.shouldReportLongWait)
         assertEquals("presence_pulse", decision.reason)
     }
 
@@ -115,5 +116,66 @@ class OnlineSyncWatchdogTest {
 
         assertTrue(intervals.distinct().size > 1)
         assertTrue(intervals.all { it in minimum..maximum })
+    }
+
+    @Test
+    fun guestWaitingForHostReportsOnlyAfterLongWaitThreshold() {
+        val beforeThreshold = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = false,
+            isStartupPhase = false,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = true,
+            lastPresencePulseElapsedMs = 1_000L,
+            elapsedSinceGameplayStartMs = 99_000L,
+            elapsedAwaitingHostMs = OnlineSyncWatchdog.LONG_SYNC_WAIT_MS - 1L
+        )
+        val atThreshold = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = false,
+            isStartupPhase = false,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = true,
+            lastPresencePulseElapsedMs = 1_000L,
+            elapsedSinceGameplayStartMs = 99_000L,
+            elapsedAwaitingHostMs = OnlineSyncWatchdog.LONG_SYNC_WAIT_MS
+        )
+
+        assertFalse(beforeThreshold.shouldReportLongWait)
+        assertTrue(atThreshold.shouldReportLongWait)
+        assertTrue(atThreshold.shouldPublishClientState)
+        assertEquals("guest_host_advance_timeout", atThreshold.reason)
+    }
+
+    @Test
+    fun hostLongWaitIsNeverReportedAsGuestSynchronizationFailure() {
+        val decision = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = true,
+            isStartupPhase = false,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = true,
+            lastPresencePulseElapsedMs = 1_000L,
+            elapsedSinceGameplayStartMs = 99_000L,
+            elapsedAwaitingHostMs = OnlineSyncWatchdog.LONG_SYNC_WAIT_MS
+        )
+
+        assertFalse(decision.shouldReportLongWait)
+    }
+
+    @Test
+    fun startupReadingIsNotReportedAsSynchronizationFailure() {
+        val decision = OnlineSyncWatchdog.evaluate(
+            isOnline = true,
+            isHost = false,
+            isStartupPhase = true,
+            hasAppliedAuthoritativeState = true,
+            awaitingHostAdvance = true,
+            lastPresencePulseElapsedMs = 1_000L,
+            elapsedSinceGameplayStartMs = 99_000L,
+            elapsedAwaitingHostMs = OnlineSyncWatchdog.LONG_SYNC_WAIT_MS
+        )
+
+        assertFalse(decision.shouldReportLongWait)
     }
 }

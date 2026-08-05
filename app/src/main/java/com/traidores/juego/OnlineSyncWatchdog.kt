@@ -4,6 +4,7 @@ data class OnlineSyncWatchdogDecision(
     val shouldPublishPresence: Boolean,
     val shouldPublishClientState: Boolean,
     val shouldForceSyncing: Boolean,
+    val shouldReportLongWait: Boolean,
     val reason: String
 )
 
@@ -12,6 +13,7 @@ object OnlineSyncWatchdog {
     const val PRESENCE_PULSE_MS = 10_000L
     const val PRESENCE_JITTER_MS = 3_000L
     const val GUEST_AUTHORITY_GRACE_MS = 8_000L
+    const val LONG_SYNC_WAIT_MS = 30_000L
 
     fun evaluate(
         isOnline: Boolean,
@@ -21,10 +23,11 @@ object OnlineSyncWatchdog {
         awaitingHostAdvance: Boolean,
         lastPresencePulseElapsedMs: Long,
         elapsedSinceGameplayStartMs: Long,
+        elapsedAwaitingHostMs: Long = 0L,
         presencePulseIntervalMs: Long = PRESENCE_PULSE_MS
     ): OnlineSyncWatchdogDecision {
         if (!isOnline) {
-            return OnlineSyncWatchdogDecision(false, false, false, "offline")
+            return OnlineSyncWatchdogDecision(false, false, false, false, "offline")
         }
         val normalizedPulseInterval = presencePulseIntervalMs.coerceIn(
             PRESENCE_PULSE_MS - PRESENCE_JITTER_MS,
@@ -37,11 +40,19 @@ object OnlineSyncWatchdog {
                 !hasAppliedAuthoritativeState &&
                 elapsedSinceGameplayStartMs >= GUEST_AUTHORITY_GRACE_MS
         val shouldForceSyncing = guestMissingAuthoritativeState && !awaitingHostAdvance
+        val shouldReportLongWait =
+            !isHost &&
+                !isStartupPhase &&
+                awaitingHostAdvance &&
+                elapsedAwaitingHostMs >= LONG_SYNC_WAIT_MS
         return OnlineSyncWatchdogDecision(
             shouldPublishPresence = shouldPublishPresence,
-            shouldPublishClientState = shouldPublishPresence || shouldForceSyncing,
+            shouldPublishClientState =
+                shouldPublishPresence || shouldForceSyncing || shouldReportLongWait,
             shouldForceSyncing = shouldForceSyncing,
+            shouldReportLongWait = shouldReportLongWait,
             reason = when {
+                shouldReportLongWait -> "guest_host_advance_timeout"
                 shouldForceSyncing -> "guest_missing_authoritative_state"
                 shouldPublishPresence -> "presence_pulse"
                 else -> "ok"

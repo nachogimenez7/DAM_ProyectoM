@@ -29,7 +29,7 @@ object RoleDetailDialog {
             "drawable",
             context.packageName
         )
-        roleImage.setImageResource(if (resId != 0) resId else android.R.drawable.ic_menu_gallery)
+        roleImage.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
         roleName.text = role.name.uppercase()
         roleTeam.text = role.team.uppercase()
         roleFantasy.text = role.story

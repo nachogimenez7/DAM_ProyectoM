@@ -350,6 +350,70 @@ class OnlineLobbyRulesTest {
         assertEquals(true, OnlineLobbyRules.needsHostHandoff(hostGone, activeHostId = "host"))
     }
 
+    @Test
+    fun finishedOrLegacyEndedRoomCanPrepareRematch() {
+        assertTrue(
+            OnlineLobbyRules.isRematchableRoom(
+                roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+                hasAuthoritativeState = true,
+                winner = "Pueblo"
+            )
+        )
+        assertTrue(
+            OnlineLobbyRules.isRematchableRoom(
+                roomState = OnlineLobbyRules.ROOM_STATE_IN_GAME,
+                hasAuthoritativeState = false,
+                winner = ""
+            )
+        )
+    }
+
+    @Test
+    fun activeMatchWithoutWinnerCannotResetAsRematch() {
+        assertFalse(
+            OnlineLobbyRules.isRematchableRoom(
+                roomState = OnlineLobbyRules.ROOM_STATE_IN_GAME,
+                hasAuthoritativeState = true,
+                winner = ""
+            )
+        )
+    }
+
+    @Test
+    fun rematchPreparationRequiresHostPlayersAndNoCleanup() {
+        val ready = OnlineLobbyRules.canPrepareRematch(
+            roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+            hasAuthoritativeState = true,
+            winner = "Traidores",
+            isHost = true,
+            resetInProgress = false,
+            cleanupPending = false,
+            playerCount = 5
+        )
+        val guest = OnlineLobbyRules.canPrepareRematch(
+            roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+            hasAuthoritativeState = true,
+            winner = "Traidores",
+            isHost = false,
+            resetInProgress = false,
+            cleanupPending = false,
+            playerCount = 5
+        )
+        val cleaning = OnlineLobbyRules.canPrepareRematch(
+            roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+            hasAuthoritativeState = true,
+            winner = "Traidores",
+            isHost = true,
+            resetInProgress = false,
+            cleanupPending = true,
+            playerCount = 5
+        )
+
+        assertTrue(ready)
+        assertFalse(guest)
+        assertFalse(cleaning)
+    }
+
     private fun participant(
         id: String,
         connected: Boolean,
