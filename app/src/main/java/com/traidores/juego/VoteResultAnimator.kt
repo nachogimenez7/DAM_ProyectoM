@@ -71,7 +71,7 @@ class VoteResultAnimator(
 
     private data class VoteCardHolder(
         val root: LinearLayout,
-        val avatar: TextView,
+        val avatar: View,
         val roleImage: ImageView,
         val total: TextView,
         val voterTokens: GridLayout,
@@ -149,7 +149,7 @@ class VoteResultAnimator(
             val oddLast = cols == 2 && candidateNames.size % 2 == 1
             candidateNames.forEachIndexed { index, candidate ->
                 val player = session.players.first { it.name == candidate }
-                val holder = createVoteCard(player, dense = denseCards)
+                val holder = createVoteCard(session, player, dense = denseCards)
                 cardHolders[candidate] = holder
                 val row = index / cols
                 val col = index % cols
@@ -241,7 +241,7 @@ class VoteResultAnimator(
         boot.visibility = View.INVISIBLE
         cards.columnCount = 1
 
-        val holder = createExpulsionCard(targetPlayer)
+        val holder = createExpulsionCard(session, targetPlayer)
         cardHolders[targetName] = holder
         cards.addView(
             holder.root,
@@ -778,17 +778,14 @@ class VoteResultAnimator(
         holder.count += 1
         holder.total.text = "${holder.count} ${if (holder.count == 1) "VOTO" else "VOTOS"}"
         val tokenView: View = (if (session.showIndividualVotes) {
-            TextView(context).apply {
-                background = ResourcesCompat.getDrawable(
-                    context.resources,
-                    R.drawable.bg_vote_token,
-                    context.theme
+            GameplayAvatarView(context).apply {
+                bind(
+                    session = session,
+                    player = session.players.firstOrNull { it.name == token.voterName },
+                    fallbackInitial = token.initial,
+                    textSizeSp = 8f,
+                    backgroundRes = R.drawable.bg_vote_token
                 )
-                gravity = Gravity.CENTER
-                text = token.initial
-                setTextColor(context.getColor(R.color.bg_dark))
-                textSize = 8f
-                typeface = Typeface.DEFAULT_BOLD
             }
         } else {
             ImageView(context).apply {
@@ -828,17 +825,21 @@ class VoteResultAnimator(
             .start()
     }
 
-    private fun createVoteCard(player: GamePlayer, dense: Boolean): VoteCardHolder {
+    private fun createVoteCard(
+        session: GameSession,
+        player: GamePlayer,
+        dense: Boolean
+    ): VoteCardHolder {
         val rootPaddingHorizontal = if (dense) 4 else 5
         val rootPaddingTop = if (dense) 4 else 5
         val rootPaddingBottom = if (dense) 3 else 4
         val cardBackWidth = if (dense) 32 else 38
         val cardBackHeight = if (dense) 44 else 52
-        val avatarSize = if (dense) 23 else 28
+        val avatarSize = if (dense) 15 else 20
         val roleImageSize = if (dense) 32 else 38
         val portraitWidth = if (dense) 42 else 52
         val portraitHeight = if (dense) 43 else 54
-        val nameHeight = if (dense) 15 else 18
+        val identityHeight = if (dense) 15 else 20
         val totalHeight = if (dense) 15 else 18
         val tokensHeight = 24
         val tokenColumns = if (dense) 4 else 5
@@ -864,17 +865,13 @@ class VoteResultAnimator(
             setImageResource(R.drawable.card_back_traidores)
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        val avatar = TextView(context).apply {
-            background = ResourcesCompat.getDrawable(
-                context.resources,
-                R.drawable.bg_player_avatar,
-                context.theme
+        val avatar = GameplayAvatarView(context).apply {
+            bind(
+                session = session,
+                player = player,
+                fallbackInitial = player.initial,
+                textSizeSp = if (dense) 12f else 14f
             )
-            gravity = Gravity.CENTER
-            text = player.initial
-            setTextColor(context.getColor(R.color.bg_dark))
-            textSize = if (dense) 12f else 14f
-            typeface = Typeface.DEFAULT_BOLD
         }
         val roleImage = ImageView(context).apply {
             visibility = View.GONE
@@ -887,24 +884,37 @@ class VoteResultAnimator(
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         portrait.addView(cardBack, FrameLayout.LayoutParams(dp(cardBackWidth), dp(cardBackHeight), Gravity.CENTER))
-        portrait.addView(
-            avatar,
-            FrameLayout.LayoutParams(dp(avatarSize), dp(avatarSize), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(0)
-            }
-        )
         portrait.addView(roleImage, FrameLayout.LayoutParams(dp(roleImageSize), dp(roleImageSize), Gravity.CENTER))
         root.addView(portrait, LinearLayout.LayoutParams(dp(portraitWidth), dp(portraitHeight)))
 
-        root.addView(TextView(context).apply {
-            gravity = Gravity.CENTER
+        val playerName = TextView(context).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
             ellipsize = TextUtils.TruncateAt.END
             maxLines = 1
             text = player.name
             setTextColor(context.getColor(R.color.text_primary))
             textSize = nameTextSize
             typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(nameHeight)))
+            setPadding(dp(3), 0, 0, 0)
+        }
+        root.addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                addView(
+                    avatar,
+                    LinearLayout.LayoutParams(dp(avatarSize), dp(avatarSize))
+                )
+                addView(
+                    playerName,
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+                )
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(identityHeight)
+            )
+        )
 
         val total = TextView(context).apply {
             gravity = Gravity.CENTER
@@ -928,7 +938,10 @@ class VoteResultAnimator(
         return VoteCardHolder(root, avatar, roleImage, total, voterTokens)
     }
 
-    private fun createExpulsionCard(player: GamePlayer): VoteCardHolder {
+    private fun createExpulsionCard(
+        session: GameSession,
+        player: GamePlayer
+    ): VoteCardHolder {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -940,17 +953,13 @@ class VoteResultAnimator(
             )
         }
         val portrait = FrameLayout(context)
-        val avatar = TextView(context).apply {
-            background = ResourcesCompat.getDrawable(
-                context.resources,
-                R.drawable.bg_player_avatar,
-                context.theme
+        val avatar = GameplayAvatarView(context).apply {
+            bind(
+                session = session,
+                player = player,
+                fallbackInitial = player.initial,
+                textSizeSp = 24f
             )
-            gravity = Gravity.CENTER
-            text = player.initial
-            setTextColor(context.getColor(R.color.bg_dark))
-            textSize = 24f
-            typeface = Typeface.DEFAULT_BOLD
         }
         val roleImage = ImageView(context).apply {
             visibility = View.GONE

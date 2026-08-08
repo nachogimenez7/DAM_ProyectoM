@@ -71,6 +71,27 @@ y el reparto comienza una sola vez.
 Resultado esperado: los listeners se detienen mientras no hay presencia y se reenganchan al
 publicar `conectado`; el chat no queda mudo.
 
+## Ronda 6 — Seguridad visible
+
+1. Expulsar a un jugador y confirmar que no puede volver a entrar con el mismo código.
+2. Eliminar a un jugador durante la partida: debe perder el chat público y, si era Traidor, el
+   canal de Traidores; en cambio debe poder usar el chat de espectadores.
+3. Proponer un silencio de mesa. El resultado solo debe aplicarse al alcanzar la mayoría y no por
+   el voto aislado de un participante.
+4. Cerrar al anfitrión original después de transferir el control. La sala debe seguir funcionando
+   y el anfitrión anterior ya no debe poder cerrarla ni administrar su código.
+
+## Ronda 7 — Ocho jugadores y roles de mapa
+
+Con ocho instalaciones, crear una partida corta en cada mapa y llegar a la revelación final:
+
+- Pampa: debe aparecer el Payador.
+- Grecia: debe aparecer el Oráculo.
+- Medieval: debe aparecer el Bufón.
+
+En cada caso comprobar también que la acción especial se muestra y que la partida continúa en
+todos los dispositivos después de usarla.
+
 ## Evidencia mínima
 
 Por cada error anotar:
@@ -83,5 +104,6 @@ Por cada error anotar:
 - captura;
 - líneas de Logcat filtradas por `TraidoresOnline`.
 
-No avanzar a la prueba cerrada de Google Play hasta completar una partida y una reconexión de
-invitado sin corrupción de sala.
+No avanzar a la prueba cerrada de Google Play hasta completar una partida, una reconexión de
+invitado, una transferencia de anfitrión y al menos una partida de ocho jugadores sin corrupción
+de sala.

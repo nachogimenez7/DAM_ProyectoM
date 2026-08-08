@@ -1,7 +1,6 @@
 package com.traidores.juego
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
@@ -593,12 +592,7 @@ object PlayerProfileDialog {
     }
 
     private fun hasLocalPhotoFor(activity: Activity, profile: PlayerProfile): Boolean {
-        val currentPublicId = PlayerPublicIdentity.currentPublicId(activity)
-        if (currentPublicId.isBlank() || currentPublicId != profile.publicId) return false
-        val enabled = activity
-            .getSharedPreferences(ProfileActivity.PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
-        return enabled && LocalProfilePhotoStore.hasSavedPhoto(activity)
+        return LocalProfilePhotoStore.isEnabledForProfile(activity, profile)
     }
 
     private fun showEmotePreview(activity: Activity, spec: EmoteSpec) {

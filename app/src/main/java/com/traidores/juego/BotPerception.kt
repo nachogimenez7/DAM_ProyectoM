@@ -31,7 +31,7 @@ internal object BotPerception {
         )
     }
     private val publicResultPattern = Regex(
-        "(^|\\s)(me\\s+)?(dio|salio|resulto|marco\\s+como)\\s+" +
+        "(^|\\s)(me\\s+)?(dio|salio|resulto|marco\\s+como|es)\\s+" +
             "(sospechos[oa]|inocente|culpable|traidor[a]?|limpi[oa])($|\\s)"
     )
     private val protectedStatementPattern = Regex(
@@ -117,7 +117,11 @@ internal object BotPerception {
         }
         val voteTarget = mentionedTargets.firstOrNull { target ->
             hasVoteSignal(text, normalizedForParsing(target))
-        }
+        } ?: targetAfterAction(
+            text,
+            mentionedTargets,
+            listOf("voto a", "votaria a", "voy con")
+        )
         val resultTarget = investigatedTarget
             ?: mentionedTargets.firstOrNull { target ->
                 val normalizedTarget = normalizedForParsing(target)
@@ -218,7 +222,8 @@ internal object BotPerception {
         if (text.isBlank()) return null
         val praise = listOf(
             "gracias", "bien ahi", "bien jugado", "te banco", "me caes bien",
-            "sos crack", "sos un crack", "sos genio", "sos genia", "buena jugada"
+            "sos crack", "sos un crack", "sos genio", "sos genia", "sos un genio",
+            "sos una genia", "buena jugada"
         ).any(text::contains) && !text.contains("no te banco")
         if (praise) return HumanSocialSignal.PRAISE
         val insult = listOf(
@@ -230,12 +235,17 @@ internal object BotPerception {
     }
 
     fun directAddressee(session: GameSession, message: String): String? {
+        return directPlayerAddressee(session, message)
+            ?.takeIf { name -> GameEngine.playerByName(session, name)?.isHuman == false }
+    }
+
+    fun directPlayerAddressee(session: GameSession, message: String): String? {
         val raw = message.trim()
         val text = normalizedForParsing(raw)
         if (text.isBlank()) return null
         return session.players
             .asSequence()
-            .filter { !it.isHuman && GameEngine.canParticipateInChat(session, it) }
+            .filter { GameEngine.canParticipateInChat(session, it) }
             .sortedByDescending { it.name.length }
             .firstOrNull { player ->
                 val normalizedName = normalizedForParsing(player.name)
@@ -355,8 +365,19 @@ internal object BotPerception {
             ?: return null
         return targets
             .mapNotNull { target ->
-                val targetIndex = text.indexOf(normalizedForParsing(target), startIndex = actionIndex)
-                target.takeIf { targetIndex >= 0 }?.let { it to targetIndex }
+                val normalizedTarget = normalizedForParsing(target)
+                val exactIndex = text.indexOf(normalizedTarget, startIndex = actionIndex)
+                val prefixIndex = if (exactIndex >= 0) {
+                    exactIndex
+                } else {
+                    Regex("[\\p{L}\\p{N}#_-]{4,}")
+                        .findAll(text, actionIndex)
+                        .firstOrNull { match -> normalizedTarget.startsWith(match.value) }
+                        ?.range
+                        ?.first
+                        ?: -1
+                }
+                target.takeIf { prefixIndex >= 0 }?.let { it to prefixIndex }
             }
             .minByOrNull { (_, index) -> index }
             ?.first

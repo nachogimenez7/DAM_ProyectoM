@@ -285,7 +285,12 @@ class LobbyActivity : BaseActivity() {
         setupMapSelector()
         timingOptionsButton.setOnClickListener { showTestOptionsDialog() }
         btnAdvancedOptions.setOnClickListener { showAdvancedOptionsDialog() }
-        practiceRoleSummary.setOnClickListener { showAdvancedOptionsDialog() }
+        practiceRoleSummary.setOnClickListener {
+            showPracticeRolePicker(practiceRoleIndex) { selectedIndex ->
+                practiceRoleIndex = selectedIndex
+                renderPracticeRoleSummary()
+            }
+        }
         btnCopyRoomCode.setOnClickListener { copyOnlineRoomCode() }
         btnShareRoomCode.setOnClickListener { shareOnlineRoomCode() }
         btnReleaseDisconnected.setOnClickListener { releaseDisconnectedOnlinePlayers() }
@@ -1103,10 +1108,16 @@ class LobbyActivity : BaseActivity() {
             collectionNames = listOf(ONLINE_PLAYERS_COLLECTION, "acciones", "baneados", "repartos"),
             index = 0,
             onComplete = {
-                FirebaseFirestore.getInstance()
-                    .collection(ONLINE_ROOMS_COLLECTION)
-                    .document(roomId)
-                    .delete()
+                val firestore = FirebaseFirestore.getInstance()
+                val batch = firestore.batch()
+                batch.delete(firestore.collection(ONLINE_ROOMS_COLLECTION).document(roomId))
+                if (onlineRoomCode.isNotBlank()) {
+                    batch.delete(
+                        firestore.collection(OnlineRoomFirestore.ROOM_CODES_COLLECTION)
+                            .document(onlineRoomCode)
+                    )
+                }
+                batch.commit()
                     .addOnSuccessListener {
                         OnlineDebugLog.i("room_teardown_success roomId=$roomId hostId=$onlineTempUid")
                     }
@@ -1659,11 +1670,46 @@ class LobbyActivity : BaseActivity() {
             },
             playerProfiles = visiblePlayers.associate { player -> player.name to player.profile }
         ))
+        syncRealtimeLobbyAccess()
         coordinateOnlineMatchEntry()
         maybeClaimOnlineLobbyHostHandoff()
         maybeResetFinishedOnlineRoomForRematch()
         maybeContinuePendingOnlineCleanup()
         renderLobby()
+    }
+
+    private fun syncRealtimeLobbyAccess() {
+        if (
+            !isFirestoreOnlineLobby() ||
+            onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
+            !currentUserIsOnlineHost()
+        ) {
+            return
+        }
+        val members = onlinePlayers
+            .filter { it.activeInMatch }
+            .associate { player ->
+                player.id to RealtimeRoomMemberAccess(
+                    name = player.name,
+                    inLobby = true,
+                    alive = true,
+                    traitor = false
+                )
+            }
+        if (members.isEmpty()) return
+        RealtimeRoomAccess.syncMembers(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            hostUid = onlineTempUid,
+            matchId = "",
+            members = members,
+            onFailure = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_lobby_access_sync_failure roomId=$onlinePartidaId host=$onlineTempUid",
+                    error
+                )
+            }
+        )
     }
 
     private fun scheduleOnlinePlayersServerReconciliation() {
@@ -2295,6 +2341,7 @@ class LobbyActivity : BaseActivity() {
                     "lobby_host_handoff_claim_success roomId=$onlinePartidaId previousHost=$previousHostId newHost=$onlineTempUid"
                 )
                 Toast.makeText(this, "Ahora sos el anfitrion de la sala.", Toast.LENGTH_SHORT).show()
+                syncRealtimeLobbyAccess()
                 renderLobby()
             }
         }.addOnFailureListener { error ->
@@ -2375,7 +2422,19 @@ class LobbyActivity : BaseActivity() {
             OnlineDebugLog.w(
                 "lobby_host_transfer_exit_success roomId=$onlinePartidaId previousHost=$onlineTempUid newHost=${candidate.id}"
             )
-            finish()
+            RealtimeRoomAccess.transferHost(
+                database = FirebaseDatabase.getInstance(),
+                roomId = onlinePartidaId,
+                nextHostUid = candidate.id,
+                onComplete = { finish() },
+                onFailure = { error ->
+                    OnlineDebugLog.e(
+                        "rtdb_host_transfer_failure roomId=$onlinePartidaId newHost=${candidate.id}",
+                        error
+                    )
+                    finish()
+                }
+            )
         }.addOnFailureListener { error ->
             onlineHostHandoffInProgress = false
             OnlineDebugLog.e(
@@ -2758,7 +2817,21 @@ class LobbyActivity : BaseActivity() {
                     OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
                 )
             )
-            OnlineStartTransactionResult.Started(selectedMap.key, onlineRoleSummary(assignedSession))
+            val realtimeAccess = activePlayersAtStart.mapIndexed { index, onlinePlayer ->
+                val player = assignedSession.players[index]
+                onlinePlayer.id to RealtimeRoomMemberAccess(
+                    name = player.name,
+                    inLobby = false,
+                    alive = player.alive,
+                    traitor = player.role?.team == GameRules.TRAITOR_WINNER
+                )
+            }.toMap()
+            OnlineStartTransactionResult.Started(
+                mapKey = selectedMap.key,
+                roleSummary = onlineRoleSummary(assignedSession),
+                matchId = onlineMatchId,
+                realtimeAccess = realtimeAccess
+            )
         }.addOnSuccessListener { result ->
             when (result) {
                 OnlineStartTransactionResult.AlreadyStarted -> {
@@ -2776,6 +2849,19 @@ class LobbyActivity : BaseActivity() {
                 is OnlineStartTransactionResult.Started -> {
                     OnlineDebugLog.i(
                         "online_start_success roomId=$onlinePartidaId hostId=$onlineTempUid map=${result.mapKey} roles=${result.roleSummary} attempts=${transactionAttempts.get()}"
+                    )
+                    RealtimeRoomAccess.syncMembers(
+                        database = FirebaseDatabase.getInstance(),
+                        roomId = onlinePartidaId,
+                        hostUid = onlineTempUid,
+                        matchId = result.matchId,
+                        members = result.realtimeAccess,
+                        onFailure = { error ->
+                            OnlineDebugLog.e(
+                                "rtdb_match_access_sync_failure roomId=$onlinePartidaId host=$onlineTempUid",
+                                error
+                            )
+                        }
                     )
                 }
             }
@@ -3175,7 +3261,10 @@ class LobbyActivity : BaseActivity() {
             showIndividualVotes = config.showIndividualVotes,
             onlineTestMode = onlineRoomModePrueba,
             onlinePlayerUids = playersAtStart.map { it.id },
-            roleComposition = LocalGameFactory.onlineSafeRoleComposition(realPlayers.size)
+            roleComposition = LocalGameFactory.onlineSafeRoleComposition(
+                playerCount = realPlayers.size,
+                mapKey = map.key
+            )
         )
     }
 
@@ -4238,8 +4327,10 @@ class LobbyActivity : BaseActivity() {
             )
         }
         practiceRoleButton.setOnClickListener {
-            selectedPracticeRoleIndex = (selectedPracticeRoleIndex + 1) % practiceRoles.size
-            refreshPracticeRole()
+            showPracticeRolePicker(selectedPracticeRoleIndex) { selectedIndex ->
+                selectedPracticeRoleIndex = selectedIndex
+                refreshPracticeRole()
+            }
         }
         practiceRoleDetailButton.setOnClickListener {
             val roleKey = practiceRoles[selectedPracticeRoleIndex].first
@@ -4707,6 +4798,114 @@ class LobbyActivity : BaseActivity() {
         return RoleCatalog.role(roleKey, detailMap)
     }
 
+    private fun showPracticeRolePicker(
+        selectedIndex: Int,
+        onSelected: (Int) -> Unit
+    ) {
+        val content = dialogColumn()
+        content.addView(dialogTitle(getString(R.string.lobby_practice_picker_title)))
+        content.addView(TextView(this).apply {
+            text = getString(R.string.lobby_practice_picker_description)
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(10))
+        })
+
+        var dismissPicker: () -> Unit = {}
+        fun roleChoiceButton(index: Int): Button {
+            val (roleKey, label) = practiceRoles[index]
+            val selected = index == selectedIndex
+            val meta = if (roleKey.isBlank()) {
+                getString(R.string.lobby_practice_random_description)
+            } else {
+                roleMeta(roleKey, LocalGameFactory.minimumPlayersForRole(roleKey))
+            }
+            return compactDialogButton("$label\n$meta").apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+                setPadding(dp(6), dp(4), dp(6), dp(4))
+                setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                setTextColor(
+                    getColor(
+                        when {
+                            selected -> R.color.bg_dark
+                            roleKey.isBlank() -> R.color.text_secondary
+                            else -> R.color.text_primary
+                        }
+                    )
+                )
+                contentDescription = if (selected) {
+                    getString(R.string.lobby_practice_role_selected_description, label, meta)
+                } else {
+                    getString(R.string.lobby_practice_role_choice_description, label, meta)
+                }
+                setOnClickListener {
+                    onSelected(index)
+                    dismissPicker()
+                }
+            }
+        }
+
+        val choices = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        choices.addView(
+            roleChoiceButton(0),
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(PRACTICE_ROLE_PICKER_ROW_HEIGHT_DP)
+            ).apply {
+                bottomMargin = dp(6)
+            }
+        )
+        practiceRoles.indices.drop(1).chunked(2).forEach { rowIndices ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            rowIndices.forEachIndexed { column, index ->
+                val singleChoiceRow = rowIndices.size == 1
+                row.addView(
+                    roleChoiceButton(index),
+                    LinearLayout.LayoutParams(
+                        if (singleChoiceRow) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+                        dp(PRACTICE_ROLE_PICKER_ROW_HEIGHT_DP),
+                        if (singleChoiceRow) 0f else 1f
+                    ).apply {
+                        if (column > 0) marginStart = dp(6)
+                    }
+                )
+            }
+            choices.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(6)
+                }
+            )
+        }
+        content.addView(choices)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
+        val dialog = GameDialog.custom(
+            activity = this,
+            contentView = scroll,
+            widthDp = 620,
+            contentHeightDp = advancedOptionsContentHeightDp(),
+            negativeLabel = getString(R.string.action_cancel),
+            positiveLabel = null
+        )
+        dismissPicker = { dialog.dismiss() }
+    }
+
     private fun renderPracticeRoleSummary() {
         val (roleKey, label) = practiceRoles[practiceRoleIndex]
         val requirement = practiceRoleRequirement(roleKey)
@@ -4965,6 +5164,7 @@ class LobbyActivity : BaseActivity() {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val PREF_LOBBY_CHAT_PREVIEW_HIDDEN = "lobby_chat_preview_hidden"
+        private const val PRACTICE_ROLE_PICKER_ROW_HEIGHT_DP = 58
         private const val DEFAULT_ROLE_READING_SECONDS = 0
         private const val MAX_LOCAL_LOBBY_NOTICES = 12
         private const val LOBBY_HOST_DISCONNECT_GRACE_MS = 60_000L
@@ -5014,7 +5214,12 @@ class LobbyActivity : BaseActivity() {
     private sealed interface OnlineStartTransactionResult {
         object AlreadyStarted : OnlineStartTransactionResult
         data class MapTieBreakRequired(val mapKeys: List<String>) : OnlineStartTransactionResult
-        data class Started(val mapKey: String, val roleSummary: String) : OnlineStartTransactionResult
+        data class Started(
+            val mapKey: String,
+            val roleSummary: String,
+            val matchId: String,
+            val realtimeAccess: Map<String, RealtimeRoomMemberAccess>
+        ) : OnlineStartTransactionResult
     }
 
     private data class MapVoteViews(

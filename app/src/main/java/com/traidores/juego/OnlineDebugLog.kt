@@ -25,6 +25,7 @@ object OnlineDebugLog {
     }
 
     fun e(message: String, error: Throwable? = null) {
+        if (!verbose) return
         if (error == null) {
             Log.e(TAG, message)
         } else {

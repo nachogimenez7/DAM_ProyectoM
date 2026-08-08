@@ -67,6 +67,25 @@ object LocalProfilePhotoStore {
         return true
     }
 
+    fun renderForProfile(
+        context: Context,
+        image: ImageView,
+        profile: PlayerProfile,
+        preferPending: Boolean = false
+    ): Boolean {
+        if (!isEnabledForProfile(context, profile)) return false
+        return render(context, image, preferPending)
+    }
+
+    fun isEnabledForProfile(context: Context, profile: PlayerProfile): Boolean {
+        val currentPublicId = PlayerPublicIdentity.currentPublicId(context)
+        if (currentPublicId.isBlank() || currentPublicId != profile.publicId) return false
+        val enabled = context
+            .getSharedPreferences(ProfileActivity.PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
+        return enabled && hasSavedPhoto(context)
+    }
+
     fun hasSavedPhoto(context: Context): Boolean = finalFile(context).isFile
 
     fun hasPendingPhoto(context: Context): Boolean = pendingFile(context).isFile

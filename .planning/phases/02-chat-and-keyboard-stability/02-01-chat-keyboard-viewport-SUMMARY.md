@@ -23,6 +23,15 @@ requirements:
 - Android keyboards can render differently by manufacturer and settings. The app can react to IME visibility/insets, but the keyboard surface itself remains owned by Android.
 - Final confirmation still requires a real device with the user's keyboard.
 
+## Device Validation Follow-up (2026-08-06)
+
+- A real-device trailer test showed that the composer could still remain below the keyboard.
+- Root cause: the controller tracked the IME inset but continued sizing the panel from the full `screenHeightDp`.
+- The panel now caps itself to the actual visible gameplay viewport, anchors above an overlaid keyboard, and follows IME animation progress.
+- Both Android behaviors are handled: a root already resized by `adjustResize`, or a full root with the IME drawn on top.
+- A second device check found a brief oversized state while the IME was closing. The chat now keeps its normal target height and centers inside the progressively changing visible viewport, so opening and closing use the same reversible motion without a final size jump.
+- Status remains `executed_pending_visual_validation` until the corrected APK is checked on the same device/keyboard combination.
+
 ## Verification
 
 - `git diff --check` passed. Git only reported expected LF-to-CRLF working-copy warnings.

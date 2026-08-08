@@ -110,7 +110,7 @@ class BotConversationDirectorTest {
         )
 
         assertEquals("Mora", beat?.speaker)
-        assertTrue(beat?.message.orEmpty().contains("Beto"))
+        assertTrue(beat?.message.orEmpty(), beat?.message.orEmpty().contains("Beto", ignoreCase = true))
     }
 
     @Test
@@ -339,7 +339,13 @@ class BotConversationDirectorTest {
             index = 0
         ).orEmpty()
 
-        assertTrue(line.contains("miras") || line.contains("sospecha") || line.contains("lectura"))
+        assertTrue(
+            line,
+            line.contains("miras") ||
+                line.contains("sospecha") ||
+                line.contains("lectura") ||
+                line.contains("votarias")
+        )
         assertFalse(line.contains("hiciste", ignoreCase = true))
         assertEquals("a quien miras y por que", claimFollowUp(RoleCatalog.ALDEANO))
     }

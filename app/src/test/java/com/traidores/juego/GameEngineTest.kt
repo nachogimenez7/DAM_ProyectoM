@@ -668,6 +668,29 @@ class GameEngineTest {
     }
 
     @Test
+    fun onlineSafeRoleCompositionAddsTheExclusiveRoleForTheSelectedMap() {
+        val pampa = LocalGameFactory.onlineSafeRoleComposition(8, "pampa")
+        val greece = LocalGameFactory.onlineSafeRoleComposition(8, "grecia")
+        val medieval = LocalGameFactory.onlineSafeRoleComposition(8, "medieval")
+
+        assertEquals(1, pampa.counts[RoleCatalog.PAYADOR])
+        assertEquals(0, pampa.counts[RoleCatalog.ORACULO] ?: 0)
+        assertEquals(0, pampa.counts[RoleCatalog.BUFON] ?: 0)
+
+        assertEquals(1, greece.counts[RoleCatalog.ORACULO])
+        assertEquals(0, greece.counts[RoleCatalog.PAYADOR] ?: 0)
+        assertEquals(0, greece.counts[RoleCatalog.BUFON] ?: 0)
+
+        assertEquals(1, medieval.counts[RoleCatalog.BUFON])
+        assertEquals(0, medieval.counts[RoleCatalog.PAYADOR] ?: 0)
+        assertEquals(0, medieval.counts[RoleCatalog.ORACULO] ?: 0)
+
+        assertEquals(8, pampa.counts.values.sum())
+        assertEquals(8, greece.counts.values.sum())
+        assertEquals(8, medieval.counts.values.sum())
+    }
+
+    @Test
     fun onlineSafeRoleCompositionForThreePlayersUsesOnlyTheThreeCoreRoles() {
         val composition = LocalGameFactory.onlineSafeRoleComposition(3)
 
@@ -1545,7 +1568,7 @@ class GameEngineTest {
         assertEquals(listOf("Asesino"), first.contrapuntoPlayers)
         assertEquals(GamePhase.CONTRAPUNTO, active.phase)
         assertTrue(active.payadorUsed)
-        assertTrue(GameEngine.canHumanChat(active))
+        assertFalse(GameEngine.canHumanChat(active))
         assertFalse(active.publicAnnouncement.contains("Payador"))
 
         val outsiderSession = active.copy(
@@ -1827,7 +1850,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun botDebateAddsPublicChatWithoutRoleLeaks() {
+    fun dawnLeavesBotConversationToTheAsyncChatDirector() {
         val session = baseSession().copy(
             phase = GamePhase.AMANECER,
             nightKillTarget = "",
@@ -1844,12 +1867,12 @@ class GameEngineTest {
         )
 
         val resolved = GameEngine.resolveDawn(session)
-        val chatText = resolved.chatHistory.joinToString(" ") { "${it.speaker}: ${it.message}" }
+        val generatedBotMessages = resolved.chatHistory.filterNot { it.isGod }
 
-        assertTrue(resolved.chatHistory.size >= 2)
-        assertFalse(chatText.contains("asesino", ignoreCase = true))
-        assertFalse(chatText.contains("policia", ignoreCase = true))
-        assertFalse(chatText.contains("medico", ignoreCase = true))
+        assertEquals(GamePhase.DIA_DEBATE, resolved.phase)
+        assertEquals(session.chatHistory.size + 1, resolved.chatHistory.size)
+        assertEquals(resolved.publicAnnouncement, resolved.chatHistory.last().message)
+        assertTrue(generatedBotMessages.isEmpty())
     }
 
     @Test
@@ -2033,7 +2056,10 @@ class GameEngineTest {
 
         assertTrue("Respuestas: $botText", botText.contains("Ciro:"))
         assertTrue("Respuestas: $botText", botText.contains("yo soy medico"))
-        assertTrue("Respuestas: $botText", botText.contains("doble claim"))
+        assertTrue(
+            "Respuestas: $botText",
+            botText.contains("doble claim") || botText.contains("dos q dicen lo mismo")
+        )
     }
 
     @Test

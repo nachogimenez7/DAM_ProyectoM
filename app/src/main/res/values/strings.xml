@@ -60,13 +60,19 @@
 
     <string name="lobby_practice_section">MODO PRÁCTICA</string>
     <string name="lobby_practice_description">Elegí un rol para asegurarte de que te toque esta partida. Si no está en la composición actual, reemplaza a un Aldeano.</string>
-    <string name="lobby_practice_role">Practicar: %1$s%2$s</string>
+    <string name="lobby_practice_role">Elegir rol: %1$s%2$s  ▾</string>
     <string name="lobby_practice_minimum"> (%1$d+)</string>
     <string name="lobby_practice_view_role">VER ROL</string>
     <string name="lobby_practice_view_role_description">Ver detalles de %1$s</string>
     <string name="lobby_practice_summary">Práctica: %1$s%2$s</string>
     <string name="lobby_practice_summary_default">Práctica: AZAR</string>
     <string name="lobby_practice_summary_description">Rol de práctica: %1$s%2$s. Toca para cambiarlo.</string>
+    <string name="lobby_practice_picker_title">Elegir rol de práctica</string>
+    <string name="lobby_practice_picker_description">Tocá el rol que querés recibir. Ya no hace falta recorrerlos uno por uno.</string>
+    <string name="lobby_practice_random_description">Asignación normal</string>
+    <string name="lobby_practice_role_choice_description">Elegir %1$s. %2$s.</string>
+    <string name="lobby_practice_role_selected_description">%1$s seleccionado. %2$s.</string>
+    <string name="action_cancel">CANCELAR</string>
 
     <string name="profile_account_title">CUENTA</string>
     <string name="profile_account_guest">Jugás como invitado. Con una cuenta elegís tu nombre, personalizás el perfil y tenés tu número.</string>

@@ -772,7 +772,10 @@ object LocalGameFactory {
         )
     }
 
-    fun onlineSafeRoleComposition(playerCount: Int): RoleCompositionConfig {
+    fun onlineSafeRoleComposition(
+        playerCount: Int,
+        mapKey: String = ""
+    ): RoleCompositionConfig {
         val count = playerCount.coerceIn(TEST_MIN_PLAYERS, MAX_PLAYERS)
         val counts = linkedMapOf(
             RoleCatalog.POLICIA to 1,
@@ -780,9 +783,12 @@ object LocalGameFactory {
             RoleCatalog.ASESINO to 1
         )
         // Umbrales iguales a los `minimumPlayers` del catalogo, para que el online se sienta
-        // como el local a medida que la mesa crece. Faltan los tres roles exclusivos de mapa.
+        // como el local a medida que la mesa crece.
         if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
         if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
+        if (count >= 8 && mapKey.isNotBlank()) {
+            counts[exclusiveRoleForMap(RoleMap.fromSessionKey(mapKey))] = 1
+        }
         if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
         if (count >= 10) counts[RoleCatalog.ESPIA] = 1
         val specialCount = counts.values.sum()

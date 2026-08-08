@@ -18,6 +18,7 @@ data class OnlineRoomCreation(
 
 object OnlineRoomFirestore {
     const val ROOMS_COLLECTION = "partidas"
+    const val ROOM_CODES_COLLECTION = "codigosSala"
     const val PLAYERS_COLLECTION = "jugadores"
     const val STATE_WAITING = OnlineLobbyRules.ROOM_STATE_WAITING
     const val STATE_IN_GAME = OnlineLobbyRules.ROOM_STATE_IN_GAME
@@ -91,11 +92,13 @@ object OnlineRoomFirestore {
         modePrueba: Boolean = false,
         requestedRoomName: String = "",
         visibility: String = VISIBILITY_PUBLIC,
-        roomCode: String = generateRoomCode()
+        roomCode: String = generateRoomCode(),
+        roomReference: DocumentReference = firestore.collection(ROOMS_COLLECTION).document()
     ): OnlineRoomCreation {
-        val roomReference = firestore.collection(ROOMS_COLLECTION).document()
         val hostReference = roomReference.collection(PLAYERS_COLLECTION)
             .document(uidTemporal)
+        val roomCodeReference = firestore.collection(ROOM_CODES_COLLECTION)
+            .document(roomCode)
         val roomNumber = (System.currentTimeMillis() % 10000).toString().padStart(4, '0')
         val safePlayerName = normalizedPlayerName(playerName)
         val safeExpectedPlayers = normalizedExpectedPlayers(expectedPlayers, modePrueba)
@@ -137,9 +140,16 @@ object OnlineRoomFirestore {
             FIELD_JOINED_AT to FieldValue.serverTimestamp()
         )
         hostData.putAll(profileFields)
+        val roomCodeData = mapOf(
+            "partidaId" to roomReference.id,
+            FIELD_ROOM_CODE to roomCode,
+            FIELD_HOST_ID to uidTemporal,
+            FIELD_CREATED_AT to FieldValue.serverTimestamp()
+        )
         val task = firestore.batch()
             .set(roomReference, roomData)
             .set(hostReference, hostData)
+            .set(roomCodeReference, roomCodeData)
             .commit()
 
         return OnlineRoomCreation(

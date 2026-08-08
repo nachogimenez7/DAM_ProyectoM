@@ -999,6 +999,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 showRolePreview()
             }
         }
+        currentPlayerName.setOnClickListener {
+            showMiniPlayerProfile(GameEngine.humanPlayer(session))
+        }
+        currentPlayerName.isFocusable = true
+        currentPlayerName.contentDescription = "Abrir mi perfil"
         rolePreviewContent.setOnClickListener { }
         rolePreviewOverlay.setOnClickListener { closeRolePreview() }
         deathRevealOverlay.setOnClickListener { continueDeathReveal() }
@@ -2378,6 +2383,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             .document(onlinePartidaId)
             .update(roomUpdate)
             .addOnSuccessListener {
+                syncRealtimeGameplayAccess()
                 OnlineDebugLog.i(
                     "phase_host_publish roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
                 )
@@ -3154,6 +3160,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun startRealtimeGameplayPresence() {
         if (!isOnlineGameplay() || realtimePresence != null) return
+        if (onlineIsHost) syncRealtimeGameplayAccess()
         val presence = RealtimeRoomPresence(
             database = FirebaseDatabase.getInstance(),
             roomId = onlinePartidaId,
@@ -3183,6 +3190,35 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         presence.start()
     }
 
+    private fun syncRealtimeGameplayAccess() {
+        if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        val members = session.players.mapIndexedNotNull { index, player ->
+            val uid = session.onlinePlayerUids.getOrNull(index)
+                ?.takeIf { it.isNotBlank() }
+                ?: return@mapIndexedNotNull null
+            uid to RealtimeRoomMemberAccess(
+                name = player.name,
+                inLobby = false,
+                alive = player.alive,
+                traitor = player.role?.team?.let { it == GameRules.TRAITOR_WINNER }
+            )
+        }.toMap()
+        if (members.isEmpty()) return
+        RealtimeRoomAccess.syncMembers(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            hostUid = onlinePlayerId,
+            matchId = session.onlineMatchId,
+            members = members,
+            onFailure = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_gameplay_access_sync_failure roomId=$onlinePartidaId host=$onlinePlayerId",
+                    error
+                )
+            }
+        )
+    }
+
     private fun startRealtimeTableSilence() {
         if (!isOnlineGameplay() || realtimeTableSilence != null) return
         realtimeTableSilence = RealtimeTableSilence(
@@ -3192,6 +3228,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ownName = { GameEngine.humanPlayer(session).name },
             isOwnPlayerAlive = { GameEngine.humanPlayer(session).alive },
             aliveCount = { session.players.count { it.alive } },
+            isAuthority = { onlineIsHost },
             onOwnSilenceChanged = { silenced ->
                 val changed = ownPlayerTableSilenced != silenced
                 ownPlayerTableSilenced = silenced
@@ -3430,6 +3467,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.onlineMatchId.isNotBlank()) {
             query = query.whereEqualTo("matchId", session.onlineMatchId)
         }
+        if (!onlineIsHost) {
+            query = query.whereEqualTo("actorId", onlinePlayerId)
+        }
         onlineActionsListener = query.addSnapshotListener { snapshot, error ->
             if (error != null) {
                 OnlineDebugLog.e(
@@ -3448,6 +3488,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             appendTraitorKillNotices()
             maybeResolveOnlineNightEarly()
         }
+    }
+
+    private fun restartOnlineActionsListenerForAuthority() {
+        onlineActionsListener?.remove()
+        onlineActionsListener = null
+        onlineNightActionRecords = emptyList()
+        startOnlineActionsListener()
     }
 
     private fun currentOnlinePayadorActions(): List<OnlineActionRecord> {
@@ -3773,6 +3820,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.w(
             "host_promoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} round=${session.round}"
         )
+        restartOnlineActionsListenerForAuthority()
+        syncRealtimeGameplayAccess()
         if (onlineAwaitingHostAdvance) {
             setOnlineAwaitingHostAdvance(false)
             autoAdvanceHandler.post { renderGame() }
@@ -3795,6 +3844,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.w(
             "host_demoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason activeHost=$onlineActiveHostId phase=${session.phase.name} round=${session.round}"
         )
+        restartOnlineActionsListenerForAuthority()
         refreshOnlinePresentationGate()
         renderGame()
     }
@@ -8314,13 +8364,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             FrameLayout.LayoutParams(dp(52), dp(70), Gravity.CENTER)
         )
         card.addView(
-            TextView(this).apply {
-                text = player.initial
-                gravity = Gravity.CENTER
-                setBackgroundResource(R.drawable.bg_player_avatar)
-                setTextColor(getColor(R.color.bg_dark))
-                textSize = 17f
-                setTypeface(null, Typeface.BOLD)
+            GameplayAvatarView(this).apply {
+                bind(
+                    session = session,
+                    player = player,
+                    fallbackInitial = player.initial,
+                    textSizeSp = 17f
+                )
             },
             FrameLayout.LayoutParams(dp(30), dp(30), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
                 topMargin = dp(8)

@@ -21,6 +21,7 @@ const {
   deleteField,
   deleteDoc,
   runTransaction,
+  writeBatch,
 } = require("firebase/firestore");
 
 const projectId = "traidores-local";
@@ -118,6 +119,7 @@ async function main() {
 
   try {
     const host = testEnv.authenticatedContext("host_uid").firestore();
+    const oldHost = testEnv.authenticatedContext("old_host_uid").firestore();
     const guest = testEnv.authenticatedContext("guest_uid").firestore();
     const legacyGuest = testEnv.authenticatedContext("legacy_guest_uid", {
       firebase: { sign_in_provider: "anonymous" },
@@ -493,7 +495,7 @@ async function main() {
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
-    await assertSucceeds(addDoc(collection(host, "partidas", "room_auth", "acciones"), {
+    const hostAction = await assertSucceeds(addDoc(collection(host, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",
       tipo: "fase_avanzada",
       actorId: "host_uid",
@@ -510,7 +512,13 @@ async function main() {
     }));
     await assertSucceeds(getDoc(doc(guest, guestAction.path)));
     await assertSucceeds(getDoc(doc(host, guestAction.path)));
+    await assertFails(getDoc(doc(guest, hostAction.path)));
     await assertFails(getDoc(doc(intruder, guestAction.path)));
+    await assertSucceeds(getDocs(query(
+      collection(guest, "partidas", "room_auth", "acciones"),
+      where("actorId", "==", "guest_uid")
+    )));
+    await assertFails(getDocs(collection(guest, "partidas", "room_auth", "acciones")));
 
     const oldChatRef = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "chat"), {
       matchId: "match_rules_1",
@@ -630,6 +638,12 @@ async function main() {
     }));
 
     await seedRoom(testEnv, "room_handoff", "old_host_uid");
+    await assertSucceeds(setDoc(doc(oldHost, "codigosSala", "ABC234"), {
+      partidaId: "room_handoff",
+      codigoSala: "ABC234",
+      hostId: "old_host_uid",
+      creadaEn: serverTimestamp(),
+    }));
     await assertSucceeds(setDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), playerData("guest_uid", "Guest", 1)));
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff"), {
       hostActivoId: "guest_uid",
@@ -684,6 +698,8 @@ async function main() {
       nombrePerfil: "Other",
       actualizadaEn: serverTimestamp(),
     }));
+    await assertFails(deleteDoc(doc(oldHost, "codigosSala", "ABC234")));
+    await assertSucceeds(deleteDoc(doc(guest, "codigosSala", "ABC234")));
     await assertFails(deleteDoc(doc(intruder, "perfiles_publicos", "guest_uid")));
     await assertSucceeds(deleteDoc(doc(guest, "perfiles_publicos", "guest_uid")));
 
@@ -806,6 +822,53 @@ async function main() {
     );
     await assertSucceeds(getDocs(browserQuery));
     await assertSucceeds(getDoc(doc(guest, "partidas", "room_auth")));
+    await seedRoom(testEnv, "room_private_state", "host_uid");
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_private_state"), {
+        estado: "en_juego",
+      });
+    });
+    await assertSucceeds(getDoc(doc(host, "partidas", "room_private_state")));
+    await assertFails(getDoc(doc(intruder, "partidas", "room_private_state")));
+
+    await assertSucceeds(setDoc(doc(host, "codigosSala", "ABC234"), {
+      partidaId: "room_auth",
+      codigoSala: "ABC234",
+      hostId: "host_uid",
+      creadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(getDoc(doc(guest, "codigosSala", "ABC234")));
+    await assertFails(getDocs(collection(guest, "codigosSala")));
+    await assertFails(setDoc(doc(intruder, "codigosSala", "XYZ234"), {
+      partidaId: "room_auth",
+      codigoSala: "XYZ234",
+      hostId: "intruder_uid",
+      creadaEn: serverTimestamp(),
+    }));
+
+    const atomicRoomRef = doc(host, "partidas", "room_atomic_create");
+    const atomicBatch = writeBatch(host);
+    atomicBatch.set(atomicRoomRef, {
+      ...roomData("host_uid"),
+      codigoSala: "QWE234",
+    });
+    atomicBatch.set(
+      doc(host, "partidas", "room_atomic_create", "jugadores", "host_uid"),
+      playerData("host_uid", "Host", 0, true)
+    );
+    atomicBatch.set(doc(host, "codigosSala", "QWE234"), {
+      partidaId: "room_atomic_create",
+      codigoSala: "QWE234",
+      hostId: "host_uid",
+      creadaEn: serverTimestamp(),
+    });
+    await assertSucceeds(atomicBatch.commit());
+
+    const rollbackBatch = writeBatch(host);
+    rollbackBatch.delete(doc(host, "partidas", "room_atomic_create", "jugadores", "host_uid"));
+    rollbackBatch.delete(doc(host, "codigosSala", "QWE234"));
+    rollbackBatch.delete(atomicRoomRef);
+    await assertSucceeds(rollbackBatch.commit());
   } finally {
     await testEnv.cleanup();
   }

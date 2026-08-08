@@ -35,6 +35,13 @@ object GameEngine {
 
     fun resolveAssassin(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ASESINO)) return session
+        val currentHumanKiller = activeKillers(session).firstOrNull { it.isHuman }
+        if (
+            currentHumanKiller != null &&
+            !isValidKillTarget(session, selectedTarget, currentHumanKiller)
+        ) {
+            return session
+        }
         val plannedSession = session.withPreparedTraitorPlan()
 
         val killers = activeKillers(plannedSession)
@@ -47,12 +54,6 @@ object GameEngine {
         }
 
         val humanKiller = killers.firstOrNull { it.isHuman }
-        if (
-            humanKiller != null &&
-            !isValidKillTarget(plannedSession, selectedTarget, humanKiller)
-        ) {
-            return plannedSession
-        }
         val coordinatedHumanTarget = selectedTarget.takeIf {
             humanKiller != null && isValidKillTarget(plannedSession, it, humanKiller)
         }

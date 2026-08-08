@@ -18,7 +18,7 @@ internal object BotTableMemory {
             return trim(memory, session)
         }
 
-        val directTarget = BotPerception.directAddressee(session, message)
+        val directTarget = BotPerception.directPlayerAddressee(session, message)
         if (message.contains("?")) {
             (directTarget?.let(::listOf) ?: mentionedPlayerNames(session, message))
                 .filter { it != speaker }

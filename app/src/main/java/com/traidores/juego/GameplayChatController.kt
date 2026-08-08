@@ -2,6 +2,7 @@ package com.traidores.juego
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -28,6 +29,7 @@ import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
 import com.google.firebase.database.DataSnapshot
@@ -78,6 +80,11 @@ class GameplayChatController(
         val actorId: String,
         val playerName: String,
         val emoteId: String
+    )
+
+    private data class ChatViewport(
+        val visibleTop: Int,
+        val visibleHeight: Int
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -200,7 +207,7 @@ class GameplayChatController(
         }
         chatInput.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                setChatKeyboardState(true, chatKeyboardBottomInset)
+                ViewCompat.requestApplyInsets(root)
             }
         }
         chatInput.doAfterTextChanged { renderChatCharacterCount(it?.length ?: 0) }
@@ -566,6 +573,29 @@ class GameplayChatController(
             setChatKeyboardState(imeVisible, imeBottomInset)
             insets
         }
+        ViewCompat.setWindowInsetsAnimationCallback(
+            root,
+            object : WindowInsetsAnimationCompat.Callback(
+                WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE
+            ) {
+                override fun onProgress(
+                    insets: WindowInsetsCompat,
+                    runningAnimations: MutableList<WindowInsetsAnimationCompat>
+                ): WindowInsetsCompat {
+                    val imeBottomInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+                    setChatKeyboardState(
+                        compact = insets.isVisible(WindowInsetsCompat.Type.ime()) || imeBottomInset > 0,
+                        bottomInset = imeBottomInset
+                    )
+                    return insets
+                }
+            }
+        )
+        root.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (isChatKeyboardCompact && bottom - top != oldBottom - oldTop) {
+                applyChatPanelDimensions()
+            }
+        }
         ViewCompat.requestApplyInsets(root)
     }
 
@@ -663,27 +693,48 @@ class GameplayChatController(
     private fun applyChatPanelDimensions() {
         if (root.width == 0) return
         val params = chatPanel.layoutParams
-        val heightRatio = if (isChatKeyboardCompact) {
-            CHAT_SHEET_COMPACT_HEIGHT_RATIO
-        } else {
-            CHAT_SHEET_HEIGHT_RATIO
-        }
+        val viewport = currentChatViewport()
+        val desiredHeight = host.dp(
+            (root.resources.configuration.screenHeightDp * CHAT_SHEET_HEIGHT_RATIO).toInt()
+        )
+        val keyboardGap = if (isChatKeyboardCompact) host.dp(CHAT_SHEET_KEYBOARD_GAP_DP) else 0
+        val maxVisibleHeight = (viewport.visibleHeight - keyboardGap * 2).coerceAtLeast(1)
+        val minVisibleHeight = host.dp(CHAT_SHEET_MIN_HEIGHT_DP).coerceAtMost(maxVisibleHeight)
         params.width = (centerColumn.width.takeIf { it > 0 } ?: (root.width - host.dp(140)))
             .coerceAtLeast(host.dp(210))
-        params.height = host.dp((root.resources.configuration.screenHeightDp * heightRatio).toInt())
-            .coerceIn(host.dp(CHAT_SHEET_MIN_HEIGHT_DP), host.dp(CHAT_SHEET_MAX_HEIGHT_DP))
+        params.height = desiredHeight.coerceIn(
+            minVisibleHeight,
+            host.dp(CHAT_SHEET_MAX_HEIGHT_DP).coerceAtMost(maxVisibleHeight)
+        )
         (params as? ViewGroup.MarginLayoutParams)?.apply {
             marginStart = 0
             marginEnd = 0
-            topMargin = 0
+            topMargin = if (isChatKeyboardCompact) {
+                viewport.visibleTop + ((viewport.visibleHeight - params.height) / 2)
+            } else {
+                0
+            }
             bottomMargin = 0
         }
         (params as? RelativeLayout.LayoutParams)?.apply {
-            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
-            addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+            if (isChatKeyboardCompact) {
+                addRule(RelativeLayout.CENTER_IN_PARENT, 0)
+                addRule(RelativeLayout.CENTER_HORIZONTAL, RelativeLayout.TRUE)
+                addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
+                addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE)
+            } else {
+                addRule(RelativeLayout.ALIGN_PARENT_TOP, 0)
+                addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
+                addRule(RelativeLayout.CENTER_HORIZONTAL, 0)
+                addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+            }
         }
         (params as? FrameLayout.LayoutParams)?.apply {
-            gravity = Gravity.CENTER
+            gravity = if (isChatKeyboardCompact) {
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            } else {
+                Gravity.CENTER
+            }
         }
         chatPanel.layoutParams = params
         chatPanelContent.setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
@@ -702,6 +753,44 @@ class GameplayChatController(
         btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
             height = host.dp(44)
         }
+    }
+
+    private fun currentChatViewport(): ChatViewport {
+        val rootHeight = root.height
+        if (!isChatKeyboardCompact || rootHeight <= 0) {
+            return ChatViewport(visibleTop = 0, visibleHeight = rootHeight.coerceAtLeast(1))
+        }
+
+        val visibleFrame = Rect()
+        val rootLocation = IntArray(2)
+        root.getWindowVisibleDisplayFrame(visibleFrame)
+        root.getLocationOnScreen(rootLocation)
+
+        val visibleTop = (visibleFrame.top - rootLocation[1]).coerceIn(0, rootHeight)
+        val visibleBottom = (visibleFrame.bottom - rootLocation[1]).coerceIn(visibleTop, rootHeight)
+        val measuredObscuredBottom = (rootHeight - visibleBottom).coerceAtLeast(0)
+
+        // Con adjustResize algunos dispositivos ya achican el root; otros mantienen el root
+        // completo y solo informan el IME. Esta comprobacion evita restar el teclado dos veces.
+        val screenHeight = host.dp(root.resources.configuration.screenHeightDp)
+        val rootAlreadyResized = chatKeyboardBottomInset > 0 &&
+            rootHeight + chatKeyboardBottomInset <= screenHeight + host.dp(IME_RESIZE_TOLERANCE_DP)
+        val insetObscuredBottom = if (rootAlreadyResized) {
+            0
+        } else {
+            chatKeyboardBottomInset.coerceIn(0, rootHeight)
+        }
+        val obscuredBottom = if (measuredObscuredBottom > host.dp(IME_FRAME_TOLERANCE_DP)) {
+            measuredObscuredBottom
+        } else {
+            insetObscuredBottom
+        }
+        val usableBottom = (rootHeight - obscuredBottom).coerceAtLeast(visibleTop)
+
+        return ChatViewport(
+            visibleTop = visibleTop,
+            visibleHeight = (usableBottom - visibleTop).coerceAtLeast(1)
+        )
     }
 
     private fun renderAmbientChatFeed() {
@@ -3319,9 +3408,11 @@ class GameplayChatController(
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_CHAT_CHANNEL = "chat_channel"
         private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
-        private const val CHAT_SHEET_COMPACT_HEIGHT_RATIO = 0.74f
         private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
+        private const val CHAT_SHEET_KEYBOARD_GAP_DP = 6
+        private const val IME_FRAME_TOLERANCE_DP = 8
+        private const val IME_RESIZE_TOLERANCE_DP = 48
         private const val CHAT_AMBIENT_MAX_MESSAGES = 4
         private const val CHAT_AMBIENT_SOURCE_LIMIT = 8
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 32

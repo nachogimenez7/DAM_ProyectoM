@@ -263,6 +263,11 @@ internal fun speechTarget(
 }
 
 internal fun isSelfAccusatoryLine(message: String, session: GameSession, bot: GamePlayer): Boolean {
+    val text = normalizedForParsing(message)
+    val asksToRemoveSelf = listOf(
+        "saquenme", "votenme", "echenme", "expulsenme", "linchenme", "matenme"
+    ).any(text::contains)
+    if (asksToRemoveSelf) return true
     if (!mentionsName(message, bot.name)) return false
     if (hasAnySignal(message, defenseWords)) return false
     if (!hasAccusatoryTargetSignal(message)) return false

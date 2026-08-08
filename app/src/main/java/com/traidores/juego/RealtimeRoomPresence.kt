@@ -30,12 +30,35 @@ class RealtimeRoomPresence(
     private val presenceRoot: DatabaseReference =
         database.getReference("salas/$roomId/presencia")
     private val ownPresence: DatabaseReference = presenceRoot.child(uid)
+    private val ownMembership: DatabaseReference =
+        database.getReference("salas/$roomId/miembros/$uid")
     private val connectionState: DatabaseReference = database.getReference(".info/connected")
 
     private var desiredConnected = false
     private var started = false
     private var socketConnected = false
+    private var membershipGranted = false
     private var publishGeneration = 0
+
+    private val membershipListener = object : ValueEventListener {
+        override fun onDataChange(snapshot: DataSnapshot) {
+            val granted = snapshot.exists() &&
+                snapshot.child("activo").getValue(Boolean::class.java) == true
+            val becameAvailable = granted && !membershipGranted
+            membershipGranted = granted
+            if (!granted) {
+                markOwnPresenceUnavailable()
+            } else if (becameAvailable && socketConnected && desiredConnected) {
+                armDisconnectThenPublishOnline()
+            }
+        }
+
+        override fun onCancelled(error: DatabaseError) {
+            membershipGranted = false
+            markOwnPresenceUnavailable()
+            onError(error.toException())
+        }
+    }
 
     private val presenceListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
@@ -61,7 +84,7 @@ class RealtimeRoomPresence(
         override fun onDataChange(snapshot: DataSnapshot) {
             val connected = snapshot.getValue(Boolean::class.java) == true
             socketConnected = connected
-            if (connected && desiredConnected) {
+            if (connected && desiredConnected && membershipGranted) {
                 armDisconnectThenPublishOnline()
             } else if (!connected) {
                 markOwnPresenceUnavailable()
@@ -80,6 +103,7 @@ class RealtimeRoomPresence(
         started = true
         desiredConnected = true
         markOwnPresenceUnavailable()
+        ownMembership.addValueEventListener(membershipListener)
         presenceRoot.addValueEventListener(presenceListener)
         connectionState.addValueEventListener(connectionListener)
     }
@@ -89,7 +113,7 @@ class RealtimeRoomPresence(
         desiredConnected = connected
         if (!started) return
         if (connected) {
-            if (socketConnected) armDisconnectThenPublishOnline()
+            if (socketConnected && membershipGranted) armDisconnectThenPublishOnline()
         } else {
             markOwnPresenceUnavailable()
             publishOffline()
@@ -102,7 +126,7 @@ class RealtimeRoomPresence(
      * enganchar chats/emotes otra vez.
      */
     fun refresh() {
-        if (!started || !desiredConnected || !socketConnected) return
+        if (!started || !desiredConnected || !socketConnected || !membershipGranted) return
         armDisconnectThenPublishOnline()
     }
 
@@ -110,7 +134,9 @@ class RealtimeRoomPresence(
         if (!started) return
         desiredConnected = false
         socketConnected = false
+        membershipGranted = false
         markOwnPresenceUnavailable()
+        ownMembership.removeEventListener(membershipListener)
         presenceRoot.removeEventListener(presenceListener)
         connectionState.removeEventListener(connectionListener)
         started = false
@@ -148,6 +174,7 @@ class RealtimeRoomPresence(
         return started &&
             desiredConnected &&
             socketConnected &&
+            membershipGranted &&
             publishGeneration == generation
     }
 

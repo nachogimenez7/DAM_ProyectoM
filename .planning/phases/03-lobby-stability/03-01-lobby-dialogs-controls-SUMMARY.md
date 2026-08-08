@@ -23,3 +23,9 @@ requirements:
 
 - `git diff --check` passed. Git only reported expected LF-to-CRLF working-copy warnings.
 - No Gradle build was run because the user explicitly said they would compile later.
+
+## Device Validation Follow-up (2026-08-06)
+
+- The practice-role control was still a cyclic button, forcing the tester to traverse the full list after passing the desired role.
+- The lobby practice summary and the advanced-options control now open a direct, scrollable role grid.
+- Every choice shows its role name plus team/map and minimum-player context; the active choice is highlighted and can be replaced with one tap.

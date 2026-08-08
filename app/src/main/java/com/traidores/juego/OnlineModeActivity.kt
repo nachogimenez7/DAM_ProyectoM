@@ -18,6 +18,7 @@ import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
+import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -119,11 +120,19 @@ class OnlineModeActivity : BaseActivity() {
                 OnlineDebugLog.e("online_access_gate_failure", error)
                 GameNotice.show(
                     this,
-                    OnlineErrorMessages.forAction("No pudimos verificar tu acceso online", error),
+                    OnlineErrorMessages.forAction(
+                        "No pudimos verificar tu acceso online. Reintentando",
+                        error
+                    ),
                     GameNotice.Duration.LONG
                 )
-                setOnlineActionsEnabled(true)
-                refreshRecoveredRoomButton()
+                setOnlineActionsEnabled(false)
+                if (::btnCreate.isInitialized) {
+                    btnCreate.postDelayed(
+                        { if (!isFinishing && !isDestroyed) verifyOnlineAccess() },
+                        ONLINE_ACCESS_RETRY_MS
+                    )
+                }
             }
         )
     }
@@ -529,12 +538,11 @@ class OnlineModeActivity : BaseActivity() {
             "create_room_requested hostId=$uidTemporal map=${selectedMap.key} expected=$expectedPlayers testMode=$modePrueba player=${OnlineRoomFirestore.normalizedPlayerName(playerName)}"
         )
         val candidateCode = OnlineRoomFirestore.generateRoomCode()
-        firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
-            .whereEqualTo(OnlineRoomFirestore.FIELD_ROOM_CODE, candidateCode)
-            .limit(1)
+        firestore.collection(OnlineRoomFirestore.ROOM_CODES_COLLECTION)
+            .document(candidateCode)
             .get()
             .addOnSuccessListener { snapshot ->
-                if (!snapshot.isEmpty) {
+                if (snapshot.exists()) {
                     OnlineDebugLog.w(
                         "create_room_code_collision code=$candidateCode remaining=$remainingCodeAttempts"
                     )
@@ -594,62 +602,106 @@ class OnlineModeActivity : BaseActivity() {
         selectedMap: GameMap,
         roomCode: String
     ) {
-        val creation = OnlineRoomFirestore.createRoom(
-            firestore = firestore,
-            playerName = playerName,
-            uidTemporal = uidTemporal,
-            publicId = publicId,
-            profileFields = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName),
-            map = selectedMap,
-            origin = "android-online-create",
-            expectedPlayers = expectedPlayers,
-            modePrueba = modePrueba,
-            requestedRoomName = requestedRoomName,
-            visibility = roomVisibility,
-            roomCode = roomCode
-        )
-
-        creation.commitTask
-            .addOnSuccessListener {
-                OnlineDebugLog.i(
-                    "create_room_success roomId=${creation.roomReference.id} code=${creation.roomCode} hostId=$uidTemporal map=${creation.map.key} expected=${creation.expectedPlayers} testMode=$modePrueba"
+        val database = FirebaseDatabase.getInstance()
+        val roomReference = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION).document()
+        val safePlayerName = OnlineRoomFirestore.normalizedPlayerName(playerName)
+        RealtimeRoomAccess.initializeHost(
+            database = database,
+            roomId = roomReference.id,
+            hostUid = uidTemporal,
+            hostName = safePlayerName,
+            onReady = {
+                val creation = OnlineRoomFirestore.createRoom(
+                    firestore = firestore,
+                    playerName = safePlayerName,
+                    uidTemporal = uidTemporal,
+                    publicId = publicId,
+                    profileFields = PlayerPublicIdentity.publicProfileFields(
+                        this,
+                        publicId,
+                        safePlayerName
+                    ),
+                    map = selectedMap,
+                    origin = "android-online-create",
+                    expectedPlayers = expectedPlayers,
+                    modePrueba = modePrueba,
+                    requestedRoomName = requestedRoomName,
+                    visibility = roomVisibility,
+                    roomCode = roomCode,
+                    roomReference = roomReference
                 )
-                btnCreate.isEnabled = true
-                btnCreate.text = "CREAR PARTIDA"
-                OnlineRoomRecovery.save(
-                    this,
-                    roomId = creation.roomReference.id,
-                    roomCode = creation.roomCode,
-                    roomName = creation.roomName,
-                    mapKey = creation.map.key,
-                    isHost = true
+                creation.commitTask
+                    .addOnSuccessListener {
+                        OnlineDebugLog.i(
+                            "create_room_success roomId=${creation.roomReference.id} code=${creation.roomCode} hostId=$uidTemporal map=${creation.map.key} expected=${creation.expectedPlayers} testMode=$modePrueba"
+                        )
+                        btnCreate.isEnabled = true
+                        btnCreate.text = "CREAR PARTIDA"
+                        OnlineRoomRecovery.save(
+                            this,
+                            roomId = creation.roomReference.id,
+                            roomCode = creation.roomCode,
+                            roomName = creation.roomName,
+                            mapKey = creation.map.key,
+                            isHost = true
+                        )
+                        val session = LocalGameFactory.createOnlineLobby(
+                            humanName = creation.playerName,
+                            playerCount = 1,
+                            humanIsHost = true
+                        ).let { LocalGameFactory.selectMap(it, creation.map.key) }
+                        Toast.makeText(this, "Sala online creada.", Toast.LENGTH_SHORT).show()
+                        startActivity(
+                            Intent(this, LobbyActivity::class.java)
+                                .putExtra(LobbyActivity.EXTRA_SESSION, session)
+                                .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, LobbyActivity.MODE_ONLINE_CREATE)
+                                .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, creation.roomName)
+                                .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, creation.roomReference.id)
+                                .putExtra(LobbyActivity.EXTRA_ROOM_CODE, creation.roomCode)
+                                .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, false)
+                        )
+                    }
+                    .addOnFailureListener { error ->
+                        OnlineDebugLog.e("create_room_failure hostId=$uidTemporal map=${selectedMap.key}", error)
+                        database.getReference("salas/${roomReference.id}")
+                            .removeValue()
+                            .addOnFailureListener { cleanupError ->
+                                OnlineDebugLog.e(
+                                    "rtdb_failed_room_rollback_failure roomId=${roomReference.id}",
+                                    cleanupError
+                                )
+                            }
+                        btnCreate.isEnabled = true
+                        btnCreate.text = "CREAR PARTIDA"
+                        Toast.makeText(
+                            this,
+                            OnlineErrorMessages.forAction("No se pudo crear la sala", error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+            },
+            onFailure = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_access_initialize_failure roomId=${roomReference.id}",
+                    error
                 )
-                val session = LocalGameFactory.createOnlineLobby(
-                    humanName = creation.playerName,
-                    playerCount = 1,
-                    humanIsHost = true
-                ).let { LocalGameFactory.selectMap(it, creation.map.key) }
-                Toast.makeText(this, "Sala online creada.", Toast.LENGTH_SHORT).show()
-                startActivity(
-                    Intent(this, LobbyActivity::class.java)
-                        .putExtra(LobbyActivity.EXTRA_SESSION, session)
-                        .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, LobbyActivity.MODE_ONLINE_CREATE)
-                        .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, creation.roomName)
-                        .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, creation.roomReference.id)
-                        .putExtra(LobbyActivity.EXTRA_ROOM_CODE, creation.roomCode)
-                        .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, false)
-                )
-            }
-            .addOnFailureListener { error ->
-                OnlineDebugLog.e("create_room_failure hostId=$uidTemporal map=${selectedMap.key}", error)
+                database.getReference("salas/${roomReference.id}")
+                    .removeValue()
+                    .addOnFailureListener { cleanupError ->
+                        OnlineDebugLog.e(
+                            "rtdb_failed_access_rollback_failure roomId=${roomReference.id}",
+                            cleanupError
+                        )
+                    }
                 btnCreate.isEnabled = true
                 btnCreate.text = "CREAR PARTIDA"
                 Toast.makeText(
                     this,
-                    OnlineErrorMessages.forAction("No se pudo crear la sala", error),
+                    OnlineErrorMessages.forAction("No se pudo proteger la sala", error),
                     Toast.LENGTH_LONG
                 ).show()
             }
+        )
     }
 
     private fun refreshRecoveredRoomButton() {
@@ -1022,42 +1074,58 @@ class OnlineModeActivity : BaseActivity() {
         joinButton.text = "BUSCANDO..."
         OnlineDebugLog.i("join_code_search code=$code")
 
-        firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
-            .whereEqualTo(OnlineRoomFirestore.FIELD_ROOM_CODE, code)
+        firestore.collection(OnlineRoomFirestore.ROOM_CODES_COLLECTION)
+            .document(code)
             .get()
-            .addOnSuccessListener { snapshot ->
-                val waitingRooms = snapshot.documents.filter {
-                    it.getString(OnlineRoomFirestore.FIELD_STATE) == OnlineRoomFirestore.STATE_WAITING
-                }
-                val roomSnapshot = waitingRooms.singleOrNull()
-                if (roomSnapshot == null) {
-                    if (waitingRooms.size > 1) {
-                        OnlineDebugLog.e("join_code_collision code=$code rooms=${waitingRooms.size}")
-                        joinButton.isEnabled = true
-                        joinButton.text = "UNIRSE"
-                        Toast.makeText(
-                            this,
-                            "Hay mas de una sala con ese codigo. Creen una sala nueva.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@addOnSuccessListener
-                    }
+            .addOnSuccessListener codeLookup@{ codeSnapshot ->
+                val roomId = codeSnapshot.getString("partidaId").orEmpty()
+                if (!codeSnapshot.exists() || roomId.isBlank()) {
                     OnlineDebugLog.w("join_code_not_found code=$code")
                     joinButton.isEnabled = true
                     joinButton.text = "UNIRSE"
                     Toast.makeText(this, "No existe una sala con ese codigo.", Toast.LENGTH_LONG).show()
-                    return@addOnSuccessListener
+                    return@codeLookup
                 }
-                joinOnlineRoom(
-                    roomId = roomSnapshot.id,
-                    roomName = roomSnapshot.getString(OnlineRoomFirestore.FIELD_NAME)
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "Sala online",
-                    roomCode = code,
-                    mapKey = roomSnapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY).orEmpty(),
-                    dialog = dialog,
-                    joinButton = joinButton
-                )
+                firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+                    .document(roomId)
+                    .get()
+                    .addOnSuccessListener roomLookup@{ roomSnapshot ->
+                        val available = roomSnapshot.exists() &&
+                            roomSnapshot.getString(OnlineRoomFirestore.FIELD_STATE) ==
+                            OnlineRoomFirestore.STATE_WAITING &&
+                            roomSnapshot.getString(OnlineRoomFirestore.FIELD_ROOM_CODE) == code
+                        if (!available) {
+                            OnlineDebugLog.w("join_code_room_unavailable code=$code roomId=$roomId")
+                            joinButton.isEnabled = true
+                            joinButton.text = "UNIRSE"
+                            Toast.makeText(
+                                this,
+                                "La sala ya no esta disponible.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@roomLookup
+                        }
+                        joinOnlineRoom(
+                            roomId = roomSnapshot.id,
+                            roomName = roomSnapshot.getString(OnlineRoomFirestore.FIELD_NAME)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: "Sala online",
+                            roomCode = code,
+                            mapKey = roomSnapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY).orEmpty(),
+                            dialog = dialog,
+                            joinButton = joinButton
+                        )
+                    }
+                    .addOnFailureListener { error ->
+                        OnlineDebugLog.e("join_code_room_load_failure code=$code roomId=$roomId", error)
+                        joinButton.isEnabled = true
+                        joinButton.text = "UNIRSE"
+                        Toast.makeText(
+                            this,
+                            OnlineErrorMessages.forAction("No se pudo abrir la sala", error),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("join_code_search_failure code=$code", error)
@@ -1265,6 +1333,7 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     companion object {
+        private const val ONLINE_ACCESS_RETRY_MS = 5_000L
         private const val ROOM_CODE_CREATE_ATTEMPTS = 5
     }
 }

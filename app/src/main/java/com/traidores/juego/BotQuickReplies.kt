@@ -49,11 +49,11 @@ internal object BotQuickReplies {
         if (!humanHasSpoken && !asksForImmediateHumanAnswer) return generalReplies()
 
         return when {
-            asksForRole(normalized) -> roleReplies(session)
             claim?.roleKey == RoleCatalog.POLICIA && asksForInvestigation(normalized) ->
                 investigationReplies(session)
             claim?.roleKey == RoleCatalog.MEDICO && asksForProtection(normalized) ->
                 protectionReplies(session)
+            asksForRole(normalized) -> roleReplies(session)
             mentionedTarget != null && BotJesterAwareness.isInPlay(session) ->
                 targetReplies(mentionedTarget, includeJesterRead = true)
             mentionedTarget != null ->

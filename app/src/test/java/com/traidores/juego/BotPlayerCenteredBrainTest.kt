@@ -97,8 +97,8 @@ class BotPlayerCenteredBrainTest {
 
         val replies = BotQuickReplies.forSession(base)
 
-        assertTrue(replies.any { it.text.startsWith("Investigue a") })
-        assertTrue(replies.any { it.text.startsWith("Menti") })
+        assertTrue("Respuestas: $replies", replies.any { it.text.startsWith("Investigue a") })
+        assertTrue("Respuestas: $replies", replies.any { it.text.startsWith("Menti") })
     }
 
     @Test

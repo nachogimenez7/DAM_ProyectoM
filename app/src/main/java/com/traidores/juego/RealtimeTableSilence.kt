@@ -18,6 +18,7 @@ class RealtimeTableSilence(
     private val ownName: () -> String,
     private val isOwnPlayerAlive: () -> Boolean,
     private val aliveCount: () -> Int,
+    private val isAuthority: () -> Boolean,
     private val onOwnSilenceChanged: (Boolean) -> Unit
 ) {
     private val room = FirebaseDatabase.getInstance().getReference("salas/$roomId")
@@ -118,7 +119,7 @@ class RealtimeTableSilence(
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val required = (aliveCount() / 2) + 1
-                    if (snapshot.childrenCount < required.coerceAtLeast(3)) return
+                    if (!isAuthority() || snapshot.childrenCount < required.coerceAtLeast(3)) return
                     room.child("silenciados").child(targetUid).setValue(
                         mapOf("ts" to ServerValue.TIMESTAMP, "votos" to snapshot.childrenCount)
                     )
