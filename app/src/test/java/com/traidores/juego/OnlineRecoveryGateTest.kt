@@ -32,4 +32,44 @@ class OnlineRecoveryGateTest {
             OnlineRecoveryGate.targetForRoomState("rota")
         )
     }
+
+    @Test
+    fun activeRoomWithoutCurrentPlayerClearsRecovery() {
+        assertEquals(
+            OnlineRecoveryTarget.CLEAR,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_WAITING,
+                playerExists = false,
+                activeInMatch = true
+            )
+        )
+        assertEquals(
+            OnlineRecoveryTarget.CLEAR,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_IN_GAME,
+                playerExists = true,
+                activeInMatch = false
+            )
+        )
+    }
+
+    @Test
+    fun activeMemberCanRecoverActiveRoom() {
+        assertEquals(
+            OnlineRecoveryTarget.LOBBY,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_WAITING,
+                playerExists = true,
+                activeInMatch = true
+            )
+        )
+        assertEquals(
+            OnlineRecoveryTarget.GAMEPLAY,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_IN_GAME,
+                playerExists = true,
+                activeInMatch = true
+            )
+        )
+    }
 }

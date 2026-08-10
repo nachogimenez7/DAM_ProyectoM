@@ -6,6 +6,37 @@ import org.junit.Test
 
 class OnlineNightReadyGateTest {
     @Test
+    fun secretNightFloorAlwaysFallsBetweenTenAndFifteenSeconds() {
+        repeat(500) {
+            val floorMs = OnlineNightReadyGate.randomFloorMs()
+            assertTrue(floorMs >= OnlineNightReadyGate.MINIMUM_NIGHT_DISPLAY_MS)
+            assertTrue(floorMs <= OnlineNightReadyGate.MAXIMUM_NIGHT_DISPLAY_MS)
+        }
+    }
+
+    @Test
+    fun coordinatorWaitsForTheChosenSecretFloor() {
+        assertFalse(
+            OnlineNightReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("killer"),
+                actedActorIds = setOf("killer"),
+                elapsedMs = 12_000L,
+                floorMs = 15_000L
+            )
+        )
+        assertTrue(
+            OnlineNightReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("killer"),
+                actedActorIds = setOf("killer"),
+                elapsedMs = 15_000L,
+                floorMs = 15_000L
+            )
+        )
+    }
+
+    @Test
     fun coordinatorResolvesWhenEveryRequiredActorConfirmedAfterFloor() {
         assertTrue(
             OnlineNightReadyGate.shouldResolve(

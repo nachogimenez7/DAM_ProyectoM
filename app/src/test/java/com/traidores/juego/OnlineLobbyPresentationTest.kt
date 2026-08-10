@@ -8,6 +8,16 @@ import org.junit.Test
 
 class OnlineLobbyPresentationTest {
     @Test
+    fun `native player scrollbar stays disabled for every supported room size`() {
+        (5..15).forEach { playerSlots ->
+            assertFalse(
+                "Native scrollbar must stay disabled for $playerSlots player rooms",
+                OnlineLobbyPresentation.shouldShowNativePlayerScrollBar(playerSlots)
+            )
+        }
+    }
+
+    @Test
     fun `new room shows player occupancy progress`() {
         val state = startState(activePlayers = 1, expectedPlayers = 5, missingReady = 1)
 

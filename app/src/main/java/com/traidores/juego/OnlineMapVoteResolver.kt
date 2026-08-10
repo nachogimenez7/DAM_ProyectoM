@@ -35,6 +35,15 @@ object OnlineMapVoteResolver {
         return OnlineMapVoteSummary(counts, voterInitials, leaders)
     }
 
+    fun liveLobbyMapKey(
+        votes: List<OnlineMapVote>,
+        currentMapKey: String
+    ): String {
+        return summarize(votes).uniqueLeader
+            ?: currentMapKey.takeIf { it in mapKeys }
+            ?: mapKeys.first()
+    }
+
     fun resolveAtStart(
         votes: List<OnlineMapVote>,
         currentMapKey: String,

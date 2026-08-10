@@ -393,7 +393,8 @@ async function main() {
     await assertSucceeds(deleteDoc(doc(host, lobbyMessage.path)));
 
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await updateDoc(doc(context.firestore(), "partidas", "room_auth"), {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_auth"), {
         estado: "en_juego",
         partidaInicialCreada: true,
         partidaInicial: {
@@ -403,7 +404,47 @@ async function main() {
           mapaNombre: "Pampa",
         },
       });
+      await setDoc(
+        doc(db, "partidas", "room_auth", "repartos", "guest_uid"),
+        {
+          matchId: "match_rules_1",
+          uidTemporal: "guest_uid",
+          rolesVisibles: [{ orden: 1, rolKey: "policia" }],
+          creadaEn: serverTimestamp(),
+        }
+      );
     });
+
+    const privateClue = {
+      matchId: "match_rules_1",
+      ronda: 1,
+      phaseIndex: 3,
+      objetivoNombre: "Mercenario",
+      resultado: "sospechoso",
+      actualizadaEn: serverTimestamp(),
+    };
+    const guestDealRef = doc(guest, "partidas", "room_auth", "repartos", "guest_uid");
+    await assertSucceeds(updateDoc(
+      doc(host, "partidas", "room_auth", "repartos", "guest_uid"),
+      { pistaInvestigacion: privateClue }
+    ));
+    await assertSucceeds(getDoc(guestDealRef));
+    await assertFails(updateDoc(guestDealRef, {
+      pistaInvestigacion: {
+        ...privateClue,
+        actualizadaEn: serverTimestamp(),
+      },
+    }));
+    await assertFails(updateDoc(
+      doc(host, "partidas", "room_auth", "repartos", "guest_uid"),
+      {
+        rolesVisibles: [{ orden: 1, rolKey: "asesino" }],
+        pistaInvestigacion: {
+          ...privateClue,
+          actualizadaEn: serverTimestamp(),
+        },
+      }
+    ));
 
     const guestAction = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",
@@ -618,6 +659,7 @@ async function main() {
     await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
       estado: "esperando",
       hostActivoId: "host_uid",
+      hostVersion: increment(1),
       partidaInicialCreada: false,
       limpiezaPendiente: true,
       partidaInicial: deleteField(),
@@ -645,9 +687,67 @@ async function main() {
       creadaEn: serverTimestamp(),
     }));
     await assertSucceeds(setDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), playerData("guest_uid", "Guest", 1)));
+    // Un miembro no puede apropiarse de una partida mientras el anfitrion sigue conectado.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_handoff"), {
+        estado: "en_juego",
+        partidaInicialCreada: true,
+      });
+    });
+    await assertFails(updateDoc(doc(guest, "partidas", "room_handoff"), {
+      hostActivoId: "guest_uid",
+      hostVersion: increment(1),
+      actualizadaEn: serverTimestamp(),
+    }));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(
+        doc(context.firestore(), "partidas", "room_handoff", "jugadores", "old_host_uid"),
+        { estado: "desconectado" }
+      );
+    });
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff"), {
       hostActivoId: "guest_uid",
       hostVersion: increment(1),
+      actualizadaEn: serverTimestamp(),
+    }));
+    // Al terminar, el coordinador temporal no se queda con la sala. Solo el creador estable
+    // puede preparar la revancha y recupera la autoridad en el mismo cambio.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_handoff"), {
+        estado: "finalizada",
+        partidaInicial: { matchId: "handoff_match_1", mapa: "pampa" },
+        estadoPartida: { ganador: "Pueblo" },
+        estadoClientes: { guest_uid: { fase: "DIA_DEBATE" } },
+        entradaLiberadaMatchId: "handoff_match_1",
+      });
+    });
+    await assertFails(updateDoc(doc(guest, "partidas", "room_handoff"), {
+      estado: "esperando",
+      hostActivoId: "guest_uid",
+      hostVersion: increment(1),
+      partidaInicialCreada: false,
+      limpiezaPendiente: true,
+      partidaInicial: deleteField(),
+      estadoPartida: deleteField(),
+      estadoClientes: deleteField(),
+      entradaLiberadaMatchId: deleteField(),
+      jugadoresActuales: 2,
+      ultimaActividadOnline: serverTimestamp(),
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(oldHost, "partidas", "room_handoff"), {
+      estado: "esperando",
+      hostActivoId: "old_host_uid",
+      hostVersion: increment(1),
+      partidaInicialCreada: false,
+      limpiezaPendiente: true,
+      partidaInicial: deleteField(),
+      estadoPartida: deleteField(),
+      estadoClientes: deleteField(),
+      entradaLiberadaMatchId: deleteField(),
+      jugadoresActuales: 2,
+      ultimaActividadOnline: serverTimestamp(),
       actualizadaEn: serverTimestamp(),
     }));
 
@@ -698,8 +798,8 @@ async function main() {
       nombrePerfil: "Other",
       actualizadaEn: serverTimestamp(),
     }));
-    await assertFails(deleteDoc(doc(oldHost, "codigosSala", "ABC234")));
-    await assertSucceeds(deleteDoc(doc(guest, "codigosSala", "ABC234")));
+    await assertFails(deleteDoc(doc(guest, "codigosSala", "ABC234")));
+    await assertSucceeds(deleteDoc(doc(oldHost, "codigosSala", "ABC234")));
     await assertFails(deleteDoc(doc(intruder, "perfiles_publicos", "guest_uid")));
     await assertSucceeds(deleteDoc(doc(guest, "perfiles_publicos", "guest_uid")));
 

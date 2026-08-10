@@ -10,6 +10,26 @@ import org.junit.Test
 class GameEngineTest {
 
     @Test
+    fun incompletePrivateRolesNeverDeclareAFalseTownVictory() {
+        val session = GameSession(
+            code = "ONLINE",
+            mapKey = "medieval",
+            mapName = "Medieval",
+            players = listOf(
+                GamePlayer(
+                    "Detective",
+                    "D",
+                    role = role(RoleCatalog.POLICIA, "Detective", GameRules.TOWN_WINNER),
+                    isHuman = true
+                ),
+                GamePlayer("Rol oculto", "R", role = null)
+            )
+        )
+
+        assertEquals("", GameRules.winnerFor(session))
+    }
+
+    @Test
     fun gameRoleNamesMatchEachMapPresentation() {
         assertEquals("Aldeana", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.MEDIEVAL).name)
         assertEquals("Espía", RoleCatalog.gameRole(RoleCatalog.ESPIA, RoleMap.MEDIEVAL).name)
@@ -1048,6 +1068,17 @@ class GameEngineTest {
     }
 
     @Test
+    fun oracleWithoutDeadPlayersHasNoDecisionAndKeepsPowerAutomatically() {
+        val firstNight = oracleSession().copy(
+            players = oracleSession().players.map { it.copy(alive = true) }
+        )
+
+        assertTrue(GameEngine.oracleCandidates(firstNight).isEmpty())
+        assertFalse(GameEngine.requiresHumanInput(firstNight))
+        assertFalse(firstNight.oracleUsed)
+    }
+
+    @Test
     fun oracleInvitesOneDeadPlayerAnonymouslyForDiscussionOnly() {
         val session = oracleSession()
 
@@ -1675,6 +1706,18 @@ class GameEngineTest {
         assertEquals("inocente", resolved.investigatedResult)
         assertTrue(resolved.privateHint.contains("Investigaste a Espia"))
         assertTrue(resolved.privateHint.contains("parece inocente"))
+    }
+
+    @Test
+    fun mercenaryLooksSuspiciousToPoliceInvestigation() {
+        val session = sessionWithHumanAdvancedRole("policia")
+            .copy(phase = GamePhase.NOCHE_POLICIA)
+
+        val resolved = GameEngine.resolvePolice(session, "Mercenario")
+
+        assertEquals("Mercenario", resolved.investigatedPlayer)
+        assertEquals("sospechoso", resolved.investigatedResult)
+        assertTrue(resolved.privateHint.contains("parece sospechoso"))
     }
 
     @Test

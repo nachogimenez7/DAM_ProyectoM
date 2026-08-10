@@ -7,6 +7,30 @@ import org.junit.Test
 class OnlineLobbyEntryGateTest {
 
     @Test
+    fun returningFromFinishedMatchResetsEntryBarrierForRematch() {
+        assertTrue(
+            OnlineLobbyEntryGate.shouldResetForWaitingLobby(
+                previousState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+                currentState = OnlineLobbyRules.ROOM_STATE_WAITING
+            )
+        )
+        assertFalse(
+            OnlineLobbyEntryGate.shouldResetForWaitingLobby(
+                previousState = OnlineLobbyRules.ROOM_STATE_WAITING,
+                currentState = OnlineLobbyRules.ROOM_STATE_WAITING
+            )
+        )
+    }
+
+    @Test
+    fun noClientEntersUntilTheCurrentMatchIsExplicitlyReleased() {
+        assertFalse(OnlineLobbyEntryGate.isReleased("match-actual", ""))
+        assertFalse(OnlineLobbyEntryGate.isReleased("match-actual", "match-anterior"))
+        assertFalse(OnlineLobbyEntryGate.isReleased("", ""))
+        assertTrue(OnlineLobbyEntryGate.isReleased("match-actual", "match-actual"))
+    }
+
+    @Test
     fun releasesOnlyWhenEveryExpectedPlayerAcknowledgedTheCurrentMatch() {
         val states = mapOf(
             "host" to readyState("match-actual"),
@@ -40,21 +64,12 @@ class OnlineLobbyEntryGateTest {
     }
 
     @Test
-    fun timeoutCanReleaseAfterAtLeastOneCurrentAcknowledgement() {
-        assertTrue(
-            OnlineLobbyEntryGate.canRelease(
-                expectedPlayerIds = setOf("host", "guest"),
-                matchId = "match-actual",
-                clientStates = mapOf("host" to readyState("match-actual")),
-                force = true
-            )
-        )
+    fun timeoutCannotSplitThePlayersAcrossLobbyAndGameplay() {
         assertFalse(
             OnlineLobbyEntryGate.canRelease(
                 expectedPlayerIds = setOf("host", "guest"),
                 matchId = "match-actual",
-                clientStates = emptyMap(),
-                force = true
+                clientStates = mapOf("host" to readyState("match-actual"))
             )
         )
     }

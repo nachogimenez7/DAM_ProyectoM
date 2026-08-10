@@ -46,6 +46,15 @@ data class LobbyStructurePresentation(
 )
 
 object OnlineLobbyPresentation {
+    /**
+     * The player strip remains swipeable without Android's native horizontal scrollbar.
+     * Enabling a scrollbar at runtime after inflating it with `scrollbars="none"` crashes on
+     * Samsung Android 16 because the framework has no ScrollBarDrawable to mutate.
+     */
+    fun shouldShowNativePlayerScrollBar(
+        @Suppress("UNUSED_PARAMETER") playerSlots: Int
+    ): Boolean = false
+
     fun startState(
         activePlayers: Int,
         expectedPlayers: Int,

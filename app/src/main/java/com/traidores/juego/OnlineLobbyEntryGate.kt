@@ -2,6 +2,15 @@ package com.traidores.juego
 
 object OnlineLobbyEntryGate {
 
+    fun shouldResetForWaitingLobby(previousState: String, currentState: String): Boolean {
+        return currentState == OnlineLobbyRules.ROOM_STATE_WAITING &&
+            previousState != OnlineLobbyRules.ROOM_STATE_WAITING
+    }
+
+    fun isReleased(matchId: String, releasedMatchId: String): Boolean {
+        return matchId.isNotBlank() && releasedMatchId == matchId
+    }
+
     fun acknowledgedPlayerIds(
         matchId: String,
         clientStates: Map<String, Any?>
@@ -18,13 +27,11 @@ object OnlineLobbyEntryGate {
     fun canRelease(
         expectedPlayerIds: Set<String>,
         matchId: String,
-        clientStates: Map<String, Any?>,
-        force: Boolean = false
+        clientStates: Map<String, Any?>
     ): Boolean {
         if (expectedPlayerIds.isEmpty() || matchId.isBlank()) return false
         val acknowledged = acknowledgedPlayerIds(matchId, clientStates)
-        return expectedPlayerIds.all(acknowledged::contains) ||
-            (force && acknowledged.isNotEmpty())
+        return expectedPlayerIds.all(acknowledged::contains)
     }
 
     const val FIELD_MATCH_ID = "matchId"

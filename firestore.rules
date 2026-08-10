@@ -284,10 +284,71 @@ service cloud.firestore {
         && request.resource.data.get('visibilidad', 'publica')
           == resource.data.get('visibilidad', 'publica')
         && request.resource.data.origen == resource.data.origen
-        && (!(request.resource.data.estado == 'esperando'
-          && resource.data.estado != 'esperando') || request.auth.uid == resource.data.hostActivoId)
+        // Volver una partida terminada al lobby tiene una rama especifica y devuelve la
+        // autoridad al creador estable. El coordinador temporal no puede apropiarse de la
+        // sala para la revancha mediante esta rama generica.
+        && !(request.resource.data.estado == 'esperando'
+          && resource.data.estado != 'esperando')
         && (!('partidaInicial' in request.resource.data)
           || request.resource.data.partidaInicial.mapa == request.resource.data.mapa);
+    }
+
+    function validPrivateInvestigationClue(clue) {
+      return clue is map
+        && hasOnly(clue, [
+          'matchId', 'ronda', 'phaseIndex', 'objetivoNombre', 'resultado', 'actualizadaEn'
+        ])
+        && hasAll(clue, [
+          'matchId', 'ronda', 'phaseIndex', 'objetivoNombre', 'resultado', 'actualizadaEn'
+        ])
+        && isString(clue.matchId, 8, 80)
+        && clue.ronda is int
+        && clue.ronda >= 0
+        && clue.ronda <= 30
+        && clue.phaseIndex is int
+        && clue.phaseIndex >= 0
+        && clue.phaseIndex <= 500
+        && isString(clue.objetivoNombre, 1, 18)
+        && clue.resultado in ['inocente', 'sospechoso']
+        && clue.actualizadaEn == request.time;
+    }
+
+    function stableHostRematchReset() {
+      return signedIn()
+        && request.auth.uid == resource.data.hostId
+        && resource.data.estado in ['finalizada', 'en_juego']
+        && (
+          resource.data.estado == 'finalizada'
+          || (
+            'estadoPartida' in resource.data
+            && resource.data.estadoPartida.get('ganador', '') != ''
+          )
+        )
+        && request.resource.data.estado == 'esperando'
+        && changedOnly([
+          'estado',
+          'hostActivoId',
+          'hostVersion',
+          'partidaInicialCreada',
+          'limpiezaPendiente',
+          'partidaInicial',
+          'estadoPartida',
+          'estadoClientes',
+          'entradaLiberadaMatchId',
+          'jugadoresActuales',
+          'actualizadaEn',
+          'ultimaActividadOnline'
+        ])
+        && request.resource.data.hostActivoId == resource.data.hostId
+        && request.resource.data.hostVersion == resource.data.hostVersion + 1
+        && request.resource.data.partidaInicialCreada == false
+        && request.resource.data.get('limpiezaPendiente', false) == true
+        && !('partidaInicial' in request.resource.data)
+        && !('estadoPartida' in request.resource.data)
+        && !('estadoClientes' in request.resource.data)
+        && !('entradaLiberadaMatchId' in request.resource.data)
+        && request.resource.data.jugadoresActuales >= 1
+        && request.resource.data.jugadoresActuales <= request.resource.data.jugadoresEsperados;
     }
 
     // Solo un jugador de esa sala puede mover el contador. Sin la membresia, cualquier
@@ -312,16 +373,22 @@ service cloud.firestore {
     // sala: sin ese chequeo, cualquier usuario autenticado podia tomar el `hostActivoId` de
     // una sala ajena y, con eso, editar jugadores, publicar estado falso o borrar la sala.
     function handoffUpdate(partidaId) {
-      return changedOnly(['hostActivoId', 'hostVersion', 'actualizadaEn'])
+      let previousHostPath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(resource.data.hostActivoId);
+      let candidatePath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid);
+      return resource.data.estado == 'en_juego'
+        && changedOnly(['hostActivoId', 'hostVersion', 'actualizadaEn'])
         && request.resource.data.hostActivoId == request.auth.uid
         && request.resource.data.hostActivoId != resource.data.hostActivoId
         && request.resource.data.hostVersion == resource.data.hostVersion + 1
         && request.resource.data.estado == resource.data.estado
         && request.resource.data.partidaInicialCreada == resource.data.partidaInicialCreada
         && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales
-        // Al final, por lo mismo que en waitingPlayerCountUpdate: es la unica condicion que
-        // cuesta lecturas.
-        && isActiveRoomMember(partidaId);
+        && exists(previousHostPath)
+        && get(previousHostPath).data.estado == 'desconectado'
+        && get(previousHostPath).data.activoEnPartida != false
+        && exists(candidatePath)
+        && get(candidatePath).data.estado == 'conectado'
+        && get(candidatePath).data.activoEnPartida != false;
     }
 
     function creatorIsStale(partidaId) {
@@ -576,14 +643,17 @@ service cloud.firestore {
         && request.resource.data.hostActivoId == request.auth.uid
         && request.resource.data.get('limpiezaPendiente', false) == false;
 
-      allow update: if (
-          clientStateSelfPublish(partidaId)
+      allow update: if stableHostRematchReset()
+        || (
+          (
+            clientStateSelfPublish(partidaId)
           || waitingPlayerCountUpdate(partidaId)
           || handoffUpdate(partidaId)
           || stableLobbyHostTransfer(partidaId)
           || activeHostCanUpdateRoom()
-        )
-        && validRoomPostUpdate(request.resource.data);
+          )
+          && validRoomPostUpdate(request.resource.data)
+        );
       // El anfitrion (activo o estable) puede borrar la sala por completo cuando queda
       // vacia: esperando, y ya sin ningun otro jugador conectado (ese chequeo se hace en
       // el cliente antes de dejar el lobby; el ultimo anfitrion en pie es siempre quien
@@ -664,7 +734,15 @@ service cloud.firestore {
           && request.resource.data.rolesVisibles.size() >= 1
           && request.resource.data.rolesVisibles.size() <= 15
           && request.resource.data.creadaEn == request.time;
-        allow update: if false;
+        // El anfitrion entrega al Detective su resultado sin publicar cartas ajenas. No puede
+        // modificar el reparto original: solo agregar o reemplazar esta pista privada validada.
+        allow update: if isRoomActiveHost(partidaId)
+          && changedOnly(['pistaInvestigacion'])
+          && validPrivateInvestigationClue(request.resource.data.pistaInvestigacion)
+          && validCurrentMatchId(
+            partidaId,
+            request.resource.data.pistaInvestigacion.matchId
+          );
         allow delete: if cleanupDeleteAllowed(partidaId) || roomTeardownAllowed(partidaId);
       }
 

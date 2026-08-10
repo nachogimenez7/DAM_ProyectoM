@@ -1506,7 +1506,10 @@ object GameEngine {
             GamePhase.NOCHE_MERCENARIO -> isHumanRoleTurn(session, "mercenario")
             GamePhase.NOCHE_POLICIA -> isHumanRoleTurn(session, "policia")
             GamePhase.NOCHE_MEDICO -> isHumanRoleTurn(session, "medico")
-            GamePhase.NOCHE_ORACULO -> isHumanRoleTurn(session, RoleCatalog.ORACULO)
+            GamePhase.NOCHE_ORACULO ->
+                isHumanRoleTurn(session, RoleCatalog.ORACULO) &&
+                    !session.oracleUsed &&
+                    oracleCandidates(session).isNotEmpty()
             GamePhase.CONTRAPUNTO ->
                 isAlive(human) && human.role?.key == "payador"
             GamePhase.ALCALDE_DESEMPATE ->
@@ -2168,7 +2171,7 @@ object GameEngine {
         }
     }
 
-    private fun investigationResult(target: GamePlayer): String {
+    internal fun investigationResult(target: GamePlayer): String {
         return if (target.role?.key == "espia") {
             "inocente"
         } else if (isTraitor(target)) {

@@ -31,6 +31,23 @@ object OnlineAuthoritativeStateMapper {
         return (state["presentacionVotacion"] as? String).orEmpty()
     }
 
+    fun canPublishPlayerRole(
+        revealRolesOnDeath: Boolean,
+        playerAlive: Boolean,
+        winner: String,
+        votePresentation: String,
+        playerName: String,
+        dayEliminationTarget: String
+    ): Boolean {
+        if (winner.isNotBlank()) return true
+        if (!revealRolesOnDeath) return false
+        if (!playerAlive) return true
+        return dayEliminationTarget.isNotBlank() &&
+            playerName == dayEliminationTarget &&
+            votePresentation.startsWith("expulsion|") &&
+            votePresentation.substringAfterLast('|') == dayEliminationTarget
+    }
+
     fun specialVictoriesFromState(state: Map<String, Any?>): List<GameSpecialVictory> {
         return (state["victoriasEspeciales"] as? List<*>)
             ?.mapNotNull { it as? Map<*, *> }

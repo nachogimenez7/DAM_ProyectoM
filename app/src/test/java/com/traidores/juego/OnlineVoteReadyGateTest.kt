@@ -39,4 +39,44 @@ class OnlineVoteReadyGateTest {
         assertEquals(1, result.readyCount)
         assertFalse(result.canSkip)
     }
+
+    @Test
+    fun coordinatorResolvesWhenEveryEligiblePlayerVoteReachedServer() {
+        assertTrue(
+            OnlineVoteReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("a", "b", "c"),
+                actedActorIds = setOf("a", "b", "c"),
+                hasPendingWrites = false
+            )
+        )
+    }
+
+    @Test
+    fun missingVotePendingWriteOrGuestDoesNotResolve() {
+        assertFalse(
+            OnlineVoteReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("a", "b"),
+                actedActorIds = setOf("a"),
+                hasPendingWrites = false
+            )
+        )
+        assertFalse(
+            OnlineVoteReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("a"),
+                actedActorIds = setOf("a"),
+                hasPendingWrites = true
+            )
+        )
+        assertFalse(
+            OnlineVoteReadyGate.shouldResolve(
+                isCoordinator = false,
+                requiredActorIds = setOf("a"),
+                actedActorIds = setOf("a"),
+                hasPendingWrites = false
+            )
+        )
+    }
 }

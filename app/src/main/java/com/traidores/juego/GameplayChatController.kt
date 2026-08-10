@@ -3375,7 +3375,16 @@ class GameplayChatController(
 
     private fun canUseSpectatorChatUi(session: GameSession): Boolean {
         return host.isOnlineGameplay() &&
-            GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session))
+            GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session)) &&
+            !isOracleInvitedToPublicChat(session)
+    }
+
+    private fun isOracleInvitedToPublicChat(session: GameSession): Boolean {
+        val human = GameEngine.humanPlayer(session)
+        return host.isOnlineGameplay() &&
+            !human.alive &&
+            session.phase == GamePhase.DIA_DEBATE &&
+            session.oracleInvitedPlayer == human.name
     }
 
     private fun canRunVisibleTraitorNight(session: GameSession): Boolean {

@@ -14,4 +14,13 @@ object OnlineRecoveryGate {
             else -> OnlineRecoveryTarget.CLEAR
         }
     }
+
+    fun targetForRecovery(
+        state: String,
+        playerExists: Boolean,
+        activeInMatch: Boolean
+    ): OnlineRecoveryTarget {
+        if (!playerExists || !activeInMatch) return OnlineRecoveryTarget.CLEAR
+        return targetForRoomState(state)
+    }
 }

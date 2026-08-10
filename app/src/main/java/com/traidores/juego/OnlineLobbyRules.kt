@@ -67,14 +67,16 @@ object OnlineLobbyRules {
     ): Boolean {
         if (activeHostId.isBlank()) return false
         val activeHost = activePlayers(players).firstOrNull { it.id == activeHostId }
-        return !(activeHost?.connected == true && activeHost.alive)
+        // El anfitrion puede seguir coordinando como espectador despues de morir. Relevarlo
+        // solo por su estado dentro del juego abre una ventana innecesaria de cambio de
+        // autoridad y puede interrumpir una fase que estaba resolviendo correctamente.
+        return activeHost?.connected != true
     }
 
     /**
-     * @param allowGuests solo en el escalon de emergencia. El anfitrion ve el reparto completo,
-     * asi que se prefiere siempre una cuenta registrada; pero si no queda ninguna viva y
-     * conectada, la alternativa es que nadie publique las fases y la partida se congele para
-     * todos. Ahi si vale que la tome un invitado.
+     * @param allowGuests solo en el escalon de emergencia. Se prefiere una cuenta registrada
+     * para conservar las herramientas de moderacion; cualquier candidato recupera y valida el
+     * reparto completo despues de que Firestore confirma el relevo.
      */
     fun hostHandoffCandidate(
         players: List<OnlineLobbyParticipant>,
@@ -83,7 +85,7 @@ object OnlineLobbyRules {
     ): OnlineLobbyParticipant? {
         if (!needsHostHandoff(players, activeHostId)) return null
         return activePlayers(players)
-            .filter { it.connected && it.alive && (allowGuests || it.registered) }
+            .filter { it.connected && (allowGuests || it.registered) }
             .minWithOrNull(compareBy<OnlineLobbyParticipant> { it.order }.thenBy { it.id })
     }
 

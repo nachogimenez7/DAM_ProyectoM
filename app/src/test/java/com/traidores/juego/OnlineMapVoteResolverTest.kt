@@ -6,6 +6,27 @@ import org.junit.Test
 
 class OnlineMapVoteResolverTest {
     @Test
+    fun `unique live leader changes the map shown in the lobby`() {
+        val votes = listOf(
+            OnlineMapVote("one", "A", "medieval"),
+            OnlineMapVote("two", "B", "medieval"),
+            OnlineMapVote("three", "C", "pampa")
+        )
+
+        assertEquals("medieval", OnlineMapVoteResolver.liveLobbyMapKey(votes, "pampa"))
+    }
+
+    @Test
+    fun `live tie keeps the current room map`() {
+        val votes = listOf(
+            OnlineMapVote("one", "A", "medieval"),
+            OnlineMapVote("two", "B", "pampa")
+        )
+
+        assertEquals("grecia", OnlineMapVoteResolver.liveLobbyMapKey(votes, "grecia"))
+    }
+
+    @Test
     fun `no votes keeps current room map`() {
         val resolution = OnlineMapVoteResolver.resolveAtStart(emptyList(), "grecia")
 

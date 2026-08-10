@@ -9,12 +9,16 @@ const projectId = "traidores-local";
 const roomId = "room_rules_test";
 const matchId = "match-123";
 
-const member = (nombre, { lobby = false, alive = true, traitor = false } = {}) => ({
+const member = (
+  nombre,
+  { lobby = false, alive = true, traitor = false, oracleInvited = false } = {}
+) => ({
   nombre,
   activo: true,
   enLobby: lobby,
   vivo: alive,
   traidor: traitor,
+  invitadoOraculo: oracleInvited,
   actualizadaEn: Date.now(),
 });
 
@@ -131,6 +135,37 @@ async function main() {
     await assertSucceeds(
       carol.ref(`salas/${roomId}/chat_espectadores/message-dead`).set(
         chatMessage("carol", "Carol", { canal: "espectadores" })
+      )
+    );
+
+    // El Oraculo puede devolver temporalmente a un muerto al chat publico. Solo el
+    // anfitrion puede conceder y revocar ese permiso; el muerto no puede fabricarlo.
+    await assertFails(
+      carol.ref(`salas/${roomId}/chat/message-dead-public`).set(
+        chatMessage("carol", "Carol")
+      )
+    );
+    await assertFails(
+      carol.ref(`salas/${roomId}/miembros/carol/invitadoOraculo`).set(true)
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/miembros/carol`).set(
+        member("Carol", { alive: false, traitor: true, oracleInvited: true })
+      )
+    );
+    await assertSucceeds(
+      carol.ref(`salas/${roomId}/chat/message-oracle-invited`).set(
+        chatMessage("carol", "Carol")
+      )
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/miembros/carol`).set(
+        member("Carol", { alive: false, traitor: true })
+      )
+    );
+    await assertFails(
+      carol.ref(`salas/${roomId}/chat/message-oracle-ended`).set(
+        chatMessage("carol", "Carol")
       )
     );
 

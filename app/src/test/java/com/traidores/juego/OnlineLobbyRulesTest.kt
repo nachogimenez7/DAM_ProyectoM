@@ -222,7 +222,7 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
-    fun deadConnectedHostHandsOffToFirstLivingConnectedPlayer() {
+    fun deadConnectedHostKeepsCoordinatingAsSpectator() {
         val players = listOf(
             participant("host", connected = true, ready = true, active = true, order = 0, alive = false),
             participant("dead", connected = true, ready = true, active = true, order = 1, alive = false),
@@ -232,7 +232,7 @@ class OnlineLobbyRulesTest {
 
         val candidate = OnlineLobbyRules.hostHandoffCandidate(players, activeHostId = "host")
 
-        assertEquals("living-a", candidate?.id)
+        assertEquals(null, candidate)
     }
 
     @Test

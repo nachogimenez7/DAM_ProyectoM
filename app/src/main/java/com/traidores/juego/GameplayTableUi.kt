@@ -445,7 +445,12 @@ object GameplayTableUi {
             } else {
                 "El Médico decide a quién proteger."
             }
-            GamePhase.NOCHE_ORACULO -> if (isHumanTurn(session, RoleCatalog.ORACULO)) {
+            GamePhase.NOCHE_ORACULO -> if (
+                isHumanTurn(session, RoleCatalog.ORACULO) &&
+                GameEngine.oracleCandidates(session).isEmpty()
+            ) {
+                "Todavía no hay muertos. Tu poder se conserva automáticamente."
+            } else if (isHumanTurn(session, RoleCatalog.ORACULO)) {
                 "Elige una voz para el debate o guarda tu poder."
             } else {
                 "El Oráculo decide si devuelve una voz al pueblo."

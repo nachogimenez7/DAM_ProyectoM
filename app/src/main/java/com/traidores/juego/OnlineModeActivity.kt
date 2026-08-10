@@ -22,6 +22,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 
 class OnlineModeActivity : BaseActivity() {
 
@@ -710,37 +711,60 @@ class OnlineModeActivity : BaseActivity() {
             showRecoveredRoom(null)
             return
         }
+        // Nunca ofrecemos un reingreso basandonos solamente en el recuerdo local: puede
+        // pertenecer a una sala que ya termino, fue eliminada o de la que salio el jugador.
+        showRecoveredRoom(null)
+        val uid = OnlineTempIdentity.getOrCreate(this)
         firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .document(recovered.roomId)
-            .get()
+            .get(Source.SERVER)
             .addOnSuccessListener { snapshot ->
                 if (!snapshot.exists()) {
                     OnlineRoomRecovery.clear(this)
-                    showRecoveredRoom(null)
                     return@addOnSuccessListener
                 }
                 val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
                 if (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
                     OnlineRoomRecovery.clear(this)
-                    showRecoveredRoom(null)
                     return@addOnSuccessListener
                 }
-                val resolved = recovered.copy(
-                    roomCode = snapshot.getString(OnlineRoomFirestore.FIELD_ROOM_CODE)
-                        ?.takeIf { it.isNotBlank() }
-                        ?: recovered.roomCode,
-                    roomName = snapshot.getString(OnlineRoomFirestore.FIELD_NAME)
-                        ?.takeIf { it.isNotBlank() }
-                        ?: recovered.roomName,
-                    mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
-                        ?.takeIf { it.isNotBlank() }
-                        ?: recovered.mapKey
-                )
-                showRecoveredRoom(resolved)
+                snapshot.reference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+                    .document(uid)
+                    .get(Source.SERVER)
+                    .addOnSuccessListener { player ->
+                        val target = OnlineRecoveryGate.targetForRecovery(
+                            state = state,
+                            playerExists = player.exists(),
+                            activeInMatch = player.getBoolean(
+                                OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH
+                            ) != false
+                        )
+                        if (target == OnlineRecoveryTarget.CLEAR) {
+                            OnlineRoomRecovery.clear(this)
+                            return@addOnSuccessListener
+                        }
+                        val resolved = recovered.copy(
+                            roomCode = snapshot.getString(OnlineRoomFirestore.FIELD_ROOM_CODE)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: recovered.roomCode,
+                            roomName = snapshot.getString(OnlineRoomFirestore.FIELD_NAME)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: recovered.roomName,
+                            mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
+                                ?.takeIf { it.isNotBlank() }
+                                ?: recovered.mapKey
+                        )
+                        showRecoveredRoom(resolved)
+                    }
+                    .addOnFailureListener { error ->
+                        OnlineDebugLog.e(
+                            "recover_player_check_failure roomId=${recovered.roomId} uid=$uid",
+                            error
+                        )
+                    }
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("recover_room_check_failure roomId=${recovered.roomId}", error)
-                showRecoveredRoom(recovered)
             }
     }
 
@@ -769,7 +793,7 @@ class OnlineModeActivity : BaseActivity() {
             .addOnSuccessListener {
                 firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
                     .document(room.roomId)
-                    .get()
+                    .get(Source.SERVER)
                     .addOnSuccessListener roomSnapshot@{ snapshot ->
                         btnRecoverRoom.isEnabled = true
                         if (!snapshot.exists()) {
@@ -779,15 +803,11 @@ class OnlineModeActivity : BaseActivity() {
                             return@roomSnapshot
                         }
                         val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
-                        when (OnlineRecoveryGate.targetForRoomState(state)) {
-                            OnlineRecoveryTarget.LOBBY -> openRecoveredLobby(room, snapshot)
-                            OnlineRecoveryTarget.GAMEPLAY -> openRecoveredGameplay(room, snapshot)
-                            OnlineRecoveryTarget.CLEAR -> {
-                                OnlineRoomRecovery.clear(this)
-                                showRecoveredRoom(null)
-                                Toast.makeText(this, "La sala ya termino o fue abandonada.", Toast.LENGTH_LONG).show()
-                            }
+                        if (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
+                            clearUnavailableRecoveredRoom("La sala ya termino o fue abandonada.")
+                            return@roomSnapshot
                         }
+                        verifyRecoveredMembershipAndOpen(room, snapshot, state)
                     }
                     .addOnFailureListener { error ->
                         btnRecoverRoom.isEnabled = true
@@ -800,6 +820,52 @@ class OnlineModeActivity : BaseActivity() {
                         ).show()
                     }
             }
+    }
+
+    private fun verifyRecoveredMembershipAndOpen(
+        room: OnlineRecoveredRoom,
+        snapshot: DocumentSnapshot,
+        state: String
+    ) {
+        val uid = OnlineTempIdentity.getOrCreate(this)
+        snapshot.reference.collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
+            .document(uid)
+            .get(Source.SERVER)
+            .addOnSuccessListener { player ->
+                when (
+                    OnlineRecoveryGate.targetForRecovery(
+                        state = state,
+                        playerExists = player.exists(),
+                        activeInMatch = player.getBoolean(
+                            OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH
+                        ) != false
+                    )
+                ) {
+                    OnlineRecoveryTarget.LOBBY -> openRecoveredLobby(room, snapshot)
+                    OnlineRecoveryTarget.GAMEPLAY -> openRecoveredGameplay(room, snapshot)
+                    OnlineRecoveryTarget.CLEAR -> clearUnavailableRecoveredRoom(
+                        "Ya no formas parte de esa sala."
+                    )
+                }
+            }
+            .addOnFailureListener { error ->
+                showRecoveredRoom(null)
+                OnlineDebugLog.e(
+                    "recover_player_open_failure roomId=${room.roomId} uid=$uid",
+                    error
+                )
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo confirmar el reingreso", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+
+    private fun clearUnavailableRecoveredRoom(message: String) {
+        OnlineRoomRecovery.clear(this)
+        showRecoveredRoom(null)
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun openRecoveredLobby(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
@@ -829,7 +895,10 @@ class OnlineModeActivity : BaseActivity() {
                 .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, resolvedRoomName)
                 .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, room.roomId)
                 .putExtra(LobbyActivity.EXTRA_ROOM_CODE, resolvedRoomCode)
-                .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, true)
+                // This path only recovers a room that is still waiting. If it starts a new
+                // match afterwards it must participate in the normal entry barrier; treating
+                // it as an in-game recovery lets the host advance alone and strands guests.
+                .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, false)
         )
     }
 

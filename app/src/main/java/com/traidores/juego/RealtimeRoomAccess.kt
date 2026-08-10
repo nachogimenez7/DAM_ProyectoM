@@ -16,7 +16,8 @@ data class RealtimeRoomMemberAccess(
     val name: String,
     val inLobby: Boolean,
     val alive: Boolean,
-    val traitor: Boolean?
+    val traitor: Boolean?,
+    val oracleInvitedToPublicChat: Boolean = false
 )
 
 object RealtimeRoomAccess {
@@ -128,7 +129,9 @@ object RealtimeRoomAccess {
                 previous.child("activo").getValue(Boolean::class.java) != true ||
                 previous.child("enLobby").getValue(Boolean::class.java) != access.inLobby ||
                 previous.child("vivo").getValue(Boolean::class.java) != access.alive ||
-                previous.child("traidor").getValue(Boolean::class.java) != traitor
+                previous.child("traidor").getValue(Boolean::class.java) != traitor ||
+                previous.child("invitadoOraculo").getValue(Boolean::class.java) !=
+                    access.oracleInvitedToPublicChat
             if (!changed) return@forEach
             updates["$NODE_MEMBERS/$uid"] = mapOf(
                 "nombre" to safeName,
@@ -136,6 +139,7 @@ object RealtimeRoomAccess {
                 "enLobby" to access.inLobby,
                 "vivo" to access.alive,
                 "traidor" to traitor,
+                "invitadoOraculo" to access.oracleInvitedToPublicChat,
                 "actualizadaEn" to ServerValue.TIMESTAMP
             )
         }

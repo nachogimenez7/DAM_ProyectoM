@@ -39,5 +39,17 @@ object OnlineVoteReadyGate {
         )
     }
 
+    fun shouldResolve(
+        isCoordinator: Boolean,
+        requiredActorIds: Set<String>,
+        actedActorIds: Set<String>,
+        hasPendingWrites: Boolean
+    ): Boolean {
+        return isCoordinator &&
+            !hasPendingWrites &&
+            requiredActorIds.isNotEmpty() &&
+            requiredActorIds.all { it in actedActorIds }
+    }
+
     private fun normalizedName(name: String): String = name.trim().lowercase()
 }

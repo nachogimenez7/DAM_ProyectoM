@@ -8,6 +8,40 @@ import org.junit.Test
 class OnlineAuthoritativeStateMapperTest {
 
     @Test
+    fun expelledRoleCanBePublishedBeforeKickWhenRevealOptionIsEnabled() {
+        assertTrue(
+            OnlineAuthoritativeStateMapper.canPublishPlayerRole(
+                revealRolesOnDeath = true,
+                playerAlive = true,
+                winner = "",
+                votePresentation = "expulsion|1|1|9|Ana",
+                playerName = "Ana",
+                dayEliminationTarget = "Ana"
+            )
+        )
+        assertFalse(
+            OnlineAuthoritativeStateMapper.canPublishPlayerRole(
+                revealRolesOnDeath = false,
+                playerAlive = true,
+                winner = "",
+                votePresentation = "expulsion|1|1|9|Ana",
+                playerName = "Ana",
+                dayEliminationTarget = "Ana"
+            )
+        )
+        assertFalse(
+            OnlineAuthoritativeStateMapper.canPublishPlayerRole(
+                revealRolesOnDeath = true,
+                playerAlive = true,
+                winner = "",
+                votePresentation = "expulsion|1|1|9|Ana",
+                playerName = "Beto",
+                dayEliminationTarget = "Ana"
+            )
+        )
+    }
+
+    @Test
     fun publicPresentationFieldsAreReadFromAuthoritativeState() {
         val state = mapOf(
             "nocheSinVictima" to true,

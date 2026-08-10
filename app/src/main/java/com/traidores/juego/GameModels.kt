@@ -459,6 +459,11 @@ object GameRules {
     fun winnerFor(session: GameSession): String {
         val alive = session.players.filter { it.alive }
         if (alive.isEmpty()) return ""
+        // Un cliente online normal conoce solo sus cartas privadas. Si por un relevo o una
+        // recuperacion todavia falta algun rol, no existe informacion suficiente para decidir
+        // el ganador. Esta guarda evita que "ningun asesino visible" se confunda con
+        // "todos los asesinos murieron".
+        if (alive.any { it.role == null }) return ""
         if (alive.none { it.role?.key in killerRoleKeys }) return TOWN_WINNER
 
         val desertor = alive.firstOrNull { it.role?.key == "desertor" }
