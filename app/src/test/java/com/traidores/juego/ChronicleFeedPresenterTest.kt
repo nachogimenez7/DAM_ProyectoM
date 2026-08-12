@@ -85,6 +85,26 @@ class ChronicleFeedPresenterTest {
         assertEquals(ChronicleTone.SYSTEM, entry.tone)
     }
 
+    @Test
+    fun explicitMessageRoundSeparatesTraitorPlanWithoutDependingOnItsText() {
+        val entries = ChronicleFeedPresenter.entries(
+            listOf(
+                GameChatMessage("Ana", "Voy con Mora", channel = ChatChannel.TRAIDORES, round = 1),
+                GameChatMessage("Beto", "Ahora voy con Dina", channel = ChatChannel.TRAIDORES, round = 2)
+            )
+        )
+
+        assertEquals(
+            listOf(
+                ChronicleEntryKind.DAY_DIVIDER,
+                ChronicleEntryKind.PLAYER,
+                ChronicleEntryKind.DAY_DIVIDER,
+                ChronicleEntryKind.PLAYER
+            ),
+            entries.map { it.kind }
+        )
+    }
+
     private fun god(message: String): GameChatMessage {
         return GameChatMessage(GameplayFeedMessages.GOD_SPEAKER, message, isGod = true)
     }

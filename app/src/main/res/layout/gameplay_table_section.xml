@@ -452,6 +452,17 @@
                         android:elevation="8dp"
                         android:scaleType="fitCenter"
                         android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/humanActionMarkOverlay"
+                        android:layout_width="42dp"
+                        android:layout_height="68dp"
+                        android:layout_gravity="center"
+                        android:alpha="0"
+                        android:contentDescription="@null"
+                        android:elevation="7dp"
+                        android:scaleType="fitCenter"
+                        android:visibility="gone" />
                 </FrameLayout>
 
                 <LinearLayout
@@ -781,6 +792,45 @@
                         android:padding="8dp"
                         android:src="@drawable/ic_close"
                         app:tint="@color/text_primary" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/chatChannelTabs"
+                    android:layout_width="match_parent"
+                    android:layout_height="32dp"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <Button
+                        android:id="@+id/btnChatPublicTab"
+                        style="@style/BtnDark"
+                        android:layout_width="0dp"
+                        android:layout_height="30dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="5dp"
+                        android:text="PUEBLO"
+                        android:textSize="9sp" />
+
+                    <Button
+                        android:id="@+id/btnChatPrivateTab"
+                        style="@style/BtnDark"
+                        android:layout_width="0dp"
+                        android:layout_height="30dp"
+                        android:layout_marginStart="5dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="5dp"
+                        android:text="PLAN DE LOS ASESINOS"
+                        android:textSize="8sp" />
                 </LinearLayout>
 
                 <ScrollView

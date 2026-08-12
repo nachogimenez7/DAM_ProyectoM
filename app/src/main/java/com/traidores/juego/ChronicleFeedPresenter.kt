@@ -61,10 +61,11 @@ object ChronicleFeedPresenter {
     }
 
     fun entryFor(message: GameChatMessage): ChronicleEntry {
+        val explicitRound = message.round.takeIf { it > 0 }
         if (!message.isGod) {
             return ChronicleEntry(
                 kind = ChronicleEntryKind.PLAYER,
-                round = null,
+                round = explicitRound,
                 text = message.message,
                 speaker = message.speaker,
                 tone = ChronicleTone.PLAYER
@@ -73,7 +74,7 @@ object ChronicleFeedPresenter {
 
         val text = message.message.trim()
         val lower = normalizeText(text)
-        val round = roundFor(text)
+        val round = explicitRound ?: roundFor(text)
         val kind = when {
             "en juego:" in lower && "identidades siguen ocultas" in lower ->
                 ChronicleEntryKind.ROLE_COMPOSITION

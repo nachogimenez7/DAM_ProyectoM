@@ -447,6 +447,7 @@ enum class GamePhase : Serializable {
 object GameRules {
     const val TOWN_WINNER = "Pueblo"
     const val TRAITOR_WINNER = "Traidores"
+    const val CANCELLED_WINNER = "Cancelada"
 
     val traitorRoleKeys = setOf("asesino", "mercenario", "espia")
     val killerRoleKeys = setOf("asesino", "espia")

@@ -54,6 +54,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ServerValue
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -129,6 +130,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
     private var returningToOnlineLobby = false
+    private var onlineLobbyReturnEpochMs = 0L
     private var presentedSpecialVictoryCount = 0
     private val countdown = GameplayCountdown()
     private var lastCountdownSecond = -1
@@ -143,6 +145,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastRenderedEventExpanded: Boolean? = null
     private var lastPresentedCentralEventKey: String? = null
     private var lastPresentedAssassinVoteLogKey: String? = null
+    private var onlineTraitorActionMarks = emptyList<OnlineTraitorActionMark>()
+    private var humanActionMarkKey: String? = null
+    private var humanActionMarkAnimator: AnimatorSet? = null
     private val readyToVote = mutableSetOf<String>()
     private var readyVotePhaseIndex = -1
     private var readyVoteBotCascadeScheduled = false
@@ -198,6 +203,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineStartupDeadlinePublishInProgress = false
     private var onlineStartupGateResult: OnlineStartupGateResult? = null
     private var lastOnlineStartupGateKey = ""
+    private val publishedTraitorPlanNoticeIds = mutableSetOf<String>()
     private var lastOnlineStartupClientStates = emptyList<OnlineStartupClientState>()
     private var onlineNightResolutionInProgress = false
     private var onlineVoteResolutionInProgress = false
@@ -256,7 +262,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
     private val winnerAutoReturnRunnable = Runnable {
         if (isWinnerRevealVisible && ::session.isInitialized && session.winner.isNotBlank()) {
-            returnToLobby()
+            returnToLobbyNow()
         }
     }
     private val nightSkipEnableRunnable = Runnable {
@@ -414,6 +420,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var rightColumn: LinearLayout
     private lateinit var bottomPlayerPanel: LinearLayout
     private lateinit var roleCard: FrameLayout
+    private lateinit var humanActionMarkOverlay: ImageView
     private lateinit var roleImage: ImageView
     private lateinit var humanDeathCauseOverlay: ImageView
     private lateinit var roleName: TextView
@@ -526,6 +533,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val cardBack: ImageView,
         val roleFace: ImageView,
         val deathCauseOverlay: ImageView,
+        val actionMarkPrimary: ImageView,
+        val actionMarkSecondary: ImageView,
+        val actionMarkPrimaryLabel: TextView,
+        val actionMarkSecondaryLabel: TextView,
         val avatar: TextView,
         val mutedBadge: TextView,
         val actionBadge: TextView,
@@ -533,6 +544,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         var selected: Boolean = false,
         var actionPulseKey: String? = null,
         var actionBadgeAnimator: AnimatorSet? = null,
+        var actionMarkAnimator: AnimatorSet? = null,
+        var actionMarkKey: String? = null,
         var hasBound: Boolean = false,
         var publicRoleVisible: Boolean = false,
         var renderKey: String? = null
@@ -669,6 +682,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?.let { runCatching { GameplayPeriod.valueOf(it) }.getOrNull() }
         traitorRevealCompleted = savedInstanceState?.getBoolean(STATE_TRAITOR_REVEAL_COMPLETED) ?: false
         winnerRevealPresented = savedInstanceState?.getBoolean(STATE_WINNER_REVEAL_PRESENTED) ?: false
+        onlineLobbyReturnEpochMs = savedInstanceState
+            ?.getLong(STATE_ONLINE_LOBBY_RETURN_EPOCH_MS, 0L)
+            ?: 0L
         lastPresentedPayadorRevealKey =
             savedInstanceState?.getString(STATE_PAYADOR_REVEAL_KEY)
         lastPresentedOracleRevealKey =
@@ -763,6 +779,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         rightColumn = findViewById(R.id.rightColumn)
         bottomPlayerPanel = findViewById(R.id.bottomPlayerPanel)
         roleCard = findViewById(R.id.roleCard)
+        humanActionMarkOverlay = findViewById(R.id.humanActionMarkOverlay)
         roleImage = findViewById(R.id.roleImage)
         humanDeathCauseOverlay = findViewById(R.id.humanDeathCauseOverlay)
         roleName = findViewById(R.id.roleName)
@@ -1041,7 +1058,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         jesterVictoryOverlay.setOnClickListener { }
         btnContinueJesterVictory.setOnClickListener { dismissJesterVictory() }
         btnReturnJesterVictory.setOnClickListener { returnToLobbyFromJesterVictory() }
-        btnWinnerReturnLobby.setOnClickListener { returnToLobby() }
+        btnWinnerReturnLobby.setOnClickListener { handleWinnerReturnButton() }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 handleGameplayBack()
@@ -1259,6 +1276,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         outState.putString(STATE_BLOCKING_FEEDBACK_PERIOD, blockingFeedbackPeriod?.name)
         outState.putBoolean(STATE_TRAITOR_REVEAL_COMPLETED, traitorRevealCompleted)
         outState.putBoolean(STATE_WINNER_REVEAL_PRESENTED, winnerRevealPresented)
+        outState.putLong(STATE_ONLINE_LOBBY_RETURN_EPOCH_MS, onlineLobbyReturnEpochMs)
         outState.putString(STATE_PAYADOR_REVEAL_KEY, lastPresentedPayadorRevealKey)
         outState.putString(STATE_ORACLE_REVEAL_KEY, lastPresentedOracleRevealKey)
         outState.putInt(
@@ -2151,7 +2169,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
 
         val phaseText = phaseText(session.phase)
-        val publicMessage = if (session.winner.isNotBlank()) {
+        val publicMessage = if (session.winner == GameRules.CANCELLED_WINNER) {
+            "Partida cancelada por inactividad. No hubo ganador."
+        } else if (session.winner.isNotBlank()) {
             "Fin de partida. Gano ${session.winner}."
         } else {
             session.publicAnnouncement.ifBlank { phaseText.subtitle }
@@ -2287,6 +2307,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ) {
             return
         }
+        if (session.winner.isNotBlank()) {
+            onlineLobbyReturnEpochMs = OnlineMatchReturnGate.initialDeadline(
+                onlineLobbyReturnEpochMs,
+                System.currentTimeMillis()
+            )
+        }
+        if (session.phase == GamePhase.NOCHE_ASESINO) {
+            // Abre la seccion de la noche incluso antes del primer voto. El historial no se
+            // borra: el nuevo separador queda al final y las noches anteriores permanecen arriba.
+            publishTraitorPlanNotices()
+        }
         ensureOnlinePhaseDeadlineForHost()
         val stateKey = listOf(
             OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
@@ -2298,6 +2329,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.publicAnnouncement,
             session.publicHistory.joinToString("#"),
             session.winner,
+            onlineLobbyReturnEpochMs,
             session.nightKillTarget,
             session.nightSilenceTarget,
             session.dayEliminationTarget,
@@ -2337,6 +2369,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "limiteFasePhaseIndex" to session.onlinePhaseDeadlinePhaseIndex,
                 "anuncioPublico" to session.publicAnnouncement,
                 "ganador" to session.winner,
+                "volverLobbyEpochMs" to onlineLobbyReturnEpochMs,
                 "victimaNoche" to session.nightKillTarget,
                 "silenciado" to session.nightSilenceTarget,
                 "expulsadoDia" to session.dayEliminationTarget,
@@ -2401,18 +2434,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "ultimaActividadOnline" to FieldValue.serverTimestamp()
         )
         if (session.winner.isNotBlank()) {
-            roomUpdate["estado"] = OnlineRoomFirestore.STATE_FINISHED
-            roomUpdate["actualizadaEn"] = FieldValue.serverTimestamp()
-            val resultMatchId = session.onlineMatchId
-                .takeIf { it.length in 8..80 }
-                ?: onlinePartidaId.take(80)
-            roomUpdate["ultimoResultado"] = mapOf(
-                "ganador" to session.winner,
-                "ronda" to session.round,
-                "mapa" to session.mapKey,
-                "matchId" to resultMatchId,
-                "finalizadaEnLocal" to System.currentTimeMillis()
-            )
+            if (session.winner != GameRules.CANCELLED_WINNER) {
+                val resultMatchId = session.onlineMatchId
+                    .takeIf { it.length in 8..80 }
+                    ?: onlinePartidaId.take(80)
+                roomUpdate["ultimoResultado"] = mapOf(
+                    "ganador" to session.winner,
+                    "ronda" to session.round,
+                    "mapa" to session.mapKey,
+                    "matchId" to resultMatchId,
+                    "finalizadaEnLocal" to System.currentTimeMillis()
+                )
+            }
         }
 
         FirebaseFirestore.getInstance()
@@ -2747,6 +2780,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             OnlineAuthoritativeStateMapper.phaseDeadlineIndexFromState(state),
             (state["anuncioPublico"] as? String).orEmpty(),
             (state["ganador"] as? String).orEmpty(),
+            OnlineAuthoritativeStateMapper.lobbyReturnDeadlineFromState(state),
             (state["victimaNoche"] as? String).orEmpty(),
             (state["silenciado"] as? String).orEmpty(),
             (state["expulsadoDia"] as? String).orEmpty(),
@@ -2786,6 +2820,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             OnlinePhaseDecision.APPLY -> Unit
         }
         lastAppliedAuthoritativeOnlineStateKey = stateKey
+        onlineLobbyReturnEpochMs = OnlineAuthoritativeStateMapper
+            .lobbyReturnDeadlineFromState(state)
 
         val previousSession = session
         val previousPhaseIndex = session.phaseIndex
@@ -2863,6 +2899,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             pendingOnlinePayadorTargets.clear()
         }
         renderGame()
+        if (session.winner.isNotBlank() && isWinnerRevealVisible) {
+            configureWinnerReturnButton()
+            scheduleWinnerAutoReturn()
+        }
         applyOnlineVotePresentation(incomingVotePresentation)
         notifyLocalOnlineAfkChange(previousSession, session)
     }
@@ -3185,6 +3225,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         showReactionBubble(playerName, spec)
+    }
+
+    override fun onOnlineTraitorActionMarksChanged(marks: List<OnlineTraitorActionMark>) {
+        val normalized = marks
+            .filter { it.roleKey in GameRules.killerRoleKeys }
+            .distinctBy { it.id }
+        if (normalized == onlineTraitorActionMarks) return
+        onlineTraitorActionMarks = normalized
+        if (::session.isInitialized) refreshVisibleActionMarks()
     }
 
     override fun onRealtimeContentAccessCancelled(error: Exception) {
@@ -3522,16 +3571,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineNightActionRecords = onlineActionRecordsFromSnapshot(snapshot?.documents.orEmpty())
             syncOwnOnlineDeferredActionSubmission()
             syncOwnOnlinePayadorSelections()
+            refreshVisibleActionMarks()
             maybeApplyOnlinePayadorContrapunto()
             maybeApplyOnlinePayadorSuspicion()
             maybeApplyOnlineMayorReveal()
             maybeApplyOnlineDesertorChoice()
-            appendTraitorKillNotices()
             val serverConfirmed = snapshot != null &&
                 !snapshot.metadata.hasPendingWrites() &&
                 !snapshot.metadata.isFromCache
             onlineNightActionsServerConfirmed = serverConfirmed
             if (serverConfirmed) {
+                publishTraitorPlanNotices()
                 maybePublishOnlineInvestigationClueEarly(onlineNightActionRecords)
             }
             maybeResolveOnlineNightEarly(
@@ -4244,6 +4294,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun canHumanOracleChooseThisNight(): Boolean {
         val current = actionSession()
         return current.phase == GamePhase.NOCHE_ORACULO &&
+            current.round > 1 &&
             !current.oracleUsed &&
             GameEngine.isHumanRoleTurn(current, RoleCatalog.ORACULO) &&
             GameEngine.oracleCandidates(current).isNotEmpty() &&
@@ -6003,6 +6054,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
         )
 
+        val actionMarkPrimary = createCardActionMarkView()
+        val actionMarkSecondary = createCardActionMarkView()
+        cardFace.addView(actionMarkPrimary)
+        cardFace.addView(actionMarkSecondary)
+        val actionMarkPrimaryLabel = createCardActionMarkLabel()
+        val actionMarkSecondaryLabel = createCardActionMarkLabel()
+        cardFace.addView(actionMarkPrimaryLabel)
+        cardFace.addView(actionMarkSecondaryLabel)
+
         val avatar = TextView(this)
         avatar.gravity = Gravity.CENTER
         avatar.setBackgroundResource(R.drawable.bg_player_avatar)
@@ -6081,11 +6141,241 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             cardBack,
             roleFace,
             deathCauseOverlay,
+            actionMarkPrimary,
+            actionMarkSecondary,
+            actionMarkPrimaryLabel,
+            actionMarkSecondaryLabel,
             avatar,
             mutedBadge,
             actionBadge,
             name
         )
+    }
+
+    private fun createCardActionMarkView(): ImageView {
+        return ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+            alpha = 0f
+            contentDescription = null
+            isClickable = false
+            isFocusable = false
+            elevation = dp(7).toFloat()
+        }
+    }
+
+    private fun createCardActionMarkLabel(): TextView {
+        return TextView(this).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            textSize = 6f
+            setPadding(dp(2), 0, dp(2), 0)
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                this,
+                4,
+                7,
+                1,
+                TypedValue.COMPLEX_UNIT_SP
+            )
+            visibility = View.GONE
+            alpha = 0f
+            elevation = dp(9).toFloat()
+            isClickable = false
+            isFocusable = false
+        }
+    }
+
+    private fun visibleCardActionMarks(): List<CardActionMark> {
+        if (!isOnlineGameplay() || !::session.isInitialized) return emptyList()
+        return CardActionMarks.visibleForCurrentPhase(
+            session = session,
+            onlinePlayerId = onlinePlayerId,
+            records = onlineNightActionRecords,
+            traitorMarks = onlineTraitorActionMarks
+        )
+    }
+
+    /** Refresco acotado: una acción remota no necesita reconstruir todo el tablero. */
+    private fun refreshVisibleActionMarks() {
+        if (!::session.isInitialized || !::roleCard.isInitialized) return
+        val metrics = lastCompanionCardMetrics
+        if (metrics != null) {
+            session.players.forEach { player ->
+                playerCardViews[player.name]?.let { holder ->
+                    // El estado visual forma parte de renderKey; se invalida sólo para que el
+                    // nuevo sello se pinte y anime en el instante en que llega del servidor.
+                    holder.renderKey = null
+                    bindSidePlayerCard(holder, player, metrics)
+                }
+            }
+        }
+        renderHumanCardIfVisible()
+    }
+
+    private fun bindCardActionMarks(
+        holder: SidePlayerCardHolder,
+        marks: List<CardActionMark>,
+        metrics: CompanionCardMetrics
+    ) {
+        val visible = marks.take(2)
+        val key = visible.joinToString(";") { "${it.id}:${it.roleKey}" }
+        val views = listOf(holder.actionMarkPrimary, holder.actionMarkSecondary)
+        val labels = listOf(holder.actionMarkPrimaryLabel, holder.actionMarkSecondaryLabel)
+        views.forEachIndexed { index, view ->
+            val mark = visible.getOrNull(index)
+            val label = labels[index]
+            if (mark == null) {
+                view.animate().cancel()
+                view.visibility = View.GONE
+                view.alpha = 0f
+                label.visibility = View.GONE
+                label.alpha = 0f
+                return@forEachIndexed
+            }
+            view.setImageResource(actionMarkImageFor(mark.roleKey))
+            view.layoutParams = actionMarkLayoutParams(mark.roleKey, metrics, index, visible.size)
+            view.contentDescription = actionMarkDescription(mark)
+            view.visibility = View.VISIBLE
+            val showActor = mark.roleKey in GameRules.killerRoleKeys && mark.actorName.isNotBlank()
+            label.visibility = if (showActor) View.VISIBLE else View.GONE
+            if (showActor) {
+                label.text = mark.actorName
+                label.layoutParams = actionMarkLabelLayoutParams(metrics, index, visible.size)
+                label.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(3).toFloat()
+                    setColor(
+                        Color.parseColor(
+                            if (mark.roleKey == RoleCatalog.ESPIA) "#E36B159B" else "#E3A91419"
+                        )
+                    )
+                    setStroke(dp(1), Color.parseColor("#F4D79B"))
+                }
+            }
+        }
+        if (holder.actionMarkKey != key) {
+            holder.actionMarkAnimator?.cancel()
+            visible.forEachIndexed { index, mark ->
+                val view = views[index]
+                val spec = CardActionAnimations.forRole(mark.roleKey, index, visible.size)
+                view.alpha = 0f
+                view.scaleX = spec.startScaleX
+                view.scaleY = spec.startScaleY
+                view.rotation = spec.startRotation
+                view.translationX = dp(metrics.cardWidthDp).toFloat() * spec.startTranslationXFraction
+                view.translationY = dp(metrics.cardHeightDp).toFloat() * spec.startTranslationYFraction
+                labels[index].alpha = 0f
+            }
+            val animators = visible.flatMapIndexed { index, mark ->
+                val view = views[index]
+                val spec = CardActionAnimations.forRole(mark.roleKey, index, visible.size)
+                listOf(
+                    ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f),
+                    ObjectAnimator.ofFloat(
+                        view,
+                        View.SCALE_X,
+                        spec.startScaleX,
+                        spec.overshootScale,
+                        1f
+                    ),
+                    ObjectAnimator.ofFloat(
+                        view,
+                        View.SCALE_Y,
+                        spec.startScaleY,
+                        spec.overshootScale,
+                        1f
+                    ),
+                    ObjectAnimator.ofFloat(
+                        view,
+                        View.ROTATION,
+                        *spec.rotationKeyframes.toFloatArray()
+                    ),
+                    ObjectAnimator.ofFloat(view, View.TRANSLATION_X, view.translationX, 0f),
+                    ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, view.translationY, 0f),
+                    ObjectAnimator.ofFloat(labels[index], View.ALPHA, 0f, 1f)
+                ).onEach { animator ->
+                    animator.startDelay = index * 90L
+                    animator.duration = spec.durationMs
+                }
+            }
+            holder.actionMarkAnimator = AnimatorSet().apply {
+                playTogether(animators)
+                interpolator = DecelerateInterpolator(1.5f)
+                start()
+            }
+            holder.actionMarkKey = key
+        } else {
+            visible.forEachIndexed { index, mark ->
+                val spec = CardActionAnimations.forRole(mark.roleKey, index, visible.size)
+                views[index].alpha = 1f
+                views[index].scaleX = 1f
+                views[index].scaleY = 1f
+                views[index].rotation = spec.endRotation
+                views[index].translationX = 0f
+                views[index].translationY = 0f
+                labels[index].alpha = 1f
+            }
+        }
+    }
+
+    private fun actionMarkLabelLayoutParams(
+        metrics: CompanionCardMetrics,
+        index: Int,
+        count: Int
+    ): FrameLayout.LayoutParams {
+        return FrameLayout.LayoutParams(
+            dp((metrics.cardWidthDp - 2).coerceAtLeast(18)),
+            dp(12),
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        ).apply {
+            // El botón MATAR/INVESTIGAR ocupa el borde inferior mientras el actor aún puede
+            // elegir. La placa queda arriba de esa franja y nunca compite con el verbo.
+            bottomMargin = dp(if (count > 1 && index == 0) 28 else 15)
+        }
+    }
+
+    private fun actionMarkLayoutParams(
+        roleKey: String,
+        metrics: CompanionCardMetrics,
+        index: Int,
+        count: Int
+    ): FrameLayout.LayoutParams {
+        val isRope = roleKey == RoleCatalog.MERCENARIO
+        val width = if (isRope) metrics.cardWidthDp else (metrics.cardWidthDp * 0.78f).toInt()
+        val height = if (isRope) metrics.cardHeightDp else (metrics.cardHeightDp * 0.72f).toInt()
+        return FrameLayout.LayoutParams(dp(width.coerceAtLeast(22)), dp(height.coerceAtLeast(28))).apply {
+            gravity = Gravity.CENTER
+            if (count > 1 && !isRope) {
+                leftMargin = dp(if (index == 0) -metrics.cardWidthDp / 9 else metrics.cardWidthDp / 9)
+                topMargin = dp(if (index == 0) -metrics.cardHeightDp / 12 else metrics.cardHeightDp / 12)
+            }
+        }
+    }
+
+    private fun actionMarkImageFor(roleKey: String): Int = when (roleKey) {
+        RoleCatalog.ASESINO -> R.drawable.action_mark_assassin
+        RoleCatalog.ESPIA -> R.drawable.action_mark_spy
+        RoleCatalog.POLICIA -> R.drawable.action_mark_detective
+        RoleCatalog.MEDICO -> R.drawable.action_mark_medic
+        RoleCatalog.MERCENARIO -> R.drawable.action_mark_mercenary
+        RoleCatalog.ORACULO -> R.drawable.action_mark_oracle
+        RoleCatalog.PAYADOR -> R.drawable.action_mark_payador
+        else -> R.drawable.action_mark_assassin
+    }
+
+    private fun actionMarkDescription(mark: CardActionMark): String = when (mark.roleKey) {
+        RoleCatalog.ASESINO -> "${mark.actorName} eligió eliminar a ${mark.targetName}"
+        RoleCatalog.ESPIA -> "${mark.actorName} marcó a ${mark.targetName}"
+        RoleCatalog.POLICIA -> "Investigación sobre ${mark.targetName}"
+        RoleCatalog.MEDICO -> "Protección sobre ${mark.targetName}"
+        RoleCatalog.MERCENARIO -> "Silencio sobre ${mark.targetName}"
+        RoleCatalog.ORACULO -> "Invocación de ${mark.targetName}"
+        RoleCatalog.PAYADOR -> "Contrapunto con ${mark.targetName}"
+        else -> "Acción sobre ${mark.targetName}"
     }
 
     private fun bindSidePlayerCard(
@@ -6106,6 +6396,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
         val isActionable = actionLabel.isNotBlank() && !transitionLocked
         val isSelected = player.name == selectedTarget
+        val actionMarks = visibleCardActionMarks().filter { it.targetName == player.name }
+        val actionMarkKey = actionMarks.joinToString(";") { "${it.id}:${it.roleKey}" }
         val renderKey = listOf(
             player.name,
             player.initial,
@@ -6120,6 +6412,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             actionLabel,
             transitionLocked,
             isSelected,
+            actionMarkKey,
             isOnlineGameplay(),
             session.phaseIndex,
             metrics
@@ -6174,6 +6467,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             holder.deathCauseOverlay.setImageResource(deathIcon)
             applyDeathCauseIconStyle(holder.deathCauseOverlay, player.deathCause)
         }
+        bindCardActionMarks(holder, actionMarks, metrics)
         holder.avatar.layoutParams = (holder.avatar.layoutParams as FrameLayout.LayoutParams).apply {
             width = dp(metrics.avatarSizeDp)
             height = dp(metrics.avatarSizeDp)
@@ -7388,7 +7682,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return source.players.indices.filterTo(mutableSetOf()) { index ->
             val player = source.players[index]
             val oracleHasDecision = player.role?.key != RoleCatalog.ORACULO ||
-                (!source.oracleUsed && GameEngine.oracleCandidates(source).isNotEmpty())
+                (
+                    source.round > 1 &&
+                        !source.oracleUsed &&
+                        GameEngine.oracleCandidates(source).isNotEmpty()
+                    )
             player.alive &&
                 oracleHasDecision &&
                 onlineNightActionsForRole(player.role?.key.orEmpty()).isNotEmpty()
@@ -7475,6 +7773,41 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun notifyLocalOnlineAfkChange(before: GameSession, after: GameSession) {
         if (!isOnlineGameplay()) return
+        val expelledNames = before.players.mapIndexedNotNull { index, previous ->
+            val updated = after.players.getOrNull(index) ?: return@mapIndexedNotNull null
+            previous.name.takeIf {
+                previous.alive && !updated.alive && updated.deathCause == DeathCause.AFK
+            }
+        }
+        if (expelledNames.isNotEmpty()) {
+            val names = when (expelledNames.size) {
+                1 -> expelledNames.first()
+                2 -> expelledNames.joinToString(" y ")
+                else -> expelledNames.dropLast(1).joinToString(", ") + " y " + expelledNames.last()
+            }
+            val humanName = before.players.firstOrNull { it.isHuman }?.name.orEmpty()
+            val base = if (expelledNames.size == 1) {
+                "$names fue expulsado por inactividad."
+            } else {
+                "$names fueron expulsados por inactividad."
+            }
+            val consequence = if (after.winner.isNotBlank()) {
+                "Esto decidió la partida. A continuación verás el resultado."
+            } else {
+                "La partida continúa sin ellos."
+            }
+            val personal = if (humanName in expelledNames) {
+                "\n\nTambién quedaste fuera y seguirás como espectador."
+            } else {
+                ""
+            }
+            GameDialog.notice(
+                activity = this,
+                title = "INACTIVIDAD",
+                message = "$base $consequence$personal"
+            )
+            return
+        }
         val previousIndex = before.players.indexOfFirst { it.isHuman }
         if (previousIndex !in before.players.indices) return
         val previous = before.players[previousIndex]
@@ -7831,6 +8164,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             humanDeathCauseOverlay.setImageResource(deathIcon)
             applyDeathCauseIconStyle(humanDeathCauseOverlay, human.deathCause)
         }
+        bindHumanActionMark(human)
         roleImage.alpha = if (human.alive) 1f else 0.58f
         if (showRole) {
             val imageRes = roleImageFor(role)
@@ -8177,7 +8511,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val rolePrefix = role?.let { "${it.name} - ${it.team}." }.orEmpty()
         val base = rawHint.removePrefix(rolePrefix).trim()
             .ifBlank { phaseText(session.phase).subtitle }
-        val selection = if (selectedTarget.isBlank()) "" else " Objetivo: $selectedTarget."
+        val selection = when {
+            selectedTarget.isBlank() -> ""
+            session.phase == GamePhase.NOCHE_ORACULO ->
+                " Elegiste a $selectedTarget. Tocá su carta otra vez para cancelar y guardar el poder."
+            else -> " Objetivo: $selectedTarget."
+        }
         return "$base$selection"
     }
 
@@ -9368,14 +9707,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val presentation = GameplayTableUi.winnerPresentation(session)
         val winnerTitle = when (session.winner) {
+            GameRules.CANCELLED_WINNER -> "SIN GANADOR"
             GameRules.TOWN_WINNER -> "EL PUEBLO HA GANADO"
             GameRules.TRAITOR_WINNER -> "LOS TRAIDORES HAN GANADO"
             else -> "${session.winner.uppercase()} HA GANADO"
         }
-        val personalResult = if (presentation.humanWon) "VICTORIA" else "DERROTA"
+        val personalResult = when {
+            session.winner == GameRules.CANCELLED_WINNER -> "PARTIDA CANCELADA"
+            presentation.humanWon -> "VICTORIA"
+            else -> "DERROTA"
+        }
         winnerRevealTitle.text = personalResult
         winnerRevealPersonalResult.text = winnerTitle
         applyWinnerRevealLayout(session.winner)
+        configureWinnerReturnButton()
         winnerRevealBackground.setImageDrawable(null)
         val cardViews = winnerResultsRenderer.render(
             players = presentation.winningPlayers,
@@ -9384,6 +9729,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             specialWinners = presentation.specialWinningPlayers,
             winnerKey = session.winner
         )
+        if (session.winner == GameRules.CANCELLED_WINNER) {
+            winnerSummaryHighlight.text =
+                "Todos quedaron inactivos. La partida terminó sin ganador y no cuenta para estadísticas."
+        }
         winnerRevealScroll.scrollTo(0, 0)
 
         isWinnerRevealVisible = true
@@ -9511,15 +9860,171 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun scheduleWinnerAutoReturn() {
         autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
-        autoAdvanceHandler.postDelayed(winnerAutoReturnRunnable, WINNER_AUTO_RETURN_MS)
+        val delayMs = if (isOnlineGameplay()) {
+            onlineLobbyReturnEpochMs = OnlineMatchReturnGate.initialDeadline(
+                onlineLobbyReturnEpochMs,
+                System.currentTimeMillis()
+            )
+            OnlineMatchReturnGate.remainingMillis(
+                onlineLobbyReturnEpochMs,
+                System.currentTimeMillis()
+            )
+        } else {
+            WINNER_AUTO_RETURN_MS
+        }
+        autoAdvanceHandler.postDelayed(winnerAutoReturnRunnable, delayMs)
     }
 
     private fun playVictoryMusicWithAutoReturn() {
+        if (session.winner == GameRules.CANCELLED_WINNER) {
+            MusicManager.stopVictoryMusic()
+            return
+        }
         MusicManager.playVictoryMusic(this, session.winner) {
-            if (isWinnerRevealVisible && !isFinishing) {
-                returnToLobby()
+            if (!isOnlineGameplay() && isWinnerRevealVisible && !isFinishing) {
+                returnToLobbyNow()
             }
         }
+    }
+
+    private fun bindHumanActionMark(human: GamePlayer) {
+        val mark = visibleCardActionMarks().firstOrNull { it.targetName == human.name }
+        if (mark == null) {
+            humanActionMarkAnimator?.cancel()
+            humanActionMarkOverlay.animate().cancel()
+            humanActionMarkOverlay.visibility = View.GONE
+            humanActionMarkOverlay.alpha = 0f
+            humanActionMarkKey = null
+            return
+        }
+        val key = "${mark.id}:${mark.roleKey}"
+        humanActionMarkOverlay.setImageResource(actionMarkImageFor(mark.roleKey))
+        humanActionMarkOverlay.contentDescription = actionMarkDescription(mark)
+        humanActionMarkOverlay.layoutParams =
+            (humanActionMarkOverlay.layoutParams as FrameLayout.LayoutParams).apply {
+                width = dp(if (mark.roleKey == RoleCatalog.MERCENARIO) 46 else 42)
+                height = dp(if (mark.roleKey == RoleCatalog.MERCENARIO) 76 else 66)
+                gravity = Gravity.CENTER
+            }
+        humanActionMarkOverlay.visibility = View.VISIBLE
+        if (humanActionMarkKey == key) {
+            val settled = CardActionAnimations.forRole(mark.roleKey)
+            humanActionMarkOverlay.alpha = 1f
+            humanActionMarkOverlay.scaleX = 1f
+            humanActionMarkOverlay.scaleY = 1f
+            humanActionMarkOverlay.rotation = settled.endRotation
+            humanActionMarkOverlay.translationX = 0f
+            humanActionMarkOverlay.translationY = 0f
+            return
+        }
+        humanActionMarkAnimator?.cancel()
+        val spec = CardActionAnimations.forRole(mark.roleKey)
+        humanActionMarkOverlay.alpha = 0f
+        humanActionMarkOverlay.scaleX = spec.startScaleX
+        humanActionMarkOverlay.scaleY = spec.startScaleY
+        humanActionMarkOverlay.rotation = spec.startRotation
+        humanActionMarkOverlay.translationX = dp(48).toFloat() * spec.startTranslationXFraction
+        humanActionMarkOverlay.translationY = dp(76).toFloat() * spec.startTranslationYFraction
+        humanActionMarkAnimator = AnimatorSet().apply {
+            playTogether(
+                ObjectAnimator.ofFloat(humanActionMarkOverlay, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(
+                    humanActionMarkOverlay,
+                    View.SCALE_X,
+                    spec.startScaleX,
+                    spec.overshootScale,
+                    1f
+                ),
+                ObjectAnimator.ofFloat(
+                    humanActionMarkOverlay,
+                    View.SCALE_Y,
+                    spec.startScaleY,
+                    spec.overshootScale,
+                    1f
+                ),
+                ObjectAnimator.ofFloat(
+                    humanActionMarkOverlay,
+                    View.ROTATION,
+                    *spec.rotationKeyframes.toFloatArray()
+                ),
+                ObjectAnimator.ofFloat(
+                    humanActionMarkOverlay,
+                    View.TRANSLATION_X,
+                    humanActionMarkOverlay.translationX,
+                    0f
+                ),
+                ObjectAnimator.ofFloat(
+                    humanActionMarkOverlay,
+                    View.TRANSLATION_Y,
+                    humanActionMarkOverlay.translationY,
+                    0f
+                )
+            )
+            duration = spec.durationMs
+            interpolator = DecelerateInterpolator(1.5f)
+            start()
+        }
+        humanActionMarkKey = key
+    }
+
+    private fun configureWinnerReturnButton() {
+        when {
+            !isOnlineGameplay() -> {
+                btnWinnerReturnLobby.text = "VOLVER AL LOBBY"
+                btnWinnerReturnLobby.isEnabled = true
+                btnWinnerReturnLobby.alpha = 1f
+            }
+            onlineIsHost -> {
+                btnWinnerReturnLobby.text = "VOLVER TODOS A LA SALA"
+                btnWinnerReturnLobby.isEnabled = true
+                btnWinnerReturnLobby.alpha = 1f
+            }
+            else -> {
+                btnWinnerReturnLobby.text = "VOLVIENDO JUNTOS..."
+                btnWinnerReturnLobby.isEnabled = false
+                btnWinnerReturnLobby.alpha = 0.72f
+            }
+        }
+    }
+
+    private fun handleWinnerReturnButton() {
+        if (!isOnlineGameplay() || session.winner.isBlank()) {
+            returnToLobbyNow()
+            return
+        }
+        if (!onlineIsHost || !btnWinnerReturnLobby.isEnabled) return
+
+        val requestedDeadline = System.currentTimeMillis() +
+            OnlineMatchReturnGate.HOST_REQUEST_GRACE_MS
+        btnWinnerReturnLobby.isEnabled = false
+        btnWinnerReturnLobby.alpha = 0.72f
+        btnWinnerReturnLobby.text = "VOLVIENDO TODOS..."
+        FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(
+                mapOf(
+                    "estadoPartida.volverLobbyEpochMs" to requestedDeadline,
+                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
+                )
+            )
+            .addOnSuccessListener {
+                onlineLobbyReturnEpochMs = requestedDeadline
+                lastPublishedAuthoritativeOnlineStateKey = ""
+                scheduleWinnerAutoReturn()
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "winner_return_all_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+                configureWinnerReturnButton()
+                GameNotice.show(
+                    activity = this,
+                    message = "No se pudo avisar a todos. Inténtalo otra vez.",
+                    duration = GameNotice.Duration.LONG
+                )
+            }
     }
 
     private fun refreshPlayerTargetSelection(previousTarget: String, currentTarget: String) {
@@ -9534,6 +10039,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun returnToLobby() {
+        if (isOnlineGameplay() && session.winner.isNotBlank()) {
+            handleWinnerReturnButton()
+            return
+        }
+        returnToLobbyNow()
+    }
+
+    private fun returnToLobbyNow() {
         returningToOnlineLobby = true
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         autoAdvanceHandler.removeCallbacks(winnerAutoReturnRunnable)
@@ -9961,19 +10474,47 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     /**
-     * Con dos killers online, cada uno ve por el chat a quien eligio el otro. Las lineas se
-     * arman en este celular a partir de las acciones que ya recibe; no se escriben en la red.
+     * El anfitrión ya recibe todas las acciones confirmadas para resolver la noche. Publica
+     * una copia mínima y privada en RTDB para que todos los Traidores vean quién eligió a
+     * quién, incluida su propia decisión, sin abrir la colección completa de acciones.
      */
-    private fun appendTraitorKillNotices() {
-        if (!isOnlineGameplay() || !::session.isInitialized) return
-        val notices = TraitorKillNotices.pendingNotices(
-            session = session,
-            records = onlineNightActionRecords,
-            viewerName = GameEngine.humanPlayer(session).name
-        )
+    private fun publishTraitorPlanNotices() {
+        if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        val notices = TraitorKillNotices.confirmedNotices(session, onlineNightActionRecords)
         if (notices.isEmpty()) return
-        session = session.copy(chatHistory = session.chatHistory + notices)
-        chatController.onSessionUpdated()
+
+        val planReference = FirebaseDatabase.getInstance()
+            .getReference("salas/$onlinePartidaId/chat_traidores")
+        notices.forEach { notice ->
+            val remoteNoticeId =
+                "plan_${session.onlineMatchId.hashCode().toUInt().toString(16)}_${notice.id}"
+            if (!publishedTraitorPlanNoticeIds.add(remoteNoticeId)) return@forEach
+            planReference.child(remoteNoticeId)
+                .setValue(
+                    mapOf(
+                        "matchId" to session.onlineMatchId,
+                        "actorId" to onlinePlayerId,
+                        "speaker" to TraitorKillNotices.SPEAKER,
+                        "mensaje" to notice.message,
+                        "fase" to session.phase.name,
+                        "ronda" to session.round,
+                        "isGod" to true,
+                        "canal" to "traidores",
+                        "tipo" to "accion",
+                        "actorNombre" to notice.actorName,
+                        "objetivoNombre" to notice.targetName,
+                        "accionRol" to notice.roleKey,
+                        "faseIndice" to session.phaseIndex,
+                        "ts" to ServerValue.TIMESTAMP
+                    )
+                )
+                .addOnFailureListener { error ->
+                    publishedTraitorPlanNoticeIds.remove(remoteNoticeId)
+                    OnlineDebugLog.w(
+                        "traitor_plan_notice_write_skipped roomId=$onlinePartidaId id=$remoteNoticeId reason=${error.message.orEmpty()}"
+                    )
+                }
+        }
     }
 
     /**
@@ -10234,6 +10775,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
         private const val STATE_ONLINE_STARTUP_DEADLINE_EPOCH_MS =
             "online_startup_deadline_epoch_ms"
+        private const val STATE_ONLINE_LOBBY_RETURN_EPOCH_MS =
+            "online_lobby_return_epoch_ms"
         private const val STATE_ONLINE_PRESENTATION_ACK_KEY = "online_presentation_ack_key"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L

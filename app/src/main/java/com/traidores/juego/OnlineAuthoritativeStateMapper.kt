@@ -15,6 +15,10 @@ object OnlineAuthoritativeStateMapper {
         return (state["inicioAutomaticoEpochMs"] as? Number)?.toLong() ?: 0L
     }
 
+    fun lobbyReturnDeadlineFromState(state: Map<String, Any?>): Long {
+        return (state["volverLobbyEpochMs"] as? Number)?.toLong() ?: 0L
+    }
+
     fun phaseDeadlineIndexFromState(state: Map<String, Any?>): Int {
         return (state["limiteFasePhaseIndex"] as? Number)?.toInt() ?: -1
     }

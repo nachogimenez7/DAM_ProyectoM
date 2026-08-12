@@ -62,6 +62,7 @@ class GameplayChatController(
         fun renderPersonalStatus()
         fun chatLogDrawableRes(): Int
         fun onOnlineReactionReceived(playerName: String, emoteId: String)
+        fun onOnlineTraitorActionMarksChanged(marks: List<OnlineTraitorActionMark>)
         fun onRealtimeContentAccessCancelled(error: Exception)
         fun isOnlineActorLocallyMuted(actorId: String): Boolean
         fun isOwnPlayerTableSilenced(): Boolean
@@ -72,7 +73,12 @@ class GameplayChatController(
         val actorId: String,
         val speaker: String,
         val message: String,
-        val isGod: Boolean
+        val isGod: Boolean,
+        val round: Int,
+        val actionActorName: String = "",
+        val actionTargetName: String = "",
+        val actionRoleKey: String = "",
+        val actionPhaseIndex: Int = -1
     )
 
     private data class OnlineReactionEntry(
@@ -98,6 +104,8 @@ class GameplayChatController(
     private var restoreTieVoteAfterChat = false
     private var showOnlyEvents = false
     private var selectedChatChannel = ChatChannel.PUBLICO
+    private var lastObservedPhaseIndex = -1
+    private var wasOracleInvitedToPublicChat = false
     private var unreadChatCount = 0
     private var lastAmbientFeedRenderKey = ""
     private var lastExpandedChatRenderKey = ""
@@ -143,6 +151,8 @@ class GameplayChatController(
     private val btnSendChat: Button = root.findViewById(R.id.btnSendChat)
     private val btnCloseChat: ImageButton = root.findViewById(R.id.btnCloseChat)
     private val btnChatFeedFilter: Button = root.findViewById(R.id.btnChatFeedFilter)
+    private val btnChatPublicTab: Button = root.findViewById(R.id.btnChatPublicTab)
+    private val btnChatPrivateTab: Button = root.findViewById(R.id.btnChatPrivateTab)
     private val chatAmbientFeed: FrameLayout = root.findViewById(R.id.chatAmbientFeed)
     private val chatAmbientBackground: ImageView = root.findViewById(R.id.chatAmbientBackground)
     private val chatAmbientHint: TextView = root.findViewById(R.id.chatAmbientHint)
@@ -153,6 +163,7 @@ class GameplayChatController(
     private val chatComposer: LinearLayout = root.findViewById(R.id.chatComposer)
     private val chatFeedTitle: TextView = root.findViewById(R.id.chatFeedTitle)
     private val chatHeader: LinearLayout = root.findViewById(R.id.chatHeader)
+    private val chatChannelTabs: LinearLayout = root.findViewById(R.id.chatChannelTabs)
     private val chatInput: EditText = root.findViewById(R.id.chatInput)
     private val chatMessagesContainer: LinearLayout = root.findViewById(R.id.chatMessagesContainer)
     private val chatMessagesScroll: ScrollView = root.findViewById(R.id.chatMessagesScroll)
@@ -179,22 +190,33 @@ class GameplayChatController(
 
     fun onCreate(savedState: Bundle?) {
         isChatOpen = savedState?.getBoolean(STATE_CHAT_OPEN) ?: false
-        val humanAlive = GameEngine.humanPlayer(host.currentSession).alive
+        val initialSession = host.currentSession
+        val initialHuman = GameEngine.humanPlayer(initialSession)
+        val humanAlive = initialHuman.alive
+        val oracleInvited = isOracleInvitedToPublicChat(initialSession)
         selectedChatChannel = savedState
             ?.getString(STATE_CHAT_CHANNEL)
             ?.let { savedChannel -> runCatching { ChatChannel.valueOf(savedChannel) }.getOrNull() }
-            ?: if (host.isOnlineGameplay() && !humanAlive) {
-                ChatChannel.ESPECTADORES
-            } else {
-                ChatChannel.PUBLICO
+            ?: when {
+                oracleInvited -> ChatChannel.PUBLICO
+                host.isOnlineGameplay() && !humanAlive -> ChatChannel.ESPECTADORES
+                GameEngine.canSeeTraitorChat(initialHuman) &&
+                    GameplayTableUi.isNightPhase(initialSession.phase) -> ChatChannel.TRAIDORES
+                else -> ChatChannel.PUBLICO
             }
         wasHumanAlive = humanAlive
+        wasOracleInvitedToPublicChat = oracleInvited
+        lastObservedPhaseIndex = initialSession.phaseIndex
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
         chatAmbientFeed.setOnClickListener { openExpanded() }
         btnCloseChat.setOnClickListener { closeChatPanel() }
         btnChatFeedFilter.setOnClickListener { toggleFeedFilter() }
+        btnChatPublicTab.setOnClickListener { selectChatChannel(ChatChannel.PUBLICO) }
+        btnChatPrivateTab.setOnClickListener {
+            privateChatChannelForUi()?.let(::selectChatChannel)
+        }
         btnSendChat.setOnClickListener { sendHumanChatMessage() }
         chatNewMessages.setOnClickListener { acknowledgeNewChatMessages() }
         chatInput.setOnEditorActionListener { _, actionId, _ ->
@@ -219,13 +241,42 @@ class GameplayChatController(
     }
 
     fun onSessionUpdated() {
-        val humanAlive = GameEngine.humanPlayer(host.currentSession).alive
-        if (host.isOnlineGameplay() && wasHumanAlive == true && !humanAlive) {
-            selectedChatChannel = ChatChannel.ESPECTADORES
+        val session = host.currentSession
+        val human = GameEngine.humanPlayer(session)
+        val humanAlive = human.alive
+        val justDied = host.isOnlineGameplay() && wasHumanAlive == true && !humanAlive
+        val oracleInvited = isOracleInvitedToPublicChat(session)
+        val justInvitedByOracle = oracleInvited && !wasOracleInvitedToPublicChat
+        val oracleInvitationEnded = !oracleInvited && wasOracleInvitedToPublicChat && !humanAlive
+        val phaseChanged = lastObservedPhaseIndex != session.phaseIndex
+
+        when {
+            justInvitedByOracle -> {
+                selectedChatChannel = ChatChannel.PUBLICO
+                showOnlyEvents = false
+            }
+            justDied || oracleInvitationEnded -> {
+                selectedChatChannel = ChatChannel.ESPECTADORES
+                showOnlyEvents = false
+            }
+            phaseChanged -> {
+                selectedChatChannel = when {
+                    oracleInvited -> ChatChannel.PUBLICO
+                    !humanAlive && host.isOnlineGameplay() -> ChatChannel.ESPECTADORES
+                    GameEngine.canSeeTraitorChat(human) &&
+                        GameplayTableUi.isNightPhase(session.phase) -> ChatChannel.TRAIDORES
+                    else -> ChatChannel.PUBLICO
+                }
+                showOnlyEvents = false
+            }
+        }
+        if (justDied) {
             showOnlyEvents = false
             host.showToast("Caíste. Ahora hablás en el Chat de los Muertos.")
         }
         wasHumanAlive = humanAlive
+        wasOracleInvitedToPublicChat = oracleInvited
+        lastObservedPhaseIndex = session.phaseIndex
         if (host.isOnlineGameplay() && realtimeAccessReady) {
             // El rol del humano puede llegar despues de onCreate (reconstruccion online),
             // y la muerte puede llegar en una actualizacion posterior. Ambos listeners
@@ -800,8 +851,15 @@ class GameplayChatController(
         }
 
         val channel = activeChatChannel()
+        val sourceMessages = activeChannelMessages(channel).let { messages ->
+            if (channel == ChatChannel.TRAIDORES) {
+                messages.filter { it.round == host.currentSession.round }
+            } else {
+                messages
+            }
+        }
         val entries = ChronicleFeedPresenter.entries(
-            activeChannelMessages(channel).takeLast(CHAT_AMBIENT_SOURCE_LIMIT)
+            sourceMessages.takeLast(CHAT_AMBIENT_SOURCE_LIMIT)
         )
             .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
             .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
@@ -1607,8 +1665,7 @@ class GameplayChatController(
             recentMessages,
             showOnlyEvents && channel == ChatChannel.PUBLICO
         )
-            .filterNot { channel == ChatChannel.TRAIDORES && it.kind == ChronicleEntryKind.DAY_DIVIDER }
-            .takeLast(24)
+            .takeLast(CHAT_EXPANDED_SOURCE_LIMIT)
         val typingSpeakers = typingBotSpeakers.filter { speaker ->
             typingSpeakerBelongsToChannel(speaker, channel)
         }
@@ -1699,90 +1756,29 @@ class GameplayChatController(
     }
 
     private fun toggleFeedFilter() {
-        if (canUseSpectatorChatUi(host.currentSession)) {
-            selectedChatChannel = if (activeChatChannel() == ChatChannel.ESPECTADORES) {
-                ChatChannel.PUBLICO
-            } else {
-                ChatChannel.ESPECTADORES
-            }
-            showOnlyEvents = false
-            renderFeedFilterButton()
-            renderChatPanel()
-            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-            return
-        }
-        if (canToggleTraitorChannel()) {
-            selectedChatChannel = if (activeChatChannel() == ChatChannel.TRAIDORES) {
-                ChatChannel.PUBLICO
-            } else {
-                ChatChannel.TRAIDORES
-            }
-            showOnlyEvents = false
-            renderFeedFilterButton()
-            renderChatPanel()
-            chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
-            return
-        }
+        if (activeChatChannel() != ChatChannel.PUBLICO) return
         showOnlyEvents = !showOnlyEvents
         renderFeedFilterButton()
         renderChatPanel()
         chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
+    private fun selectChatChannel(channel: ChatChannel) {
+        val allowed = channel == ChatChannel.PUBLICO || channel == privateChatChannelForUi()
+        if (!allowed || selectedChatChannel == channel) return
+        GameplayEffects.play(root.context, GameplayEffect.PANEL)
+        selectedChatChannel = channel
+        showOnlyEvents = false
+        lastExpandedChatRenderKey = ""
+        lastAmbientFeedRenderKey = ""
+        lastChatBackgroundRenderKey = ""
+        renderChatPanel()
+        chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
     private fun renderFeedFilterButton() {
         val channel = activeChatChannel()
-        if (canUseSpectatorChatUi(host.currentSession)) {
-            btnChatFeedFilter.visibility = View.VISIBLE
-            btnChatFeedFilter.isEnabled = true
-            btnChatFeedFilter.text = if (channel == ChatChannel.ESPECTADORES) "PUEBLO" else "MUERTOS"
-            btnChatFeedFilter.contentDescription = if (channel == ChatChannel.ESPECTADORES) {
-                "Volver al chat del pueblo"
-            } else {
-                "Hablar con los muertos"
-            }
-            btnChatFeedFilter.alpha = 1f
-            btnChatFeedFilter.background = roundedBackground(
-                fillColor = root.context.getColor(
-                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_panel else R.color.btn_dark
-                ),
-                strokeColor = root.context.getColor(
-                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_blue else R.color.btn_dark_border
-                ),
-                cornerRadiusDp = 7
-            )
-            btnChatFeedFilter.setTextColor(
-                root.context.getColor(
-                    if (channel == ChatChannel.ESPECTADORES) R.color.espectro_text else R.color.text_primary
-                )
-            )
-            return
-        }
-        if (canToggleTraitorChannel()) {
-            btnChatFeedFilter.visibility = View.VISIBLE
-            btnChatFeedFilter.isEnabled = true
-            btnChatFeedFilter.text = if (channel == ChatChannel.TRAIDORES) "PUEBLO" else "PLAN"
-            btnChatFeedFilter.contentDescription = if (channel == ChatChannel.TRAIDORES) {
-                "Volver al chat del pueblo"
-            } else {
-                "Ver Plan de los Asesinos"
-            }
-            btnChatFeedFilter.alpha = 1f
-            btnChatFeedFilter.background = roundedBackground(
-                fillColor = root.context.getColor(
-                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_panel else R.color.btn_dark
-                ),
-                strokeColor = root.context.getColor(
-                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_red else R.color.btn_dark_border
-                ),
-                cornerRadiusDp = 7
-            )
-            btnChatFeedFilter.setTextColor(
-                root.context.getColor(
-                    if (channel == ChatChannel.TRAIDORES) R.color.traitor_text else R.color.text_primary
-                )
-            )
-            return
-        }
+        renderChannelTabs(channel)
         if (channel != ChatChannel.PUBLICO) {
             btnChatFeedFilter.visibility = View.GONE
             btnChatFeedFilter.isEnabled = false
@@ -1799,6 +1795,68 @@ class GameplayChatController(
         btnChatFeedFilter.alpha = if (showOnlyEvents) 1f else 0.82f
         btnChatFeedFilter.setBackgroundResource(R.drawable.bg_btn_dark)
         btnChatFeedFilter.setTextColor(root.context.getColor(R.color.text_primary))
+    }
+
+    private fun renderChannelTabs(channel: ChatChannel) {
+        val privateChannel = privateChatChannelForUi()
+        chatChannelTabs.visibility = if (privateChannel == null) View.GONE else View.VISIBLE
+        if (privateChannel == null) return
+
+        btnChatPublicTab.text = "PUEBLO"
+        btnChatPublicTab.contentDescription = "Abrir el chat del pueblo"
+        btnChatPrivateTab.text = when (privateChannel) {
+            ChatChannel.TRAIDORES -> "PLAN DE LOS ASESINOS"
+            ChatChannel.ESPECTADORES -> "CHAT DE LOS MUERTOS"
+            ChatChannel.PUBLICO -> "PUEBLO"
+        }
+        btnChatPrivateTab.contentDescription = when (privateChannel) {
+            ChatChannel.TRAIDORES -> "Abrir el Plan de los Asesinos"
+            ChatChannel.ESPECTADORES -> "Abrir el Chat de los Muertos"
+            ChatChannel.PUBLICO -> "Abrir el chat del pueblo"
+        }
+
+        styleChannelTab(
+            button = btnChatPublicTab,
+            selected = channel == ChatChannel.PUBLICO,
+            fillColor = R.color.btn_dark,
+            strokeColor = R.color.accent_gold,
+            textColor = R.color.text_primary
+        )
+        styleChannelTab(
+            button = btnChatPrivateTab,
+            selected = channel == privateChannel,
+            fillColor = if (privateChannel == ChatChannel.TRAIDORES) {
+                R.color.traitor_panel
+            } else {
+                R.color.espectro_panel
+            },
+            strokeColor = if (privateChannel == ChatChannel.TRAIDORES) {
+                R.color.traitor_red_bright
+            } else {
+                R.color.espectro_blue_bright
+            },
+            textColor = if (privateChannel == ChatChannel.TRAIDORES) {
+                R.color.traitor_text
+            } else {
+                R.color.espectro_text
+            }
+        )
+    }
+
+    private fun styleChannelTab(
+        button: Button,
+        selected: Boolean,
+        fillColor: Int,
+        strokeColor: Int,
+        textColor: Int
+    ) {
+        button.alpha = if (selected) 1f else 0.68f
+        button.background = roundedBackground(
+            fillColor = root.context.getColor(if (selected) fillColor else R.color.btn_dark),
+            strokeColor = root.context.getColor(if (selected) strokeColor else R.color.btn_dark_border),
+            cornerRadiusDp = 8
+        )
+        button.setTextColor(root.context.getColor(if (selected) textColor else R.color.text_secondary))
     }
 
     private fun addGodEventBanner(entry: ChronicleEntry) {
@@ -2402,6 +2460,7 @@ class GameplayChatController(
         }
         onlineTraitorChatListener = null
         onlineTraitorChatQuery = null
+        host.onOnlineTraitorActionMarksChanged(emptyList())
 
         onlineSpectatorChatListener?.let { listener ->
             onlineSpectatorChatQuery?.removeEventListener(listener)
@@ -2444,7 +2503,16 @@ class GameplayChatController(
                         actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
-                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false,
+                        round = child.child("ronda").getValue(Int::class.java) ?: 0,
+                        actionActorName = child.child("actorNombre")
+                            .getValue(String::class.java).orEmpty(),
+                        actionTargetName = child.child("objetivoNombre")
+                            .getValue(String::class.java).orEmpty(),
+                        actionRoleKey = child.child("accionRol")
+                            .getValue(String::class.java).orEmpty(),
+                        actionPhaseIndex = child.child("faseIndice")
+                            .getValue(Int::class.java) ?: -1
                     ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
                 }
                 OnlineDebugLog.i(
@@ -2485,7 +2553,7 @@ class GameplayChatController(
         OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
         val query = FirebaseDatabase.getInstance()
             .getReference("salas/${host.onlineRoomId}/$RTDB_TRAITOR_CHAT_NODE")
-            .orderByKey()
+            .orderByChild("ts")
             .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -2498,7 +2566,8 @@ class GameplayChatController(
                         actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
-                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false,
+                        round = child.child("ronda").getValue(Int::class.java) ?: 0
                     ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
                 }
                 OnlineDebugLog.i(
@@ -2521,15 +2590,38 @@ class GameplayChatController(
     }
 
     private fun applyOnlineTraitorChatEntries(entries: List<OnlineChatEntry>) {
+        host.onOnlineTraitorActionMarksChanged(
+            entries.mapNotNull { entry ->
+                OnlineTraitorActionMark(
+                    id = entry.id,
+                    actorName = entry.actionActorName,
+                    targetName = entry.actionTargetName,
+                    roleKey = entry.actionRoleKey,
+                    round = entry.round,
+                    phaseIndex = entry.actionPhaseIndex
+                ).takeIf {
+                    it.actorName.isNotBlank() &&
+                        it.targetName.isNotBlank() &&
+                        it.roleKey in GameRules.killerRoleKeys &&
+                        it.phaseIndex >= 0
+                }
+            }
+        )
         val onlineTraitorMessages = entries
-            .filterNot { host.isOnlineActorLocallyMuted(it.actorId) }
+            .filterNot { !it.isGod && host.isOnlineActorLocallyMuted(it.actorId) }
             .map {
-            GameChatMessage(it.speaker, it.message, it.isGod, ChatChannel.TRAIDORES)
+            GameChatMessage(
+                it.speaker,
+                it.message,
+                it.isGod,
+                ChatChannel.TRAIDORES,
+                it.round
+            )
         }
         mergeOnlineChannelMessages(
             channel = ChatChannel.TRAIDORES,
             onlineMessages = onlineTraitorMessages,
-            preserveGodOfChannel = true
+            preserveGodOfChannel = false
         )
     }
 
@@ -2552,7 +2644,8 @@ class GameplayChatController(
                         actorId = child.child("actorId").getValue(String::class.java).orEmpty(),
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
-                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false
+                        isGod = child.child("isGod").getValue(Boolean::class.java) ?: false,
+                        round = child.child("ronda").getValue(Int::class.java) ?: 0
                     ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
                 }
                 OnlineDebugLog.i(
@@ -3341,8 +3434,11 @@ class GameplayChatController(
             }
         }
         if (!canUseTraitorChatUi(session)) return ChatChannel.PUBLICO
-        if (GameplayTableUi.isNightPhase(session.phase)) return ChatChannel.TRAIDORES
-        return selectedChatChannel
+        return if (selectedChatChannel == ChatChannel.TRAIDORES) {
+            ChatChannel.TRAIDORES
+        } else {
+            ChatChannel.PUBLICO
+        }
     }
 
     private fun activeChannelMessages(channel: ChatChannel): List<GameChatMessage> {
@@ -3364,9 +3460,17 @@ class GameplayChatController(
     private fun canToggleTraitorChannel(): Boolean {
         val session = host.currentSession
         return canUseTraitorChatUi(session) &&
-            !GameplayTableUi.isNightPhase(session.phase) &&
             session.phase != GamePhase.REPARTO &&
             session.phase != GamePhase.RESULTADO
+    }
+
+    private fun privateChatChannelForUi(): ChatChannel? {
+        val session = host.currentSession
+        return when {
+            canUseSpectatorChatUi(session) -> ChatChannel.ESPECTADORES
+            canToggleTraitorChannel() -> ChatChannel.TRAIDORES
+            else -> null
+        }
     }
 
     private fun canUseTraitorChatUi(session: GameSession): Boolean {
@@ -3375,8 +3479,7 @@ class GameplayChatController(
 
     private fun canUseSpectatorChatUi(session: GameSession): Boolean {
         return host.isOnlineGameplay() &&
-            GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session)) &&
-            !isOracleInvitedToPublicChat(session)
+            GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session))
     }
 
     private fun isOracleInvitedToPublicChat(session: GameSession): Boolean {
@@ -3424,7 +3527,7 @@ class GameplayChatController(
         private const val IME_RESIZE_TOLERANCE_DP = 48
         private const val CHAT_AMBIENT_MAX_MESSAGES = 4
         private const val CHAT_AMBIENT_SOURCE_LIMIT = 8
-        private const val CHAT_EXPANDED_SOURCE_LIMIT = 32
+        private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
         private const val CHAT_MESSAGE_MAX_LENGTH = 140

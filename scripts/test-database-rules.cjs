@@ -122,6 +122,30 @@ async function main() {
         chatMessage("carol", "Carol", { canal: "traidores" })
       )
     );
+    // El anfitrión puede publicar avisos del Plan derivados de acciones confirmadas.
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/chat_traidores/action-plan`).set(
+        chatMessage("alice", "Plan", {
+          canal: "traidores", tipo: "accion", isGod: true,
+          actorNombre: "Carol", objetivoNombre: "Bob",
+          accionRol: "espia", faseIndice: 3,
+        })
+      )
+    );
+    await assertFails(
+      carol.ref(`salas/${roomId}/chat_traidores/action-forged`).set(
+        chatMessage("carol", "Plan", {
+          canal: "traidores", tipo: "accion", isGod: true,
+        })
+      )
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat_traidores/action-town-forged`).set(
+        chatMessage("bob", "Plan", {
+          canal: "traidores", tipo: "accion", isGod: true,
+        })
+      )
+    );
 
     // Al morir deja de ver traidores y pasa al canal de espectadores.
     await assertSucceeds(

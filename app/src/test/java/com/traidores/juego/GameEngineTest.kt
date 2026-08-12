@@ -1079,6 +1079,18 @@ class GameEngineTest {
     }
 
     @Test
+    fun oracleCannotUseOrSavePowerDuringFirstNightEvenWithADeadCandidate() {
+        val firstNight = oracleSession().copy(round = 1)
+
+        assertFalse(GameEngine.requiresHumanInput(firstNight))
+        assertEquals(firstNight, GameEngine.skipOraclePower(firstNight))
+        val advanced = GameEngine.resolveOracle(firstNight, "Fallecido")
+        assertEquals(GamePhase.AMANECER, advanced.phase)
+        assertFalse(advanced.oracleUsed)
+        assertEquals("", advanced.oracleInvitedPlayer)
+    }
+
+    @Test
     fun oracleInvitesOneDeadPlayerAnonymouslyForDiscussionOnly() {
         val session = oracleSession()
 
@@ -3636,7 +3648,8 @@ class GameEngineTest {
                     role = RoleCatalog.gameRole(RoleCatalog.MEDICO, RoleMap.GREECE)
                 )
             ),
-            phase = GamePhase.NOCHE_ORACULO
+            phase = GamePhase.NOCHE_ORACULO,
+            round = 2
         )
     }
 
@@ -3850,7 +3863,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun onlineAfkNeverExpelsEveryAlivePlayerInSameWindow() {
+    fun onlineAfkCancelsWithoutWinnerWhenEverybodyMissesAgain() {
         val initial = GameSession(
             code = "AFK",
             mapKey = "pampa",
@@ -3881,20 +3894,12 @@ class GameEngineTest {
         )
 
         assertTrue(allMiss.players.all { it.alive })
-        assertTrue(allMiss.players.all { it.consecutiveVoteAfk == 2 })
-
-        val allMissAgain = GameEngine.applyOnlineAfkOpportunity(
-            session = allMiss,
-            opportunity = AfkOpportunity.VOTE,
-            requiredPlayerIndexes = setOf(0, 1),
-            actedPlayerIndexes = emptySet()
-        )
-
-        assertTrue(allMissAgain.players.all { it.alive })
-        assertTrue(allMissAgain.players.all { it.consecutiveVoteAfk == 3 })
+        assertEquals(GameRules.CANCELLED_WINNER, allMiss.winner)
+        assertEquals(GamePhase.RESULTADO, allMiss.phase)
+        assertTrue(allMiss.publicAnnouncement.contains("cancelada"))
 
         val oneReturns = GameEngine.applyOnlineAfkOpportunity(
-            session = allMissAgain,
+            session = initial,
             opportunity = AfkOpportunity.VOTE,
             requiredPlayerIndexes = setOf(0, 1),
             actedPlayerIndexes = setOf(0)

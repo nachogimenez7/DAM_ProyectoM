@@ -353,6 +353,9 @@ object GameEngine {
 
     fun resolveOracle(session: GameSession, selectedTarget: String): GameSession {
         if (!canResolve(session, GamePhase.NOCHE_ORACULO)) return session
+        if (session.round <= 1) {
+            return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
+        }
         val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
             ?: return advanceNight(session, GamePhase.AMANECER, dawnApproachesMessage(session))
         if (session.oracleUsed || oracleCandidates(session).isEmpty()) {
@@ -1360,10 +1363,22 @@ object GameEngine {
         val aliveIndexes = session.players.indices.filterTo(mutableSetOf()) { index ->
             session.players[index].alive
         }
-        // Nunca dejar la partida sin jugadores vivos: produciria una partida sin ganador
-        // posible y, por lo tanto, un bloqueo permanente del flujo online.
-        val suppressBatchExpulsion = tentativeExpelledIndexes.isNotEmpty() &&
+        // Si todos abandonaron la mesa no inventamos un ganador ni expulsamos a todo el mundo.
+        // La partida se cancela y queda fuera de las estadísticas.
+        if (
+            tentativeExpelledIndexes.isNotEmpty() &&
             tentativeExpelledIndexes.containsAll(aliveIndexes)
+        ) {
+            val message = "Partida cancelada por inactividad. Ningún jugador respondió."
+            return session.copy(
+                phase = GamePhase.RESULTADO,
+                phaseIndex = session.phaseIndex + 1,
+                winner = GameRules.CANCELLED_WINNER,
+                publicAnnouncement = message,
+                privateHint = "La partida terminó sin ganador.",
+                specialVictories = emptyList()
+            ).withPublicHistory(message)
+        }
         val expelledIndexes = mutableListOf<Int>()
         val updatedPlayers = session.players.mapIndexed { index, player ->
             if (index !in validRequiredIndexes) return@mapIndexed player
@@ -1374,8 +1389,7 @@ object GameEngine {
                 AfkOpportunity.VOTE -> player.consecutiveVoteAfk
             }
             val nextStreak = if (acted) 0 else currentStreak + 1
-            val expelled = !suppressBatchExpulsion &&
-                !acted &&
+            val expelled = !acted &&
                 nextStreak >= AfkPolicy.CONSECUTIVE_MISSES_BEFORE_EXPULSION
             if (expelled) expelledIndexes += index
 
@@ -1508,6 +1522,7 @@ object GameEngine {
             GamePhase.NOCHE_MEDICO -> isHumanRoleTurn(session, "medico")
             GamePhase.NOCHE_ORACULO ->
                 isHumanRoleTurn(session, RoleCatalog.ORACULO) &&
+                    session.round > 1 &&
                     !session.oracleUsed &&
                     oracleCandidates(session).isNotEmpty()
             GamePhase.CONTRAPUNTO ->
@@ -1918,6 +1933,7 @@ object GameEngine {
         val oracle = alivePlayers(session).firstOrNull { it.role?.key == RoleCatalog.ORACULO }
         return if (
             oracle != null &&
+            session.round > 1 &&
             !session.oracleUsed &&
             oracleCandidates(session).isNotEmpty()
         ) {
@@ -1983,6 +1999,7 @@ object GameEngine {
         if (!isAlive(oracle) || oracle.role?.key != RoleCatalog.ORACULO || session.oracleUsed) {
             return false
         }
+        if (session.round <= 1) return false
         val target = playerByName(session, selectedTarget)
         return target != null && !target.alive
     }
@@ -1990,6 +2007,7 @@ object GameEngine {
     fun skipOraclePower(session: GameSession): GameSession {
         if (
             session.phase != GamePhase.NOCHE_ORACULO ||
+            session.round <= 1 ||
             !isHumanRoleTurn(session, RoleCatalog.ORACULO)
         ) {
             return session

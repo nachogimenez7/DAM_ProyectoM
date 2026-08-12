@@ -54,6 +54,7 @@ object AchievementTracker {
     }
 
     fun recordMatchIfNeeded(context: Context, session: GameSession): List<ProfileAchievement> {
+        if (session.winner == GameRules.CANCELLED_WINNER) return emptyList()
         val human = session.players.firstOrNull { it.isHuman } ?: return emptyList()
         val prefs = prefs(context)
         val unlocked = mutableListOf<ProfileAchievement>()

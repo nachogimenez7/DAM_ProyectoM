@@ -420,6 +420,9 @@ object GameplayTableUi {
         ) {
             return "Te silenciaron. No podés hablar, votar ni hacer gestos durante el día."
         }
+        if (session.winner == GameRules.CANCELLED_WINNER) {
+            return "Partida cancelada por inactividad. No hubo ganador."
+        }
         if (session.winner.isNotBlank()) {
             return "Fin de partida. Ganó ${session.winner}."
         }

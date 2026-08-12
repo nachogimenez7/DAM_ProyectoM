@@ -47,7 +47,7 @@ internal object MatchOutcome {
 
 object MatchHistoryStore {
     fun record(context: Context, session: GameSession): Boolean {
-        if (session.winner.isBlank()) return false
+        if (session.winner.isBlank() || session.winner == GameRules.CANCELLED_WINNER) return false
         val human = session.players.firstOrNull { it.isHuman } ?: return false
         val key = MatchOutcome.matchKey(session)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
