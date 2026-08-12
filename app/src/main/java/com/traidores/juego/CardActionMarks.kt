@@ -34,12 +34,12 @@ object CardActionMarks {
             }
 
         val team = if (
-            session.phase == GamePhase.NOCHE_ASESINO &&
+            session.phase in NIGHT_PHASES &&
             GameEngine.canSeeTraitorChat(human)
         ) {
             traitorMarks.asSequence()
                 .filter { it.round == session.round && it.phaseIndex == session.phaseIndex }
-                .filter { it.roleKey in GameRules.killerRoleKeys && it.targetName in playerNames }
+                .filter { it.roleKey in TRAITOR_ACTION_ROLES && it.targetName in playerNames }
                 .map {
                     CardActionMark(
                         id = "equipo:${it.id}",
@@ -82,15 +82,15 @@ object CardActionMarks {
     ): String? {
         val roleKey = human.role?.key ?: return null
         return when {
-            session.phase == GamePhase.NOCHE_ASESINO &&
+            session.phase in NIGHT_PHASES &&
                 record.action == "matar" && roleKey in GameRules.killerRoleKeys -> roleKey
-            session.phase == GamePhase.NOCHE_MERCENARIO &&
+            session.phase in NIGHT_PHASES &&
                 record.action == "silenciar" && roleKey == RoleCatalog.MERCENARIO -> roleKey
-            session.phase == GamePhase.NOCHE_POLICIA &&
+            session.phase in NIGHT_PHASES &&
                 record.action == "investigar" && roleKey == RoleCatalog.POLICIA -> roleKey
-            session.phase == GamePhase.NOCHE_MEDICO &&
+            session.phase in NIGHT_PHASES &&
                 record.action == "salvar" && roleKey == RoleCatalog.MEDICO -> roleKey
-            session.phase == GamePhase.NOCHE_ORACULO &&
+            session.phase in NIGHT_PHASES &&
                 record.action == "invitar_muerto" && roleKey == RoleCatalog.ORACULO -> roleKey
             session.phase == GamePhase.DIA_DEBATE &&
                 record.action == "contrapunto" && roleKey == RoleCatalog.PAYADOR -> roleKey
@@ -103,4 +103,18 @@ object CardActionMarks {
         RoleCatalog.ESPIA -> 1
         else -> 2
     }
+
+    private val NIGHT_PHASES = setOf(
+        GamePhase.NOCHE_ASESINO,
+        GamePhase.NOCHE_MERCENARIO,
+        GamePhase.NOCHE_POLICIA,
+        GamePhase.NOCHE_MEDICO,
+        GamePhase.NOCHE_ORACULO
+    )
+
+    private val TRAITOR_ACTION_ROLES = setOf(
+        RoleCatalog.ASESINO,
+        RoleCatalog.ESPIA,
+        RoleCatalog.MERCENARIO
+    )
 }

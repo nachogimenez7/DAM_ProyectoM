@@ -85,7 +85,7 @@ object RoleCatalog {
             DESERTOR,
             "Neutral",
             "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
-            9
+            14
         ),
         RoleDefinition(
             PAYADOR,

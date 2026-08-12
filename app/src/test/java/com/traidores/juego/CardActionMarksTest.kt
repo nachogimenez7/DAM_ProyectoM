@@ -54,6 +54,63 @@ class CardActionMarksTest {
     }
 
     @Test
+    fun everyNightRoleKeepsItsOwnMarkDuringTheSharedOnlineNight() {
+        val cases = listOf(
+            Triple(RoleCatalog.MEDICO, "salvar", "Ana"),
+            Triple(RoleCatalog.POLICIA, "investigar", "Mora"),
+            Triple(RoleCatalog.ORACULO, "invitar_muerto", "Dina")
+        )
+
+        cases.forEach { (roleKey, action, target) ->
+            val sharedNight = session(roleKey).copy(phase = GamePhase.NOCHE_ASESINO)
+            val mark = CardActionMarks.visibleForCurrentPhase(
+                sharedNight,
+                "uid-human",
+                listOf(record("uid-human", "Ana", target, action, GamePhase.NOCHE_ASESINO)),
+                emptyList()
+            ).single()
+
+            assertEquals(roleKey, mark.roleKey)
+            assertEquals(target, mark.targetName)
+        }
+    }
+
+    @Test
+    fun traitorsSeeMercenarySilenceWithTheActorName() {
+        val shared = listOf(
+            OnlineTraitorActionMark("m", "Luis", "Mora", RoleCatalog.MERCENARIO, 2, 7)
+        )
+
+        val marks = CardActionMarks.visibleForCurrentPhase(
+            session(RoleCatalog.ASESINO), "uid-human", emptyList(), shared
+        )
+
+        assertEquals(RoleCatalog.MERCENARIO, marks.single().roleKey)
+        assertEquals("Luis", marks.single().actorName)
+        assertEquals("Mora", marks.single().targetName)
+    }
+
+    @Test
+    fun threeTraitorActionsOnOnePlayerStayVisibleAndOrdered() {
+        val shared = listOf(
+            OnlineTraitorActionMark("m", "Luis", "Mora", RoleCatalog.MERCENARIO, 2, 7),
+            OnlineTraitorActionMark("s", "Beto", "Mora", RoleCatalog.ESPIA, 2, 7),
+            OnlineTraitorActionMark("a", "Ana", "Mora", RoleCatalog.ASESINO, 2, 7)
+        )
+
+        val marks = CardActionMarks.visibleForCurrentPhase(
+            session(RoleCatalog.ASESINO), "uid-human", emptyList(), shared
+        )
+
+        assertEquals(3, marks.size)
+        assertEquals(
+            listOf(RoleCatalog.ASESINO, RoleCatalog.ESPIA, RoleCatalog.MERCENARIO),
+            marks.map { it.roleKey }
+        )
+        assertEquals(listOf("Ana", "Beto", "Luis"), marks.map { it.actorName })
+    }
+
+    @Test
     fun marksDisappearOutsideTheirPhase() {
         val day = session(RoleCatalog.POLICIA).copy(phase = GamePhase.DIA_DEBATE)
         val oldInvestigation = record(

@@ -463,6 +463,70 @@
                         android:elevation="7dp"
                         android:scaleType="fitCenter"
                         android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/humanActionMarkSecondaryOverlay"
+                        android:layout_width="42dp"
+                        android:layout_height="68dp"
+                        android:layout_gravity="center"
+                        android:alpha="0"
+                        android:contentDescription="@null"
+                        android:elevation="7dp"
+                        android:scaleType="fitCenter"
+                        android:visibility="gone" />
+
+                    <ImageView
+                        android:id="@+id/humanActionMarkTertiaryOverlay"
+                        android:layout_width="42dp"
+                        android:layout_height="68dp"
+                        android:layout_gravity="center"
+                        android:alpha="0"
+                        android:contentDescription="@null"
+                        android:elevation="7dp"
+                        android:scaleType="fitCenter"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/humanActionMarkPrimaryLabel"
+                        android:layout_width="30dp"
+                        android:layout_height="11dp"
+                        android:layout_gravity="bottom|start"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@android:color/white"
+                        android:textSize="5sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/humanActionMarkSecondaryLabel"
+                        android:layout_width="30dp"
+                        android:layout_height="11dp"
+                        android:layout_gravity="bottom|start"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@android:color/white"
+                        android:textSize="5sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/humanActionMarkTertiaryLabel"
+                        android:layout_width="28dp"
+                        android:layout_height="11dp"
+                        android:layout_gravity="bottom|end"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:textColor="@android:color/white"
+                        android:textSize="5sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
                 </FrameLayout>
 
                 <LinearLayout

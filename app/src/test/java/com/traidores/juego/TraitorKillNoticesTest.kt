@@ -16,8 +16,8 @@ class TraitorKillNoticesTest {
         )
 
         assertEquals("Noche 1: comienza un nuevo Plan.", notices[0].message)
-        assertEquals("Ana votó eliminar a Mora.", notices[1].message)
-        assertEquals("Beto votó eliminar a Mora.", notices[2].message)
+        assertEquals("Ana votó a Mora para asesinar esta noche.", notices[1].message)
+        assertEquals("Beto votó a Mora para asesinar esta noche.", notices[2].message)
         assertEquals("El Plan acordó eliminar a Mora.", notices[3].message)
         assertEquals(RoleCatalog.ASESINO, notices[1].roleKey)
         assertEquals(RoleCatalog.ESPIA, notices[2].roleKey)
@@ -63,7 +63,16 @@ class TraitorKillNoticesTest {
             listOf(actionRecord("Memo", "Mora", action = "silenciar", actorOrder = 1))
         )
 
-        assertEquals(listOf("Memo eligió silenciar a Mora."), notices.map { it.message })
+        assertEquals(
+            listOf(
+                "Noche 1: comienza un nuevo Plan.",
+                "Memo eligió a Mora para silenciar esta noche."
+            ),
+            notices.map { it.message }
+        )
+        assertEquals(RoleCatalog.MERCENARIO, notices.last().roleKey)
+        assertEquals("Memo", notices.last().actorName)
+        assertEquals("Mora", notices.last().targetName)
     }
 
     @Test
@@ -77,7 +86,7 @@ class TraitorKillNoticesTest {
         )
 
         assertEquals(2, notices.size)
-        assertEquals("Ana votó eliminar a Mora.", notices.last().message)
+        assertEquals("Ana votó a Mora para asesinar esta noche.", notices.last().message)
     }
 
     @Test

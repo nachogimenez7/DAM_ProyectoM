@@ -2567,7 +2567,15 @@ class GameplayChatController(
                         speaker = child.child("speaker").getValue(String::class.java).orEmpty(),
                         message = child.child("mensaje").getValue(String::class.java).orEmpty(),
                         isGod = child.child("isGod").getValue(Boolean::class.java) ?: false,
-                        round = child.child("ronda").getValue(Int::class.java) ?: 0
+                        round = child.child("ronda").getValue(Int::class.java) ?: 0,
+                        actionActorName = child.child("actorNombre")
+                            .getValue(String::class.java).orEmpty(),
+                        actionTargetName = child.child("objetivoNombre")
+                            .getValue(String::class.java).orEmpty(),
+                        actionRoleKey = child.child("accionRol")
+                            .getValue(String::class.java).orEmpty(),
+                        actionPhaseIndex = child.child("faseIndice")
+                            .getValue(Int::class.java) ?: -1
                     ).takeIf { it.speaker.isNotBlank() && it.message.isNotBlank() }
                 }
                 OnlineDebugLog.i(
@@ -2602,7 +2610,7 @@ class GameplayChatController(
                 ).takeIf {
                     it.actorName.isNotBlank() &&
                         it.targetName.isNotBlank() &&
-                        it.roleKey in GameRules.killerRoleKeys &&
+                        it.roleKey in TRAITOR_ACTION_MARK_ROLES &&
                         it.phaseIndex >= 0
                 }
             }
@@ -3542,6 +3550,11 @@ class GameplayChatController(
         private const val ONLINE_REACTION_SEEN_IDS_LIMIT = ONLINE_REACTION_MAX_EVENTS * 4
         private const val MAX_STAGGERED_BOT_REACTIONS = 4
         private const val MAX_EVENT_BOT_REACTIONS = 3
+        private val TRAITOR_ACTION_MARK_ROLES = setOf(
+            RoleCatalog.ASESINO,
+            RoleCatalog.ESPIA,
+            RoleCatalog.MERCENARIO
+        )
         private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
         private const val EVENT_BOT_REACTION_DELAY_MS = 2_400L
         private const val TRANSITION_RETRY_DELAY_MS = 650L

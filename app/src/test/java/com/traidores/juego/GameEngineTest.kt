@@ -492,9 +492,9 @@ class GameEngineTest {
         assertEquals(1, roleCounts["mercenario"])
         assertEquals(1, roleCounts["alcalde"])
         assertEquals(1, roleCounts["payador"])
-        assertEquals(1, roleCounts["desertor"])
+        assertEquals(0, roleCounts["desertor"] ?: 0)
         assertEquals(1, roleCounts["espia"])
-        assertEquals(session.players.size - 8, roleCounts["aldeano"])
+        assertEquals(session.players.size - 7, roleCounts["aldeano"])
     }
 
     @Test
@@ -647,22 +647,28 @@ class GameEngineTest {
     }
 
     @Test
-    fun onlineSafeRoleCompositionAddsDesertorAtNineAndSpyAtTen() {
+    fun onlineSafeRoleCompositionKeepsDesertorOutUntilFourteenAndAddsSpyAtTen() {
         val eightPlayers = LocalGameFactory.onlineSafeRoleComposition(8)
         val ninePlayers = LocalGameFactory.onlineSafeRoleComposition(9)
         val tenPlayers = LocalGameFactory.onlineSafeRoleComposition(10)
+        val fourteenPlayers = LocalGameFactory.onlineSafeRoleComposition(14)
 
         assertEquals(0, eightPlayers.counts[RoleCatalog.DESERTOR] ?: 0)
 
         assertEquals(1, ninePlayers.counts[RoleCatalog.ALCALDE])
-        assertEquals(1, ninePlayers.counts[RoleCatalog.DESERTOR])
+        assertEquals(0, ninePlayers.counts[RoleCatalog.DESERTOR] ?: 0)
         assertEquals(0, ninePlayers.counts[RoleCatalog.ESPIA] ?: 0)
-        assertEquals(3, ninePlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(4, ninePlayers.counts[RoleCatalog.ALDEANO])
         assertEquals(9, ninePlayers.counts.values.sum())
 
         assertEquals(1, tenPlayers.counts[RoleCatalog.ESPIA])
-        assertEquals(3, tenPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(0, tenPlayers.counts[RoleCatalog.DESERTOR] ?: 0)
+        assertEquals(4, tenPlayers.counts[RoleCatalog.ALDEANO])
         assertEquals(10, tenPlayers.counts.values.sum())
+
+        assertEquals(1, fourteenPlayers.counts[RoleCatalog.DESERTOR])
+        assertEquals(7, fourteenPlayers.counts[RoleCatalog.ALDEANO])
+        assertEquals(14, fourteenPlayers.counts.values.sum())
     }
 
     @Test
@@ -674,9 +680,9 @@ class GameEngineTest {
         assertEquals(1, composition.counts[RoleCatalog.POLICIA])
         assertEquals(1, composition.counts[RoleCatalog.MERCENARIO])
         assertEquals(1, composition.counts[RoleCatalog.ALCALDE])
-        assertEquals(1, composition.counts[RoleCatalog.DESERTOR])
+        assertEquals(0, composition.counts[RoleCatalog.DESERTOR] ?: 0)
         assertEquals(1, composition.counts[RoleCatalog.ESPIA])
-        assertEquals(5, composition.counts[RoleCatalog.ALDEANO])
+        assertEquals(6, composition.counts[RoleCatalog.ALDEANO])
         listOf(
             RoleCatalog.PAYADOR,
             RoleCatalog.ORACULO,
@@ -875,7 +881,7 @@ class GameEngineTest {
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("alcalde"))
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("payador"))
         assertEquals(8, LocalGameFactory.minimumPlayersForRole("bufon"))
-        assertEquals(9, LocalGameFactory.minimumPlayersForRole("desertor"))
+        assertEquals(14, LocalGameFactory.minimumPlayersForRole("desertor"))
         assertEquals(10, LocalGameFactory.minimumPlayersForRole("espia"))
     }
 
@@ -918,9 +924,9 @@ class GameEngineTest {
     }
 
     @Test
-    fun desertorIsAssignedFromNinePlayersAndChoosesTeam() {
+    fun desertorIsAssignedFromFourteenPlayersAndChoosesTeam() {
         var setup = LocalGameFactory.createSession()
-        repeat(4) {
+        repeat(9) {
             setup = LocalGameFactory.addMockPlayer(setup)
         }
         val assigned = LocalGameFactory.assignRoles(setup, forcedHumanRoleKey = "desertor")

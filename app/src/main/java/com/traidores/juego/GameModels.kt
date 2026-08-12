@@ -756,7 +756,7 @@ object LocalGameFactory {
                 if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
                 if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
                 if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
-                if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
+                if (count >= 14) counts[RoleCatalog.DESERTOR] = 1
                 if (count >= 10) counts[RoleCatalog.ESPIA] = 1
                 if (count >= 13) counts[RoleCatalog.ASESINO] = 2
             }
@@ -766,7 +766,7 @@ object LocalGameFactory {
                 if (count >= 7) counts[RoleCatalog.MERCENARIO] = 1
                 if (count >= 8) counts[RoleCatalog.ALCALDE] = 1
                 if (count >= 8) counts[exclusiveRoleForMap(map)] = 1
-                if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
+                if (count >= 14) counts[RoleCatalog.DESERTOR] = 1
                 if (count >= 10) counts[RoleCatalog.ESPIA] = 1
             }
         }
@@ -795,7 +795,7 @@ object LocalGameFactory {
         if (count >= 8 && mapKey.isNotBlank()) {
             counts[exclusiveRoleForMap(RoleMap.fromSessionKey(mapKey))] = 1
         }
-        if (count >= 9) counts[RoleCatalog.DESERTOR] = 1
+        if (count >= 14) counts[RoleCatalog.DESERTOR] = 1
         if (count >= 10) counts[RoleCatalog.ESPIA] = 1
         val specialCount = counts.values.sum()
         counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)

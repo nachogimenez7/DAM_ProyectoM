@@ -28,7 +28,7 @@ internal object TraitorKillNotices {
         records: List<OnlineActionRecord>
     ): List<TraitorPlanNotice> {
         if (
-            session.phase !in setOf(GamePhase.NOCHE_ASESINO, GamePhase.NOCHE_MERCENARIO) ||
+            session.phase !in NIGHT_PHASES ||
             session.winner.isNotBlank()
         ) {
             return emptyList()
@@ -43,10 +43,8 @@ internal object TraitorKillNotices {
             .filter { record ->
                 val actor = aliveByName[record.actorName] ?: return@filter false
                 when (record.action) {
-                    KILL_ACTION -> session.phase == GamePhase.NOCHE_ASESINO &&
-                        actor.role?.key in GameRules.killerRoleKeys
-                    SILENCE_ACTION -> session.phase == GamePhase.NOCHE_MERCENARIO &&
-                        actor.role?.key == RoleCatalog.MERCENARIO
+                    KILL_ACTION -> actor.role?.key in GameRules.killerRoleKeys
+                    SILENCE_ACTION -> actor.role?.key == RoleCatalog.MERCENARIO
                     else -> false
                 }
             }
@@ -54,14 +52,10 @@ internal object TraitorKillNotices {
             .distinctBy { "${it.actorName}|${it.action}" }
             .toList()
 
-        val nightStartNotice = if (session.phase == GamePhase.NOCHE_ASESINO) {
-            TraitorPlanNotice(
-                id = "noche_${session.phaseIndex}_inicio",
-                message = "Noche ${session.round}: comienza un nuevo Plan."
-            )
-        } else {
-            null
-        }
+        val nightStartNotice = TraitorPlanNotice(
+            id = "noche_${session.phaseIndex}_inicio",
+            message = "Noche ${session.round}: comienza un nuevo Plan."
+        )
 
         val actionNotices = valid.map { record ->
             val actor = aliveByName.getValue(record.actorName)
@@ -69,9 +63,9 @@ internal object TraitorKillNotices {
                 id = actionNoticeId(record),
                 message = when (record.action) {
                     SILENCE_ACTION ->
-                        "${record.actorName} eligió silenciar a ${record.targetName}."
+                        "${record.actorName} eligió a ${record.targetName} para silenciar esta noche."
                     else ->
-                        "${record.actorName} votó eliminar a ${record.targetName}."
+                        "${record.actorName} votó a ${record.targetName} para asesinar esta noche."
                 },
                 actorName = record.actorName,
                 targetName = record.targetName,
@@ -82,7 +76,6 @@ internal object TraitorKillNotices {
         val killers = aliveByName.values.filter { it.role?.key in GameRules.killerRoleKeys }
         val killVotes = valid.filter { it.action == KILL_ACTION }
         val finalDecision = if (
-            session.phase == GamePhase.NOCHE_ASESINO &&
             killers.size >= 2 &&
             killVotes.map { it.actorName }.distinct().size >= killers.size
         ) {
@@ -105,7 +98,7 @@ internal object TraitorKillNotices {
             null
         }
 
-        return listOfNotNull(nightStartNotice) + actionNotices + listOfNotNull(finalDecision)
+        return listOf(nightStartNotice) + actionNotices + listOfNotNull(finalDecision)
     }
 
     private fun actionNoticeId(record: OnlineActionRecord): String {
@@ -124,4 +117,12 @@ internal object TraitorKillNotices {
             else -> dropLast(1).joinToString(", ") + " y " + last()
         }
     }
+
+    private val NIGHT_PHASES = setOf(
+        GamePhase.NOCHE_ASESINO,
+        GamePhase.NOCHE_MERCENARIO,
+        GamePhase.NOCHE_POLICIA,
+        GamePhase.NOCHE_MEDICO,
+        GamePhase.NOCHE_ORACULO
+    )
 }

@@ -421,6 +421,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var bottomPlayerPanel: LinearLayout
     private lateinit var roleCard: FrameLayout
     private lateinit var humanActionMarkOverlay: ImageView
+    private lateinit var humanActionMarkSecondaryOverlay: ImageView
+    private lateinit var humanActionMarkTertiaryOverlay: ImageView
+    private lateinit var humanActionMarkPrimaryLabel: TextView
+    private lateinit var humanActionMarkSecondaryLabel: TextView
+    private lateinit var humanActionMarkTertiaryLabel: TextView
     private lateinit var roleImage: ImageView
     private lateinit var humanDeathCauseOverlay: ImageView
     private lateinit var roleName: TextView
@@ -535,8 +540,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val deathCauseOverlay: ImageView,
         val actionMarkPrimary: ImageView,
         val actionMarkSecondary: ImageView,
+        val actionMarkTertiary: ImageView,
         val actionMarkPrimaryLabel: TextView,
         val actionMarkSecondaryLabel: TextView,
+        val actionMarkTertiaryLabel: TextView,
         val avatar: TextView,
         val mutedBadge: TextView,
         val actionBadge: TextView,
@@ -780,6 +787,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         bottomPlayerPanel = findViewById(R.id.bottomPlayerPanel)
         roleCard = findViewById(R.id.roleCard)
         humanActionMarkOverlay = findViewById(R.id.humanActionMarkOverlay)
+        humanActionMarkSecondaryOverlay = findViewById(R.id.humanActionMarkSecondaryOverlay)
+        humanActionMarkTertiaryOverlay = findViewById(R.id.humanActionMarkTertiaryOverlay)
+        humanActionMarkPrimaryLabel = findViewById(R.id.humanActionMarkPrimaryLabel)
+        humanActionMarkSecondaryLabel = findViewById(R.id.humanActionMarkSecondaryLabel)
+        humanActionMarkTertiaryLabel = findViewById(R.id.humanActionMarkTertiaryLabel)
         roleImage = findViewById(R.id.roleImage)
         humanDeathCauseOverlay = findViewById(R.id.humanDeathCauseOverlay)
         roleName = findViewById(R.id.roleName)
@@ -1977,7 +1989,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     ) {
         val actionKey = onlineDeferredActionKey()
         pendingOnlineActionSubmissions.add(actionKey)
-        session = session.copy(privateHint = "Enviando accion...")
+        session = session.copy(privateHint = "Enviando acción...")
         val previousTarget = selectedTarget
         clearSelection()
         currentPlayerHint.text = privateHintText()
@@ -1993,12 +2005,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         val waitingMessage = when {
             before.phase == GamePhase.NOCHE_POLICIA ->
-                "Investigación enviada. Consultando los archivos del pueblo..."
+                "Acción confirmada. Consultando los archivos del pueblo..."
             session.phase == GamePhase.VOTACION ||
                 session.phase == GamePhase.DESEMPATE_VOTACION ||
                 session.phase == GamePhase.ALCALDE_DESEMPATE ->
-                "Tu voto quedó sellado. La urna sigue abierta..."
-            else -> "Tu decisión se pierde en la oscuridad. El amanecer se acerca..."
+                "Voto confirmado. La urna sigue abierta..."
+            else -> "Acción confirmada. Esperando a los demás jugadores..."
         }
         recordOnlinePlayerAction(
             before = before,
@@ -2032,7 +2044,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onFailure = {
                 pendingOnlineActionSubmissions.remove(actionKey)
                 session = session.copy(
-                    privateHint = "No se pudo enviar la accion. Intenta nuevamente."
+                    privateHint = "No se pudo enviar. Toca nuevamente para reintentar."
                 )
                 renderGame()
             }
@@ -2045,7 +2057,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     ) {
         val actionKey = onlineDeferredActionKey()
         pendingOnlineActionSubmissions.add(actionKey)
-        session = session.copy(privateHint = "Enviando accion...")
+        session = session.copy(privateHint = "Enviando acción...")
         renderGame()
         recordOnlineAction(
             type = "accion_jugador",
@@ -2059,7 +2071,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 pendingOnlineActionSubmissions.remove(actionKey)
                 submittedOnlineNightActions.add(actionKey)
                 session = session.copy(
-                    privateHint = "Guardaste tu poder. La noche sigue su curso..."
+                    privateHint = "Acción confirmada. Guardaste tu poder."
                 )
                 clearSelection()
                 renderGame()
@@ -2067,7 +2079,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onFailure = {
                 pendingOnlineActionSubmissions.remove(actionKey)
                 session = session.copy(
-                    privateHint = "No se pudo enviar la accion. Intenta nuevamente."
+                    privateHint = "No se pudo enviar. Toca nuevamente para reintentar."
                 )
                 renderGame()
             }
@@ -2110,9 +2122,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 submittedOnlinePayadorTargets += targetName
                 session = session.copy(
                     privateHint = if (submittedOnlinePayadorTargets.size < 2) {
-                        "Elegiste a $targetName. Falta un participante para el Contrapunto."
+                        "Acción confirmada. Elegiste a $targetName; falta un participante."
                     } else {
-                        "El desafío fue lanzado. El pueblo aguarda la respuesta..."
+                        "Acción confirmada. El desafío fue lanzado."
                     }
                 )
                 clearSelection()
@@ -2121,7 +2133,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onFailure = {
                 pendingOnlinePayadorTargets -= targetName
                 session = session.copy(
-                    privateHint = "No se pudo enviar el participante. Intenta nuevamente."
+                    privateHint = "No se pudo enviar. Toca nuevamente para reintentar."
                 )
                 renderGame()
             }
@@ -3229,7 +3241,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onOnlineTraitorActionMarksChanged(marks: List<OnlineTraitorActionMark>) {
         val normalized = marks
-            .filter { it.roleKey in GameRules.killerRoleKeys }
+            .filter {
+                it.roleKey == RoleCatalog.ASESINO ||
+                    it.roleKey == RoleCatalog.ESPIA ||
+                    it.roleKey == RoleCatalog.MERCENARIO
+            }
             .distinctBy { it.id }
         if (normalized == onlineTraitorActionMarks) return
         onlineTraitorActionMarks = normalized
@@ -6056,12 +6072,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val actionMarkPrimary = createCardActionMarkView()
         val actionMarkSecondary = createCardActionMarkView()
+        val actionMarkTertiary = createCardActionMarkView()
         cardFace.addView(actionMarkPrimary)
         cardFace.addView(actionMarkSecondary)
+        cardFace.addView(actionMarkTertiary)
         val actionMarkPrimaryLabel = createCardActionMarkLabel()
         val actionMarkSecondaryLabel = createCardActionMarkLabel()
+        val actionMarkTertiaryLabel = createCardActionMarkLabel()
         cardFace.addView(actionMarkPrimaryLabel)
         cardFace.addView(actionMarkSecondaryLabel)
+        cardFace.addView(actionMarkTertiaryLabel)
 
         val avatar = TextView(this)
         avatar.gravity = Gravity.CENTER
@@ -6143,8 +6163,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             deathCauseOverlay,
             actionMarkPrimary,
             actionMarkSecondary,
+            actionMarkTertiary,
             actionMarkPrimaryLabel,
             actionMarkSecondaryLabel,
+            actionMarkTertiaryLabel,
             avatar,
             mutedBadge,
             actionBadge,
@@ -6221,10 +6243,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         marks: List<CardActionMark>,
         metrics: CompanionCardMetrics
     ) {
-        val visible = marks.take(2)
+        val visible = marks.take(MAX_CARD_ACTION_MARKS)
         val key = visible.joinToString(";") { "${it.id}:${it.roleKey}" }
-        val views = listOf(holder.actionMarkPrimary, holder.actionMarkSecondary)
-        val labels = listOf(holder.actionMarkPrimaryLabel, holder.actionMarkSecondaryLabel)
+        val views = listOf(
+            holder.actionMarkPrimary,
+            holder.actionMarkSecondary,
+            holder.actionMarkTertiary
+        )
+        val labels = listOf(
+            holder.actionMarkPrimaryLabel,
+            holder.actionMarkSecondaryLabel,
+            holder.actionMarkTertiaryLabel
+        )
+        val hasMercenary = visible.any { it.roleKey == RoleCatalog.MERCENARIO }
         views.forEachIndexed { index, view ->
             val mark = visible.getOrNull(index)
             val label = labels[index]
@@ -6237,20 +6268,32 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 return@forEachIndexed
             }
             view.setImageResource(actionMarkImageFor(mark.roleKey))
-            view.layoutParams = actionMarkLayoutParams(mark.roleKey, metrics, index, visible.size)
+            view.layoutParams = actionMarkLayoutParams(
+                mark.roleKey,
+                metrics,
+                index,
+                visible.size,
+                hasMercenary
+            )
             view.contentDescription = actionMarkDescription(mark)
             view.visibility = View.VISIBLE
-            val showActor = mark.roleKey in GameRules.killerRoleKeys && mark.actorName.isNotBlank()
+            val showActor = mark.roleKey in GameRules.traitorRoleKeys && mark.actorName.isNotBlank()
             label.visibility = if (showActor) View.VISIBLE else View.GONE
             if (showActor) {
                 label.text = mark.actorName
-                label.layoutParams = actionMarkLabelLayoutParams(metrics, index, visible.size)
+                label.layoutParams = actionMarkLabelLayoutParams(
+                    mark.roleKey,
+                    metrics,
+                    index,
+                    visible.size,
+                    hasMercenary
+                )
                 label.background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
                     cornerRadius = dp(3).toFloat()
                     setColor(
                         Color.parseColor(
-                            if (mark.roleKey == RoleCatalog.ESPIA) "#E36B159B" else "#E3A91419"
+                            actionMarkLabelColor(mark.roleKey)
                         )
                     )
                     setStroke(dp(1), Color.parseColor("#F4D79B"))
@@ -6323,10 +6366,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun actionMarkLabelLayoutParams(
+        roleKey: String,
         metrics: CompanionCardMetrics,
         index: Int,
-        count: Int
+        count: Int,
+        hasMercenary: Boolean
     ): FrameLayout.LayoutParams {
+        if (count == 3) {
+            val isRope = roleKey == RoleCatalog.MERCENARIO
+            return FrameLayout.LayoutParams(
+                dp((metrics.cardWidthDp * if (isRope) 0.54f else 0.58f).toInt().coerceAtLeast(18)),
+                dp(11),
+                if (isRope) Gravity.BOTTOM or Gravity.END else Gravity.BOTTOM or Gravity.START
+            ).apply {
+                bottomMargin = dp(if (!isRope && index == 0) 14 else 2)
+            }
+        }
+        if (count == 2 && hasMercenary) {
+            val isRope = roleKey == RoleCatalog.MERCENARIO
+            return FrameLayout.LayoutParams(
+                dp((metrics.cardWidthDp * 0.56f).toInt().coerceAtLeast(18)),
+                dp(11),
+                Gravity.BOTTOM or if (isRope) Gravity.END else Gravity.START
+            ).apply { bottomMargin = dp(2) }
+        }
         return FrameLayout.LayoutParams(
             dp((metrics.cardWidthDp - 2).coerceAtLeast(18)),
             dp(12),
@@ -6342,9 +6405,32 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         roleKey: String,
         metrics: CompanionCardMetrics,
         index: Int,
-        count: Int
+        count: Int,
+        hasMercenary: Boolean
     ): FrameLayout.LayoutParams {
         val isRope = roleKey == RoleCatalog.MERCENARIO
+        if (count == 3) {
+            return if (isRope) {
+                FrameLayout.LayoutParams(
+                    dp((metrics.cardWidthDp * 0.58f).toInt().coerceAtLeast(24)),
+                    dp((metrics.cardHeightDp * 0.9f).toInt().coerceAtLeast(32)),
+                    Gravity.CENTER_VERTICAL or Gravity.END
+                )
+            } else {
+                FrameLayout.LayoutParams(
+                    dp((metrics.cardWidthDp * 0.62f).toInt().coerceAtLeast(24)),
+                    dp((metrics.cardHeightDp * 0.56f).toInt().coerceAtLeast(28)),
+                    (if (index == 0) Gravity.TOP else Gravity.BOTTOM) or Gravity.START
+                )
+            }
+        }
+        if (count == 2 && hasMercenary) {
+            return FrameLayout.LayoutParams(
+                dp((metrics.cardWidthDp * if (isRope) 0.58f else 0.68f).toInt().coerceAtLeast(24)),
+                dp((metrics.cardHeightDp * if (isRope) 0.9f else 0.72f).toInt().coerceAtLeast(30)),
+                Gravity.CENTER_VERTICAL or if (isRope) Gravity.END else Gravity.START
+            )
+        }
         val width = if (isRope) metrics.cardWidthDp else (metrics.cardWidthDp * 0.78f).toInt()
         val height = if (isRope) metrics.cardHeightDp else (metrics.cardHeightDp * 0.72f).toInt()
         return FrameLayout.LayoutParams(dp(width.coerceAtLeast(22)), dp(height.coerceAtLeast(28))).apply {
@@ -6354,6 +6440,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 topMargin = dp(if (index == 0) -metrics.cardHeightDp / 12 else metrics.cardHeightDp / 12)
             }
         }
+    }
+
+    private fun actionMarkLabelColor(roleKey: String): String = when (roleKey) {
+        RoleCatalog.ESPIA -> "#E36B159B"
+        RoleCatalog.MERCENARIO -> "#E37B551F"
+        else -> "#E3A91419"
     }
 
     private fun actionMarkImageFor(roleKey: String): Int = when (roleKey) {
@@ -6958,7 +7050,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 else -> "El pueblo duerme."
             }
         }
-        return if (requiresHumanInput()) {
+        return if (onlineDeferredActionPending()) {
+            "Enviando acción..."
+        } else if (onlineDeferredActionSubmitted()) {
+            "Acción confirmada. Esperando a los demás jugadores..."
+        } else if (requiresHumanInput()) {
             when (actionSession().phase) {
                 GamePhase.NOCHE_ASESINO -> "Elige junto a los Traidores a quién atacar esta noche."
                 GamePhase.NOCHE_MERCENARIO -> "Elige a quién silenciar mientras el pueblo duerme."
@@ -6967,10 +7063,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 GamePhase.NOCHE_ORACULO -> "Elige si una voz eliminada vuelve a discutir mañana."
                 else -> "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
             }
-        } else if (onlineDeferredActionPending()) {
-            "Enviando accion..."
-        } else if (onlineDeferredActionSubmitted()) {
-            "Tu decisión se pierde en la oscuridad. El amanecer se acerca..."
         } else {
             "El pueblo duerme. Las acciones nocturnas ocurren a la vez."
         }
@@ -9888,83 +9980,170 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun bindHumanActionMark(human: GamePlayer) {
-        val mark = visibleCardActionMarks().firstOrNull { it.targetName == human.name }
-        if (mark == null) {
+        val marks = visibleCardActionMarks()
+            .filter { it.targetName == human.name }
+            .take(MAX_CARD_ACTION_MARKS)
+        val views = listOf(
+            humanActionMarkOverlay,
+            humanActionMarkSecondaryOverlay,
+            humanActionMarkTertiaryOverlay
+        )
+        val labels = listOf(
+            humanActionMarkPrimaryLabel,
+            humanActionMarkSecondaryLabel,
+            humanActionMarkTertiaryLabel
+        )
+        if (marks.isEmpty()) {
             humanActionMarkAnimator?.cancel()
-            humanActionMarkOverlay.animate().cancel()
-            humanActionMarkOverlay.visibility = View.GONE
-            humanActionMarkOverlay.alpha = 0f
+            views.forEach { view ->
+                view.animate().cancel()
+                view.visibility = View.GONE
+                view.alpha = 0f
+            }
+            labels.forEach { label ->
+                label.visibility = View.GONE
+                label.alpha = 0f
+            }
             humanActionMarkKey = null
             return
         }
-        val key = "${mark.id}:${mark.roleKey}"
-        humanActionMarkOverlay.setImageResource(actionMarkImageFor(mark.roleKey))
-        humanActionMarkOverlay.contentDescription = actionMarkDescription(mark)
-        humanActionMarkOverlay.layoutParams =
-            (humanActionMarkOverlay.layoutParams as FrameLayout.LayoutParams).apply {
-                width = dp(if (mark.roleKey == RoleCatalog.MERCENARIO) 46 else 42)
-                height = dp(if (mark.roleKey == RoleCatalog.MERCENARIO) 76 else 66)
-                gravity = Gravity.CENTER
+        val key = marks.joinToString(";") { "${it.id}:${it.roleKey}" }
+        val hasMercenary = marks.any { it.roleKey == RoleCatalog.MERCENARIO }
+        views.forEachIndexed { index, view ->
+            val mark = marks.getOrNull(index)
+            val label = labels[index]
+            if (mark == null) {
+                view.visibility = View.GONE
+                view.alpha = 0f
+                label.visibility = View.GONE
+                label.alpha = 0f
+                return@forEachIndexed
             }
-        humanActionMarkOverlay.visibility = View.VISIBLE
+            view.setImageResource(actionMarkImageFor(mark.roleKey))
+            view.contentDescription = actionMarkDescription(mark)
+            view.layoutParams = humanActionMarkLayoutParams(
+                mark.roleKey,
+                index,
+                marks.size,
+                hasMercenary
+            )
+            view.visibility = View.VISIBLE
+            val showActor = mark.roleKey in GameRules.traitorRoleKeys && mark.actorName.isNotBlank()
+            label.visibility = if (showActor) View.VISIBLE else View.GONE
+            if (showActor) {
+                label.text = mark.actorName
+                label.layoutParams = humanActionMarkLabelLayoutParams(
+                    mark.roleKey,
+                    index,
+                    marks.size,
+                    hasMercenary
+                )
+                label.background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(3).toFloat()
+                    setColor(Color.parseColor(actionMarkLabelColor(mark.roleKey)))
+                    setStroke(dp(1), Color.parseColor("#F4D79B"))
+                }
+            }
+        }
         if (humanActionMarkKey == key) {
-            val settled = CardActionAnimations.forRole(mark.roleKey)
-            humanActionMarkOverlay.alpha = 1f
-            humanActionMarkOverlay.scaleX = 1f
-            humanActionMarkOverlay.scaleY = 1f
-            humanActionMarkOverlay.rotation = settled.endRotation
-            humanActionMarkOverlay.translationX = 0f
-            humanActionMarkOverlay.translationY = 0f
+            marks.forEachIndexed { index, mark ->
+                val settled = CardActionAnimations.forRole(mark.roleKey, index, marks.size)
+                views[index].alpha = 1f
+                views[index].scaleX = 1f
+                views[index].scaleY = 1f
+                views[index].rotation = settled.endRotation
+                views[index].translationX = 0f
+                views[index].translationY = 0f
+                labels[index].alpha = 1f
+            }
             return
         }
         humanActionMarkAnimator?.cancel()
-        val spec = CardActionAnimations.forRole(mark.roleKey)
-        humanActionMarkOverlay.alpha = 0f
-        humanActionMarkOverlay.scaleX = spec.startScaleX
-        humanActionMarkOverlay.scaleY = spec.startScaleY
-        humanActionMarkOverlay.rotation = spec.startRotation
-        humanActionMarkOverlay.translationX = dp(48).toFloat() * spec.startTranslationXFraction
-        humanActionMarkOverlay.translationY = dp(76).toFloat() * spec.startTranslationYFraction
+        marks.forEachIndexed { index, mark ->
+            val spec = CardActionAnimations.forRole(mark.roleKey, index, marks.size)
+            views[index].alpha = 0f
+            views[index].scaleX = spec.startScaleX
+            views[index].scaleY = spec.startScaleY
+            views[index].rotation = spec.startRotation
+            views[index].translationX = dp(48).toFloat() * spec.startTranslationXFraction
+            views[index].translationY = dp(76).toFloat() * spec.startTranslationYFraction
+            labels[index].alpha = 0f
+        }
+        val animators = marks.flatMapIndexed { index, mark ->
+            val view = views[index]
+            val label = labels[index]
+            val spec = CardActionAnimations.forRole(mark.roleKey, index, marks.size)
+            listOf(
+                ObjectAnimator.ofFloat(view, View.ALPHA, 0f, 1f),
+                ObjectAnimator.ofFloat(view, View.SCALE_X, spec.startScaleX, spec.overshootScale, 1f),
+                ObjectAnimator.ofFloat(view, View.SCALE_Y, spec.startScaleY, spec.overshootScale, 1f),
+                ObjectAnimator.ofFloat(view, View.ROTATION, *spec.rotationKeyframes.toFloatArray()),
+                ObjectAnimator.ofFloat(view, View.TRANSLATION_X, view.translationX, 0f),
+                ObjectAnimator.ofFloat(view, View.TRANSLATION_Y, view.translationY, 0f),
+                ObjectAnimator.ofFloat(label, View.ALPHA, 0f, 1f)
+            ).onEach { animator ->
+                animator.startDelay = index * 90L
+                animator.duration = spec.durationMs
+            }
+        }
         humanActionMarkAnimator = AnimatorSet().apply {
-            playTogether(
-                ObjectAnimator.ofFloat(humanActionMarkOverlay, View.ALPHA, 0f, 1f),
-                ObjectAnimator.ofFloat(
-                    humanActionMarkOverlay,
-                    View.SCALE_X,
-                    spec.startScaleX,
-                    spec.overshootScale,
-                    1f
-                ),
-                ObjectAnimator.ofFloat(
-                    humanActionMarkOverlay,
-                    View.SCALE_Y,
-                    spec.startScaleY,
-                    spec.overshootScale,
-                    1f
-                ),
-                ObjectAnimator.ofFloat(
-                    humanActionMarkOverlay,
-                    View.ROTATION,
-                    *spec.rotationKeyframes.toFloatArray()
-                ),
-                ObjectAnimator.ofFloat(
-                    humanActionMarkOverlay,
-                    View.TRANSLATION_X,
-                    humanActionMarkOverlay.translationX,
-                    0f
-                ),
-                ObjectAnimator.ofFloat(
-                    humanActionMarkOverlay,
-                    View.TRANSLATION_Y,
-                    humanActionMarkOverlay.translationY,
-                    0f
-                )
-            )
-            duration = spec.durationMs
+            playTogether(animators)
             interpolator = DecelerateInterpolator(1.5f)
             start()
         }
         humanActionMarkKey = key
+    }
+
+    private fun humanActionMarkLayoutParams(
+        roleKey: String,
+        index: Int,
+        count: Int,
+        hasMercenary: Boolean
+    ): FrameLayout.LayoutParams {
+        val isRope = roleKey == RoleCatalog.MERCENARIO
+        if (count == 3) {
+            return FrameLayout.LayoutParams(
+                dp(if (isRope) 29 else 31),
+                dp(if (isRope) 92 else 52),
+                if (isRope) Gravity.CENTER_VERTICAL or Gravity.END
+                else (if (index == 0) Gravity.TOP else Gravity.BOTTOM) or Gravity.START
+            )
+        }
+        if (count == 2 && hasMercenary) {
+            return FrameLayout.LayoutParams(
+                dp(if (isRope) 29 else 34),
+                dp(if (isRope) 92 else 64),
+                Gravity.CENTER_VERTICAL or if (isRope) Gravity.END else Gravity.START
+            )
+        }
+        return FrameLayout.LayoutParams(
+            dp(if (isRope) 46 else 42),
+            dp(if (isRope) 76 else 66),
+            Gravity.CENTER
+        ).apply {
+            if (count > 1 && !isRope) {
+                leftMargin = dp(if (index == 0) -5 else 5)
+                topMargin = dp(if (index == 0) -6 else 6)
+            }
+        }
+    }
+
+    private fun humanActionMarkLabelLayoutParams(
+        roleKey: String,
+        index: Int,
+        count: Int,
+        hasMercenary: Boolean
+    ): FrameLayout.LayoutParams {
+        val isRope = roleKey == RoleCatalog.MERCENARIO
+        val gravity = when {
+            count >= 2 && hasMercenary && isRope -> Gravity.BOTTOM or Gravity.END
+            count >= 2 && hasMercenary -> Gravity.BOTTOM or Gravity.START
+            else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        }
+        return FrameLayout.LayoutParams(dp(if (isRope) 28 else 30), dp(11), gravity).apply {
+            bottomMargin = dp(if (count == 3 && !isRope && index == 0) 13 else 1)
+        }
     }
 
     private fun configureWinnerReturnButton() {
@@ -10740,6 +10919,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val PLAYER_STATE_CONNECTED = "conectado"
         private const val PLAYER_STATE_DISCONNECTED = "desconectado"
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
+        private const val MAX_CARD_ACTION_MARKS = 3
         private const val TIE_VOTE_GRID_MAX_HEIGHT_DP = 264
         // Panel de desempate: margen horizontal (32*2) + padding (24*2) + un respiro = 120dp.
         private const val PREFS_NAME = "TraidoresPrefs"
