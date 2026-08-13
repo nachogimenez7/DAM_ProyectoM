@@ -635,7 +635,9 @@ class VoteResultAnimator(
         targetName: String,
         onFinished: () -> Unit
     ) {
-        title.text = "$targetName FUE EXPULSADO"
+        // Separar nombre y sentencia evita que "EXPULSADO" desaparezca en celulares angostos
+        // o con nombres largos.
+        title.text = "${targetName.uppercase()}\nFUE EXPULSADO"
         subtitle.text = if (session.revealRolesOnDeath) {
             "Su carta ya fue revelada."
         } else {

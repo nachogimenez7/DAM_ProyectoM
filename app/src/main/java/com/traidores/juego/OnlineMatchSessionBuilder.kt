@@ -109,6 +109,13 @@ object OnlineMatchSessionBuilder {
             ?.takeIf { it.isNotBlank() }
             ?: fallbackRoomCode.ifBlank { fallbackRoomId.take(OnlineRoomFirestore.ROOM_CODE_LENGTH) }
         val config = initialMatch["config"].asStringAnyMap()
+        val roleCounts = (config?.get("roles") as? Map<*, *>)
+            ?.mapNotNull { (key, value) ->
+                val roleKey = key as? String ?: return@mapNotNull null
+                val count = (value as? Number)?.toInt() ?: return@mapNotNull null
+                roleKey to count
+            }
+            ?.toMap()
         val timingConfig = GameTimingConfig(
             transitionSeconds = (config?.get("transicionSeg") as? Number)?.toInt()
                 ?: GameTimingConfig.DEFAULT_TRANSITION_SECONDS,
@@ -129,15 +136,17 @@ object OnlineMatchSessionBuilder {
             timingConfig = timingConfig,
             phase = GamePhase.REPARTO,
             round = (initialMatch["ronda"] as? Number)?.toInt() ?: 1,
-            roleComposition = LocalGameFactory.normalizedRoleComposition(
-                GameSession(
-                    code = sessionCode,
-                    mapKey = selectedMap.key,
-                    mapName = selectedMap.name,
-                    players = players,
-                    onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS
-                )
-            ),
+            roleComposition = roleCounts
+                ?.let { RoleCompositionConfig(counts = it, customized = true) }
+                ?: LocalGameFactory.normalizedRoleComposition(
+                    GameSession(
+                        code = sessionCode,
+                        mapKey = selectedMap.key,
+                        mapName = selectedMap.name,
+                        players = players,
+                        onlineTestMode = expectedPlayers < LocalGameFactory.MIN_PLAYERS
+                    )
+                ),
             revealRolesOnDeath = (config?.get("revelarRolesAlMorir") as? Boolean)
                 ?: revealRolesOnDeath,
             showIndividualVotes = (config?.get("votosIndividuales") as? Boolean)

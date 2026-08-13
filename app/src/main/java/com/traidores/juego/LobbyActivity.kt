@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
+import android.graphics.Matrix
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
@@ -75,13 +76,26 @@ class LobbyActivity : BaseActivity() {
     private lateinit var mapDescription: TextView
     private lateinit var selectedMapCard: View
     private lateinit var onlineMapVoteHeader: View
+    private lateinit var onlineMapVoteTitle: TextView
     private lateinit var mapVoteCardsRow: LinearLayout
     private lateinit var mapVoteResultHint: TextView
     private lateinit var onlinePlayersScroll: HorizontalScrollView
     private lateinit var onlinePlayersContainer: LinearLayout
+    private lateinit var onlineRoleCompositionPanel: LinearLayout
+    private lateinit var onlineRoleSectionTitle: TextView
+    private lateinit var onlineRoleBalance: TextView
+    private lateinit var onlineRoleSummary: TextView
+    private lateinit var onlineRolePresetRow: LinearLayout
+    private lateinit var onlineRolePresetButtons: Map<RoleCompositionPreset, Button>
+    private lateinit var btnConfigureOnlineRoles: Button
+    private lateinit var onlineRulesSummary: TextView
+    private lateinit var lobbyOptionsRow: LinearLayout
+    private lateinit var localPlayerControlsRow: LinearLayout
+    private lateinit var lobbyConfigurationLabel: TextView
     private lateinit var playersListPanel: ScrollView
     private lateinit var lobbyPlayersLabel: TextView
     private lateinit var lobbyBodyScroll: ScrollView
+    private lateinit var lobbyStartDock: LinearLayout
     private lateinit var lobbyChatDock: LinearLayout
     private lateinit var lobbyChatActionText: TextView
     private lateinit var lobbyChatPreview: TextView
@@ -138,6 +152,8 @@ class LobbyActivity : BaseActivity() {
     private var onlinePlayersServerRefreshInProgress = false
     private var onlineStartTransactionInProgress = false
     private var onlineExitInProgress = false
+    private var pendingOnlineRolePreset: RoleCompositionPreset? = null
+    private var pendingOnlineRolePresetRunnable: Runnable? = null
     private var pendingExpectedPlayersForStart: Int? = null
     private var roomListener: ListenerRegistration? = null
     private var playersListener: ListenerRegistration? = null
@@ -229,13 +245,30 @@ class LobbyActivity : BaseActivity() {
         mapDescription = findViewById(R.id.mapDescription)
         selectedMapCard = findViewById(R.id.selectedMapCard)
         onlineMapVoteHeader = findViewById(R.id.onlineMapVoteHeader)
+        onlineMapVoteTitle = findViewById(R.id.onlineMapVoteTitle)
         mapVoteCardsRow = findViewById(R.id.mapVoteCardsRow)
         mapVoteResultHint = findViewById(R.id.mapVoteResultHint)
         onlinePlayersScroll = findViewById(R.id.onlinePlayersScroll)
         onlinePlayersContainer = findViewById(R.id.onlinePlayersContainer)
+        onlineRoleCompositionPanel = findViewById(R.id.onlineRoleCompositionPanel)
+        onlineRoleSectionTitle = findViewById(R.id.onlineRoleSectionTitle)
+        onlineRoleBalance = findViewById(R.id.onlineRoleBalance)
+        onlineRoleSummary = findViewById(R.id.onlineRoleSummary)
+        onlineRolePresetRow = findViewById(R.id.onlineRolePresetRow)
+        onlineRolePresetButtons = mapOf(
+            RoleCompositionPreset.RECOMMENDED to findViewById(R.id.btnOnlineRoleRecommended),
+            RoleCompositionPreset.CLASSIC to findViewById(R.id.btnOnlineRoleClassic),
+            RoleCompositionPreset.CHAOTIC to findViewById(R.id.btnOnlineRoleChaotic)
+        )
+        btnConfigureOnlineRoles = findViewById(R.id.btnConfigureOnlineRoles)
+        onlineRulesSummary = findViewById(R.id.onlineRulesSummary)
+        lobbyOptionsRow = findViewById(R.id.lobbyOptionsRow)
+        localPlayerControlsRow = findViewById(R.id.localPlayerControlsRow)
+        lobbyConfigurationLabel = findViewById(R.id.lobbyConfigurationLabel)
         playersListPanel = findViewById(R.id.playersListPanel)
         lobbyPlayersLabel = findViewById(R.id.lobbyPlayersLabel)
         lobbyBodyScroll = findViewById(R.id.lobbyBodyScroll)
+        lobbyStartDock = findViewById(R.id.lobbyStartDock)
         lobbyChatDock = findViewById(R.id.lobbyChatDock)
         lobbyChatActionText = findViewById(R.id.lobbyChatActionText)
         lobbyChatPreview = findViewById(R.id.lobbyChatPreview)
@@ -298,6 +331,10 @@ class LobbyActivity : BaseActivity() {
         btnDecreaseExpectedPlayers.setOnClickListener { updateOnlineExpectedPlayers(onlineExpectedPlayers - 1) }
         btnIncreaseExpectedPlayers.setOnClickListener { updateOnlineExpectedPlayers(onlineExpectedPlayers + 1) }
         btnPlayWithPresent.setOnClickListener { playOnlineWithPresentPlayers() }
+        btnConfigureOnlineRoles.setOnClickListener { showOnlineRoleCompositionDialog() }
+        onlineRolePresetButtons.forEach { (preset, button) ->
+            button.setOnClickListener { applyOnlineRolePreset(preset) }
+        }
         lobbyChatDock.setOnClickListener {
             if (isLobbyChatPreviewHidden()) {
                 setLobbyChatPreviewHidden(false)
@@ -414,10 +451,13 @@ class LobbyActivity : BaseActivity() {
             startButton.removeCallbacks(readyReconcileRunnable)
             onlineEntryAckRunnable?.let(startButton::removeCallbacks)
             onlineMatchEntryRetryRunnable?.let(startButton::removeCallbacks)
+            pendingOnlineRolePresetRunnable?.let(startButton::removeCallbacks)
         }
         onlineEntryAckRunnable = null
         onlineEntryAckInProgress = false
         onlineMatchEntryRetryRunnable = null
+        pendingOnlineRolePresetRunnable = null
+        pendingOnlineRolePreset = null
         onlineEntryReleaseTimeoutScheduled = false
         roomListener = null
         playersListener = null
@@ -458,6 +498,24 @@ class LobbyActivity : BaseActivity() {
                 "Modo normal: elegi mapa, tiempos y participantes antes de iniciar."
             }
         }
+        onlinePlayersLabel.text = if (onlineLobby) {
+            "JUGADORES"
+        } else {
+            getString(R.string.lobby_section_players)
+        }
+        onlineMapVoteTitle.text = "VOTACIÓN DE MAPA"
+        onlineRoleSectionTitle.text = "ROLES DE LA PARTIDA"
+        lobbyConfigurationLabel.text = if (onlineLobby) {
+            "REGLAS"
+        } else {
+            getString(R.string.lobby_section_configuration)
+        }
+        onlineInviteLabel.text = if (onlineLobby) {
+            "INVITAR · CÓDIGO DE SALA"
+        } else {
+            getString(R.string.lobby_section_invite)
+        }
+        arrangeLobbySections(onlineLobby)
         renderOnlineCodePanel()
         renderReleaseDisconnectedButton()
         renderOnlinePlayerTargetControls()
@@ -484,10 +542,11 @@ class LobbyActivity : BaseActivity() {
             }
         }
         renderOnlineMapVoting()
+        renderOnlineRoleComposition()
         playersContainer.removeAllViews()
         onlinePlayersContainer.removeAllViews()
         timingOptionsButton.text = "Opciones de partida"
-        btnAdvancedOptions.text = "Opciones avanzadas"
+        btnAdvancedOptions.text = if (onlineLobby) "Ver y editar reglas" else "Opciones avanzadas"
         renderPracticeRoleSummary()
 
         val visibleOnlinePlayers = activeOnlinePlayers()
@@ -587,11 +646,69 @@ class LobbyActivity : BaseActivity() {
         }
         val bodyParams = lobbyBodyScroll.layoutParams as RelativeLayout.LayoutParams
         if (onlineLobby) {
-            bodyParams.addRule(RelativeLayout.ABOVE, R.id.lobbyChatDock)
+            bodyParams.addRule(RelativeLayout.ABOVE, R.id.lobbyStartDock)
         } else {
             bodyParams.removeRule(RelativeLayout.ABOVE)
         }
         lobbyBodyScroll.layoutParams = bodyParams
+    }
+
+    private fun arrangeLobbySections(onlineLobby: Boolean) {
+        val panel = findViewById<LinearLayout>(R.id.lobbyConfigurationPanel)
+        val orderedViews = if (onlineLobby) {
+            listOf(
+                lobbyModeHint,
+                onlinePlayersLabel,
+                onlinePlayerTargetPanel,
+                onlinePlayersScroll,
+                onlineMapVoteHeader,
+                mapVoteCardsRow,
+                mapVoteResultHint,
+                onlineRoleCompositionPanel,
+                lobbyConfigurationLabel,
+                onlineRulesSummary,
+                lobbyOptionsRow,
+                btnReleaseDisconnected,
+                onlineInviteLabel,
+                onlineCodePanel
+            )
+        } else {
+            listOf(
+                startButton,
+                onlineStartProgress,
+                lobbyModeHint,
+                btnReleaseDisconnected,
+                onlineInviteLabel,
+                onlineCodePanel,
+                onlinePlayersLabel,
+                onlinePlayersScroll,
+                onlineRoleCompositionPanel,
+                lobbyConfigurationLabel,
+                onlinePlayerTargetPanel,
+                selectedMapCard,
+                onlineMapVoteHeader,
+                mapVoteCardsRow,
+                mapVoteResultHint,
+                mapDescription,
+                lobbyOptionsRow,
+                practiceRoleSummary,
+                lobbyPlayersLabel,
+                localPlayerControlsRow
+            )
+        }
+        orderedViews.forEach { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+            panel.addView(view)
+        }
+        if (onlineLobby) {
+            lobbyStartDock.visibility = View.VISIBLE
+            listOf(onlineStartProgress, startButton).forEach { view ->
+                (view.parent as? ViewGroup)?.removeView(view)
+                lobbyStartDock.addView(view)
+            }
+        } else {
+            lobbyStartDock.visibility = View.GONE
+        }
     }
 
     private fun Boolean.toVisibility(): Int = if (this) View.VISIBLE else View.GONE
@@ -663,6 +780,127 @@ class LobbyActivity : BaseActivity() {
         lastMapVoteLeaderKey = leaderKey
     }
 
+    private fun renderOnlineRoleComposition() {
+        val online = isFirestoreOnlineLobby()
+        onlineRoleCompositionPanel.visibility = if (online) View.VISIBLE else View.GONE
+        onlineRulesSummary.visibility = if (online) View.VISIBLE else View.GONE
+        if (!online) return
+
+        val visiblePreset = pendingOnlineRolePreset ?: onlineLobbyConfig.rolePreset
+        val visibleConfig = pendingOnlineRolePreset?.let { preset ->
+            onlineLobbyConfig.copy(
+                rolePreset = preset,
+                roleComposition = LocalGameFactory.roleCompositionPreset(
+                    onlineExpectedPlayers,
+                    displayedLobbyMap().key,
+                    preset
+                )
+            )
+        } ?: onlineLobbyConfig
+        val composition = visibleConfig.compositionFor(
+            onlineExpectedPlayers,
+            displayedLobbyMap().key
+        )
+        val counts = composition.counts
+        onlineRoleSummary.text = LocalGameFactory.editableRoleKeys()
+            .filter { (counts[it] ?: 0) > 0 }
+            .joinToString(" · ") { roleKey ->
+                "${counts.getValue(roleKey)} ${publicRoleLabel(roleKey, counts.getValue(roleKey))}"
+            }
+        val balance = RoleCompositionBalance.evaluate(onlineExpectedPlayers, counts)
+        onlineRoleBalance.text = balance.label
+        onlineRoleBalance.setTextColor(
+            getColor(
+                when (balance) {
+                    RoleCompositionBalance.BALANCED -> R.color.accent_green
+                    RoleCompositionBalance.TOWN_FAVORED -> R.color.accent_blue
+                    RoleCompositionBalance.TRAITORS_FAVORED -> R.color.accent_red
+                    RoleCompositionBalance.RISKY -> R.color.accent_purple
+                }
+            )
+        )
+        btnConfigureOnlineRoles.text = if (currentUserIsOnlineHost()) {
+            "PERSONALIZAR ROLES"
+        } else {
+            "VER ROLES"
+        }
+        btnConfigureOnlineRoles.contentDescription =
+            "${btnConfigureOnlineRoles.text}. ${balance.label}. ${onlineRoleSummary.text}"
+        val canEditPreset = currentUserIsOnlineHost() &&
+            onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
+            !onlineInitialMatchCreated &&
+            !onlineCleanupPending
+        onlineRolePresetRow.visibility = View.VISIBLE
+        onlineRolePresetButtons.forEach { (preset, button) ->
+            val selected = visiblePreset == preset
+            button.setBackgroundResource(
+                if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+            )
+            button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+            button.isEnabled = canEditPreset
+            button.alpha = when {
+                selected -> 1f
+                canEditPreset -> 0.86f
+                else -> 0.55f
+            }
+        }
+        onlineRulesSummary.visibility = View.VISIBLE
+        onlineRulesSummary.text = buildString {
+            append("Roles al morir: ")
+            append(if (onlineLobbyConfig.revealRolesOnDeath) "SÍ" else "NO")
+            append("  ·  Votos: ")
+            append(if (onlineLobbyConfig.showIndividualVotes) "INDIVIDUALES" else "TOTALES")
+            append("  ·  Ritmo: ")
+            append(onlineLobbyConfig.timing.preset()?.label ?: "PERSONALIZADO")
+        }
+    }
+
+    private fun applyOnlineRolePreset(preset: RoleCompositionPreset) {
+        val canEdit = currentUserIsOnlineHost() &&
+            onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
+            !onlineInitialMatchCreated &&
+            !onlineCleanupPending
+        if (!canEdit) {
+            GameNotice.show(this, "Solo el anfitrión puede cambiar los roles antes de iniciar.")
+            return
+        }
+        if (pendingOnlineRolePreset == null && onlineLobbyConfig.rolePreset == preset) return
+        pendingOnlineRolePreset = preset
+        pendingOnlineRolePresetRunnable?.let(startButton::removeCallbacks)
+        renderOnlineRoleComposition()
+        pendingOnlineRolePresetRunnable = Runnable {
+            val selectedPreset = pendingOnlineRolePreset ?: return@Runnable
+            pendingOnlineRolePresetRunnable = null
+            val counts = LocalGameFactory.roleCompositionPreset(
+                onlineExpectedPlayers,
+                displayedLobbyMap().key,
+                selectedPreset
+            ).counts
+            saveOnlineRoleComposition(selectedPreset, counts)
+        }.also { runnable ->
+            startButton.postDelayed(runnable, ROLE_PRESET_SAVE_DELAY_MS)
+        }
+    }
+
+    private fun publicRoleLabel(roleKey: String, count: Int): String {
+        val singular = roleLabel(roleKey).lowercase().replaceFirstChar { it.uppercase() }
+        if (count == 1) return singular
+        return when (roleKey) {
+            RoleCatalog.ALDEANO -> "Aldeanos"
+            RoleCatalog.POLICIA -> if (displayedLobbyMap().key == "pampa") "Comisarios" else "Detectives"
+            RoleCatalog.MEDICO -> "Médicos"
+            RoleCatalog.ALCALDE -> "Alcaldes"
+            RoleCatalog.ASESINO -> "Asesinos"
+            RoleCatalog.MERCENARIO -> "Mercenarios"
+            RoleCatalog.ESPIA -> "Espías"
+            RoleCatalog.DESERTOR -> "Desertores"
+            RoleCatalog.PAYADOR -> "Payadores"
+            RoleCatalog.ORACULO -> "Oráculos"
+            RoleCatalog.BUFON -> "Bufones"
+            else -> singular
+        }
+    }
+
     private fun compactVoterInitials(initials: List<String>): String {
         if (initials.isEmpty()) return "-"
         val visible = initials.take(3).joinToString("  ")
@@ -683,17 +921,40 @@ class LobbyActivity : BaseActivity() {
             isClickable = true
             isFocusable = true
             contentDescription = "Ver perfil de ${player.name}"
-            addView(TextView(this@LobbyActivity).apply {
-                text = buildString {
-                    append(player.initial)
-                    if (onlinePlayer?.ready == true) append("  ✓")
+            val avatarEntry = ProfileRoleCatalog.find(
+                onlinePlayer?.profile?.avatarKey.orEmpty().ifBlank { "aldeana" }
+            )
+            addView(FrameLayout(this@LobbyActivity).apply {
+                setBackgroundResource(
+                    if (onlinePlayer?.id == onlineActiveHostId) {
+                        R.drawable.bg_profile_avatar_frame
+                    } else {
+                        R.drawable.bg_player_avatar
+                    }
+                )
+                addView(CircleProfileImageView(this@LobbyActivity).apply {
+                    scaleType = ImageView.ScaleType.MATRIX
+                    val resId = resources.getIdentifier(
+                        avatarEntry.role.imageResName,
+                        "drawable",
+                        packageName
+                    )
+                    setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+                    alpha = if (onlinePlayer == null || isOnlinePlayerConnected(onlinePlayer)) 1f else 0.4f
+                    contentDescription = "Avatar ilustrado de ${player.name}"
+                    alignLobbyAvatarToFocus(this, avatarEntry.verticalFocus)
+                }, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
+                if (onlinePlayer?.ready == true) {
+                    addView(TextView(this@LobbyActivity).apply {
+                        text = "✓"
+                        gravity = Gravity.CENTER
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(getColor(R.color.accent_green))
+                        textSize = 9f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }, FrameLayout.LayoutParams(dp(15), dp(15), Gravity.BOTTOM or Gravity.END))
                 }
-                gravity = Gravity.CENTER
-                setTextColor(getColor(R.color.accent_gold))
-                textSize = 17f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setBackgroundResource(R.drawable.bg_btn_dark_ripple)
-            }, LinearLayout.LayoutParams(dp(44), dp(44)))
+            }, LinearLayout.LayoutParams(dp(46), dp(46)))
             addView(TextView(this@LobbyActivity).apply {
                 text = if (onlinePlayer?.id == onlineTempUid) "Vos" else player.name
                 gravity = Gravity.CENTER
@@ -1542,6 +1803,28 @@ class LobbyActivity : BaseActivity() {
         }
     }
 
+    private fun alignLobbyAvatarToFocus(image: ImageView, verticalFocus: Float) {
+        image.post {
+            val drawable = image.drawable ?: return@post
+            val drawableWidth = drawable.intrinsicWidth.toFloat()
+            val drawableHeight = drawable.intrinsicHeight.toFloat()
+            if (drawableWidth <= 0f || drawableHeight <= 0f) return@post
+            val scale = maxOf(
+                image.width / drawableWidth,
+                image.height / drawableHeight
+            ) * 1.12f
+            val scaledWidth = drawableWidth * scale
+            val scaledHeight = drawableHeight * scale
+            val horizontalOffset = (image.width - scaledWidth) / 2f
+            val verticalOffset = (image.height / 2f - scaledHeight * verticalFocus.coerceIn(0f, 1f))
+                .coerceIn(image.height - scaledHeight, 0f)
+            image.imageMatrix = Matrix().apply {
+                setScale(scale, scale)
+                postTranslate(horizontalOffset, verticalOffset)
+            }
+        }
+    }
+
     private fun releaseOwnOnlineSlotAndExit() {
         if (onlineExitInProgress || onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
         onlineExitInProgress = true
@@ -1933,7 +2216,11 @@ class LobbyActivity : BaseActivity() {
         session = session.copy(
             timingConfig = onlineLobbyConfig.timing,
             revealRolesOnDeath = onlineLobbyConfig.revealRolesOnDeath,
-            showIndividualVotes = onlineLobbyConfig.showIndividualVotes
+            showIndividualVotes = onlineLobbyConfig.showIndividualVotes,
+            roleComposition = onlineLobbyConfig.compositionFor(
+                onlineExpectedPlayers,
+                snapshot.getString(FIELD_MAP_KEY).orEmpty().ifBlank { session.mapKey }
+            )
         )
         if (lobbyRoomBaselineReady) {
             if (previousActiveHostId.isNotBlank() && previousActiveHostId != onlineActiveHostId) {
@@ -2730,6 +3017,7 @@ class LobbyActivity : BaseActivity() {
             startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
             onlineEntryAckRunnable?.let(startButton::removeCallbacks)
             onlineMatchEntryRetryRunnable?.let(startButton::removeCallbacks)
+            pendingOnlineRolePresetRunnable?.let(startButton::removeCallbacks)
         }
         onlineStartedNoticeShown = false
         onlinePrivateRoleAssignments = emptyList()
@@ -2745,6 +3033,8 @@ class LobbyActivity : BaseActivity() {
         onlineMatchEntryRetryCount = 0
         onlineMatchEntryRetryMatchId = ""
         onlineMatchEntryRetryRunnable = null
+        pendingOnlineRolePresetRunnable = null
+        pendingOnlineRolePreset = null
         lastOnlineMatchRebuildFailureReason = ""
         onlineStartTransactionInProgress = false
         OnlineDebugLog.i(
@@ -3324,10 +3614,7 @@ class LobbyActivity : BaseActivity() {
             showIndividualVotes = config.showIndividualVotes,
             onlineTestMode = onlineRoomModePrueba,
             onlinePlayerUids = playersAtStart.map { it.id },
-            roleComposition = LocalGameFactory.onlineSafeRoleComposition(
-                playerCount = realPlayers.size,
-                mapKey = map.key
-            )
+            roleComposition = config.compositionFor(realPlayers.size, map.key)
         )
     }
 
@@ -3410,7 +3697,8 @@ class LobbyActivity : BaseActivity() {
                 "discusionSeg" to assignedSession.timingConfig.discussionSeconds,
                 "votacionSeg" to assignedSession.timingConfig.votingSeconds,
                 "revelarRolesAlMorir" to assignedSession.revealRolesOnDeath,
-                "votosIndividuales" to assignedSession.showIndividualVotes
+                "votosIndividuales" to assignedSession.showIndividualVotes,
+                "roles" to assignedSession.roleComposition.counts
             ),
             "jugadores" to assignedSession.players.mapIndexed { index, player ->
                 val onlinePlayer = playersAtStart[index]
@@ -3838,7 +4126,7 @@ class LobbyActivity : BaseActivity() {
     private fun updateOnlineControlState() {
         val firestoreLobby = isFirestoreOnlineLobby()
         val localPlayerControlsVisibility = if (firestoreLobby) View.GONE else View.VISIBLE
-        (btnAddPlayer.parent as? View)?.visibility = localPlayerControlsVisibility
+        localPlayerControlsRow.visibility = localPlayerControlsVisibility
         btnAddPlayer.visibility = localPlayerControlsVisibility
         btnRemovePlayer.visibility = localPlayerControlsVisibility
 
@@ -3847,6 +4135,7 @@ class LobbyActivity : BaseActivity() {
         btnAdvancedOptions.visibility = View.VISIBLE
         btnAdvancedOptions.isEnabled = true
         btnAdvancedOptions.alpha = 1f
+        btnAdvancedOptions.text = if (firestoreLobby) "VER Y EDITAR REGLAS" else "OPCIONES AVANZADAS"
     }
 
     private fun setupMapSelector() {
@@ -4731,7 +5020,7 @@ class LobbyActivity : BaseActivity() {
             onPositive = if (canEdit) {
                 {
                     saveOnlineLobbyConfig(
-                        OnlineLobbyConfig(
+                        onlineLobbyConfig.copy(
                             timing = timingEditor.currentConfig(),
                             revealRolesOnDeath = revealRolesOnDeath,
                             showIndividualVotes = showIndividualVotes
@@ -4742,6 +5031,280 @@ class LobbyActivity : BaseActivity() {
                 null
             }
         )
+    }
+
+    private fun showOnlineRoleCompositionDialog() {
+        val canEdit = currentUserIsOnlineHost() &&
+            onlineRoomState == ONLINE_ROOM_STATE_WAITING &&
+            !onlineInitialMatchCreated &&
+            !onlineCleanupPending
+        val playerTotal = onlineExpectedPlayers
+        val mapKey = displayedLobbyMap().key
+        val roleKeys = LocalGameFactory.editableRoleKeys()
+        val currentComposition = onlineLobbyConfig.compositionFor(playerTotal, mapKey)
+        val draftCounts = linkedMapOf<String, Int>().apply {
+            roleKeys.forEach { roleKey -> put(roleKey, currentComposition.counts[roleKey] ?: 0) }
+        }
+        var selectedPreset = onlineLobbyConfig.rolePreset
+
+        val content = dialogColumn()
+        content.addView(dialogTitle(if (canEdit) "CONFIGURAR ROLES" else "ROLES DE LA PARTIDA"))
+        content.addView(TextView(this).apply {
+            text = if (canEdit) {
+                "La composición es pública. Al aplicar cambios, todos deberán marcar LISTO nuevamente."
+            } else {
+                "El anfitrión eligió esta composición. Las identidades continúan ocultas."
+            }
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 11f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        })
+
+        val balanceView = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 11f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(4), dp(4), dp(4), dp(6))
+        }
+        val presetButtons = linkedMapOf<RoleCompositionPreset, Button>()
+        val countViews = linkedMapOf<String, TextView>()
+        val minusButtons = linkedMapOf<String, Button>()
+        val plusButtons = linkedMapOf<String, Button>()
+
+        fun nonVillagerTotal(): Int = draftCounts
+            .filterKeys { it != RoleCatalog.ALDEANO }
+            .values
+            .sum()
+
+        fun refreshEditor() {
+            draftCounts[RoleCatalog.ALDEANO] =
+                (playerTotal - nonVillagerTotal()).coerceAtLeast(0)
+            roleKeys.forEach { roleKey ->
+                val count = draftCounts[roleKey] ?: 0
+                val maximum = LocalGameFactory.maxCountForRole(roleKey, playerTotal, mapKey)
+                countViews[roleKey]?.text = count.toString()
+                updateRoleStepButton(
+                    minusButtons[roleKey],
+                    canEdit && roleKey != RoleCatalog.ALDEANO &&
+                        count > if (roleKey == RoleCatalog.ASESINO) 1 else 0
+                )
+                updateRoleStepButton(
+                    plusButtons[roleKey],
+                    canEdit && roleKey != RoleCatalog.ALDEANO && count < maximum &&
+                        (draftCounts[RoleCatalog.ALDEANO] ?: 0) > 0
+                )
+            }
+            presetButtons.forEach { (preset, button) ->
+                val selected = selectedPreset == preset
+                button.setBackgroundResource(
+                    if (selected) R.drawable.bg_btn_gold_ripple else R.drawable.bg_btn_dark_ripple
+                )
+                button.setTextColor(getColor(if (selected) R.color.bg_dark else R.color.text_primary))
+            }
+            val balance = RoleCompositionBalance.evaluate(playerTotal, draftCounts)
+            balanceView.text = "${balance.label} · ${balance.explanation}"
+            balanceView.setTextColor(
+                getColor(
+                    when (balance) {
+                        RoleCompositionBalance.BALANCED -> R.color.accent_green
+                        RoleCompositionBalance.TOWN_FAVORED -> R.color.accent_blue
+                        RoleCompositionBalance.TRAITORS_FAVORED -> R.color.accent_red
+                        RoleCompositionBalance.RISKY -> R.color.accent_purple
+                    }
+                )
+            )
+        }
+
+        fun applyPreset(preset: RoleCompositionPreset) {
+            val composition = LocalGameFactory.roleCompositionPreset(playerTotal, mapKey, preset)
+            roleKeys.forEach { roleKey -> draftCounts[roleKey] = composition.counts[roleKey] ?: 0 }
+            selectedPreset = preset
+            refreshEditor()
+        }
+
+        val presetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        RoleCompositionPreset.entries.forEachIndexed { index, preset ->
+            val button = compactDialogButton(preset.label).apply {
+                textSize = 10f
+                isEnabled = canEdit
+                alpha = if (canEdit) 1f else 0.72f
+                setOnClickListener { applyPreset(preset) }
+            }
+            presetButtons[preset] = button
+            presetRow.addView(button, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                if (index > 0) marginStart = dp(5)
+            })
+        }
+        content.addView(presetRow)
+        content.addView(balanceView)
+
+        val roles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        roleKeys.forEach { roleKey ->
+            val definition = RoleCatalog.definition(roleKey)
+            val detailMap = definition.exclusiveMap ?: RoleMap.fromSessionKey(mapKey)
+            val role = RoleCatalog.role(roleKey, detailMap)
+            val maximum = LocalGameFactory.maxCountForRole(roleKey, playerTotal, mapKey)
+            val locked = maximum == 0
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(3), 0, dp(3))
+            }
+            row.addView(ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
+                setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+                alpha = if (locked) 0.32f else 1f
+                contentDescription = "Ver ${role.name}"
+                setOnClickListener { RoleDetailDialog.show(this@LobbyActivity, role) }
+            }, LinearLayout.LayoutParams(dp(38), dp(46)).apply { marginEnd = dp(8) })
+            row.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(this@LobbyActivity).apply {
+                    text = roleLabel(roleKey)
+                    setTextColor(if (locked) getColor(R.color.text_muted) else roleCompositionColor(roleKey))
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    maxLines = 1
+                })
+                addView(TextView(this@LobbyActivity).apply {
+                    text = if (locked) {
+                        roleMeta(roleKey, definition.minimumPlayers)
+                    } else {
+                        when (definition.team) {
+                            GameRules.TRAITOR_WINNER -> "Traidor"
+                            GameRules.TOWN_WINNER -> "Pueblo"
+                            else -> "Neutral"
+                        }
+                    }
+                    setTextColor(getColor(R.color.text_secondary))
+                    textSize = 9f
+                    maxLines = 1
+                })
+            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            val minus = compactDialogButton("−").apply {
+                setOnClickListener {
+                    val current = draftCounts[roleKey] ?: 0
+                    val minimum = if (roleKey == RoleCatalog.ASESINO) 1 else 0
+                    if (current > minimum) {
+                        draftCounts[roleKey] = current - 1
+                        selectedPreset = null
+                        refreshEditor()
+                    }
+                }
+            }
+            minusButtons[roleKey] = minus
+            row.addView(minus, LinearLayout.LayoutParams(dp(34), dp(34)))
+            val count = TextView(this).apply {
+                gravity = Gravity.CENTER
+                setBackgroundResource(R.drawable.bg_btn_dark)
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 14f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }
+            countViews[roleKey] = count
+            row.addView(count, LinearLayout.LayoutParams(dp(42), dp(34)).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
+            })
+            val plus = compactDialogButton("+").apply {
+                setOnClickListener {
+                    val current = draftCounts[roleKey] ?: 0
+                    if (current < maximum && (draftCounts[RoleCatalog.ALDEANO] ?: 0) > 0) {
+                        draftCounts[roleKey] = current + 1
+                        selectedPreset = null
+                        refreshEditor()
+                    }
+                }
+            }
+            plusButtons[roleKey] = plus
+            row.addView(plus, LinearLayout.LayoutParams(dp(34), dp(34)))
+            roles.addView(row)
+        }
+        refreshEditor()
+        content.addView(roles)
+
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
+        GameDialog.custom(
+            activity = this,
+            contentView = scroll,
+            widthDp = 640,
+            contentHeightDp = advancedOptionsContentHeightDp(),
+            negativeLabel = if (canEdit) "CANCELAR" else "CERRAR",
+            positiveLabel = if (canEdit) "APLICAR" else null,
+            onPositive = if (canEdit) {
+                {
+                    saveOnlineRoleComposition(
+                        preset = selectedPreset,
+                        counts = draftCounts.toMap()
+                    )
+                }
+            } else {
+                null
+            }
+        )
+    }
+
+    private fun saveOnlineRoleComposition(
+        preset: RoleCompositionPreset?,
+        counts: Map<String, Int>
+    ) {
+        val updatedConfig = onlineLobbyConfig.copy(
+            roleComposition = RoleCompositionConfig(counts = counts, customized = preset == null),
+            rolePreset = preset
+        ).normalized()
+        if (updatedConfig == onlineLobbyConfig) {
+            if (pendingOnlineRolePreset == preset) pendingOnlineRolePreset = null
+            renderOnlineRoleComposition()
+            GameNotice.show(this, "La composición ya estaba configurada de esa manera.")
+            return
+        }
+        val firestore = FirebaseFirestore.getInstance()
+        val roomReference = firestore.collection(ONLINE_ROOMS_COLLECTION).document(onlinePartidaId)
+        val activePlayers = activeOnlinePlayers()
+        firestore.runBatch { batch ->
+            batch.update(
+                roomReference,
+                mapOf(
+                    OnlineLobbyConfig.FIELD_ROOM_CONFIG to updatedConfig.toFirestore(),
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
+                )
+            )
+            activePlayers.forEach { player ->
+                batch.update(
+                    roomReference.collection(ONLINE_PLAYERS_COLLECTION).document(player.id),
+                    mapOf(FIELD_PLAYER_READY to false)
+                )
+            }
+        }.addOnSuccessListener {
+            if (pendingOnlineRolePreset == preset) pendingOnlineRolePreset = null
+            onlineLobbyConfig = updatedConfig
+            session = session.copy(
+                roleComposition = updatedConfig.compositionFor(
+                    onlineExpectedPlayers,
+                    displayedLobbyMap().key
+                )
+            )
+            addLobbySystemNotice("El anfitrión actualizó los roles. Todos deben confirmar LISTO nuevamente.")
+            renderLobby()
+            GameNotice.show(this, "Roles actualizados para toda la sala.")
+        }.addOnFailureListener { error ->
+            if (pendingOnlineRolePreset == preset) pendingOnlineRolePreset = null
+            renderOnlineRoleComposition()
+            OnlineDebugLog.e("lobby_roles_update_failure roomId=$onlinePartidaId", error)
+            GameNotice.show(
+                this,
+                OnlineErrorMessages.forAction("No se pudieron actualizar los roles", error),
+                GameNotice.Duration.LONG
+            )
+        }
     }
 
     private fun showBannedPlayersDialog() {
@@ -4813,7 +5376,11 @@ class LobbyActivity : BaseActivity() {
                 session = session.copy(
                     timingConfig = safe.timing,
                     revealRolesOnDeath = safe.revealRolesOnDeath,
-                    showIndividualVotes = safe.showIndividualVotes
+                    showIndividualVotes = safe.showIndividualVotes,
+                    roleComposition = safe.compositionFor(
+                        onlineExpectedPlayers,
+                        displayedLobbyMap().key
+                    )
                 )
                 renderLobby()
             }
@@ -4842,7 +5409,7 @@ class LobbyActivity : BaseActivity() {
     private fun roleLabel(roleKey: String): String {
         return when (roleKey) {
             RoleCatalog.ALDEANO -> "ALDEANO"
-            RoleCatalog.POLICIA -> if (session.mapKey == "pampa") "COMISARIO" else "DETECTIVE"
+            RoleCatalog.POLICIA -> if (displayedLobbyMap().key == "pampa") "COMISARIO" else "DETECTIVE"
             RoleCatalog.MEDICO -> "MEDICO"
             RoleCatalog.ASESINO -> "ASESINO"
             RoleCatalog.MERCENARIO -> "MERCENARIO"
@@ -5257,6 +5824,7 @@ class LobbyActivity : BaseActivity() {
         private const val ONLINE_MATCH_ENTRY_MAX_RETRIES = 3
         private const val READY_RECONCILE_DELAY_MS = 1_800L
         private const val PLAYERS_REFRESH_RETRY_MS = 250L
+        private const val ROLE_PRESET_SAVE_DELAY_MS = 900L
     }
 
     private data class OnlineLobbyPlayer(

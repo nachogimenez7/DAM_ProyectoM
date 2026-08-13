@@ -131,6 +131,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var winnerRevealPresented = false
     private var returningToOnlineLobby = false
     private var onlineLobbyReturnEpochMs = 0L
+    private var onlineWinnerReturnAckKey = ""
+    private var onlineWinnerReturnClientAcks = emptyMap<String, String>()
+    private var onlineWinnerReturnAdvanceInProgress = false
     private var presentedSpecialVictoryCount = 0
     private val countdown = GameplayCountdown()
     private var lastCountdownSecond = -1
@@ -231,6 +234,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineNightGateKey = ""
     private var onlineNightGateStartedAtMs = 0L
     private var onlineNightGateFloorMs = 0L
+    private var onlineNightAllActionsReadyAtMs = 0L
+    private var onlineNightPostActionDelayMs = 0L
     private var onlineNightTimerExpired = false
     private var onlinePresentationClientAcks = emptyMap<String, String>()
     private var onlinePresentationKey = ""
@@ -646,6 +651,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?: 0L
         onlinePresentationAckKey = savedInstanceState
             ?.getString(STATE_ONLINE_PRESENTATION_ACK_KEY)
+            .orEmpty()
+        onlineWinnerReturnAckKey = savedInstanceState
+            ?.getString(STATE_ONLINE_WINNER_RETURN_ACK_KEY)
             .orEmpty()
         if (onlinePartidaId.isNotBlank() || onlinePlayerId.isNotBlank()) {
             OnlineDebugLog.i(
@@ -1308,6 +1316,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineStartupDeadlineEpochMs
         )
         outState.putString(STATE_ONLINE_PRESENTATION_ACK_KEY, onlinePresentationAckKey)
+        outState.putString(STATE_ONLINE_WINNER_RETURN_ACK_KEY, onlineWinnerReturnAckKey)
         outState.putBoolean(
             STATE_VOTE_NO_EXPULSION_PRESENTED,
             voteNoExpulsionPresented
@@ -2252,6 +2261,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineInitialRoleRead,
             onlineAwaitingHostAdvance,
             onlinePresentationAckKey,
+            onlineWinnerReturnAckKey,
             lastAppliedAuthoritativePhaseLabel,
             session.publicAnnouncement,
             session.winner
@@ -2289,6 +2299,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         "aplicoEstadoPartida" to authoritativeStateAppliedLocally(),
                         "sincronizando" to onlineAwaitingHostAdvance,
                         FIELD_PRESENTATION_ACK_KEY to onlinePresentationAckKey,
+                        FIELD_WINNER_RETURN_ACK_KEY to onlineWinnerReturnAckKey,
                         "ultimaFaseAplicadaEnLocal" to latestAppliedPhaseLabel(),
                         "anuncioPublico" to session.publicAnnouncement,
                         "ganador" to session.winner,
@@ -2427,7 +2438,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                             winner = session.winner,
                             votePresentation = onlineVotePresentation,
                             playerName = player.name,
-                            dayEliminationTarget = session.dayEliminationTarget
+                            dayEliminationTarget = session.dayEliminationTarget,
+                            alcaldeRevealed = session.alcaldeRevealed,
+                            playerRoleKey = player.role?.key.orEmpty()
                         )
                         if (roleCanBePublic) {
                             player.role?.let { role ->
@@ -2527,6 +2540,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 val clientStates = snapshot.get("estadoClientes").asStringAnyMap()
                 handleOnlineStartupSnapshot(clientStates)
                 handleOnlinePresentationSnapshot(clientStates)
+                handleOnlineWinnerReturnSnapshot(clientStates)
                 applyAuthoritativeOnlineState(state)
             }
     }
@@ -2572,6 +2586,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             .orEmpty()
         refreshOnlinePresentationGate()
+    }
+
+    private fun handleOnlineWinnerReturnSnapshot(clientStatesRaw: Map<String, Any?>?) {
+        if (!isOnlineGameplay()) return
+        onlineWinnerReturnClientAcks = clientStatesRaw
+            ?.mapValues { (_, rawState) ->
+                (rawState.asStringAnyMap()?.get(FIELD_WINNER_RETURN_ACK_KEY) as? String).orEmpty()
+            }
+            .orEmpty()
+        syncOwnWinnerReturnAckFromSnapshot()
+        if (::session.isInitialized && session.winner.isNotBlank()) {
+            configureWinnerReturnButton()
+            maybeCoordinateWinnerReturn()
+        }
     }
 
     private fun handleOnlineStartupDeadlineSnapshot(state: Map<String, Any?>) {
@@ -2838,6 +2866,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val previousSession = session
         val previousPhaseIndex = session.phaseIndex
         val previousPrivateHint = session.privateHint
+        if (phaseIndex != previousPhaseIndex && isDayNightTransitionRunning) {
+            // Se cancela con la fase ANTERIOR aún activa; así el render siguiente puede
+            // presentar limpiamente la transición oficial recién recibida.
+            settleDayNightTransition(resumeMusic = false)
+        }
         val incomingVotePresentation =
             OnlineAuthoritativeStateMapper.votePresentationFromState(state)
         onlineVotePresentation = incomingVotePresentation
@@ -2914,6 +2947,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.winner.isNotBlank() && isWinnerRevealVisible) {
             configureWinnerReturnButton()
             scheduleWinnerAutoReturn()
+            maybeCoordinateWinnerReturn()
         }
         applyOnlineVotePresentation(incomingVotePresentation)
         notifyLocalOnlineAfkChange(previousSession, session)
@@ -3367,6 +3401,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         handleOnlineHostHandoff(onlinePresencePlayers)
         maybeResolveOnlineNightEarly()
         refreshOnlinePresentationGate()
+        if (::session.isInitialized && session.winner.isNotBlank()) {
+            configureWinnerReturnButton()
+            maybeCoordinateWinnerReturn()
+        }
         renderReadyToVoteButton()
         maybeAdvanceOnlineReadyVote()
     }
@@ -3558,6 +3596,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 handleOnlineHostHandoff(players)
                 maybeResolveOnlineNightEarly()
                 refreshOnlinePresentationGate()
+                if (session.winner.isNotBlank()) {
+                    configureWinnerReturnButton()
+                    maybeCoordinateWinnerReturn()
+                }
                 renderReadyToVoteButton()
                 maybeAdvanceOnlineReadyVote()
             }
@@ -3829,6 +3871,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineNightGateKey = ""
             onlineNightGateStartedAtMs = 0L
             onlineNightGateFloorMs = 0L
+            onlineNightAllActionsReadyAtMs = 0L
+            onlineNightPostActionDelayMs = 0L
             onlineNightTimerExpired = false
             return
         }
@@ -3837,6 +3881,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineNightGateKey = key
             onlineNightGateStartedAtMs = SystemClock.elapsedRealtime()
             onlineNightGateFloorMs = OnlineNightReadyGate.randomFloorMs()
+            onlineNightAllActionsReadyAtMs = 0L
+            onlineNightPostActionDelayMs = 0L
             onlineNightTimerExpired = false
             autoAdvanceHandler.removeCallbacks(onlineNightGateRunnable)
             autoAdvanceHandler.postDelayed(onlineNightGateRunnable, onlineNightGateFloorMs)
@@ -3844,7 +3890,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "night_secret_floor roomId=$onlinePartidaId match=${session.onlineMatchId} round=${session.round} floorMs=$onlineNightGateFloorMs"
             )
         }
+        val oracleCandidateCount = GameEngine.oracleCandidates(session).size
         val requiredActorIds = onlinePresencePlayers.mapNotNull { presence ->
+            if (presence.state != PLAYER_STATE_CONNECTED) return@mapNotNull null
             val playerIndex = session.onlinePlayerUids.indexOf(presence.id)
                 .takeIf { it >= 0 }
                 ?: presence.order
@@ -3852,7 +3900,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             val roleKey = player.role?.key.orEmpty()
             if (
                 player.alive &&
-                roleKey in ONLINE_NIGHT_ACTOR_ROLES
+                OnlineNightReadyGate.roleRequiresAction(
+                    roleKey = roleKey,
+                    round = session.round,
+                    oracleUsed = session.oracleUsed,
+                    oracleCandidateCount = oracleCandidateCount
+                )
             ) {
                 presence.id
             } else {
@@ -3875,7 +3928,36 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             .map { it.actorId }
             .filter { it.isNotBlank() }
             .toSet()
-        val elapsedMs = SystemClock.elapsedRealtime() - onlineNightGateStartedAtMs
+        val nowMs = SystemClock.elapsedRealtime()
+        val everyRequiredActorActed = requiredActorIds.all { it in actedActorIds }
+        if (requiredActorIds.isNotEmpty() && everyRequiredActorActed) {
+            if (onlineNightAllActionsReadyAtMs <= 0L) {
+                onlineNightAllActionsReadyAtMs = nowMs
+                onlineNightPostActionDelayMs = OnlineNightReadyGate.randomPostActionDelayMs()
+                OnlineDebugLog.i(
+                    "night_actions_ready roomId=$onlinePartidaId round=${session.round} postDelayMs=$onlineNightPostActionDelayMs"
+                )
+            }
+        } else {
+            onlineNightAllActionsReadyAtMs = 0L
+            onlineNightPostActionDelayMs = 0L
+        }
+        val elapsedMs = nowMs - onlineNightGateStartedAtMs
+        val allActionsReadyForMs = onlineNightAllActionsReadyAtMs
+            .takeIf { it > 0L }
+            ?.let { nowMs - it }
+            ?: 0L
+        val remainingFloorMs = (onlineNightGateFloorMs - elapsedMs).coerceAtLeast(0L)
+        val remainingPostActionMs = if (requiredActorIds.isNotEmpty() && everyRequiredActorActed) {
+            (onlineNightPostActionDelayMs - allActionsReadyForMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        val remainingResolutionDelayMs = maxOf(remainingFloorMs, remainingPostActionMs)
+        if (onlineIsHost && everyRequiredActorActed && remainingResolutionDelayMs > 0L) {
+            autoAdvanceHandler.removeCallbacks(onlineNightGateRunnable)
+            autoAdvanceHandler.postDelayed(onlineNightGateRunnable, remainingResolutionDelayMs)
+        }
         if (
             !onlineNightResolutionInProgress &&
             OnlineNightReadyGate.shouldResolve(
@@ -3883,7 +3965,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 requiredActorIds = requiredActorIds,
                 actedActorIds = actedActorIds,
                 elapsedMs = elapsedMs,
-                floorMs = onlineNightGateFloorMs
+                floorMs = onlineNightGateFloorMs,
+                allActionsReadyForMs = allActionsReadyForMs,
+                postActionDelayMs = onlineNightPostActionDelayMs
             )
         ) {
             OnlineDebugLog.i(
@@ -4139,6 +4223,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         maybeApplyOnlineDesertorChoice()
         maybeResolveOnlineNightEarly()
         refreshOnlinePresentationGate()
+        if (session.winner.isNotBlank()) {
+            configureWinnerReturnButton()
+            maybeCoordinateWinnerReturn()
+        }
     }
 
     private fun handleOnlineHostRoleRecoveryFailure(reason: String, error: Exception?) {
@@ -6479,10 +6567,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val isOracleGuest =
             session.phase == GamePhase.DIA_DEBATE &&
                 session.oracleInvitedPlayer == player.name
-        val isRevealedMayor = !isOnlineGameplay() &&
+        val isRevealedMayor =
             session.alcaldeRevealed && player.role?.key == RoleCatalog.ALCALDE
         val isRevealedEliminated =
-            !isOnlineGameplay() && !isAlive && session.revealRolesOnDeath
+            !isAlive && session.revealRolesOnDeath
         val showPublicRole = isRevealedMayor || isRevealedEliminated
         val actionLabel = targetActionLabel(player.name)
         val transitionLocked = countdown.isTransitionLocked(session.phaseIndex)
@@ -6566,8 +6654,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         }
-        holder.avatar.visibility = if (isOnlineGameplay()) View.VISIBLE else View.GONE
-        if (isOnlineGameplay()) {
+        holder.avatar.visibility = if (isOnlineGameplay() && !showPublicRole) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        if (isOnlineGameplay() && !showPublicRole) {
             holder.avatar.text = if (isAlive || isOracleGuest) {
                 GameplayTableUi.playerInitial(player)
             } else {
@@ -6708,7 +6800,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         holder.cardBack.alpha = eliminatedContentAlpha
         holder.roleFace.alpha = when {
             isAlive || isOracleGuest -> 1f
-            showPublicRole -> 0.80f
+            showPublicRole -> 0.58f
             else -> eliminatedContentAlpha
         }
         holder.avatar.alpha = eliminatedContentAlpha
@@ -6765,7 +6857,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             holder.roleFace.visibility = if (showPublicRole) View.VISIBLE else View.GONE
             if (showPublicRole) {
                 holder.roleFace.setImageResource(roleImageFor(player.role))
-                holder.roleFace.alpha = if (isAlive) 1f else 0.80f
+                holder.roleFace.alpha = if (isAlive) 1f else 0.58f
             }
         }
         val animateReveal = holder.hasBound && showPublicRole && !holder.publicRoleVisible
@@ -7771,17 +7863,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun requiredOnlineNightPlayerIndexes(source: GameSession): Set<Int> {
+        val oracleCandidateCount = GameEngine.oracleCandidates(source).size
         return source.players.indices.filterTo(mutableSetOf()) { index ->
             val player = source.players[index]
-            val oracleHasDecision = player.role?.key != RoleCatalog.ORACULO ||
-                (
-                    source.round > 1 &&
-                        !source.oracleUsed &&
-                        GameEngine.oracleCandidates(source).isNotEmpty()
-                    )
             player.alive &&
-                oracleHasDecision &&
-                onlineNightActionsForRole(player.role?.key.orEmpty()).isNotEmpty()
+                OnlineNightReadyGate.roleRequiresAction(
+                    roleKey = player.role?.key.orEmpty(),
+                    round = source.round,
+                    oracleUsed = source.oracleUsed,
+                    oracleCandidateCount = oracleCandidateCount
+                )
         }
     }
 
@@ -10147,23 +10238,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun configureWinnerReturnButton() {
-        when {
-            !isOnlineGameplay() -> {
-                btnWinnerReturnLobby.text = "VOLVER AL LOBBY"
-                btnWinnerReturnLobby.isEnabled = true
-                btnWinnerReturnLobby.alpha = 1f
-            }
-            onlineIsHost -> {
-                btnWinnerReturnLobby.text = "VOLVER TODOS A LA SALA"
-                btnWinnerReturnLobby.isEnabled = true
-                btnWinnerReturnLobby.alpha = 1f
-            }
-            else -> {
-                btnWinnerReturnLobby.text = "VOLVIENDO JUNTOS..."
-                btnWinnerReturnLobby.isEnabled = false
-                btnWinnerReturnLobby.alpha = 0.72f
-            }
+        if (!isOnlineGameplay()) {
+            btnWinnerReturnLobby.text = "VOLVER AL LOBBY"
+            btnWinnerReturnLobby.isEnabled = true
+            btnWinnerReturnLobby.alpha = 1f
+            return
         }
+
+        syncOwnWinnerReturnAckFromSnapshot()
+        val progress = onlineWinnerReturnProgress()
+        val ownReady = onlineWinnerReturnAckKey == winnerReturnKey()
+        btnWinnerReturnLobby.text = if (ownReady) {
+            "VOLVIENDO AL LOBBY · ${progress.readyCount}/${progress.totalCount}"
+        } else {
+            "LISTO PARA VOLVER · ${progress.readyCount}/${progress.totalCount}"
+        }
+        btnWinnerReturnLobby.isEnabled = !ownReady && !returningToOnlineLobby
+        btnWinnerReturnLobby.alpha = if (btnWinnerReturnLobby.isEnabled) 1f else 0.72f
     }
 
     private fun handleWinnerReturnButton() {
@@ -10171,36 +10262,105 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             returnToLobbyNow()
             return
         }
-        if (!onlineIsHost || !btnWinnerReturnLobby.isEnabled) return
+        val key = winnerReturnKey()
+        if (key.isBlank() || onlineWinnerReturnAckKey == key) return
 
-        val requestedDeadline = System.currentTimeMillis() +
-            OnlineMatchReturnGate.HOST_REQUEST_GRACE_MS
-        btnWinnerReturnLobby.isEnabled = false
-        btnWinnerReturnLobby.alpha = 0.72f
-        btnWinnerReturnLobby.text = "VOLVIENDO TODOS..."
+        onlineWinnerReturnAckKey = key
+        onlineWinnerReturnClientAcks = onlineWinnerReturnClientAcks + (onlinePlayerId to key)
+        lastPublishedOnlineStateKey = ""
+        configureWinnerReturnButton()
+        publishOnlineClientState()
+        maybeCoordinateWinnerReturn()
+    }
+
+    private fun winnerReturnKey(): String {
+        if (!::session.isInitialized || session.winner.isBlank()) return ""
+        val matchKey = session.onlineMatchId.ifBlank { onlinePartidaId }
+        return "$matchKey|${session.winner}|${session.phaseIndex}"
+    }
+
+    private fun syncOwnWinnerReturnAckFromSnapshot() {
+        val key = winnerReturnKey()
+        if (key.isNotBlank() && onlineWinnerReturnClientAcks[onlinePlayerId] == key) {
+            onlineWinnerReturnAckKey = key
+        }
+    }
+
+    private fun onlineWinnerReturnProgress(): OnlineMatchReturnGate.Progress {
+        val expectedIds = session.onlinePlayerUids
+            .filter { it.isNotBlank() }
+            .ifEmpty { onlinePresencePlayers.map { it.id } }
+        val connectedIds = onlinePresencePlayers
+            .filter {
+                it.activeInMatch &&
+                    isOnlineUidConnected(it.id, it.state == PLAYER_STATE_CONNECTED)
+            }
+            .map { it.id }
+        val key = winnerReturnKey()
+        val acknowledgedIds = onlineWinnerReturnClientAcks
+            .filterValues { it == key }
+            .keys
+            .toMutableSet()
+            .apply {
+                if (onlineWinnerReturnAckKey == key) add(onlinePlayerId)
+            }
+        return OnlineMatchReturnGate.progress(
+            expectedPlayerIds = expectedIds,
+            connectedPlayerIds = connectedIds,
+            acknowledgedPlayerIds = acknowledgedIds,
+            presenceKnown = onlinePresencePlayers.isNotEmpty()
+        )
+    }
+
+    private fun maybeCoordinateWinnerReturn() {
+        if (
+            !isOnlineGameplay() ||
+            !onlineIsHost ||
+            session.winner.isBlank() ||
+            onlineWinnerReturnAdvanceInProgress ||
+            !onlineWinnerReturnProgress().allRequiredReady
+        ) {
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val requestedDeadline = now + OnlineMatchReturnGate.HOST_REQUEST_GRACE_MS
+        if (onlineLobbyReturnEpochMs in (now + 1)..requestedDeadline) return
+
+        onlineWinnerReturnAdvanceInProgress = true
         FirebaseFirestore.getInstance()
             .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .document(onlinePartidaId)
             .update(
                 mapOf(
+                    OnlineRoomFirestore.FIELD_STATE to OnlineRoomFirestore.STATE_FINISHED,
+                    OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp(),
                     "estadoPartida.volverLobbyEpochMs" to requestedDeadline,
                     "ultimaActividadOnline" to FieldValue.serverTimestamp()
                 )
             )
             .addOnSuccessListener {
+                onlineWinnerReturnAdvanceInProgress = false
                 onlineLobbyReturnEpochMs = requestedDeadline
                 lastPublishedAuthoritativeOnlineStateKey = ""
                 scheduleWinnerAutoReturn()
+                OnlineDebugLog.i(
+                    "winner_return_ready roomId=$onlinePartidaId uid=$onlinePlayerId ready=${onlineWinnerReturnProgress().readyCount}"
+                )
             }
             .addOnFailureListener { error ->
+                onlineWinnerReturnAdvanceInProgress = false
                 OnlineDebugLog.e(
-                    "winner_return_all_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    "winner_return_ready_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
                     error
                 )
-                configureWinnerReturnButton()
+                autoAdvanceHandler.postDelayed(
+                    { maybeCoordinateWinnerReturn() },
+                    WINNER_RETURN_RETRY_MS
+                )
                 GameNotice.show(
                     activity = this,
-                    message = "No se pudo avisar a todos. Inténtalo otra vez.",
+                    message = "La vuelta conjunta se demoró. La reintentamos automáticamente.",
                     duration = GameNotice.Duration.LONG
                 )
             }
@@ -10958,10 +11118,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_LOBBY_RETURN_EPOCH_MS =
             "online_lobby_return_epoch_ms"
         private const val STATE_ONLINE_PRESENTATION_ACK_KEY = "online_presentation_ack_key"
+        private const val STATE_ONLINE_WINNER_RETURN_ACK_KEY =
+            "online_winner_return_ack_key"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L
         private const val JESTER_VICTORY_DURATION_MS = 8000L
         private const val WINNER_AUTO_RETURN_MS = 45_000L
+        private const val WINNER_RETURN_RETRY_MS = 2_000L
         private const val COUNTDOWN_TICK_MS = 200L
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val ONLINE_DEATH_REVEAL_BEAT_MS = 900L
@@ -10991,21 +11154,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val FIELD_READY_TO_VOTE_ROUND = "listoParaVotarRonda"
         private const val FIELD_READY_TO_VOTE_PHASE_INDEX = "listoParaVotarPhaseIndex"
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"
+        private const val FIELD_WINNER_RETURN_ACK_KEY = "regresoLobbyConfirmado"
         private const val FIELD_STARTUP_AUTO_DEADLINE = "inicioAutomaticoEpochMs"
         private const val FIELD_PRIVATE_INVESTIGATION_CLUE = "pistaInvestigacion"
         private val PRIVATE_INVESTIGATION_RESULTS = setOf("inocente", "sospechoso")
         private const val ONLINE_ACTION_MAYOR_REVEAL = "revelar_alcalde"
         private const val ONLINE_ACTION_DESERTOR_TEAM = "elegir_bando"
         private const val ONLINE_ACTION_DESERTOR_RETHINK = "reconsiderar_bando"
-        private val ONLINE_NIGHT_ACTOR_ROLES = setOf(
-            RoleCatalog.ASESINO,
-            RoleCatalog.ESPIA,
-            RoleCatalog.MERCENARIO,
-            RoleCatalog.POLICIA,
-            RoleCatalog.MEDICO,
-            RoleCatalog.ORACULO
-        )
-
         const val EXTRA_TEMA = "tema"
         const val EXTRA_ES_NOCHE = "es_noche"
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"

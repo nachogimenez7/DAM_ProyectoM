@@ -25,6 +25,21 @@ class CardActionMarksTest {
     }
 
     @Test
+    fun spySeesTeamMarksEvenIfRealtimeMessageArrivesWithAdjacentPhaseIndex() {
+        val shared = listOf(
+            OnlineTraitorActionMark("a", "Ana", "Mora", RoleCatalog.ASESINO, 2, 6),
+            OnlineTraitorActionMark("s", "Beto", "Dina", RoleCatalog.ESPIA, 2, 8)
+        )
+
+        val visible = CardActionMarks.visibleForCurrentPhase(
+            session(RoleCatalog.ESPIA), "uid-human", emptyList(), shared
+        )
+
+        assertEquals(setOf("Mora", "Dina"), visible.map { it.targetName }.toSet())
+        assertEquals(setOf(RoleCatalog.ASESINO, RoleCatalog.ESPIA), visible.map { it.roleKey }.toSet())
+    }
+
+    @Test
     fun hostOnlySeesItsOwnPrivateRoleAction() {
         val medic = session(RoleCatalog.MEDICO).copy(phase = GamePhase.NOCHE_MEDICO)
         val records = listOf(

@@ -29,10 +29,23 @@ class OnlinePhaseGateTest {
             currentPhaseIndex = 4,
             incomingPhaseIndex = 3,
             incomingStateKey = "old",
-            lastAppliedStateKey = ""
+            lastAppliedStateKey = "newer"
         )
 
         assertEquals(OnlinePhaseDecision.IGNORE_OLD, decision)
+    }
+
+    @Test
+    fun firstAuthoritativeSnapshotReplacesARestoredLocalPhaseEvenWhenItsIndexIsLower() {
+        val decision = OnlinePhaseGate.evaluateIncomingState(
+            isHost = false,
+            currentPhaseIndex = 12,
+            incomingPhaseIndex = 2,
+            incomingStateKey = "official-day",
+            lastAppliedStateKey = ""
+        )
+
+        assertEquals(OnlinePhaseDecision.APPLY, decision)
     }
 
     @Test

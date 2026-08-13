@@ -200,7 +200,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="9dp"
-                    android:background="@drawable/bg_btn_dark"
+                    android:background="@drawable/bg_room_code_panel"
                     android:gravity="center"
                     android:orientation="vertical"
                     android:paddingHorizontal="8dp"
@@ -224,11 +224,11 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif"
                         android:gravity="center"
-                        android:letterSpacing="0.16"
+                        android:letterSpacing="0.2"
                         android:maxLines="1"
                         android:text="A7K2Q"
                         android:textColor="@color/accent_gold"
-                        android:textSize="23sp"
+                        android:textSize="29sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
@@ -308,6 +308,139 @@
                         android:orientation="horizontal" />
                 </HorizontalScrollView>
 
+                <LinearLayout
+                    android:id="@+id/onlineRoleCompositionPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/bg_btn_dark"
+                    android:orientation="vertical"
+                    android:padding="9dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/onlineRoleSectionTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="ROLES DE LA PARTIDA"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/onlineRoleBalance"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:text="EQUILIBRADA"
+                            android:textColor="@color/accent_green"
+                            android:textSize="9sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/onlineRoleSummary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:text="1 Asesino · 1 Detective · 1 Médico · 2 Aldeanos"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp" />
+
+                    <LinearLayout
+                        android:id="@+id/onlineRolePresetRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="7dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/btnOnlineRoleRecommended"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="3dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:minHeight="0dp"
+                            android:minWidth="0dp"
+                            android:padding="0dp"
+                            android:text="RECOMENDADO"
+                            android:textSize="9sp"
+                            app:autoSizeMaxTextSize="9sp"
+                            app:autoSizeMinTextSize="7sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <Button
+                            android:id="@+id/btnOnlineRoleClassic"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginHorizontal="3dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:minHeight="0dp"
+                            android:minWidth="0dp"
+                            android:padding="0dp"
+                            android:text="CLÁSICO"
+                            android:textSize="9sp"
+                            app:autoSizeMaxTextSize="9sp"
+                            app:autoSizeMinTextSize="7sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+
+                        <Button
+                            android:id="@+id/btnOnlineRoleChaotic"
+                            style="@style/BtnDark"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="3dp"
+                            android:layout_marginBottom="0dp"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:minHeight="0dp"
+                            android:minWidth="0dp"
+                            android:padding="0dp"
+                            android:text="CAÓTICO"
+                            android:textSize="9sp"
+                            app:autoSizeMaxTextSize="9sp"
+                            app:autoSizeMinTextSize="7sp"
+                            app:autoSizeStepGranularity="1sp"
+                            app:autoSizeTextType="uniform" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btnConfigureOnlineRoles"
+                        style="@style/BtnDark"
+                        android:layout_width="match_parent"
+                        android:layout_height="38dp"
+                        android:layout_marginTop="7dp"
+                        android:layout_marginBottom="0dp"
+                        android:maxLines="1"
+                        android:minHeight="0dp"
+                        android:text="CONFIGURAR ROLES"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/lobbyConfigurationLabel"
                     android:layout_width="match_parent"
@@ -319,6 +452,21 @@
                     android:textColor="@color/text_muted"
                     android:textSize="11sp"
                     android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/onlineRulesSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="7dp"
+                    android:background="@drawable/bg_btn_dark"
+                    android:gravity="center"
+                    android:minHeight="42dp"
+                    android:paddingHorizontal="9dp"
+                    android:paddingVertical="7dp"
+                    android:text="Roles al morir: No · Votos: Sí · Ritmo: Normal"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp"
+                    android:visibility="gone" />
 
                 <LinearLayout
                     android:id="@+id/onlinePlayerTargetPanel"
@@ -449,6 +597,7 @@
                     android:visibility="gone">
 
                     <TextView
+                        android:id="@+id/onlineMapVoteTitle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
@@ -745,6 +894,7 @@
                     android:textSize="12sp" />
 
                 <LinearLayout
+                    android:id="@+id/lobbyOptionsRow"
                     android:layout_width="match_parent"
                     android:layout_height="42dp"
                     android:layout_marginBottom="8dp"
@@ -817,6 +967,7 @@
                     android:textStyle="bold" />
 
                 <LinearLayout
+                    android:id="@+id/localPlayerControlsRow"
                     android:layout_width="match_parent"
                     android:layout_height="42dp"
                     android:orientation="horizontal">
@@ -872,6 +1023,19 @@
             </ScrollView>
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/lobbyStartDock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_above="@id/lobbyChatDock"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_game_panel"
+        android:elevation="9dp"
+        android:orientation="vertical"
+        android:padding="9dp"
+        android:visibility="gone" />
 
     <LinearLayout
         android:id="@+id/lobbyChatDock"

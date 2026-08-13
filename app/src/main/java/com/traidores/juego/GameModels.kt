@@ -841,8 +841,6 @@ object LocalGameFactory {
                 normalized[key] = 0
             }
         }
-        normalized[RoleCatalog.POLICIA] = normalized.getValue(RoleCatalog.POLICIA).coerceAtLeast(1)
-        normalized[RoleCatalog.MEDICO] = normalized.getValue(RoleCatalog.MEDICO).coerceAtLeast(1)
         normalized[RoleCatalog.ASESINO] = normalized.getValue(RoleCatalog.ASESINO)
             .coerceIn(1, maxAssassinsFor(playerCount))
 
@@ -863,8 +861,7 @@ object LocalGameFactory {
             var overflow = nonVillagers - playerCount
             orderedOptional.forEach { key ->
                 if (overflow <= 0) return@forEach
-                val minimum = if (key == RoleCatalog.POLICIA || key == RoleCatalog.MEDICO) 1 else 0
-                val removable = (normalized.getValue(key) - minimum).coerceAtLeast(0)
+                val removable = normalized.getValue(key).coerceAtLeast(0)
                 val removed = removable.coerceAtMost(overflow)
                 normalized[key] = normalized.getValue(key) - removed
                 overflow -= removed
@@ -890,7 +887,7 @@ object LocalGameFactory {
             RoleCatalog.POLICIA, RoleCatalog.MEDICO -> 1
             RoleCatalog.MERCENARIO -> if (count >= 7) 1 else 0
             RoleCatalog.ALCALDE -> if (count >= 8) 1 else 0
-            RoleCatalog.DESERTOR -> if (count >= 9) 1 else 0
+            RoleCatalog.DESERTOR -> if (count >= 14) 1 else 0
             RoleCatalog.ESPIA -> if (count >= 10) 1 else 0
             RoleCatalog.PAYADOR, RoleCatalog.BUFON, RoleCatalog.ORACULO -> if (count >= 8) 1 else 0
             else -> 0

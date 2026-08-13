@@ -49,6 +49,81 @@ class OnlineNightReadyGateTest {
     }
 
     @Test
+    fun lastActionKeepsANaturalTwoToFourSecondPause() {
+        repeat(200) {
+            val delayMs = OnlineNightReadyGate.randomPostActionDelayMs()
+            assertTrue(delayMs >= OnlineNightReadyGate.MINIMUM_POST_ACTION_DELAY_MS)
+            assertTrue(delayMs <= OnlineNightReadyGate.MAXIMUM_POST_ACTION_DELAY_MS)
+        }
+        assertFalse(
+            OnlineNightReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("killer", "medic"),
+                actedActorIds = setOf("killer", "medic"),
+                elapsedMs = 20_000L,
+                floorMs = 10_000L,
+                allActionsReadyForMs = 1_999L,
+                postActionDelayMs = 2_000L
+            )
+        )
+        assertTrue(
+            OnlineNightReadyGate.shouldResolve(
+                isCoordinator = true,
+                requiredActorIds = setOf("killer", "medic"),
+                actedActorIds = setOf("killer", "medic"),
+                elapsedMs = 20_000L,
+                floorMs = 10_000L,
+                allActionsReadyForMs = 2_000L,
+                postActionDelayMs = 2_000L
+            )
+        )
+    }
+
+    @Test
+    fun oracleOnlyCountsWhenThereIsARealDecision() {
+        assertFalse(
+            OnlineNightReadyGate.roleRequiresAction(
+                RoleCatalog.ORACULO,
+                round = 1,
+                oracleUsed = false,
+                oracleCandidateCount = 0
+            )
+        )
+        assertFalse(
+            OnlineNightReadyGate.roleRequiresAction(
+                RoleCatalog.ORACULO,
+                round = 2,
+                oracleUsed = false,
+                oracleCandidateCount = 0
+            )
+        )
+        assertTrue(
+            OnlineNightReadyGate.roleRequiresAction(
+                RoleCatalog.ORACULO,
+                round = 2,
+                oracleUsed = false,
+                oracleCandidateCount = 1
+            )
+        )
+        assertFalse(
+            OnlineNightReadyGate.roleRequiresAction(
+                RoleCatalog.ORACULO,
+                round = 3,
+                oracleUsed = true,
+                oracleCandidateCount = 2
+            )
+        )
+        assertTrue(
+            OnlineNightReadyGate.roleRequiresAction(
+                RoleCatalog.MEDICO,
+                round = 1,
+                oracleUsed = false,
+                oracleCandidateCount = 0
+            )
+        )
+    }
+
+    @Test
     fun missingActorOrEarlyElapsedTimeKeepsNightOpen() {
         assertFalse(
             OnlineNightReadyGate.shouldResolve(

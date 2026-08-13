@@ -42,6 +42,34 @@ class OnlineAuthoritativeStateMapperTest {
     }
 
     @Test
+    fun revealedMayorRoleIsPublicEvenWhenDeathRevealIsDisabled() {
+        assertTrue(
+            OnlineAuthoritativeStateMapper.canPublishPlayerRole(
+                revealRolesOnDeath = false,
+                playerAlive = true,
+                winner = "",
+                votePresentation = "",
+                playerName = "Ana",
+                dayEliminationTarget = "",
+                alcaldeRevealed = true,
+                playerRoleKey = RoleCatalog.ALCALDE
+            )
+        )
+        assertFalse(
+            OnlineAuthoritativeStateMapper.canPublishPlayerRole(
+                revealRolesOnDeath = false,
+                playerAlive = true,
+                winner = "",
+                votePresentation = "",
+                playerName = "Beto",
+                dayEliminationTarget = "",
+                alcaldeRevealed = true,
+                playerRoleKey = RoleCatalog.MEDICO
+            )
+        )
+    }
+
+    @Test
     fun publicPresentationFieldsAreReadFromAuthoritativeState() {
         val state = mapOf(
             "nocheSinVictima" to true,

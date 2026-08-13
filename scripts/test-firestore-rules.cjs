@@ -54,6 +54,8 @@ const roomData = (
     votacionSeg: 30,
     revelarRolesAlMorir: false,
     votosIndividuales: true,
+    presetRoles: "RECOMMENDED",
+    roles: "2,1,1,1,0,0,0,0,0,0,0",
   },
   origen: "rules-test",
   creadaEn: serverTimestamp(),
@@ -350,6 +352,8 @@ async function main() {
         votacionSeg: 40,
         revelarRolesAlMorir: false,
         votosIndividuales: true,
+        presetRoles: "CLASSIC",
+        roles: "2,1,1,1,0,0,0,0,0,0,0",
       },
       actualizadaEn: serverTimestamp(),
     }));
@@ -361,6 +365,8 @@ async function main() {
         votacionSeg: 35,
         revelarRolesAlMorir: true,
         votosIndividuales: false,
+        presetRoles: "PERSONALIZADO",
+        roles: "1,1,1,1,1,0,0,0,0,0,0",
       },
       actualizadaEn: serverTimestamp(),
     }));
@@ -698,6 +704,19 @@ async function main() {
     await assertFails(updateDoc(doc(guest, "partidas", "room_handoff"), {
       hostActivoId: "guest_uid",
       hostVersion: increment(1),
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(host, "partidas", "room_auth"), {
+      configLobby: {
+        transicionSeg: 4,
+        nocheSeg: 35,
+        discusionSeg: 75,
+        votacionSeg: 35,
+        revelarRolesAlMorir: true,
+        votosIndividuales: false,
+        presetRoles: "PERSONALIZADO",
+        roles: "2,1,1,0,1,0,0,0,0,0,0",
+      },
       actualizadaEn: serverTimestamp(),
     }));
     await testEnv.withSecurityRulesDisabled(async (context) => {

@@ -41,9 +41,12 @@ object OnlineAuthoritativeStateMapper {
         winner: String,
         votePresentation: String,
         playerName: String,
-        dayEliminationTarget: String
+        dayEliminationTarget: String,
+        alcaldeRevealed: Boolean = false,
+        playerRoleKey: String = ""
     ): Boolean {
         if (winner.isNotBlank()) return true
+        if (alcaldeRevealed && playerRoleKey == RoleCatalog.ALCALDE) return true
         if (!revealRolesOnDeath) return false
         if (!playerAlive) return true
         return dayEliminationTarget.isNotBlank() &&

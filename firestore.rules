@@ -58,7 +58,9 @@ service cloud.firestore {
           'discusionSeg',
           'votacionSeg',
           'revelarRolesAlMorir',
-          'votosIndividuales'
+          'votosIndividuales',
+          'presetRoles',
+          'roles'
         ])
         && config.transicionSeg is int
         && config.transicionSeg >= 1
@@ -73,7 +75,15 @@ service cloud.firestore {
         && config.votacionSeg >= 10
         && config.votacionSeg <= 60
         && config.revelarRolesAlMorir is bool
-        && config.votosIndividuales is bool;
+        && config.votosIndividuales is bool
+        && (
+          (!('presetRoles' in config) && !('roles' in config))
+          || (
+            config.presetRoles in ['RECOMMENDED', 'CLASSIC', 'CHAOTIC', 'PERSONALIZADO']
+            && config.roles is string
+            && config.roles.matches('^[0-9]{1,2},[0-9]{1,2},[0-9]{1,2},[1-3],[0-9]{1,2},[0-9]{1,2},[0-9]{1,2},[0-9]{1,2},[0-9]{1,2},[0-9]{1,2},[0-9]{1,2}$')
+          )
+        );
     }
 
     function validLastResult(data) {

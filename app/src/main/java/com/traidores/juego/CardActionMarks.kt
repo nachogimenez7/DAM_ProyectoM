@@ -21,7 +21,10 @@ object CardActionMarks {
         val playerNames = session.players.mapTo(hashSetOf()) { it.name }
         val own = records.asSequence()
             .filter { it.matchId == session.onlineMatchId }
-            .filter { it.round == session.round && it.phaseIndex == session.phaseIndex }
+            // Toda la noche online se resuelve como una única ventana. El phaseIndex es un
+            // detalle de coordinación y puede llegar unas décimas antes o después que el
+            // mensaje de RTDB; la ronda y el match identifican la acción sin ambigüedad.
+            .filter { it.round == session.round }
             .filter { it.actorId == onlinePlayerId && it.targetName in playerNames }
             .mapNotNull { record ->
                 val roleKey = roleForOwnAction(session, human, record) ?: return@mapNotNull null
@@ -38,7 +41,7 @@ object CardActionMarks {
             GameEngine.canSeeTraitorChat(human)
         ) {
             traitorMarks.asSequence()
-                .filter { it.round == session.round && it.phaseIndex == session.phaseIndex }
+                .filter { it.round == session.round }
                 .filter { it.roleKey in TRAITOR_ACTION_ROLES && it.targetName in playerNames }
                 .map {
                     CardActionMark(

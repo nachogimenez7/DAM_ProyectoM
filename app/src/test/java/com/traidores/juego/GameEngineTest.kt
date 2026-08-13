@@ -531,6 +531,33 @@ class GameEngineTest {
     }
 
     @Test
+    fun customRoleCompositionAllowsPlayingWithoutDoctorOrDetective() {
+        var setup = LocalGameFactory.createSession()
+        repeat(3) {
+            setup = LocalGameFactory.addMockPlayer(setup)
+        }
+        setup = setup.copy(
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ASESINO to 1,
+                    RoleCatalog.POLICIA to 0,
+                    RoleCatalog.MEDICO to 0,
+                    RoleCatalog.ALDEANO to 7
+                ),
+                customized = true
+            )
+        )
+
+        val assigned = LocalGameFactory.assignRoles(setup)
+        val roleCounts = assigned.players.mapNotNull { it.role?.key }.groupingBy { it }.eachCount()
+
+        assertEquals(1, roleCounts[RoleCatalog.ASESINO])
+        assertEquals(0, roleCounts[RoleCatalog.POLICIA] ?: 0)
+        assertEquals(0, roleCounts[RoleCatalog.MEDICO] ?: 0)
+        assertEquals(7, roleCounts[RoleCatalog.ALDEANO])
+    }
+
+    @Test
     fun customRoleCompositionCapsTooManyAssassins() {
         var setup = LocalGameFactory.createSession()
         repeat(5) {

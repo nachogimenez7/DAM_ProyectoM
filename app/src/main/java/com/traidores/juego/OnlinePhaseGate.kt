@@ -33,6 +33,10 @@ object OnlinePhaseGate {
     ): OnlinePhaseDecision {
         return when {
             isHost -> OnlinePhaseDecision.HOST_IGNORES
+            // El primer snapshot autoritativo siempre debe imponerse a una Session restaurada
+            // por Android. Esa copia local puede pertenecer a un instante posterior o incluso
+            // a la partida anterior y nunca debe dejar al invitado congelado en esa pantalla.
+            lastAppliedStateKey.isBlank() -> OnlinePhaseDecision.APPLY
             incomingPhaseIndex < currentPhaseIndex -> OnlinePhaseDecision.IGNORE_OLD
             incomingStateKey == lastAppliedStateKey -> OnlinePhaseDecision.IGNORE_DUPLICATE
             else -> OnlinePhaseDecision.APPLY
