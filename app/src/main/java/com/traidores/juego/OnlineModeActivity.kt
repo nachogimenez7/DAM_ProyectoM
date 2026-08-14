@@ -105,6 +105,7 @@ class OnlineModeActivity : BaseActivity() {
                 accessCheckInProgress = false
                 setOnlineActionsEnabled(true)
                 refreshRecoveredRoomButton()
+                OnlineRoomJanitor.sweepOwnedStaleRooms(this)
             },
             onBlocked = { ban ->
                 accessCheckInProgress = false

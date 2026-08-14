@@ -43,6 +43,29 @@ const emoteEvent = (actorId, player) => ({
   ts: Date.now(),
 });
 
+const clientSyncState = (uid, extra = {}) => ({
+  matchId,
+  fase: "DIA_DEBATE",
+  ronda: 1,
+  phaseIndex: 4,
+  enGameplay: true,
+  jugadoresVistos: 4,
+  jugadoresEsperados: 4,
+  uidTemporal: uid,
+  actualizadaEn: Date.now(),
+  ...extra,
+});
+
+const voteReadyState = (nombre, extra = {}) => ({
+  matchId,
+  nombre,
+  listo: true,
+  ronda: 1,
+  phaseIndex: 4,
+  actualizadaEn: Date.now(),
+  ...extra,
+});
+
 async function main() {
   const testEnv = await initializeTestEnvironment({
     projectId,
@@ -60,6 +83,9 @@ async function main() {
     // El anfitrión crea el registro antes de admitir a los participantes.
     await assertSucceeds(
       alice.ref(`salas/${roomId}/control/hostUid`).set("alice")
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/control/creatorUid`).set("alice")
     );
     await assertSucceeds(
       alice.ref(`salas/${roomId}`).update({
@@ -84,6 +110,9 @@ async function main() {
       })
     );
     await assertFails(outsider.ref(`salas/${roomId}/chat`).once("value"));
+    await assertFails(
+      outsider.ref(`salas/${roomId}/sincronizacion/clientes`).once("value")
+    );
     await assertFails(outsider.ref(`salas/${roomId}`).remove());
 
     for (const [uid, db] of [["alice", alice], ["bob", bob], ["carol", carol], ["dana", dana]]) {
@@ -97,7 +126,39 @@ async function main() {
     await assertFails(
       bob.ref(`salas/${roomId}/presencia/alice`).set({ estado: "desconectado", ts: Date.now() })
     );
-    await assertSucceeds(outsider.ref(`salas/${roomId}/presencia`).once("value"));
+    await assertFails(outsider.ref(`salas/${roomId}/presencia`).once("value"));
+    await assertSucceeds(bob.ref(`salas/${roomId}/presencia`).once("value"));
+
+    // Confirmaciones y "listo para votar" son efimeros: cada jugador solo publica su
+    // nodo, todos los miembros activos pueden leerlos y el matchId evita datos de revancha.
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/sincronizacion/clientes/bob`).set(
+        clientSyncState("bob")
+      )
+    );
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/sincronizacion/clientes`).once("value")
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/sincronizacion/clientes/alice`).set(
+        clientSyncState("alice")
+      )
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/sincronizacion/clientes/bob`).set(
+        clientSyncState("bob", { matchId: "match-anterior" })
+      )
+    );
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/sincronizacion/listosVotacion/bob`).set(
+        voteReadyState("Bob")
+      )
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/sincronizacion/listosVotacion/bob`).set(
+        voteReadyState("Alice", { actualizadaEn: Date.now() + 1_000 })
+      )
+    );
 
     await assertSucceeds(
       bob.ref(`salas/${roomId}/chat/message-bob`).set(chatMessage("bob", "Bob"))
@@ -106,7 +167,15 @@ async function main() {
       bob.ref(`salas/${roomId}/chat/message-spoof`).set(chatMessage("bob", "Alice"))
     );
     await assertSucceeds(
-      bob.ref(`salas/${roomId}/emotes/emote-bob`).set(emoteEvent("bob", "Bob"))
+      bob.ref(`salas/${roomId}/emotes/bob`).set(emoteEvent("bob", "Bob"))
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/emotes/bob`).set({
+        ...emoteEvent("bob", "Bob"), emoteId: "griego_contento",
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/emotes/forged-key`).set(emoteEvent("bob", "Bob"))
     );
 
     // El canal traidor no se protege por UI: las reglas comprueban el bando y que siga vivo.
@@ -195,7 +264,7 @@ async function main() {
 
     // Lobby y gameplay son permisos distintos.
     await assertFails(
-      bob.ref(`salas/${roomId}/chat_lobby/message-not-lobby`).set({
+      bob.ref(`salas/${roomId}/chat_lobby/bob/0`).set({
         actorId: "bob", speaker: "Bob", mensaje: "Hola", tipo: "texto", ts: Date.now(),
       })
     );
@@ -203,8 +272,40 @@ async function main() {
       alice.ref(`salas/${roomId}/miembros/bob`).set(member("Bob", { lobby: true }))
     );
     await assertSucceeds(
-      bob.ref(`salas/${roomId}/chat_lobby/message-lobby`).set({
+      bob.ref(`salas/${roomId}/chat_lobby/bob/0`).set({
         actorId: "bob", speaker: "Bob", mensaje: "Hola", tipo: "texto", ts: Date.now(),
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat_lobby/bob/1`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Spam", tipo: "texto", ts: Date.now(),
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat_lobby/bob/2`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Slot invalido", tipo: "texto", ts: Date.now(),
+      })
+    );
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      const oldTimestamp = Date.now() - 5_000;
+      await db.ref(`salas/${roomId}/chat_lobby/bob/0`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Anterior", tipo: "texto", ts: oldTimestamp,
+      });
+      await db.ref(`salas/${roomId}/chat_lobby/bob/1`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Anterior", tipo: "texto", ts: oldTimestamp,
+      });
+    });
+    await assertSucceeds(
+      bob.ref(`salas/${roomId}/chat_lobby/bob/0`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Contento", tipo: "emote",
+        emoteId: "griego_contento", ts: Date.now(),
+      })
+    );
+    await assertFails(
+      bob.ref(`salas/${roomId}/chat_lobby/bob/1`).set({
+        actorId: "bob", speaker: "Bob", mensaje: "Contento", tipo: "emote",
+        emoteId: "griego_contento", ts: Date.now(),
       })
     );
     await assertSucceeds(
@@ -256,7 +357,26 @@ async function main() {
     // Solo el anfitrión registrado puede limpiar canales o cerrar su propia sala.
     await assertFails(bob.ref(`salas/${roomId}/chat`).remove());
     await assertSucceeds(alice.ref(`salas/${roomId}/chat`).remove());
+    await assertFails(bob.ref(`salas/${roomId}/sincronizacion`).remove());
+    await assertSucceeds(alice.ref(`salas/${roomId}/sincronizacion`).remove());
     await assertFails(guest.ref(`salas/${roomId}`).remove());
+
+    // Si el host activo cambió, el creador original solo puede retirar la sala cuando el
+    // timestamp del servidor lleva al menos 24 horas vencido.
+    const staleRoomId = "stale-room";
+    await assertSucceeds(alice.ref(`salas/${staleRoomId}/control/hostUid`).set("alice"));
+    await assertSucceeds(alice.ref(`salas/${staleRoomId}/control/creatorUid`).set("alice"));
+    await assertSucceeds(alice.ref(`salas/${staleRoomId}`).update({
+      "control/actualizadaEn": Date.now() - (25 * 60 * 60 * 1000),
+      "control/matchId": matchId,
+      "control/jugadoresVivos": 2,
+      "miembros/alice": member("Alice"),
+      "miembros/bob": member("Bob"),
+    }));
+    await assertSucceeds(alice.ref(`salas/${staleRoomId}/control/hostUid`).set("bob"));
+    await assertFails(outsider.ref(`salas/${staleRoomId}`).remove());
+    await assertSucceeds(alice.ref(`salas/${staleRoomId}`).remove());
+
     await assertSucceeds(alice.ref(`salas/${roomId}`).remove());
 
     console.log("Realtime Database rules: OK");

@@ -5,7 +5,8 @@ data class OnlineVoteReadyState(
     val playerName: String,
     val ready: Boolean,
     val round: Int,
-    val phaseIndex: Int
+    val phaseIndex: Int,
+    val matchId: String = ""
 )
 
 data class OnlineVoteReadyResult(
@@ -19,14 +20,20 @@ object OnlineVoteReadyGate {
         eligiblePlayerNames: Collection<String>,
         states: Collection<OnlineVoteReadyState>,
         round: Int,
-        phaseIndex: Int
+        phaseIndex: Int,
+        matchId: String = ""
     ): OnlineVoteReadyResult {
         val eligibleNames = eligiblePlayerNames
             .map(::normalizedName)
             .filter { it.isNotBlank() }
             .toSet()
         val readyNames = states.asSequence()
-            .filter { it.ready && it.round == round && it.phaseIndex == phaseIndex }
+            .filter {
+                it.ready &&
+                    it.round == round &&
+                    it.phaseIndex == phaseIndex &&
+                    (matchId.isBlank() || it.matchId == matchId)
+            }
             .map { normalizedName(it.playerName) }
             .filter { it in eligibleNames }
             .toSet()

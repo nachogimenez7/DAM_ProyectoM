@@ -5,11 +5,15 @@
     "salas": {
       "$roomId": {
         ".read": "auth != null && data.child('control').child('hostUid').val() === auth.uid",
-        ".write": "auth != null && !newData.exists() && data.child('control').child('hostUid').val() === auth.uid",
+        ".write": "auth != null && !newData.exists() && (data.child('control').child('hostUid').val() === auth.uid || (data.child('control').child('creatorUid').val() === auth.uid && data.child('control').child('actualizadaEn').isNumber() && data.child('control').child('actualizadaEn').val() <= now - 86400000))",
         "control": {
           "hostUid": {
             ".write": "auth != null && newData.isString() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && (newData.val() === auth.uid || root.child('salas').child($roomId).child('miembros').child(newData.val()).child('activo').val() === true)) || (newData.val() === auth.uid && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && (!root.child('salas').child($roomId).child('presencia').child(data.val()).exists() || root.child('salas').child($roomId).child('presencia').child(data.val()).child('estado').val() === 'desconectado')))",
             ".validate": "newData.val().length > 0 && newData.val().length <= 128"
+          },
+          "creatorUid": {
+            ".write": "auth != null && newData.val() === auth.uid && ((!data.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid) || data.val() === auth.uid)",
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
           },
           "matchId": {
             ".write": "auth != null && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",
@@ -42,7 +46,7 @@
           }
         },
         "presencia": {
-          ".read": "auth != null",
+          ".read": "auth != null && (root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid || root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true)",
           "$uid": {
             ".write": "auth != null && ((auth.uid === $uid && root.child('salas').child($roomId).child('miembros').child($uid).child('activo').val() === true) || (!newData.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid))",
             ".validate": "newData.hasChildren(['estado', 'ts'])",
@@ -50,6 +54,52 @@
             "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
             "$other": { ".validate": false }
           }
+        },
+        "sincronizacion": {
+          ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
+          ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",
+          "clientes": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && newData.exists() && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
+              ".validate": "newData.hasChildren(['matchId', 'fase', 'ronda', 'phaseIndex', 'enGameplay', 'jugadoresVistos', 'jugadoresEsperados', 'uidTemporal', 'actualizadaEn']) && newData.child('matchId').val() === root.child('salas').child($roomId).child('control').child('matchId').val()",
+              "matchId": { ".validate": "newData.isString() && newData.val().length >= 8 && newData.val().length <= 80" },
+              "fase": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+              "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
+              "phaseIndex": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 500" },
+              "enGameplay": { ".validate": "newData.isBoolean()" },
+              "jugadoresVistos": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 15" },
+              "jugadoresEsperados": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 15" },
+              "uidTemporal": { ".validate": "newData.val() === $uid" },
+              "orden": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 15" },
+              "rolLeido": { ".validate": "newData.isBoolean()" },
+              "estadoArranque": { ".validate": "newData.isString() && newData.val().length <= 40" },
+              "aplicoEstadoPartida": { ".validate": "newData.isBoolean()" },
+              "sincronizando": { ".validate": "newData.isBoolean()" },
+              "presentacionConfirmada": { ".validate": "newData.isString() && newData.val().length <= 200" },
+              "regresoLobbyConfirmado": { ".validate": "newData.isString() && newData.val().length <= 200" },
+              "ultimaFaseAplicadaEnLocal": { ".validate": "newData.isString() && newData.val().length <= 100" },
+              "anuncioPublico": { ".validate": "newData.isString() && newData.val().length <= 500" },
+              "ganador": { ".validate": "newData.isString() && newData.val().length <= 80" },
+              "entradaLobbyLista": { ".validate": "newData.isBoolean()" },
+              "actualizadaEnLocal": { ".validate": "newData.isNumber()" },
+              "actualizadaEn": { ".validate": "newData.isNumber() && newData.val() <= now" },
+              "$other": { ".validate": false }
+            }
+          },
+          "listosVotacion": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && newData.exists() && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && (!data.exists() || data.child('matchId').val() !== newData.child('matchId').val() || newData.child('actualizadaEn').val() >= data.child('actualizadaEn').val() + 500)",
+              ".validate": "newData.hasChildren(['matchId', 'nombre', 'listo', 'ronda', 'phaseIndex', 'actualizadaEn']) && newData.child('matchId').val() === root.child('salas').child($roomId).child('control').child('matchId').val()",
+              "matchId": { ".validate": "newData.isString() && newData.val().length >= 8 && newData.val().length <= 80" },
+              "nombre": { ".validate": "newData.val() === root.child('salas').child($roomId).child('miembros').child(auth.uid).child('nombre').val()" },
+              "listo": { ".validate": "newData.isBoolean()" },
+              "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30" },
+              "phaseIndex": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 500" },
+              "actualizadaEn": { ".validate": "newData.isNumber() && newData.val() >= now - 120000 && newData.val() <= now" },
+              "$other": { ".validate": false }
+            }
+          },
+          "$other": { ".validate": false }
         },
         "chat": {
           ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
@@ -115,8 +165,8 @@
         "emotes": {
           ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",
-          "$emoteEventId": {
-            ".write": "auth != null && !data.exists() && newData.child('actorId').val() === auth.uid && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('enLobby').val() === false && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('vivo').val() === true",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.child('actorId').val() === auth.uid && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('enLobby').val() === false && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('vivo').val() === true && (!data.exists() || data.child('matchId').val() !== newData.child('matchId').val() || newData.child('ts').val() >= data.child('ts').val() + 8000)",
             ".validate": "newData.hasChildren(['matchId', 'actorId', 'player', 'emoteId', 'ts']) && newData.child('matchId').val() === root.child('salas').child($roomId).child('control').child('matchId').val()",
             "matchId": { ".validate": "newData.isString() && newData.val().length >= 8 && newData.val().length <= 80" },
             "actorId": { ".validate": "newData.val() === auth.uid" },
@@ -129,16 +179,18 @@
         "chat_lobby": {
           ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('enLobby').val() === true",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",
-          "$messageId": {
-            ".write": "auth != null && !data.exists() && newData.child('actorId').val() === auth.uid && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('enLobby').val() === true",
-            ".validate": "newData.hasChildren(['actorId', 'speaker', 'mensaje', 'tipo', 'ts']) && ((newData.child('tipo').val() === 'texto' && !newData.hasChild('emoteId')) || (newData.child('tipo').val() === 'emote' && newData.hasChild('emoteId'))) ",
-            "actorId": { ".validate": "newData.val() === auth.uid" },
-            "speaker": { ".validate": "newData.val() === root.child('salas').child($roomId).child('miembros').child(auth.uid).child('nombre').val()" },
-            "mensaje": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140" },
-            "tipo": { ".validate": "newData.val() === 'texto' || newData.val() === 'emote'" },
-            "emoteId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
-            "ts": { ".validate": "newData.isNumber() && newData.val() >= now - 120000 && newData.val() <= now" },
-            "$other": { ".validate": false }
+          "$uid": {
+            "$slot": {
+              ".write": "auth != null && auth.uid === $uid && ($slot === '0' || $slot === '1') && newData.exists() && newData.child('actorId').val() === auth.uid && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('enLobby').val() === true && (!root.child('salas').child($roomId).child('chat_lobby').child($uid).child('0').exists() || newData.child('ts').val() >= root.child('salas').child($roomId).child('chat_lobby').child($uid).child('0').child('ts').val() + (newData.child('tipo').val() === 'emote' ? 4000 : 1200)) && (!root.child('salas').child($roomId).child('chat_lobby').child($uid).child('1').exists() || newData.child('ts').val() >= root.child('salas').child($roomId).child('chat_lobby').child($uid).child('1').child('ts').val() + (newData.child('tipo').val() === 'emote' ? 4000 : 1200))",
+              ".validate": "newData.hasChildren(['actorId', 'speaker', 'mensaje', 'tipo', 'ts']) && ((newData.child('tipo').val() === 'texto' && !newData.hasChild('emoteId')) || (newData.child('tipo').val() === 'emote' && newData.hasChild('emoteId'))) ",
+              "actorId": { ".validate": "newData.val() === auth.uid" },
+              "speaker": { ".validate": "newData.val() === root.child('salas').child($roomId).child('miembros').child(auth.uid).child('nombre').val()" },
+              "mensaje": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140" },
+              "tipo": { ".validate": "newData.val() === 'texto' || newData.val() === 'emote'" },
+              "emoteId": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 60" },
+              "ts": { ".validate": "newData.isNumber() && newData.val() >= now - 120000 && newData.val() <= now" },
+              "$other": { ".validate": false }
+            }
           }
         },
         "propuesta_silencio": {

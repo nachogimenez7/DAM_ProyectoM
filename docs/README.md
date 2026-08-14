@@ -27,6 +27,8 @@ docs/
     ├── seguridad-online.md         Auditoría de seguridad del online y plan gratuito
     ├── project-structure.md        Estructura rápida (parcialmente desactualizada, ver nota)
     ├── map-exclusive-roles.md      Roles exclusivos por mapa
+    ├── banco-futuro-roles-y-personajes-historicos.md
+    │                                Ideas para una expansión posterior al lanzamiento
     ├── lan-role-readiness.md       Notas de lectura de roles
     └── discord/                    Material de comunidad/Discord
 ```
@@ -38,6 +40,7 @@ docs/
 - [`seguridad-online.md`](seguridad-online.md) — Auditoría de seguridad del online (jul 2026): hallazgos priorizados, qué se cerró en `firestore.rules`, qué límites tiene el plan gratuito y qué exige Play Store. La implementación pendiente está en [`desarrollo/specs/SPEC-seguridad-y-moderacion-online.md`](desarrollo/specs/SPEC-seguridad-y-moderacion-online.md).
 - [`play-games-setup.md`](play-games-setup.md) — Estado de la integración de Play Games, datos del proyecto y orden exacto para terminar Play Console y Firebase.
 - [`achievement-icon-concepts.md`](achievement-icon-concepts.md) — Dirección visual, símbolos y puntos propuestos para los 10 logros de Play Games.
+- [`banco-futuro-roles-y-personajes-historicos.md`](banco-futuro-roles-y-personajes-historicos.md) — Banco de diseño para roles universales, exclusivos, personajes históricos y un posible modo Crónicas. Es material futuro y no modifica el roadmap de estabilización vigente.
 
 ## Avisos de documentos desactualizados
 

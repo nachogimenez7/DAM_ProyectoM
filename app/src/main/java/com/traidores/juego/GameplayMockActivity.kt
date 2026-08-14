@@ -225,6 +225,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineGuestHostWindowStartedAtMs = 0L
     private var onlinePresencePlayers = emptyList<OnlinePresencePlayer>()
     private var realtimePresence: RealtimeRoomPresence? = null
+    private var realtimeGameplaySync: RealtimeGameplaySync? = null
     private var realtimeTableSilence: RealtimeTableSilence? = null
     private var ownPlayerTableSilenced = false
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
@@ -1116,6 +1117,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         super.onStart()
         chatController.onRealtimeAccessUnavailable()
         startRealtimeGameplayPresence()
+        startRealtimeGameplaySync()
         markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
         startOnlinePlayersPresenceListener()
         startOnlineActionsListener()
@@ -1136,6 +1138,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
         )
         realtimePresence = null
+        realtimeGameplaySync?.stop()
+        realtimeGameplaySync = null
         realtimeTableSilence?.stop()
         realtimeTableSilence = null
         super.onStop()
@@ -2370,34 +2374,34 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineInitialRoleRead -> OnlineStartupGate.STARTUP_PHASE_READY
             else -> OnlineStartupGate.STARTUP_PHASE_READING
         }
-        FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(onlinePartidaId)
-            .update(
-                mapOf(
-                    "estadoClientes.$onlinePlayerId" to mapOf(
-                        "fase" to session.phase.name,
-                        "ronda" to session.round,
-                        "phaseIndex" to session.phaseIndex,
-                        "enGameplay" to true,
-                        "jugadoresVistos" to session.players.size,
-                        "jugadoresEsperados" to expectedOnlineStartupPlayers(),
-                        "uidTemporal" to onlinePlayerId,
-                        "orden" to humanOrder,
-                        "rolLeido" to onlineInitialRoleRead,
-                        "estadoArranque" to startupState,
-                        "aplicoEstadoPartida" to authoritativeStateAppliedLocally(),
-                        "sincronizando" to onlineAwaitingHostAdvance,
-                        FIELD_PRESENTATION_ACK_KEY to onlinePresentationAckKey,
-                        FIELD_WINNER_RETURN_ACK_KEY to onlineWinnerReturnAckKey,
-                        "ultimaFaseAplicadaEnLocal" to latestAppliedPhaseLabel(),
-                        "anuncioPublico" to session.publicAnnouncement,
-                        "ganador" to session.winner,
-                        "actualizadaEnLocal" to System.currentTimeMillis()
-                    ),
-                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
-                )
+        val sync = ensureRealtimeGameplaySync()
+        if (sync == null) {
+            lastPublishedOnlineStateKey = ""
+            return
+        }
+        sync.publishClientState(
+            mapOf(
+                OnlineLobbyEntryGate.FIELD_MATCH_ID to session.onlineMatchId,
+                "fase" to session.phase.name,
+                "ronda" to session.round,
+                "phaseIndex" to session.phaseIndex,
+                "enGameplay" to true,
+                "jugadoresVistos" to session.players.size,
+                "jugadoresEsperados" to expectedOnlineStartupPlayers(),
+                "uidTemporal" to onlinePlayerId,
+                "orden" to humanOrder,
+                "rolLeido" to onlineInitialRoleRead,
+                "estadoArranque" to startupState,
+                "aplicoEstadoPartida" to authoritativeStateAppliedLocally(),
+                "sincronizando" to onlineAwaitingHostAdvance,
+                FIELD_PRESENTATION_ACK_KEY to onlinePresentationAckKey,
+                FIELD_WINNER_RETURN_ACK_KEY to onlineWinnerReturnAckKey,
+                "ultimaFaseAplicadaEnLocal" to latestAppliedPhaseLabel(),
+                "anuncioPublico" to session.publicAnnouncement,
+                "ganador" to session.winner,
+                "actualizadaEnLocal" to System.currentTimeMillis()
             )
+        )
             .addOnFailureListener { error ->
                 if (lastPublishedOnlineStateKey == stateKey) {
                     lastPublishedOnlineStateKey = ""
@@ -2627,10 +2631,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     return@addSnapshotListener
                 }
                 handleOnlineStartupDeadlineSnapshot(state)
-                val clientStates = snapshot.get("estadoClientes").asStringAnyMap()
-                handleOnlineStartupSnapshot(clientStates)
-                handleOnlinePresentationSnapshot(clientStates)
-                handleOnlineWinnerReturnSnapshot(clientStates)
                 applyAuthoritativeOnlineState(state)
             }
     }
@@ -3416,6 +3416,41 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         presence.start()
     }
 
+    private fun ensureRealtimeGameplaySync(): RealtimeGameplaySync? {
+        if (!isOnlineGameplay() || onlinePartidaId.isBlank() || onlinePlayerId.isBlank()) return null
+        realtimeGameplaySync?.let { return it }
+        val sync = RealtimeGameplaySync(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            uid = onlinePlayerId,
+            onClientStatesChanged = { states ->
+                handleOnlineStartupSnapshot(states)
+                handleOnlinePresentationSnapshot(states)
+                handleOnlineWinnerReturnSnapshot(states)
+            },
+            onVoteReadyStatesChanged = { states ->
+                onlineVoteReadyStates = states
+                if (::session.isInitialized) {
+                    renderReadyToVoteButton()
+                    maybeAdvanceOnlineReadyVote()
+                }
+            },
+            onError = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_gameplay_sync_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+                realtimePresence?.refresh()
+            }
+        )
+        realtimeGameplaySync = sync
+        return sync
+    }
+
+    private fun startRealtimeGameplaySync() {
+        ensureRealtimeGameplaySync()?.start()
+    }
+
     private fun syncRealtimeGameplayAccess() {
         if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
         val members = session.players.mapIndexedNotNull { index, player ->
@@ -3645,15 +3680,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     return@addSnapshotListener
                 }
                 val documents = snapshot?.documents.orEmpty()
-                onlineVoteReadyStates = documents.map { document ->
-                    OnlineVoteReadyState(
-                        uid = document.id,
-                        playerName = document.getString(OnlineRoomFirestore.FIELD_NAME).orEmpty(),
-                        ready = document.getBoolean(FIELD_READY_TO_VOTE) == true,
-                        round = document.getLong(FIELD_READY_TO_VOTE_ROUND)?.toInt() ?: -1,
-                        phaseIndex = document.getLong(FIELD_READY_TO_VOTE_PHASE_INDEX)?.toInt() ?: -1
-                    )
-                }
                 val players = documents
                     .map { document ->
                         val legacyConnected = document.getString(
@@ -5558,7 +5584,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 eligiblePlayerNames = eligible.map { it.name },
                 states = onlineVoteReadyStates,
                 round = session.round,
-                phaseIndex = session.phaseIndex
+                phaseIndex = session.phaseIndex,
+                matchId = session.onlineMatchId
             )
             return result.readyCount to result.totalCount
         }
@@ -5649,23 +5676,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             playerName = human.name,
             ready = ready,
             round = session.round,
-            phaseIndex = session.phaseIndex
+            phaseIndex = session.phaseIndex,
+            matchId = session.onlineMatchId
         )
         onlineVoteReadyStates = previousStates.filterNot { it.uid == onlinePlayerId } + optimisticState
         renderReadyToVoteButton()
 
-        FirebaseFirestore.getInstance()
-            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
-            .document(onlinePartidaId)
-            .collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
-            .document(onlinePlayerId)
-            .update(
-                mapOf(
-                    FIELD_READY_TO_VOTE to ready,
-                    FIELD_READY_TO_VOTE_ROUND to session.round,
-                    FIELD_READY_TO_VOTE_PHASE_INDEX to session.phaseIndex
-                )
-            )
+        val sync = ensureRealtimeGameplaySync()
+        if (sync == null) {
+            onlineVoteReadyStates = previousStates
+            renderReadyToVoteButton()
+            return
+        }
+        sync.publishVoteReady(
+            matchId = session.onlineMatchId,
+            playerName = human.name,
+            ready = ready,
+            round = session.round,
+            phaseIndex = session.phaseIndex
+        )
             .addOnFailureListener { error ->
                 onlineVoteReadyStates = previousStates
                 OnlineDebugLog.e(
@@ -5696,7 +5725,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             eligiblePlayerNames = eligibleReadyVoters().map { it.name },
             states = onlineVoteReadyStates,
             round = session.round,
-            phaseIndex = session.phaseIndex
+            phaseIndex = session.phaseIndex,
+            matchId = session.onlineMatchId
         )
         if (result.canSkip) {
             autoAdvanceHandler.post { skipDebateToVoting("online_all_ready") }
@@ -11240,9 +11270,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val PRIMARY_ACTION_RESTING_FILL = "#4A3A1E"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 0
-        private const val FIELD_READY_TO_VOTE = "listoParaVotar"
-        private const val FIELD_READY_TO_VOTE_ROUND = "listoParaVotarRonda"
-        private const val FIELD_READY_TO_VOTE_PHASE_INDEX = "listoParaVotarPhaseIndex"
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"
         private const val FIELD_WINNER_RETURN_ACK_KEY = "regresoLobbyConfirmado"
         private const val FIELD_STARTUP_AUTO_DEADLINE = "inicioAutomaticoEpochMs"

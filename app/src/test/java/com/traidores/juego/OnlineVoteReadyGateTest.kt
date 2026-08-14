@@ -41,6 +41,30 @@ class OnlineVoteReadyGateTest {
     }
 
     @Test
+    fun ignoresReadinessFromAPreviousMatch() {
+        val result = OnlineVoteReadyGate.evaluate(
+            eligiblePlayerNames = listOf("Nacho", "Mora"),
+            states = listOf(
+                OnlineVoteReadyState(
+                    "1", "Nacho", true,
+                    round = 2, phaseIndex = 8, matchId = "match-actual"
+                ),
+                OnlineVoteReadyState(
+                    "2", "Mora", true,
+                    round = 2, phaseIndex = 8, matchId = "match-anterior"
+                )
+            ),
+            round = 2,
+            phaseIndex = 8,
+            matchId = "match-actual"
+        )
+
+        assertEquals(1, result.readyCount)
+        assertEquals(2, result.totalCount)
+        assertFalse(result.canSkip)
+    }
+
+    @Test
     fun coordinatorResolvesWhenEveryEligiblePlayerVoteReachedServer() {
         assertTrue(
             OnlineVoteReadyGate.shouldResolve(

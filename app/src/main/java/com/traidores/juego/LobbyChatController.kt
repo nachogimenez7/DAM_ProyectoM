@@ -1,5 +1,6 @@
 package com.traidores.juego
 
+import android.os.SystemClock
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -24,6 +25,7 @@ class LobbyChatController(
     private val speaker: String,
     private val onMessagesChanged: (List<LobbyChatMessage>) -> Unit,
     private val onError: (Exception) -> Unit,
+    private val onRateLimited: (Long) -> Unit = {},
     private val onAccessCancelled: () -> Unit = {}
 ) {
     private val chatReference
@@ -31,30 +33,24 @@ class LobbyChatController(
 
     private var activeQuery: Query? = null
     private var listener: ValueEventListener? = null
+    private var lastSendAttemptAtMs = 0L
+    private var nextMessageSlot = 0
 
     fun start() {
         stop()
-        val query = chatReference.orderByKey().limitToLast(MAX_MESSAGES)
+        val query = chatReference.orderByKey()
         val valueListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                val messages = snapshot.children.mapNotNull { child ->
-                    val actor = child.child(FIELD_ACTOR_ID).getValue(String::class.java).orEmpty()
-                    val author = child.child(FIELD_SPEAKER).getValue(String::class.java).orEmpty()
-                    val body = child.child(FIELD_MESSAGE).getValue(String::class.java).orEmpty()
-                    if (actor.isBlank() || author.isBlank() || body.isBlank()) return@mapNotNull null
-                    LobbyChatMessage(
-                        id = child.key.orEmpty(),
-                        actorId = actor,
-                        speaker = author,
-                        message = body,
-                        emoteId = child.child(FIELD_EMOTE_ID)
-                            .getValue(String::class.java)
-                            ?.takeIf { it.isNotBlank() },
-                        createdAtLocal = child.child(FIELD_TIMESTAMP)
-                            .getValue(Long::class.java)
-                            ?: 0L
-                    )
-                }
+                val messages = snapshot.children
+                    .flatMap { playerOrLegacyMessage ->
+                        if (playerOrLegacyMessage.hasChild(FIELD_ACTOR_ID)) {
+                            listOfNotNull(parseMessage(playerOrLegacyMessage))
+                        } else {
+                            playerOrLegacyMessage.children.mapNotNull(::parseMessage)
+                        }
+                    }
+                    .sortedBy(LobbyChatMessage::createdAtLocal)
+                    .takeLast(MAX_MESSAGES)
                 onMessagesChanged(messages)
             }
 
@@ -89,6 +85,20 @@ class LobbyChatController(
     }
 
     private fun send(message: String, emoteId: String?, onComplete: () -> Unit) {
+        val now = SystemClock.elapsedRealtime()
+        val generalRemainingMs = remainingCooldown(now, lastSendAttemptAtMs, MESSAGE_COOLDOWN_MS)
+        val emoteRemainingMs = if (emoteId == null) {
+            0L
+        } else {
+            remainingCooldown(now, lastSendAttemptAtMs, EMOTE_COOLDOWN_MS)
+        }
+        val remainingMs = maxOf(generalRemainingMs, emoteRemainingMs)
+        if (remainingMs > 0L) {
+            onRateLimited(remainingMs)
+            return
+        }
+
+        lastSendAttemptAtMs = now
         val payload = hashMapOf<String, Any>(
             FIELD_ACTOR_ID to actorId,
             FIELD_SPEAKER to speaker.take(18),
@@ -97,14 +107,42 @@ class LobbyChatController(
             FIELD_TIMESTAMP to ServerValue.TIMESTAMP
         )
         if (emoteId != null) payload[FIELD_EMOTE_ID] = emoteId
-        chatReference.push().setValue(payload)
+        val slot = nextMessageSlot.toString()
+        nextMessageSlot = (nextMessageSlot + 1) % MESSAGE_SLOTS_PER_PLAYER
+        chatReference.child(actorId).child(slot).setValue(payload)
             .addOnSuccessListener { onComplete() }
             .addOnFailureListener(onError)
+    }
+
+    private fun parseMessage(snapshot: DataSnapshot): LobbyChatMessage? {
+        val actor = snapshot.child(FIELD_ACTOR_ID).getValue(String::class.java).orEmpty()
+        val author = snapshot.child(FIELD_SPEAKER).getValue(String::class.java).orEmpty()
+        val body = snapshot.child(FIELD_MESSAGE).getValue(String::class.java).orEmpty()
+        if (actor.isBlank() || author.isBlank() || body.isBlank()) return null
+        val timestamp = snapshot.child(FIELD_TIMESTAMP).getValue(Long::class.java) ?: 0L
+        return LobbyChatMessage(
+            id = "${snapshot.ref.path}:$timestamp",
+            actorId = actor,
+            speaker = author,
+            message = body,
+            emoteId = snapshot.child(FIELD_EMOTE_ID)
+                .getValue(String::class.java)
+                ?.takeIf { it.isNotBlank() },
+            createdAtLocal = timestamp
+        )
+    }
+
+    private fun remainingCooldown(nowMs: Long, lastAttemptAtMs: Long, cooldownMs: Long): Long {
+        if (lastAttemptAtMs <= 0L) return 0L
+        return (cooldownMs - (nowMs - lastAttemptAtMs)).coerceAtLeast(0L)
     }
 
     companion object {
         const val NODE = "chat_lobby"
         const val MAX_MESSAGES = 30
+        const val MESSAGE_COOLDOWN_MS = 1_200L
+        const val EMOTE_COOLDOWN_MS = 4_000L
+        const val MESSAGE_SLOTS_PER_PLAYER = 2
         private const val MAX_TEXT_LENGTH = 140
         private const val FIELD_ACTOR_ID = "actorId"
         private const val FIELD_SPEAKER = "speaker"

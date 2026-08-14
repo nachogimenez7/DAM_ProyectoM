@@ -46,8 +46,8 @@
     <string name="lobby_start_local">INICIAR PARTIDA</string>
     <string name="lobby_start_waiting_host">ESPERANDO AL ANFITRIÓN</string>
     <string name="lobby_start_sync_entry">SINCRONIZANDO ENTRADA…</string>
-    <string name="lobby_start_cleaning">LIMPIANDO…</string>
-    <string name="lobby_start_online">INICIAR ONLINE</string>
+    <string name="lobby_start_cleaning">BORRANDO LAS HUELLAS…</string>
+    <string name="lobby_start_online">INICIAR PARTIDA</string>
     <string name="lobby_start_with_present">JUGAR CON %1$d PRESENTES</string>
     <string name="lobby_start_waiting">ESPERANDO %1$d/%2$d</string>
     <string name="lobby_start_syncing">SINCRONIZANDO</string>

@@ -38,17 +38,23 @@ class RealtimeRoomPresence(
     private var started = false
     private var socketConnected = false
     private var membershipGranted = false
+    private var membershipAccessKey = ""
     private var publishGeneration = 0
 
     private val membershipListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
             val granted = snapshot.exists() &&
                 snapshot.child("activo").getValue(Boolean::class.java) == true
-            val becameAvailable = granted && !membershipGranted
+            val nextAccessKey = if (granted) membershipAccessKey(snapshot) else ""
+            val accessChanged = granted && nextAccessKey != membershipAccessKey
             membershipGranted = granted
+            membershipAccessKey = nextAccessKey
             if (!granted) {
                 markOwnPresenceUnavailable()
-            } else if (becameAvailable && socketConnected && desiredConnected) {
+            } else if (accessChanged && socketConnected && desiredConnected) {
+                // Los permisos de chat dependen de vivo/traidor/invitadoOraculo. Si alguno
+                // cambia (por ejemplo, justo al morir), hay que volver a habilitar los
+                // listeners de contenido aunque el jugador ya figurara como miembro activo.
                 armDisconnectThenPublishOnline()
             }
         }
@@ -135,6 +141,7 @@ class RealtimeRoomPresence(
         desiredConnected = false
         socketConnected = false
         membershipGranted = false
+        membershipAccessKey = ""
         markOwnPresenceUnavailable()
         ownMembership.removeEventListener(membershipListener)
         presenceRoot.removeEventListener(presenceListener)
@@ -181,6 +188,16 @@ class RealtimeRoomPresence(
     private fun markOwnPresenceUnavailable() {
         publishGeneration += 1
         onOwnPresenceUnavailable()
+    }
+
+    private fun membershipAccessKey(snapshot: DataSnapshot): String {
+        return listOf(
+            snapshot.child("nombre").getValue(String::class.java).orEmpty(),
+            snapshot.child("enLobby").getValue(Boolean::class.java) == true,
+            snapshot.child("vivo").getValue(Boolean::class.java) == true,
+            snapshot.child("traidor").getValue(Boolean::class.java) == true,
+            snapshot.child("invitadoOraculo").getValue(Boolean::class.java) == true
+        ).joinToString("|")
     }
 
     private fun payload(state: String): Map<String, Any> = mapOf(

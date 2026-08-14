@@ -143,7 +143,7 @@ handoff de host restringido a miembros (ya hecho en A1).
 | ID | Sev | Hallazgo | Estado |
 |----|-----|----------|--------|
 | C1 | ALTO | Sin reportar, silenciar ni banear | resuelto en cliente y reglas |
-| C2 | MEDIO | Sin límite de frecuencia del lado del servidor | spec |
+| C2 | MEDIO | Límites de frecuencia incompletos | emotes y lobby cerrados; chat de partida pendiente |
 | C3 | MEDIO | Nombres y biografías sin filtro | spec |
 | C4 | MEDIO | Las sanciones se evaden reinstalando | spec |
 
@@ -154,10 +154,13 @@ vuelve a entrar de inmediato, y durante la partida no hay absolutamente nada.
 anfitrión, y `jugadores` ahora rechaza el alta y las escrituras de un uid baneado. El baneo de
 sala pasa a ser real, no una puerta giratoria. Falta la UI y el flujo, que van en la spec.
 
-**C2.** El cooldown de chat es de 1200 ms y vive en el cliente
-([GameplayChatController.kt:3214](app/src/main/java/com/traidores/juego/GameplayChatController.kt:3214)).
-Un cliente modificado lo ignora. RTDB **sí** puede imponer un intervalo mínimo por uid con el
-patrón de actualización multi-ruta; va en la spec.
+**C2.** Los eventos efímeros ya no pueden crecer ni escribirse sin límite. En el lobby, cada
+uid dispone de dos espacios reutilizables: RTDB exige 1200 ms entre mensajes y 4000 ms antes
+de otro emote. En partida, cada uid reutiliza un único registro de emote y RTDB exige 8000 ms;
+el cliente conserva el límite de 10 s y dos emotes por ronda. Así, una sala de 15 jugadores
+ocupa como máximo 30 entradas de lobby y 15 emotes de partida. El texto de los canales de
+partida todavía usa ids acumulativos y su cooldown de 1200 ms vive sólo en el cliente; ésa es
+la parte pendiente si se quiere cerrar también a clientes modificados.
 
 **C3.** `nombre` (18), `bioPerfil` (40) y los mensajes (140) están limitados en longitud pero no
 en contenido. Un nombre ofensivo llega a todas las salas y aparece en el perfil público. Con
@@ -296,9 +299,11 @@ Para que quede registrado y no se relitigue más adelante:
   perfectamente viable; a escala de miles de usuarios, no.
 - **Límite de frecuencia fuerte.** Las reglas pueden imponer un intervalo mínimo, pero no
   contar peticiones por hora ni detectar patrones.
-- **Limpieza automática de salas viejas.** Hoy es manual. Alternativa gratuita: un script con
-  credencial de servicio corriendo en GitHub Actions una vez por día, que además puede procesar
-  la cola de reportes. No es tiempo real, pero para limpieza y sanciones alcanza.
+- **Limpieza global garantizada de salas viejas.** En Spark no hay un proceso de servidor
+  programado. La app sí hace una limpieza oportunista y segura: cuando un creador vuelve a abrir
+  el modo online, retira sus salas con 24 horas sin actividad. Si nunca vuelve a conectarse, ese
+  huérfano requiere limpieza manual. La solución de producción es una Cloud Function diaria en
+  Blaze; un TTL de Firestore por sí solo no alcanza porque no borra subcolecciones ni RTDB.
 
 Desde febrero de 2026 Cloud Functions exige el plan **Blaze**, que necesita tarjeta asociada
 aunque el consumo real quede en cero dentro de la capa gratuita

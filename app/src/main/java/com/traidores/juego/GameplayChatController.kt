@@ -412,7 +412,7 @@ class GameplayChatController(
 
         FirebaseDatabase.getInstance()
             .getReference("salas/${host.onlineRoomId}/$RTDB_REACTIONS_NODE")
-            .push()
+            .child(host.onlinePlayerUid)
             .setValue(
                 mapOf(
                     "matchId" to matchId,
@@ -2467,16 +2467,18 @@ class GameplayChatController(
             val actorId = child.child("actorId").getValue(String::class.java).orEmpty()
             val playerName = child.child("player").getValue(String::class.java).orEmpty()
             val emoteId = child.child("emoteId").getValue(String::class.java).orEmpty()
+            val timestamp = child.child("ts").getValue(Long::class.java) ?: 0L
             if (
                 id.isBlank() ||
                 eventMatchId != matchId ||
                 actorId.isBlank() ||
                 playerName.isBlank() ||
-                emoteId.isBlank()
+                emoteId.isBlank() ||
+                timestamp <= 0L
             ) {
                 return@mapNotNull null
             }
-            OnlineReactionEntry(id, actorId, playerName, emoteId)
+            OnlineReactionEntry("$id:$timestamp", actorId, playerName, emoteId)
         }
     }
 

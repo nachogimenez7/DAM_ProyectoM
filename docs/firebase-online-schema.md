@@ -502,12 +502,24 @@ Pendiente para produccion:
 
 ## Limpieza de salas
 
-Por ahora no se borra automaticamente. La app puede marcar una sala como:
+La app puede marcar una sala como:
 
 - `abandonada`: el host salio antes de terminar.
 - `finalizada`: la partida termino.
 
-Limpieza manual recomendada durante pruebas:
+La versión actual también ejecuta una limpieza oportunista al abrir el modo online:
+
+- Consulta solo salas cuyo `hostId` coincide con el usuario autenticado.
+- Considera vencida una sala tras 24 horas sin actividad en `actualizadaEn`, que es timestamp
+  de servidor.
+- Borra primero las subcolecciones conocidas, luego `Realtime Database/salas/{partidaId}`,
+  `codigosSala/{codigo}` y finalmente el documento raíz.
+- Las reglas vuelven a comprobar creador y antigüedad; cambiar el reloj del teléfono no permite
+  eliminar una sala vigente.
+- Como máximo intenta la limpieza una vez cada 6 horas por instalación para evitar lecturas
+  innecesarias.
+
+Limpieza manual de respaldo durante pruebas:
 
 1. Ir a Firestore Console.
 2. Abrir `partidas`.
@@ -515,10 +527,10 @@ Limpieza manual recomendada durante pruebas:
 4. Si quedan subcolecciones visibles, borrarlas desde el mismo documento.
 5. En Realtime Database, borrar tambien `salas/{partidaId}` si quedo un nodo huerfano de una prueba interrumpida.
 
-Limpieza futura:
-
-- Agregar TTL basado en `actualizadaEn` o `ultimaActividadOnline`.
-- O usar Cloud Function programada que elimine salas viejas.
+Limitación: en Spark no existe un barrido global programado. Si el creador no vuelve a abrir el
+online, su sala huérfana puede permanecer. Para producción, usar una Cloud Function diaria en
+Blaze que elimine Firestore y RTDB. El TTL de Firestore no reemplaza esa función: no borra las
+subcolecciones del documento vencido y tampoco puede limpiar Realtime Database.
 
 ## Criterios de prueba
 

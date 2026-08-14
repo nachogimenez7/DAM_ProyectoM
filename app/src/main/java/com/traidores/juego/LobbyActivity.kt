@@ -170,6 +170,7 @@ class LobbyActivity : BaseActivity() {
     private var lastOnlineResultKey = ""
     private var lobbyRoomBaselineReady = false
     private var realtimePresence: RealtimeRoomPresence? = null
+    private var realtimeGameplaySync: RealtimeGameplaySync? = null
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
     private var lobbyRealtimeAccessReady = false
@@ -422,6 +423,7 @@ class LobbyActivity : BaseActivity() {
             enteringOnlineMatch = false
             lobbyRealtimeAccessReady = false
             startRealtimePresence()
+            startRealtimeLobbySync()
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
@@ -438,6 +440,8 @@ class LobbyActivity : BaseActivity() {
             val shouldWriteLegacyDisconnected = shouldStopRealtimeAsDisconnected && !onlineRemovalHandled
             realtimePresence?.stop(markDisconnected = shouldStopRealtimeAsDisconnected)
             realtimePresence = null
+            realtimeGameplaySync?.stop()
+            realtimeGameplaySync = null
             if (shouldWriteLegacyDisconnected) {
                 markOnlinePresence(PLAYER_STATE_DISCONNECTED)
             }
@@ -543,8 +547,6 @@ class LobbyActivity : BaseActivity() {
         }
         renderOnlineMapVoting()
         renderOnlineRoleComposition()
-        playersContainer.removeAllViews()
-        onlinePlayersContainer.removeAllViews()
         timingOptionsButton.text = "Opciones de partida"
         btnAdvancedOptions.text = if (onlineLobby) "Ver y editar reglas" else "Opciones avanzadas"
         renderPracticeRoleSummary()
@@ -563,66 +565,73 @@ class LobbyActivity : BaseActivity() {
         // scrollbars="none" is enabled later because its ScrollBarDrawable remains null.
         onlinePlayersScroll.isHorizontalScrollBarEnabled =
             OnlineLobbyPresentation.shouldShowNativePlayerScrollBar(onlineSlotCount)
-        session.players.forEachIndexed { index, player ->
+        val preserveOnlinePlayerStrip = onlineLobby &&
+            onlineCleanupPending &&
+            onlinePlayersContainer.childCount > 0
+        if (!preserveOnlinePlayerStrip) {
+            playersContainer.removeAllViews()
+            onlinePlayersContainer.removeAllViews()
+            session.players.forEachIndexed { index, player ->
+                if (onlineLobby) {
+                    onlinePlayersContainer.addView(
+                        createOnlinePlayerChip(player, visibleOnlinePlayers.getOrNull(index)),
+                        LinearLayout.LayoutParams(onlineChipWidth, LinearLayout.LayoutParams.MATCH_PARENT).apply {
+                            if (index > 0) marginStart = dp(5)
+                        }
+                    )
+                    return@forEachIndexed
+                }
+                val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
+                val onlinePlayer = visibleOnlinePlayers.getOrNull(index)
+                row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
+                row.findViewById<TextView>(R.id.playerName).text = player.name
+                row.findViewById<TextView>(R.id.playerStatus).text =
+                    onlinePlayer?.statusLabel(onlineHostId.ifBlank { onlineActiveHostId })
+                        ?: if (index == 0) "Anfitrion" else "Listo"
+                row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
+                    showPlayerProfile(player)
+                }
+                row.findViewById<ImageButton>(R.id.btnPlayerProfile).contentDescription =
+                    "Ver perfil de ${player.name}"
+                row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
+                    val canRemoveOnlinePlayer = isFirestoreOnlineLobby() &&
+                        onlinePlayer != null &&
+                        canCurrentHostRemoveOnlinePlayer(onlinePlayer)
+                    isEnabled = if (isFirestoreOnlineLobby()) {
+                        canRemoveOnlinePlayer
+                    } else {
+                        index != 0 && !isOnlineGuest()
+                    }
+                    alpha = if (isEnabled) 1f else 0.28f
+                    contentDescription = when {
+                        isFirestoreOnlineLobby() && onlinePlayer?.id == onlineTempUid ->
+                            "No puedes expulsarte de la sala"
+                        isFirestoreOnlineLobby() && !currentUserIsOnlineHost() ->
+                            "Solo el anfitrion puede expulsar jugadores online"
+                        isFirestoreOnlineLobby() && onlinePlayer != null ->
+                            "Expulsar a ${onlinePlayer.name} de la sala online"
+                        isOnlineGuest() -> "Solo el anfitrion puede expulsar jugadores"
+                        index == 0 -> "El anfitrion no se puede expulsar"
+                        else -> "Expulsar a ${player.name}"
+                    }
+                    setOnClickListener { confirmPlayerRemoval(index, player, onlinePlayer) }
+                }
+                playersContainer.addView(row)
+            }
             if (onlineLobby) {
-                onlinePlayersContainer.addView(
-                    createOnlinePlayerChip(player, visibleOnlinePlayers.getOrNull(index)),
-                    LinearLayout.LayoutParams(onlineChipWidth, LinearLayout.LayoutParams.MATCH_PARENT).apply {
-                        if (index > 0) marginStart = dp(5)
-                    }
-                )
-                return@forEachIndexed
-            }
-            val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
-            val onlinePlayer = visibleOnlinePlayers.getOrNull(index)
-            row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
-            row.findViewById<TextView>(R.id.playerName).text = player.name
-            row.findViewById<TextView>(R.id.playerStatus).text =
-                onlinePlayer?.statusLabel(onlineHostId.ifBlank { onlineActiveHostId })
-                    ?: if (index == 0) "Anfitrion" else "Listo"
-            row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
-                showPlayerProfile(player)
-            }
-            row.findViewById<ImageButton>(R.id.btnPlayerProfile).contentDescription =
-                "Ver perfil de ${player.name}"
-            row.findViewById<ImageButton>(R.id.btnKickPlayer).apply {
-                val canRemoveOnlinePlayer = isFirestoreOnlineLobby() &&
-                    onlinePlayer != null &&
-                    canCurrentHostRemoveOnlinePlayer(onlinePlayer)
-                isEnabled = if (isFirestoreOnlineLobby()) {
-                    canRemoveOnlinePlayer
-                } else {
-                    index != 0 && !isOnlineGuest()
+                val occupiedSlots = visibleOnlinePlayers.size.coerceAtMost(onlineExpectedPlayers)
+                repeat(OnlineLobbyPresentation.emptySlotCount(onlineExpectedPlayers, occupiedSlots)) { emptyIndex ->
+                    val slotIndex = occupiedSlots + emptyIndex
+                    onlinePlayersContainer.addView(
+                        createEmptyLobbySlotChip(),
+                        LinearLayout.LayoutParams(
+                            onlineChipWidth,
+                            LinearLayout.LayoutParams.MATCH_PARENT
+                        ).apply {
+                            if (slotIndex > 0) marginStart = dp(5)
+                        }
+                    )
                 }
-                alpha = if (isEnabled) 1f else 0.28f
-                contentDescription = when {
-                    isFirestoreOnlineLobby() && onlinePlayer?.id == onlineTempUid ->
-                        "No puedes expulsarte de la sala"
-                    isFirestoreOnlineLobby() && !currentUserIsOnlineHost() ->
-                        "Solo el anfitrion puede expulsar jugadores online"
-                    isFirestoreOnlineLobby() && onlinePlayer != null ->
-                        "Expulsar a ${onlinePlayer.name} de la sala online"
-                    isOnlineGuest() -> "Solo el anfitrion puede expulsar jugadores"
-                    index == 0 -> "El anfitrion no se puede expulsar"
-                    else -> "Expulsar a ${player.name}"
-                }
-                setOnClickListener { confirmPlayerRemoval(index, player, onlinePlayer) }
-            }
-            playersContainer.addView(row)
-        }
-        if (onlineLobby) {
-            val occupiedSlots = visibleOnlinePlayers.size.coerceAtMost(onlineExpectedPlayers)
-            repeat(OnlineLobbyPresentation.emptySlotCount(onlineExpectedPlayers, occupiedSlots)) { emptyIndex ->
-                val slotIndex = occupiedSlots + emptyIndex
-                onlinePlayersContainer.addView(
-                    createEmptyLobbySlotChip(),
-                    LinearLayout.LayoutParams(
-                        onlineChipWidth,
-                        LinearLayout.LayoutParams.MATCH_PARENT
-                    ).apply {
-                        if (slotIndex > 0) marginStart = dp(5)
-                    }
-                )
             }
         }
         renderLobbyChatDock()
@@ -1021,6 +1030,14 @@ class LobbyActivity : BaseActivity() {
                 onError = { error ->
                     OnlineDebugLog.e("lobby_chat_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
                 },
+                onRateLimited = { remainingMs ->
+                    val seconds = ((remainingMs + 999L) / 1000L).coerceAtLeast(1L)
+                    Toast.makeText(
+                        this,
+                        "Espera ${seconds}s antes de volver a enviar.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                },
                 onAccessCancelled = {
                     lobbyRealtimeAccessReady = false
                     realtimePresence?.refresh()
@@ -1320,6 +1337,37 @@ class LobbyActivity : BaseActivity() {
         )
         realtimePresence = presence
         presence.start()
+    }
+
+    private fun ensureRealtimeLobbySync(): RealtimeGameplaySync? {
+        if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return null
+        realtimeGameplaySync?.let { return it }
+        val sync = RealtimeGameplaySync(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            uid = onlineTempUid,
+            onClientStatesChanged = { states ->
+                onlineClientStates = states
+                if (::startButton.isInitialized && !isFinishing && !isDestroyed) {
+                    coordinateOnlineMatchEntry()
+                    maybeReleaseOnlineMatchEntry()
+                    renderStartButtonState()
+                }
+            },
+            onError = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_lobby_sync_failure roomId=$onlinePartidaId uid=$onlineTempUid",
+                    error
+                )
+                realtimePresence?.refresh()
+            }
+        )
+        realtimeGameplaySync = sync
+        return sync
+    }
+
+    private fun startRealtimeLobbySync() {
+        ensureRealtimeLobbySync()?.start()
     }
 
     private fun markOnlinePresence(state: String) {
@@ -2228,7 +2276,6 @@ class LobbyActivity : BaseActivity() {
         )
         onlineInitialMatch = snapshot.get(FIELD_INITIAL_MATCH).asStringAnyMap()
         onlineMatchState = snapshot.get(FIELD_MATCH_STATE).asStringAnyMap()
-        onlineClientStates = snapshot.get(FIELD_CLIENT_STATES).asStringAnyMap().orEmpty()
         onlineEntryReleasedMatchId = snapshot.getString(FIELD_ENTRY_RELEASED_MATCH_ID).orEmpty()
         onlineRoomSnapshotHasPendingWrites = snapshot.metadata.hasPendingWrites()
         session = session.copy(
@@ -2914,7 +2961,7 @@ class LobbyActivity : BaseActivity() {
             OnlineLobbyStartCopy.READY -> getString(R.string.lobby_start_ready)
         }
         startButton.contentDescription = when {
-            onlineCleanupPending -> "Limpiando datos de la partida anterior"
+            onlineCleanupPending -> "Preparando una nueva partida"
             canStart -> "Iniciar partida online para todos los jugadores"
             canStartWithPresent -> "Ajustar la sala e iniciar con ${activePlayers.size} jugadores presentes"
             currentUserIsOnlineHost() && missingPlayers > 0 ->
@@ -3271,7 +3318,7 @@ class LobbyActivity : BaseActivity() {
             renderStartButtonState()
             Toast.makeText(
                 this,
-                OnlineErrorMessages.forAction("No se pudo iniciar online", error),
+                OnlineErrorMessages.forAction("No se pudo iniciar la partida", error),
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -3434,26 +3481,26 @@ class LobbyActivity : BaseActivity() {
         OnlineDebugLog.i(
             "online_entry_ack_requested roomId=$onlinePartidaId uid=$onlineTempUid match=$matchId"
         )
-        FirebaseFirestore.getInstance()
-            .collection(ONLINE_ROOMS_COLLECTION)
-            .document(onlinePartidaId)
-            .update(
-                mapOf(
-                    "$FIELD_CLIENT_STATES.$onlineTempUid" to mapOf(
-                        "fase" to GamePhase.REPARTO.name,
-                        "ronda" to 0,
-                        "phaseIndex" to 0,
-                        "enGameplay" to false,
-                        "jugadoresVistos" to rosterSize,
-                        "jugadoresEsperados" to rosterSize,
-                        "uidTemporal" to onlineTempUid,
-                        OnlineLobbyEntryGate.FIELD_MATCH_ID to matchId,
-                        OnlineLobbyEntryGate.FIELD_ENTRY_READY to true,
-                        "actualizadaEnLocal" to System.currentTimeMillis()
-                    ),
-                    "ultimaActividadOnline" to FieldValue.serverTimestamp()
-                )
+        val sync = ensureRealtimeLobbySync()
+        if (sync == null) {
+            onlineEntryAckInProgress = false
+            scheduleOnlineMatchEntryRetry("No se pudo abrir la sincronización de entrada.")
+            return
+        }
+        sync.publishClientState(
+            mapOf(
+                "fase" to GamePhase.REPARTO.name,
+                "ronda" to 0,
+                "phaseIndex" to 0,
+                "enGameplay" to false,
+                "jugadoresVistos" to rosterSize,
+                "jugadoresEsperados" to rosterSize,
+                "uidTemporal" to onlineTempUid,
+                OnlineLobbyEntryGate.FIELD_MATCH_ID to matchId,
+                OnlineLobbyEntryGate.FIELD_ENTRY_READY to true,
+                "actualizadaEnLocal" to System.currentTimeMillis()
             )
+        )
             .addOnSuccessListener {
                 onlineEntryAckInProgress = false
                 onlineEntryAckMatchId = matchId
@@ -3970,7 +4017,7 @@ class LobbyActivity : BaseActivity() {
                 )
                 Toast.makeText(
                     this,
-                    "Sala preparada. Limpiando la partida anterior...",
+                    "Sala preparada. Estamos borrando las huellas de la partida anterior...",
                     Toast.LENGTH_LONG
                 ).show()
                 maybeContinuePendingOnlineCleanup()

@@ -24,6 +24,7 @@ object RealtimeRoomAccess {
     private const val NODE_CONTROL = "control"
     private const val NODE_MEMBERS = "miembros"
     private const val FIELD_HOST_UID = "hostUid"
+    private const val FIELD_CREATOR_UID = "creatorUid"
 
     fun initializeHost(
         database: FirebaseDatabase,
@@ -37,6 +38,7 @@ object RealtimeRoomAccess {
             database = database,
             roomId = roomId,
             hostUid = hostUid,
+            creatorUid = hostUid,
             matchId = "",
             members = mapOf(
                 hostUid to RealtimeRoomMemberAccess(
@@ -55,6 +57,7 @@ object RealtimeRoomAccess {
         database: FirebaseDatabase,
         roomId: String,
         hostUid: String,
+        creatorUid: String? = null,
         matchId: String,
         members: Map<String, RealtimeRoomMemberAccess>,
         onComplete: () -> Unit = {},
@@ -65,20 +68,31 @@ object RealtimeRoomAccess {
         room.child("$NODE_CONTROL/$FIELD_HOST_UID")
             .setValue(hostUid)
             .addOnSuccessListener {
-                room.child(NODE_MEMBERS).get()
-                    .addOnSuccessListener { snapshot ->
-                        publishMemberDiff(
-                            roomSnapshot = snapshot,
-                            roomId = roomId,
-                            hostUid = hostUid,
-                            matchId = matchId,
-                            members = members,
-                            database = database,
-                            onComplete = onComplete,
-                            onFailure = onFailure
-                        )
-                    }
-                    .addOnFailureListener(onFailure)
+                val continueSync = {
+                    room.child(NODE_MEMBERS).get()
+                        .addOnSuccessListener { snapshot ->
+                            publishMemberDiff(
+                                roomSnapshot = snapshot,
+                                roomId = roomId,
+                                hostUid = hostUid,
+                                matchId = matchId,
+                                members = members,
+                                database = database,
+                                onComplete = onComplete,
+                                onFailure = onFailure
+                            )
+                        }
+                        .addOnFailureListener(onFailure)
+                    Unit
+                }
+                if (creatorUid.isNullOrBlank()) {
+                    continueSync()
+                } else {
+                    room.child("$NODE_CONTROL/$FIELD_CREATOR_UID")
+                        .setValue(creatorUid)
+                        .addOnSuccessListener { continueSync() }
+                        .addOnFailureListener(onFailure)
+                }
             }
             .addOnFailureListener(onFailure)
     }

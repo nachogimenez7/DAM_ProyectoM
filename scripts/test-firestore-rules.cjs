@@ -21,6 +21,7 @@ const {
   deleteField,
   deleteDoc,
   runTransaction,
+  Timestamp,
   writeBatch,
 } = require("firebase/firestore");
 
@@ -931,6 +932,52 @@ async function main() {
     });
     await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame", "jugadores", "host_uid")));
     await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame")));
+
+    // El creador recupera la capacidad de limpiar una sala propia después de 24 horas sin
+    // actividad, incluso si la partida quedó en juego y el host activo había cambiado.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      const staleRoom = roomData("host_uid");
+      staleRoom.estado = "en_juego";
+      staleRoom.hostActivoId = "guest_uid";
+      staleRoom.actualizadaEn = Timestamp.fromMillis(Date.now() - (25 * 60 * 60 * 1000));
+      await setDoc(doc(db, "partidas", "room_stale_creator"), staleRoom);
+      await setDoc(
+        doc(db, "partidas", "room_stale_creator", "jugadores", "host_uid"),
+        playerData("host_uid", "Host", 0, true)
+      );
+      await setDoc(doc(db, "partidas", "room_stale_creator", "acciones", "accion_1"), {
+        actorId: "host_uid",
+      });
+      await setDoc(doc(db, "codigosSala", "STALE1"), {
+        partidaId: "room_stale_creator",
+        codigoSala: "STALE1",
+        hostId: "host_uid",
+        creadaEn: Timestamp.fromMillis(Date.now() - (25 * 60 * 60 * 1000)),
+      });
+
+      const recentRoom = roomData("host_uid");
+      recentRoom.estado = "en_juego";
+      recentRoom.actualizadaEn = Timestamp.fromMillis(Date.now() - (23 * 60 * 60 * 1000));
+      await setDoc(doc(db, "partidas", "room_recent_creator"), recentRoom);
+    });
+    await assertFails(deleteDoc(doc(host, "partidas", "room_recent_creator")));
+    await assertSucceeds(getDocs(query(
+      collection(host, "partidas"),
+      where("hostId", "==", "host_uid")
+    )));
+    await assertFails(getDocs(query(
+      collection(intruder, "partidas"),
+      where("hostId", "==", "host_uid")
+    )));
+    await assertFails(getDocs(collection(intruder, "partidas", "room_stale_creator", "jugadores")));
+    await assertSucceeds(getDocs(collection(host, "partidas", "room_stale_creator", "jugadores")));
+    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_stale_creator", "jugadores", "host_uid")));
+    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_stale_creator", "acciones", "accion_1")));
+    const staleCleanupBatch = writeBatch(host);
+    staleCleanupBatch.delete(doc(host, "codigosSala", "STALE1"));
+    staleCleanupBatch.delete(doc(host, "partidas", "room_stale_creator"));
+    await assertSucceeds(staleCleanupBatch.commit());
 
     const browserQuery = query(
       collection(guest, "partidas"),
