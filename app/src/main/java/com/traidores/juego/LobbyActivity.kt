@@ -1776,6 +1776,24 @@ class LobbyActivity : BaseActivity() {
             finish()
             return
         }
+        val liveOnlineMatch = onlineInitialMatchCreated &&
+            onlineInitialMatch != null &&
+            onlineMatchState != null &&
+            (onlineMatchState?.get("ganador") as? String).orEmpty().isBlank()
+        if (
+            GameplayExitPolicy.shouldRecoverGameplayFromLobby(
+                roomState = onlineRoomState,
+                hasLiveMatch = liveOnlineMatch,
+                returnedFromGameplay = returnedFromOnlineMatch
+            )
+        ) {
+            recoveringOnlineMatch = true
+            onlineStartedNoticeShown = false
+            returnedFromOnlineMatch = false
+            GameNotice.show(this, "La partida sigue activa. Reingresando...")
+            ensurePrivateRolesLoaded()
+            return
+        }
         val isHost = currentUserIsOnlineHost()
         val handoffCandidate = if (isHost) onlineLobbyHostHandoffCandidate(excludeCurrent = true) else null
         val title = if (isHost) "Salir de la sala online" else "Salir del lobby"
@@ -2255,6 +2273,23 @@ class LobbyActivity : BaseActivity() {
             onlineInitialMatch != null &&
             onlineMatchState != null &&
             (onlineMatchState?.get("ganador") as? String).orEmpty().isBlank()
+        if (
+            GameplayExitPolicy.shouldRecoverGameplayFromLobby(
+                roomState = onlineRoomState,
+                hasLiveMatch = liveOnlineMatch,
+                returnedFromGameplay = returnedFromOnlineMatch
+            )
+        ) {
+            // El lobby queda debajo del gameplay para reutilizarlo al terminar. Si Android o
+            // una salida accidental revelan esa pantalla mientras la partida sigue viva, no
+            // debe comportarse como un lobby normal ni liberar el lugar del jugador.
+            recoveringOnlineMatch = true
+            onlineStartedNoticeShown = false
+            returnedFromOnlineMatch = false
+            OnlineDebugLog.w(
+                "lobby_unexpected_gameplay_return roomId=$onlinePartidaId uid=$onlineTempUid"
+            )
+        }
         maybeResetFinishedOnlineRoomForRematch()
         maybeContinuePendingOnlineCleanup()
 

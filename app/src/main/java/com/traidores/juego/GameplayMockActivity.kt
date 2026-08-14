@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
@@ -130,6 +131,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
     private var returningToOnlineLobby = false
+    private var abandoningOnlineMatch = false
+    private var exitConfirmationDialog: AlertDialog? = null
     private var onlineLobbyReturnEpochMs = 0L
     private var onlineWinnerReturnAckKey = ""
     private var onlineWinnerReturnClientAcks = emptyMap<String, String>()
@@ -1031,7 +1034,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         btnSettings.setOnClickListener {
             GameplayEffects.play(this, GameplayEffect.PANEL)
-            AccessibilityOptionsDialog.show(this) {
+            AccessibilityOptionsDialog.show(
+                activity = this,
+                exitLabel = gameplayExitLabel(),
+                onExitRequested = ::requestIntentionalGameExit
+            ) {
                 applyGameplayTextScale()
                 renderGame()
             }
@@ -1377,8 +1384,91 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             chatController.onBackPressed() -> Unit
             actionFeedbackBanner.visibility == View.VISIBLE -> hideActionFeedbackBanner()
             isEventLogExpanded -> toggleEventLog()
-            else -> finish()
+            else -> handleBaseGameplayBack()
         }
+    }
+
+    private fun handleBaseGameplayBack() {
+        when (
+            GameplayExitPolicy.gameplayBackAction(
+                isOnlineGameplay = isOnlineGameplay(),
+                matchFinished = session.winner.isNotBlank()
+            )
+        ) {
+            GameplayExitAction.RETURN_TO_LOBBY -> returnToLobby()
+            GameplayExitAction.BLOCK_ONLINE_EXIT -> GameNotice.show(
+                this,
+                "La partida online continúa. Para salir, usá Abandonar partida en configuración."
+            )
+            GameplayExitAction.CONFIRM_LOCAL_EXIT -> showGameExitConfirmation(isOnline = false)
+        }
+    }
+
+    private fun gameplayExitLabel(): String {
+        return when {
+            session.winner.isNotBlank() -> "VOLVER AL LOBBY"
+            isOnlineGameplay() -> "ABANDONAR PARTIDA"
+            else -> "SALIR DE LA PARTIDA"
+        }
+    }
+
+    private fun requestIntentionalGameExit() {
+        if (session.winner.isNotBlank()) {
+            returnToLobby()
+            return
+        }
+        showGameExitConfirmation(isOnline = isOnlineGameplay())
+    }
+
+    private fun showGameExitConfirmation(isOnline: Boolean) {
+        if (exitConfirmationDialog?.isShowing == true) return
+        if (!isOnline) pauseCountdown()
+        val title = if (isOnline) "¿Abandonar partida online?" else "¿Salir de la partida?"
+        val message = when {
+            !isOnline -> "Si salís ahora, se cancelará la partida y perderás su progreso."
+            onlineIsHost -> "Te desconectarás de la partida. Si quedan jugadores conectados, otro asumirá como anfitrión para que puedan continuar."
+            else -> "Te desconectarás y la partida continuará sin vos. Esta acción no se puede deshacer desde este dispositivo."
+        }
+        exitConfirmationDialog = GameDialog.confirm(
+            activity = this,
+            title = title,
+            message = message,
+            positiveLabel = if (isOnline) "ABANDONAR" else "SALIR",
+            negativeLabel = "SEGUIR JUGANDO",
+            onDismiss = {
+                exitConfirmationDialog = null
+                if (!isOnline) {
+                    gameplayRoot.post {
+                        if (!isFinishing && !isDestroyed) {
+                            resumeGameFlowAfterBlockingUi()
+                        }
+                    }
+                }
+            }
+        ) {
+            if (isOnline) {
+                abandonOnlineMatch()
+            } else {
+                finish()
+            }
+        }
+    }
+
+    private fun abandonOnlineMatch() {
+        if (abandoningOnlineMatch || !isOnlineGameplay()) return
+        abandoningOnlineMatch = true
+        OnlineDebugLog.w(
+            "online_match_abandon roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost"
+        )
+        OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+        realtimePresence?.setConnected(false)
+        markOnlineGameplayPresence(PLAYER_STATE_DISCONNECTED)
+        startActivity(
+            Intent(this, OnlineModeActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+        )
+        finish()
     }
 
     private fun handleCurrentPhase() {

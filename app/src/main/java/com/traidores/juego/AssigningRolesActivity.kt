@@ -21,6 +21,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 
 class AssigningRolesActivity : BaseActivity() {
 
@@ -28,6 +29,7 @@ class AssigningRolesActivity : BaseActivity() {
     private var dealingAnimator: AnimatorSet? = null
     private var ambientAnimator: AnimatorSet? = null
     private var leavingScreen = false
+    private var exitConfirmationDialog: AlertDialog? = null
 
     private val openGameRunnable = Runnable { openGame() }
 
@@ -52,14 +54,14 @@ class AssigningRolesActivity : BaseActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                leaveAssigningScreen()
+                handleAssigningBack()
             }
         })
 
         findViewById<ImageButton>(R.id.btnBack).apply {
             alpha = 0f
             isEnabled = false
-            setOnClickListener { leaveAssigningScreen() }
+            setOnClickListener { handleAssigningBack() }
         }
 
         findViewById<FrameLayout>(R.id.assigningRoot).post {
@@ -497,6 +499,11 @@ class AssigningRolesActivity : BaseActivity() {
 
     private fun openGame() {
         if (leavingScreen || isFinishing || isDestroyed) return
+        if (exitConfirmationDialog?.isShowing == true) {
+            handler.removeCallbacks(openGameRunnable)
+            handler.postDelayed(openGameRunnable, EXIT_CONFIRMATION_RETRY_MS)
+            return
+        }
         leavingScreen = true
         handler.removeCallbacks(openGameRunnable)
         ambientAnimator?.cancel()
@@ -544,6 +551,37 @@ class AssigningRolesActivity : BaseActivity() {
         finish()
     }
 
+    private fun handleAssigningBack() {
+        val isOnline = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()
+        when (GameplayExitPolicy.assigningBackAction(isOnline)) {
+            GameplayExitAction.BLOCK_ONLINE_EXIT -> GameNotice.show(
+                this,
+                "La partida online está comenzando. Esperá a que termine el reparto."
+            )
+            GameplayExitAction.CONFIRM_LOCAL_EXIT -> showLocalExitConfirmation()
+            GameplayExitAction.RETURN_TO_LOBBY -> leaveAssigningScreen()
+        }
+    }
+
+    private fun showLocalExitConfirmation() {
+        if (exitConfirmationDialog?.isShowing == true) return
+        exitConfirmationDialog = GameDialog.confirm(
+            activity = this,
+            title = "¿Salir de la partida?",
+            message = "Si salís ahora, se cancelará la partida y perderás su progreso.",
+            positiveLabel = "SALIR",
+            negativeLabel = "SEGUIR JUGANDO",
+            onDismiss = {
+                exitConfirmationDialog = null
+                if (!leavingScreen && !isFinishing && !isDestroyed) {
+                    handler.post(openGameRunnable)
+                }
+            }
+        ) {
+            leaveAssigningScreen()
+        }
+    }
+
     override fun onDestroy() {
         handler.removeCallbacks(openGameRunnable)
         dealingAnimator?.removeAllListeners()
@@ -566,6 +604,7 @@ class AssigningRolesActivity : BaseActivity() {
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val ANIMATION_FALLBACK_MS = 6_000L
+        private const val EXIT_CONFIRMATION_RETRY_MS = 250L
         private const val DEALING_STATUS_MESSAGE = "¡Buena suerte con tu rol!"
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
         const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"

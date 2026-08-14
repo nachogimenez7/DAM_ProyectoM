@@ -76,6 +76,7 @@ object GameDialog {
         message: String,
         positiveLabel: String,
         negativeLabel: String = "CANCELAR",
+        onDismiss: (() -> Unit)? = null,
         onConfirm: () -> Unit
     ): AlertDialog {
         val host = createHost(activity, title, message)
@@ -86,7 +87,7 @@ object GameDialog {
             host.dialog.dismiss()
             onConfirm()
         }
-        show(activity, host.dialog)
+        show(activity, host.dialog, onDismiss = onDismiss)
         return host.dialog
     }
 
@@ -306,7 +307,8 @@ object GameDialog {
         activity: Activity,
         dialog: AlertDialog,
         widthDp: Int = 420,
-        heightConstrainedView: View? = null
+        heightConstrainedView: View? = null,
+        onDismiss: (() -> Unit)? = null
     ) {
         dialog.setOnShowListener {
             dialog.window?.apply {
@@ -333,17 +335,22 @@ object GameDialog {
                 }
             }
         }
-        track(activity, dialog)
+        track(activity, dialog, onDismiss)
         dialog.show()
     }
 
-    private fun track(activity: Activity, dialog: AlertDialog) {
+    private fun track(
+        activity: Activity,
+        dialog: AlertDialog,
+        onDismiss: (() -> Unit)? = null
+    ) {
         openDialogs.getOrPut(activity) { linkedSetOf() }.add(dialog)
         dialog.setOnDismissListener {
             openDialogs[activity]?.let { dialogs ->
                 dialogs.remove(dialog)
                 if (dialogs.isEmpty()) openDialogs.remove(activity)
             }
+            onDismiss?.invoke()
         }
     }
 

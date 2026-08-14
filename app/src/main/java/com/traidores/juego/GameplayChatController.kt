@@ -958,8 +958,8 @@ class GameplayChatController(
             setTextColor(
                 when (channel) {
                     ChatChannel.PUBLICO -> PlayerChatColor.colorFor(speakerName, host.currentSession)
-                    ChatChannel.TRAIDORES -> root.context.getColor(R.color.traitor_red_bright)
-                    ChatChannel.ESPECTADORES -> root.context.getColor(R.color.espectro_blue_bright)
+                    ChatChannel.TRAIDORES -> Color.parseColor("#C15A65")
+                    ChatChannel.ESPECTADORES -> Color.parseColor("#8FB3DF")
                 }
             )
             textSize = 11.5f * host.gameplayTextScale
@@ -1051,9 +1051,12 @@ class GameplayChatController(
                 chatFeedTitle.text = "CHAT DE LOS ASESINOS"
                 chatFeedTitle.maxLines = 1
                 chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
-                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                chatAmbientTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
-                chatFeedTitle.setTextColor(root.context.getColor(R.color.traitor_red_bright))
+                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                chatFeedTitle.typeface = cronistaTypeface()
+                chatAmbientTitle.typeface = cronistaTypeface()
+                val titleColor = Color.parseColor("#D6A16D")
+                chatAmbientTitle.setTextColor(titleColor)
+                chatFeedTitle.setTextColor(titleColor)
                 renderTraitorHeaderChip()
                 return
             }
@@ -1062,9 +1065,12 @@ class GameplayChatController(
                 chatFeedTitle.text = "CHAT DE LOS MUERTOS"
                 chatFeedTitle.maxLines = 1
                 chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
-                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                chatAmbientTitle.setTextColor(root.context.getColor(R.color.espectro_blue_bright))
-                chatFeedTitle.setTextColor(root.context.getColor(R.color.espectro_blue_bright))
+                chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                chatFeedTitle.typeface = cronistaTypeface()
+                chatAmbientTitle.typeface = cronistaTypeface()
+                val titleColor = Color.parseColor("#AFC9E8")
+                chatAmbientTitle.setTextColor(titleColor)
+                chatFeedTitle.setTextColor(titleColor)
                 renderSpectatorHeaderChip()
                 return
             }
@@ -1080,6 +1086,8 @@ class GameplayChatController(
         chatFeedTitle.maxLines = 1
         chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
         chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        chatFeedTitle.typeface = Typeface.DEFAULT_BOLD
+        chatAmbientTitle.typeface = Typeface.DEFAULT_BOLD
         chatAmbientTitle.setTextColor(root.context.getColor(R.color.accent_gold))
         chatFeedTitle.setTextColor(root.context.getColor(R.color.accent_gold))
         if (!shouldCompactBottomPlayerPanel()) {
@@ -1100,11 +1108,12 @@ class GameplayChatController(
         } else {
             "${traitors.size} MALOS"
         }
-        chatRoleChip.setTextColor(root.context.getColor(R.color.traitor_text))
-        chatRoleChip.background = roundedBackground(
-            fillColor = root.context.getColor(R.color.traitor_panel),
-            strokeColor = root.context.getColor(R.color.traitor_red),
-            cornerRadiusDp = 8
+        chatRoleChip.setTextColor(Color.parseColor("#D9C7B2"))
+        chatRoleChip.typeface = cronistaTypeface()
+        chatRoleChip.background = angularBackground(
+            fillColor = Color.parseColor("#D92A1518"),
+            strokeColor = Color.parseColor("#9A9B6744"),
+            cornerRadiusDp = 3
         )
     }
 
@@ -1145,36 +1154,50 @@ class GameplayChatController(
         traitorStyle: Boolean = false,
         onClick: () -> Unit
     ) {
-        val accentColor = root.context.getColor(
-            if (traitorStyle) R.color.traitor_red_bright else R.color.accent_gold
-        )
+        val immersiveTraitorStyle = traitorStyle
+        val accentColor = if (immersiveTraitorStyle) {
+            Color.parseColor("#A55A3943")
+        } else {
+            root.context.getColor(if (traitorStyle) R.color.traitor_red_bright else R.color.accent_gold)
+        }
         val button = Button(root.context).apply {
-            text = label
+            text = if (immersiveTraitorStyle) label.uppercase() else label
             isAllCaps = false
             setTextColor(
                 when {
+                    emphasized && immersiveTraitorStyle -> Color.parseColor("#F2E1D0")
                     emphasized -> root.context.getColor(R.color.bg_dark)
+                    immersiveTraitorStyle -> Color.parseColor("#E3D4C5")
                     traitorStyle -> root.context.getColor(R.color.traitor_text)
                     else -> root.context.getColor(R.color.text_primary)
                 }
             )
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, if (immersiveTraitorStyle) 9f else 10f)
+            typeface = if (immersiveTraitorStyle) cronistaTypeface() else Typeface.DEFAULT
             minWidth = 0
             minimumWidth = 0
             minHeight = 0
             minimumHeight = 0
-            setPadding(host.dp(10), 0, host.dp(10), 0)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(
-                    when {
-                        emphasized -> accentColor
-                        traitorStyle -> root.context.getColor(R.color.traitor_panel)
-                        else -> Color.parseColor("#E6211810")
-                    }
+            setPadding(host.dp(12), 0, host.dp(12), 0)
+            background = if (immersiveTraitorStyle) {
+                angularBackground(
+                    fillColor = if (emphasized) Color.parseColor("#A85A3038") else Color.parseColor("#E52A1518"),
+                    strokeColor = accentColor,
+                    cornerRadiusDp = 3
                 )
-                setStroke(host.dp(1), accentColor)
-                cornerRadius = host.dp(12).toFloat()
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(
+                        when {
+                            emphasized -> accentColor
+                            traitorStyle -> root.context.getColor(R.color.traitor_panel)
+                            else -> Color.parseColor("#E6211810")
+                        }
+                    )
+                    setStroke(host.dp(1), accentColor)
+                    cornerRadius = host.dp(12).toFloat()
+                }
             }
             setOnClickListener { onClick() }
         }
@@ -1182,7 +1205,7 @@ class GameplayChatController(
             button,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                host.dp(32)
+                host.dp(if (immersiveTraitorStyle) 34 else 32)
             ).apply {
                 marginEnd = host.dp(6)
             }
@@ -1476,11 +1499,12 @@ class GameplayChatController(
         } else {
             "$deadPlayers MUERTOS"
         }
-        chatRoleChip.setTextColor(root.context.getColor(R.color.espectro_text))
-        chatRoleChip.background = roundedBackground(
-            fillColor = root.context.getColor(R.color.espectro_panel),
-            strokeColor = root.context.getColor(R.color.espectro_blue),
-            cornerRadiusDp = 8
+        chatRoleChip.setTextColor(Color.parseColor("#D3E1F0"))
+        chatRoleChip.typeface = cronistaTypeface()
+        chatRoleChip.background = angularBackground(
+            fillColor = Color.parseColor("#DD14243A"),
+            strokeColor = Color.parseColor("#895F82AA"),
+            cornerRadiusDp = 3
         )
     }
 
@@ -1501,13 +1525,13 @@ class GameplayChatController(
     private fun eventPresentationFor(entry: ChronicleEntry): EventPresentation {
         val channel = activeChatChannel()
         if (channel == ChatChannel.TRAIDORES) {
-            val bright = root.context.getColor(R.color.traitor_red_bright)
+            val bright = Color.parseColor("#D6A16D")
             val normalized = GameplayTextMarkers.normalize(entry.text)
             val isTarget = "objetivo del plan" in normalized || "cambio de plan" in normalized
             return EventPresentation(
                 label = if (isTarget) "OBJETIVO" else "PLAN",
-                backgroundColor = root.context.getColor(R.color.traitor_panel),
-                strokeColor = root.context.getColor(R.color.traitor_red),
+                backgroundColor = Color.parseColor("#2A1518"),
+                strokeColor = Color.parseColor("#8F3641"),
                 iconColor = bright,
                 iconRes = if (isTarget) {
                     R.drawable.seal_chronicle_objective
@@ -1521,9 +1545,9 @@ class GameplayChatController(
         if (channel == ChatChannel.ESPECTADORES) {
             return EventPresentation(
                 label = "MUERTOS",
-                backgroundColor = root.context.getColor(R.color.espectro_panel),
-                strokeColor = root.context.getColor(R.color.espectro_blue),
-                iconColor = root.context.getColor(R.color.espectro_blue_bright),
+                backgroundColor = Color.parseColor("#14243A"),
+                strokeColor = Color.parseColor("#4F77A8"),
+                iconColor = Color.parseColor("#AFC9E8"),
                 iconRes = R.drawable.ic_chronicle_ghost
             )
         }
@@ -1654,7 +1678,8 @@ class GameplayChatController(
             showOnlyEvents,
             typingBotSpeakers.toList(),
             host.gameplayTextScale,
-            chatPanel.width
+            chatPanel.width,
+            host.isOnlineGameplay()
         ).joinToString("|")
         if (lastExpandedChatRenderKey == renderKey && chatMessagesContainer.childCount > 0) {
             return
@@ -1724,8 +1749,8 @@ class GameplayChatController(
                 } else {
                     when (channel) {
                         ChatChannel.PUBLICO -> PlayerChatColor.colorFor(speakerName, host.currentSession)
-                        ChatChannel.TRAIDORES -> root.context.getColor(R.color.traitor_red_bright)
-                        ChatChannel.ESPECTADORES -> root.context.getColor(R.color.espectro_blue_bright)
+                        ChatChannel.TRAIDORES -> Color.parseColor("#C15A65")
+                        ChatChannel.ESPECTADORES -> Color.parseColor("#8FB3DF")
                     }
                 },
                 ownMessage = ownMessage,
@@ -1802,6 +1827,8 @@ class GameplayChatController(
         chatChannelTabs.visibility = if (privateChannel == null) View.GONE else View.VISIBLE
         if (privateChannel == null) return
 
+        val immersivePrivateStyle = privateChannel != ChatChannel.PUBLICO
+
         btnChatPublicTab.text = "PUEBLO"
         btnChatPublicTab.contentDescription = "Abrir el chat del pueblo"
         btnChatPrivateTab.text = when (privateChannel) {
@@ -1820,7 +1847,8 @@ class GameplayChatController(
             selected = channel == ChatChannel.PUBLICO,
             fillColor = R.color.btn_dark,
             strokeColor = R.color.accent_gold,
-            textColor = R.color.text_primary
+            textColor = R.color.text_primary,
+            immersivePrivateStyle = immersivePrivateStyle
         )
         styleChannelTab(
             button = btnChatPrivateTab,
@@ -1839,7 +1867,8 @@ class GameplayChatController(
                 R.color.traitor_text
             } else {
                 R.color.espectro_text
-            }
+            },
+            immersivePrivateStyle = immersivePrivateStyle
         )
     }
 
@@ -1848,19 +1877,36 @@ class GameplayChatController(
         selected: Boolean,
         fillColor: Int,
         strokeColor: Int,
-        textColor: Int
+        textColor: Int,
+        immersivePrivateStyle: Boolean = false
     ) {
         button.alpha = if (selected) 1f else 0.68f
-        button.background = roundedBackground(
-            fillColor = root.context.getColor(if (selected) fillColor else R.color.btn_dark),
-            strokeColor = root.context.getColor(if (selected) strokeColor else R.color.btn_dark_border),
-            cornerRadiusDp = 8
-        )
+        button.background = if (immersivePrivateStyle) {
+            angularBackground(
+                fillColor = root.context.getColor(if (selected) fillColor else R.color.btn_dark),
+                strokeColor = root.context.getColor(if (selected) strokeColor else R.color.btn_dark_border),
+                cornerRadiusDp = 3
+            )
+        } else {
+            roundedBackground(
+                fillColor = root.context.getColor(if (selected) fillColor else R.color.btn_dark),
+                strokeColor = root.context.getColor(if (selected) strokeColor else R.color.btn_dark_border),
+                cornerRadiusDp = 8
+            )
+        }
+        if (immersivePrivateStyle) {
+            button.typeface = cronistaTypeface()
+            button.setTextSize(
+                TypedValue.COMPLEX_UNIT_SP,
+                if (button === btnChatPrivateTab) 7.5f else 9f
+            )
+        }
         button.setTextColor(root.context.getColor(if (selected) textColor else R.color.text_secondary))
     }
 
     private fun addGodEventBanner(entry: ChronicleEntry) {
         val event = eventPresentationFor(entry)
+        val immersivePrivateStyle = activeChatChannel() != ChatChannel.PUBLICO
         val row = LinearLayout(root.context).apply {
             gravity = Gravity.CENTER
             orientation = LinearLayout.HORIZONTAL
@@ -1870,11 +1916,19 @@ class GameplayChatController(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(host.dp(10), host.dp(7), host.dp(10), host.dp(8))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = host.dp(10).toFloat()
-                setColor(event.backgroundColor)
-                setStroke(host.dp(1), event.strokeColor)
+            background = if (immersivePrivateStyle) {
+                angularBackground(
+                    fillColor = colorWithAlpha(event.backgroundColor, 226),
+                    strokeColor = colorWithAlpha(event.strokeColor, 205),
+                    cornerRadiusDp = 3
+                )
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = host.dp(10).toFloat()
+                    setColor(event.backgroundColor)
+                    setStroke(host.dp(1), event.strokeColor)
+                }
             }
         }
         val eventHeader = LinearLayout(root.context).apply {
@@ -1951,19 +2005,15 @@ class GameplayChatController(
                 ChatChannel.PUBLICO -> setBackgroundResource(
                     if (ownMessage) R.drawable.bg_chat_bubble_own else R.drawable.bg_chat_bubble_other
                 )
-                ChatChannel.TRAIDORES -> background = roundedBackground(
-                    fillColor = root.context.getColor(
-                        if (ownMessage) R.color.traitor_red else R.color.traitor_panel
-                    ),
-                    strokeColor = root.context.getColor(R.color.traitor_red_bright),
-                    cornerRadiusDp = 10
+                ChatChannel.TRAIDORES -> background = angularBackground(
+                    fillColor = Color.parseColor(if (ownMessage) "#7A26313A" else "#E62A1518"),
+                    strokeColor = Color.parseColor(if (ownMessage) "#B86A747E" else "#8A74333C"),
+                    cornerRadiusDp = 4
                 )
-                ChatChannel.ESPECTADORES -> background = roundedBackground(
-                    fillColor = root.context.getColor(
-                        if (ownMessage) R.color.espectro_blue else R.color.espectro_panel
-                    ),
-                    strokeColor = root.context.getColor(R.color.espectro_blue_bright),
-                    cornerRadiusDp = 10
+                ChatChannel.ESPECTADORES -> background = angularBackground(
+                    fillColor = Color.parseColor(if (ownMessage) "#8A294667" else "#E614243A"),
+                    strokeColor = Color.parseColor(if (ownMessage) "#B8769BCC" else "#8A4F77A8"),
+                    cornerRadiusDp = 4
                 )
             }
             alpha = if (muted) 0.78f else 1f
@@ -3254,7 +3304,8 @@ class GameplayChatController(
         val renderKey = listOf(
             host.currentSession.mapKey,
             channel.name,
-            canHumanChatInChannel(channel)
+            canHumanChatInChannel(channel),
+            host.isOnlineGameplay()
         ).joinToString("|")
         if (lastChatBackgroundRenderKey == renderKey) return
         lastChatBackgroundRenderKey = renderKey
@@ -3263,11 +3314,11 @@ class GameplayChatController(
         chatAmbientBackground.setImageResource(logDrawable)
         when (channel) {
             ChatChannel.TRAIDORES -> {
-                renderTraitorChatBackgrounds()
+                renderPrivateChatBackgrounds(PrivateChatTheme.TRAITORS)
                 return
             }
             ChatChannel.ESPECTADORES -> {
-                renderSpectatorChatBackgrounds()
+                renderPrivateChatBackgrounds(PrivateChatTheme.DEAD)
                 return
             }
             ChatChannel.PUBLICO -> Unit
@@ -3281,11 +3332,15 @@ class GameplayChatController(
         chatPanelShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatAmbientShade.setBackgroundResource(R.drawable.bg_reveal_text_shade)
         chatHeader.background = null
+        chatHeader.setPadding(0, 0, 0, 0)
         chatComposer.background = null
+        btnCloseChat.setBackgroundResource(R.drawable.bg_btn_dark)
+        btnCloseChat.setColorFilter(root.context.getColor(R.color.text_primary))
         chatInput.setBackgroundResource(R.drawable.bg_chat_input)
         chatInput.setTextColor(root.context.getColor(R.color.text_primary))
         chatInput.setHintTextColor(root.context.getColor(R.color.text_muted))
         btnSendChat.setBackgroundResource(R.drawable.bg_btn_gold)
+        btnSendChat.typeface = Typeface.DEFAULT_BOLD
         btnSendChat.setTextColor(root.context.getColor(R.color.bg_dark))
         chatNewMessages.setTextColor(root.context.getColor(R.color.accent_gold))
         val ambientAlpha = when (host.currentSession.mapKey) {
@@ -3301,123 +3356,92 @@ class GameplayChatController(
         }
     }
 
-    private fun renderTraitorChatBackgrounds() {
-        val writable = GameEngine.canHumanChatTraitor(host.currentSession)
-        val red = root.context.getColor(R.color.traitor_red)
-        val bright = root.context.getColor(R.color.traitor_red_bright)
-        val panel = root.context.getColor(R.color.traitor_panel)
-        val bg = root.context.getColor(R.color.traitor_bg)
-        val text = root.context.getColor(R.color.traitor_text)
-        val muted = root.context.getColor(R.color.traitor_muted)
+    private fun renderPrivateChatBackgrounds(theme: PrivateChatTheme) {
+        val traitors = theme == PrivateChatTheme.TRAITORS
+        val writable = if (traitors) {
+            GameEngine.canHumanChatTraitor(host.currentSession)
+        } else {
+            GameEngine.canHumanChatSpectator(host.currentSession)
+        }
+        val bg = Color.parseColor(if (traitors) "#11090B" else "#09121F")
+        val panel = Color.parseColor(if (traitors) "#2A1518" else "#14243A")
+        val panelDeep = Color.parseColor(if (traitors) "#1C0E10" else "#0E1B2B")
+        val accent = Color.parseColor(if (traitors) "#8F3641" else "#4F77A8")
+        val accentBright = Color.parseColor(if (traitors) "#C15A65" else "#8FB3DF")
+        val text = Color.parseColor(if (traitors) "#E3D4C5" else "#D3E1F0")
+        val muted = Color.parseColor(if (traitors) "#9F7775" else "#7891AD")
 
-        chatPanel.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 238 else 220),
-            strokeColor = red,
-            cornerRadiusDp = 12,
+        chatPanel.background = angularBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 244 else 230),
+            strokeColor = accent,
+            cornerRadiusDp = 5,
             strokeWidthDp = 2
         )
-        chatAmbientFeed.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 226 else 208),
-            strokeColor = red,
-            cornerRadiusDp = 12,
-            strokeWidthDp = 1
+        chatAmbientFeed.background = angularBackground(
+            fillColor = colorWithAlpha(bg, if (writable) 232 else 218),
+            strokeColor = colorWithAlpha(accent, 210),
+            cornerRadiusDp = 5
         )
         applyChatFrameForegrounds(
-            panelFrame = R.drawable.bg_chat_frame_traitor_expanded,
-            ambientFrame = R.drawable.bg_chat_frame_traitor_collapsed
+            panelFrame = if (traitors) {
+                R.drawable.bg_chat_frame_local_traitor_expanded
+            } else {
+                R.drawable.bg_chat_frame_local_dead_expanded
+            },
+            ambientFrame = if (traitors) {
+                R.drawable.bg_chat_frame_local_traitor_collapsed
+            } else {
+                R.drawable.bg_chat_frame_local_dead_collapsed
+            }
         )
-        chatPanelShade.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(colorWithAlpha(panel, 236), colorWithAlpha(bg, 246))
+        chatPanelShade.background = gradientBackground(
+            startColor = colorWithAlpha(panel, 238),
+            endColor = colorWithAlpha(bg, 249),
+            strokeColor = colorWithAlpha(accent, 95),
+            cornerRadiusDp = 4
         )
-        chatAmbientShade.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(colorWithAlpha(panel, 220), colorWithAlpha(bg, 238))
+        chatAmbientShade.background = gradientBackground(
+            startColor = colorWithAlpha(panel, 222),
+            endColor = colorWithAlpha(bg, 240),
+            strokeColor = colorWithAlpha(accent, 72),
+            cornerRadiusDp = 4
         )
-        chatHeader.background = roundedBackground(
-            fillColor = colorWithAlpha(panel, 226),
-            strokeColor = colorWithAlpha(red, 180),
-            cornerRadiusDp = 9
+        chatHeader.background = gradientBackground(
+            startColor = colorWithAlpha(panel, 242),
+            endColor = colorWithAlpha(panelDeep, 244),
+            strokeColor = colorWithAlpha(accent, 188),
+            cornerRadiusDp = 3
         )
-        chatComposer.background = roundedBackground(
-            fillColor = colorWithAlpha(panel, 220),
-            strokeColor = colorWithAlpha(red, 170),
-            cornerRadiusDp = 10
+        chatHeader.setPadding(host.dp(9), 0, host.dp(4), 0)
+        chatComposer.background = angularBackground(
+            fillColor = colorWithAlpha(panelDeep, 238),
+            strokeColor = colorWithAlpha(accent, 180),
+            cornerRadiusDp = 3
         )
-        chatInput.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, 235),
-            strokeColor = colorWithAlpha(red, 170),
-            cornerRadiusDp = 10
-        )
-        chatInput.setTextColor(text)
-        chatInput.setHintTextColor(muted)
-        btnSendChat.background = roundedBackground(
-            fillColor = red,
-            strokeColor = bright,
-            cornerRadiusDp = 10
-        )
-        btnSendChat.setTextColor(root.context.getColor(R.color.text_primary))
-        chatNewMessages.setTextColor(bright)
-        chatAmbientBackground.alpha = if (writable) 0.30f else 0.22f
-        chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
-    }
-
-    private fun renderSpectatorChatBackgrounds() {
-        val writable = GameEngine.canHumanChatSpectator(host.currentSession)
-        val blue = root.context.getColor(R.color.espectro_blue)
-        val bright = root.context.getColor(R.color.espectro_blue_bright)
-        val panel = root.context.getColor(R.color.espectro_panel)
-        val bg = root.context.getColor(R.color.espectro_bg)
-        val text = root.context.getColor(R.color.espectro_text)
-        val muted = root.context.getColor(R.color.espectro_muted)
-
-        chatPanel.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 238 else 220),
-            strokeColor = blue,
-            cornerRadiusDp = 12,
-            strokeWidthDp = 2
-        )
-        chatAmbientFeed.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 226 else 208),
-            strokeColor = blue,
-            cornerRadiusDp = 12,
-            strokeWidthDp = 1
-        )
-        applyChatFrameForegrounds(panelFrame = null, ambientFrame = null)
-        chatPanelShade.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(colorWithAlpha(panel, 236), colorWithAlpha(bg, 246))
-        )
-        chatAmbientShade.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(colorWithAlpha(panel, 220), colorWithAlpha(bg, 238))
-        )
-        chatHeader.background = roundedBackground(
-            fillColor = colorWithAlpha(panel, 226),
-            strokeColor = colorWithAlpha(blue, 180),
-            cornerRadiusDp = 9
-        )
-        chatComposer.background = roundedBackground(
-            fillColor = colorWithAlpha(panel, 220),
-            strokeColor = colorWithAlpha(blue, 170),
-            cornerRadiusDp = 10
-        )
-        chatInput.background = roundedBackground(
-            fillColor = colorWithAlpha(bg, 235),
-            strokeColor = colorWithAlpha(blue, 170),
-            cornerRadiusDp = 10
+        chatInput.background = angularBackground(
+            fillColor = colorWithAlpha(bg, 246),
+            strokeColor = colorWithAlpha(accent, 158),
+            cornerRadiusDp = 3
         )
         chatInput.setTextColor(text)
         chatInput.setHintTextColor(muted)
-        btnSendChat.background = roundedBackground(
-            fillColor = blue,
-            strokeColor = bright,
-            cornerRadiusDp = 10
+        btnSendChat.background = gradientBackground(
+            startColor = colorWithAlpha(if (traitors) accent else panel, 255),
+            endColor = colorWithAlpha(if (traitors) Color.parseColor("#64232C") else Color.parseColor("#294667"), 255),
+            strokeColor = accentBright,
+            cornerRadiusDp = 3
         )
+        btnSendChat.typeface = cronistaTypeface()
         btnSendChat.setTextColor(text)
-        chatNewMessages.setTextColor(bright)
-        chatAmbientBackground.alpha = if (writable) 0.30f else 0.22f
-        chatPanelBackground.alpha = if (writable) 0.26f else 0.18f
+        btnCloseChat.background = angularBackground(
+            fillColor = colorWithAlpha(panelDeep, 240),
+            strokeColor = colorWithAlpha(accent, 190),
+            cornerRadiusDp = 3
+        )
+        btnCloseChat.setColorFilter(text)
+        chatNewMessages.setTextColor(accentBright)
+        chatAmbientBackground.alpha = if (writable) 0.18f else 0.12f
+        chatPanelBackground.alpha = if (writable) 0.14f else 0.09f
     }
 
     private fun applyChatFrameForegrounds(
@@ -3520,6 +3544,37 @@ class GameplayChatController(
         }
     }
 
+    private fun angularBackground(
+        fillColor: Int,
+        strokeColor: Int,
+        cornerRadiusDp: Int = 3,
+        strokeWidthDp: Int = 1
+    ): GradientDrawable {
+        return roundedBackground(
+            fillColor = fillColor,
+            strokeColor = strokeColor,
+            cornerRadiusDp = cornerRadiusDp,
+            strokeWidthDp = strokeWidthDp
+        )
+    }
+
+    private fun gradientBackground(
+        startColor: Int,
+        endColor: Int,
+        strokeColor: Int,
+        cornerRadiusDp: Int,
+        strokeWidthDp: Int = 1
+    ): GradientDrawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(startColor, endColor)
+        ).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = host.dp(cornerRadiusDp).toFloat()
+            setStroke(host.dp(strokeWidthDp), strokeColor)
+        }
+    }
+
     private fun colorWithAlpha(color: Int, alpha: Int): Int {
         return (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
     }
@@ -3562,5 +3617,10 @@ class GameplayChatController(
         private const val BURST_BOT_THINKING_PAUSE_MS = 250L
         private const val MIN_BOT_TYPING_VISIBLE_MS = 550L
         private const val MAX_BOT_TYPING_VISIBLE_MS = 2_400L
+    }
+
+    private enum class PrivateChatTheme {
+        TRAITORS,
+        DEAD
     }
 }

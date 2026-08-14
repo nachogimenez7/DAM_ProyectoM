@@ -20,6 +20,8 @@ object AccessibilityOptionsDialog {
 
     fun show(
         activity: AppCompatActivity,
+        exitLabel: String? = null,
+        onExitRequested: (() -> Unit)? = null,
         onTextSizeChanged: (Int) -> Unit = {}
     ): AlertDialog {
         val preferences = AudioPreferences.preferences(activity)
@@ -150,15 +152,37 @@ object AccessibilityOptionsDialog {
             )
         }
         content.addView(textSizeRow)
+        var dialog: AlertDialog? = null
+        if (exitLabel != null && onExitRequested != null) {
+            content.addView(Button(activity).apply {
+                text = exitLabel
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                minWidth = 0
+                minHeight = 0
+                setTextColor(activity.getColor(R.color.traitor_text))
+                setBackgroundResource(R.drawable.bg_btn_traitor_ripple)
+                setOnClickListener {
+                    dialog?.dismiss()
+                    onExitRequested()
+                }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                activity.dp(44)
+            ).apply {
+                topMargin = activity.dp(16)
+            })
+        }
         refreshRows()
 
-        return GameDialog.custom(
+        val createdDialog = GameDialog.custom(
             activity = activity,
             contentView = ScrollView(activity).apply { addView(content) },
             widthDp = 500,
             negativeLabel = null,
             positiveLabel = "CERRAR"
         )
+        dialog = createdDialog
+        return createdDialog
     }
 
     private fun optionSwitch(
