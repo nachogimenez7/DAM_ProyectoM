@@ -26,3 +26,9 @@ node_modules/
 firebase-debug.log
 firestore-debug.log
 database-debug.log
+
+# Repositorio web independiente y artefactos de edición/render de video.
+/Sitio-Web-Traidores/
+/Trailer_*
+/davinci_*
+/tools/davinci/

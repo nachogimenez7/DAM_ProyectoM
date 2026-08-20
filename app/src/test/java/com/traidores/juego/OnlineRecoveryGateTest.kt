@@ -40,7 +40,8 @@ class OnlineRecoveryGateTest {
             OnlineRecoveryGate.targetForRecovery(
                 state = OnlineRoomFirestore.STATE_WAITING,
                 playerExists = false,
-                activeInMatch = true
+                activeInMatch = true,
+                inGameEntryReleased = true
             )
         )
         assertEquals(
@@ -48,7 +49,8 @@ class OnlineRecoveryGateTest {
             OnlineRecoveryGate.targetForRecovery(
                 state = OnlineRoomFirestore.STATE_IN_GAME,
                 playerExists = true,
-                activeInMatch = false
+                activeInMatch = false,
+                inGameEntryReleased = true
             )
         )
     }
@@ -60,7 +62,8 @@ class OnlineRecoveryGateTest {
             OnlineRecoveryGate.targetForRecovery(
                 state = OnlineRoomFirestore.STATE_WAITING,
                 playerExists = true,
-                activeInMatch = true
+                activeInMatch = true,
+                inGameEntryReleased = false
             )
         )
         assertEquals(
@@ -68,7 +71,21 @@ class OnlineRecoveryGateTest {
             OnlineRecoveryGate.targetForRecovery(
                 state = OnlineRoomFirestore.STATE_IN_GAME,
                 playerExists = true,
-                activeInMatch = true
+                activeInMatch = true,
+                inGameEntryReleased = true
+            )
+        )
+    }
+
+    @Test
+    fun failedInGameBarrierIsNotOfferedAsRecoverableGameplay() {
+        assertEquals(
+            OnlineRecoveryTarget.CLEAR,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_IN_GAME,
+                playerExists = true,
+                activeInMatch = true,
+                inGameEntryReleased = false
             )
         )
     }

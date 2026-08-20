@@ -4,17 +4,71 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.ImageButton
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 
 class AyudaActivity : BaseActivity() {
+
+    private data class HelpSection(
+        val title: TextView,
+        val body: View,
+        val label: String
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_ayuda)
 
         findViewById<ImageButton>(R.id.btnBack).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btnOpenTutorial).setOnClickListener {
+            TutorialDialog.show(this, markAsSeen = false)
+        }
         renderRoleGuides(findViewById(R.id.roleGuidesContainer))
+        setupCompactSections()
+    }
+
+    private fun setupCompactSections() {
+        val sections = listOf(
+            section(R.id.helpTitleAbout, R.id.helpBodyAbout, "DE QUÉ TRATA"),
+            section(R.id.helpTitleHow, R.id.helpBodyHow, "CÓMO SE JUEGA"),
+            section(R.id.helpTitleModes, R.id.helpBodyModes, "LOCAL U ONLINE"),
+            section(R.id.helpTitleControls, R.id.helpBodyControls, "CONTROLES ESENCIALES"),
+            section(R.id.helpTitleWin, R.id.helpBodyWin, "CÓMO SE GANA"),
+            section(R.id.helpTitleDeception, R.id.helpBodyDeception, "EL ENGAÑO ES PARTE DEL JUEGO"),
+            section(R.id.helpTitleCommunity, R.id.helpBodyCommunity, "NORMAS Y SEGURIDAD ONLINE"),
+            section(R.id.helpTitleRules, R.id.helpBodyRules, "REGLAS IMPORTANTES"),
+            section(R.id.helpTitleTips, R.id.helpBodyTips, "CONSEJOS GENERALES"),
+            section(R.id.helpTitleRoles, R.id.helpBodyRoles, "CONSEJOS POR ROL")
+        )
+        var expanded: HelpSection? = null
+
+        fun render(section: HelpSection, open: Boolean) {
+            section.body.visibility = if (open) View.VISIBLE else View.GONE
+            section.title.text = "${section.label}  ${if (open) "−" else "+"}"
+            section.title.contentDescription =
+                "${section.label}. ${if (open) "Contraer sección" else "Expandir sección"}"
+            section.title.isSelected = open
+        }
+
+        sections.forEach { section ->
+            render(section, open = false)
+            section.title.setOnClickListener {
+                val shouldOpen = section.body.visibility != View.VISIBLE
+                expanded?.takeIf { it !== section }?.let { render(it, open = false) }
+                render(section, shouldOpen)
+                expanded = section.takeIf { shouldOpen }
+                GameplayEffects.play(this, GameplayEffect.PANEL)
+            }
+        }
+    }
+
+    private fun section(titleId: Int, bodyId: Int, label: String): HelpSection {
+        return HelpSection(
+            title = findViewById(titleId),
+            body = findViewById(bodyId),
+            label = label
+        )
     }
 
     private fun renderRoleGuides(container: LinearLayout) {

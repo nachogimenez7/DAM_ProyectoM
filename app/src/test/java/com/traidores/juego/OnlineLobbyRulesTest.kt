@@ -42,7 +42,7 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
-    fun browserCountsConnectedPlayersInsteadOfTrustingStoredOccupancy() {
+    fun connectedPresenceCountRemainsAvailableForJoinedRoomLogic() {
         assertEquals(
             4,
             OnlineLobbyRules.connectedPresenceCount(

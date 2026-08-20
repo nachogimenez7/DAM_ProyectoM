@@ -24,6 +24,7 @@ import java.util.WeakHashMap
 data class PlayerProfileAction(
     val label: String,
     val dangerous: Boolean = false,
+    val description: String? = null,
     val onClick: () -> Unit
 )
 
@@ -37,19 +38,30 @@ object PlayerProfileDialog {
         openDialogs.remove(activity)
     }
 
-    fun showFull(activity: Activity, profile: PlayerProfile, canEdit: Boolean) {
+    fun showFull(
+        activity: Activity,
+        profile: PlayerProfile,
+        canEdit: Boolean,
+        actions: List<PlayerProfileAction> = emptyList()
+    ) {
         val content = profileView(
             activity,
             profile,
             compact = false,
             canEdit = canEdit,
-            actions = emptyList()
+            actions = actions
         )
         val dialog = AlertDialog.Builder(activity).setView(content).create()
         content.findViewWithTag<View>("close")?.setOnClickListener { dialog.dismiss() }
         content.findViewWithTag<View>("edit")?.setOnClickListener {
             dialog.dismiss()
             activity.startActivity(Intent(activity, ProfileActivity::class.java))
+        }
+        actions.forEachIndexed { index, action ->
+            content.findViewWithTag<View>("profile_action_$index")?.setOnClickListener {
+                dialog.dismiss()
+                action.onClick()
+            }
         }
         dialog.setOnShowListener {
             dialog.window?.apply {
@@ -82,7 +94,7 @@ object PlayerProfileDialog {
         content.findViewWithTag<View>("close")?.setOnClickListener { dialog.dismiss() }
         content.findViewWithTag<View>("expand")?.setOnClickListener {
             dialog.dismiss()
-            showFull(activity, profile, canEdit = false)
+            showFull(activity, profile, canEdit = false, actions = actions)
         }
         actions.forEachIndexed { index, action ->
             content.findViewWithTag<View>("profile_action_$index")?.setOnClickListener {
@@ -158,6 +170,10 @@ object PlayerProfileDialog {
             root.addView(emoteRow(activity, profile.emoteIds))
             root.addView(sectionTitle(activity, "LOGROS DESTACADOS"))
             root.addView(achievementRow(activity, profile.featuredAchievementIds))
+            if (actions.isNotEmpty()) {
+                root.addView(sectionTitle(activity, "ACCIONES SOBRE ESTE JUGADOR"))
+                root.addView(moderationButtons(activity, actions))
+            }
             if (canEdit) {
                 root.addView(editButton(activity))
             }
@@ -175,26 +191,59 @@ object PlayerProfileDialog {
             setPadding(0, dp(activity, 10), 0, 0)
             actions.forEachIndexed { index, action ->
                 addView(
-                    Button(activity).apply {
-                        tag = "profile_action_$index"
-                        text = action.label
-                        textSize = 11f
-                        typeface = Typeface.DEFAULT_BOLD
-                        minHeight = 0
-                        minWidth = 0
-                        setTextColor(
-                            Color.parseColor(if (action.dangerous) "#FFB4AB" else "#F3D488")
+                    LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(
+                            Button(activity).apply {
+                                tag = "profile_action_$index"
+                                text = action.label
+                                textSize = 11f
+                                typeface = Typeface.DEFAULT_BOLD
+                                minHeight = 0
+                                minWidth = 0
+                                setTextColor(
+                                    Color.parseColor(
+                                        if (action.dangerous) "#FFB4AB" else "#F3D488"
+                                    )
+                                )
+                                background = chipBackground(
+                                    activity,
+                                    if (action.dangerous) "#351616" else "#251A10",
+                                    if (action.dangerous) "#8F2633" else "#6B4F2A",
+                                    9
+                                )
+                            },
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                dp(activity, 40)
+                            )
                         )
-                        background = chipBackground(
-                            activity,
-                            if (action.dangerous) "#351616" else "#251A10",
-                            if (action.dangerous) "#8F2633" else "#6B4F2A",
-                            9
-                        )
+                        action.description
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { description ->
+                                addView(
+                                    TextView(activity).apply {
+                                        text = description
+                                        gravity = Gravity.CENTER
+                                        textSize = 10f
+                                        setTextColor(Color.parseColor("#AFA084"))
+                                        setPadding(
+                                            dp(activity, 8),
+                                            dp(activity, 5),
+                                            dp(activity, 8),
+                                            0
+                                        )
+                                    },
+                                    LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT,
+                                        LinearLayout.LayoutParams.WRAP_CONTENT
+                                    )
+                                )
+                            }
                     },
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(activity, 40)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
                         if (index > 0) topMargin = dp(activity, 6)
                     }

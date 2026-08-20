@@ -18,9 +18,13 @@ object OnlineRecoveryGate {
     fun targetForRecovery(
         state: String,
         playerExists: Boolean,
-        activeInMatch: Boolean
+        activeInMatch: Boolean,
+        inGameEntryReleased: Boolean
     ): OnlineRecoveryTarget {
         if (!playerExists || !activeInMatch) return OnlineRecoveryTarget.CLEAR
+        if (state == OnlineRoomFirestore.STATE_IN_GAME && !inGameEntryReleased) {
+            return OnlineRecoveryTarget.CLEAR
+        }
         return targetForRoomState(state)
     }
 }

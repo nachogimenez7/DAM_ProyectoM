@@ -3223,7 +3223,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.i(
             "action_record_requested roomId=$onlinePartidaId uid=$onlinePlayerId type=$type actor=${human.name} target=${targetName.ifBlank { "-" }} phase=${session.phase.name} round=${session.round} host=$onlineIsHost"
         )
-        val actorOrder = session.players.indexOfFirst { it.isHuman }.coerceAtLeast(0)
+        val humanOrder = session.players.indexOfFirst { it.isHuman }.coerceAtLeast(0)
+        val rosterOrder = session.onlinePlayerUids.indexOf(onlinePlayerId)
+        val actorOrder = rosterOrder.takeIf { it in session.players.indices } ?: humanOrder
+        if (rosterOrder != humanOrder) {
+            OnlineDebugLog.w(
+                "action_actor_order_reconciled roomId=$onlinePartidaId uid=$onlinePlayerId roster=$rosterOrder human=$humanOrder selected=$actorOrder"
+            )
+        }
         val targetOrder = session.players.indexOfFirst { it.name == targetName }
         val orderedDetails = details +
             mapOf("actorOrden" to actorOrder) +

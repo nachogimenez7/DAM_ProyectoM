@@ -3,24 +3,18 @@ package com.traidores.juego
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.ApplicationInfo
 import android.os.Bundle
-import android.util.Log
 import android.util.TypedValue
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageButton
-import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.widget.SwitchCompat
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
 
 class OpcionesActivity : BaseActivity() {
 
@@ -38,9 +32,6 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var titleLanguage: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var descLanguage: TextView
-    private lateinit var titleAccount: TextView
-    private lateinit var accountStatus: TextView
-    private lateinit var accountDescription: TextView
     private lateinit var switchMusic: SwitchCompat
     private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
@@ -48,10 +39,6 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
     private lateinit var spinnerLanguage: Spinner
-    private lateinit var optionsScroll: ScrollView
-    private lateinit var accountCard: LinearLayout
-    private lateinit var btnFirebaseSmokeTest: Button
-    private lateinit var firebaseSmokeStatus: TextView
     private lateinit var btnAbout: Button
     private lateinit var btnResetOptions: Button
 
@@ -86,9 +73,6 @@ class OpcionesActivity : BaseActivity() {
         titleLanguage = findViewById(R.id.titleLanguage)
         labelLanguage = findViewById(R.id.labelLanguage)
         descLanguage = findViewById(R.id.descLanguage)
-        titleAccount = findViewById(R.id.titleAccount)
-        accountStatus = findViewById(R.id.accountStatus)
-        accountDescription = findViewById(R.id.accountDescription)
         switchMusic = findViewById(R.id.switchMusic)
         switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
@@ -96,13 +80,8 @@ class OpcionesActivity : BaseActivity() {
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
         spinnerLanguage = findViewById(R.id.spinnerLanguage)
-        optionsScroll = findViewById(R.id.optionsScroll)
-        accountCard = findViewById(R.id.accountCard)
-        btnFirebaseSmokeTest = findViewById(R.id.btnFirebaseSmokeTest)
-        firebaseSmokeStatus = findViewById(R.id.firebaseSmokeStatus)
         btnAbout = findViewById(R.id.btnAbout)
         btnResetOptions = findViewById(R.id.btnResetOptions)
-        configureDeveloperToolsVisibility()
     }
 
     private fun configureControls() {
@@ -172,80 +151,18 @@ class OpcionesActivity : BaseActivity() {
 
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
-        btnFirebaseSmokeTest.setOnClickListener { writeFirestoreSmokeTest() }
         btnAbout.setOnClickListener {
             startActivity(Intent(this, AcercaDeActivity::class.java))
         }
         btnResetOptions.setOnClickListener { resetOptions() }
     }
 
-    private fun configureDeveloperToolsVisibility() {
-        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-        val visibility = if (debuggable) View.VISIBLE else View.GONE
-        titleAccount.visibility = visibility
-        accountCard.visibility = visibility
-    }
-
-    private fun writeFirestoreSmokeTest() {
-        btnFirebaseSmokeTest.isEnabled = false
-        btnFirebaseSmokeTest.text = firebaseTestingText()
-        firebaseSmokeStatus.text = firebaseTestingStatus()
-        firebaseSmokeStatus.setTextColor(getColor(R.color.text_secondary))
-        val datos = hashMapOf(
-            "nombre" to "Nacho",
-            "mensaje" to "Hola Firebase",
-            "fechaLocal" to System.currentTimeMillis(),
-            "fechaServidor" to FieldValue.serverTimestamp(),
-            "origen" to "android-opciones"
-        )
-
-        val documentReference = FirebaseFirestore.getInstance()
-            .collection(FIRESTORE_TEST_COLLECTION)
-            .document(FIRESTORE_TEST_DOCUMENT)
-
-        documentReference
-            .set(datos)
-            .addOnSuccessListener {
-                documentReference.get()
-                    .addOnSuccessListener { snapshot ->
-                        btnFirebaseSmokeTest.isEnabled = true
-                        updateOptionTexts()
-                        val readablePath = "$FIRESTORE_TEST_COLLECTION/$FIRESTORE_TEST_DOCUMENT"
-                        if (snapshot.exists()) {
-                            firebaseSmokeStatus.text = firebaseSuccessStatus(readablePath)
-                            firebaseSmokeStatus.setTextColor(getColor(R.color.accent_gold))
-                            Log.i(FIRESTORE_SMOKE_TAG, "Documento verificado en $readablePath")
-                            Toast.makeText(this, "Firebase OK: $readablePath", Toast.LENGTH_LONG).show()
-                        } else {
-                            firebaseSmokeStatus.text = firebaseMissingStatus(readablePath)
-                            firebaseSmokeStatus.setTextColor(getColor(R.color.accent_red))
-                            Log.w(FIRESTORE_SMOKE_TAG, "La escritura termino, pero no se pudo leer $readablePath")
-                            Toast.makeText(this, "Firebase escribio, pero no pudo verificar.", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    .addOnFailureListener { error ->
-                        showFirestoreSmokeError(error)
-                    }
-            }
-            .addOnFailureListener { error ->
-                showFirestoreSmokeError(error)
-            }
-    }
-
-    private fun showFirestoreSmokeError(error: Exception) {
-        btnFirebaseSmokeTest.isEnabled = true
-        updateOptionTexts()
-        firebaseSmokeStatus.text = firebaseErrorStatus(error)
-        firebaseSmokeStatus.setTextColor(getColor(R.color.accent_red))
-        Log.e(FIRESTORE_SMOKE_TAG, "Error en prueba de Firestore", error)
-        Toast.makeText(this, "Firebase error: ${error.message}", Toast.LENGTH_LONG).show()
-    }
-
     private fun loadPreferences() {
         updatingControls = true
-        currentLanguage = preferences.getString(PREF_LANGUAGE, LANGUAGE_SPANISH)
-            ?.takeIf { it == LANGUAGE_ENGLISH }
-            ?: LANGUAGE_SPANISH
+        // El selector queda oculto hasta que la traduccion sea completa. Si una instalacion
+        // anterior habia guardado ingles, se normaliza para no mezclar textos parciales.
+        currentLanguage = LANGUAGE_SPANISH
+        preferences.edit().putString(PREF_LANGUAGE, LANGUAGE_SPANISH).apply()
         seekMusic.progress = preferences.getInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
         seekVoices.progress = preferences.getInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
         switchMusic.isChecked = AudioPreferences.isMusicEnabled(preferences)
@@ -345,14 +262,6 @@ class OpcionesActivity : BaseActivity() {
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
-            titleAccount.text = "ONLINE AND PROFILE"
-            accountStatus.text = "ONLINE EXPERIMENTAL"
-            accountDescription.text =
-                "Firebase is active for tests. Publish the rules, join by room code and check Logcat with TraidoresOnline. Accounts and stats are still pending."
-            btnFirebaseSmokeTest.text = "TEST FIREBASE"
-            if (firebaseSmokeStatus.text.isNullOrBlank()) {
-                firebaseSmokeStatus.text = "Checks pruebas/conexion_inicial. Use Play > Online for rooms."
-            }
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
@@ -368,14 +277,6 @@ class OpcionesActivity : BaseActivity() {
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traducción completa sigue en desarrollo."
-            titleAccount.text = "ONLINE Y PERFIL"
-            accountStatus.text = "ONLINE EXPERIMENTAL"
-            accountDescription.text =
-                "Firebase activo para pruebas. Publica las reglas, usa codigo de sala y revisa Logcat con TraidoresOnline. Las cuentas y estadisticas siguen pendientes."
-            btnFirebaseSmokeTest.text = "PROBAR FIREBASE"
-            if (firebaseSmokeStatus.text.isNullOrBlank()) {
-                firebaseSmokeStatus.text = "Comprueba pruebas/conexion_inicial. Para salas usa Jugar > Online."
-            }
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
         updateVolumeLabels()
@@ -416,13 +317,6 @@ class OpcionesActivity : BaseActivity() {
                 spinnerLanguage.requestFocus()
                 Toast.makeText(this, focusLanguageMessage(), Toast.LENGTH_SHORT).show()
             }
-            intent.getBooleanExtra("focus_account", false) -> {
-                accountCard.post {
-                    optionsScroll.smoothScrollTo(0, accountCard.top)
-                    accountCard.requestFocus()
-                }
-                Toast.makeText(this, accountPendingMessage(), Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
@@ -453,50 +347,8 @@ class OpcionesActivity : BaseActivity() {
         }
     }
 
-    private fun accountPendingMessage(): String {
-        return if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Online is experimental; accounts and stats are still pending."
-        } else {
-            "El online es experimental; las cuentas y estadisticas siguen pendientes."
-        }
-    }
-
-    private fun firebaseTestingText(): String =
-        if (currentLanguage == LANGUAGE_ENGLISH) "TESTING..." else "PROBANDO..."
-
-    private fun firebaseTestingStatus(): String =
-        if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Writing test document to Firestore..."
-        } else {
-            "Escribiendo documento de prueba en Firestore..."
-        }
-
-    private fun firebaseSuccessStatus(path: String): String =
-        if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Firebase OK. Check Cloud Firestore > Data > $path."
-        } else {
-            "Firebase OK. Mira Cloud Firestore > Datos > $path."
-        }
-
-    private fun firebaseMissingStatus(path: String): String =
-        if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Written, but the app could not read $path back."
-        } else {
-            "Se escribio, pero la app no pudo volver a leer $path."
-        }
-
-    private fun firebaseErrorStatus(error: Exception): String =
-        if (currentLanguage == LANGUAGE_ENGLISH) {
-            "Firebase failed: ${error.message ?: error.javaClass.simpleName}"
-        } else {
-            "Firebase fallo: ${error.message ?: error.javaClass.simpleName}"
-        }
-
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
-        private const val FIRESTORE_SMOKE_TAG = "FirestoreSmoke"
-        private const val FIRESTORE_TEST_COLLECTION = "pruebas"
-        private const val FIRESTORE_TEST_DOCUMENT = "conexion_inicial"
         private const val PREF_MUSIC_VOLUME = "music_volume"
         private const val PREF_VOICE_VOLUME = "voice_volume"
         private const val PREF_VIBRATION_ON = "vibration_on"

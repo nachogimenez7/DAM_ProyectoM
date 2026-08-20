@@ -344,6 +344,14 @@ async function main() {
     if (releasedPlayer.data().activoEnPartida !== false) {
       throw new Error("La salida no libero el cupo del jugador");
     }
+    // Un expulsado/inactivo ya no puede enumerar el lobby, pero siempre conserva lectura
+    // de su documento propio. La app usa ese get/listener puntual para mostrar su salida.
+    await assertFails(getDocs(collection(
+      guest,
+      "partidas",
+      "room_self_release",
+      "jugadores"
+    )));
 
     await assertSucceeds(updateDoc(doc(host, "partidas", "room_auth"), {
       configLobby: {
@@ -409,7 +417,16 @@ async function main() {
           fase: "REPARTO",
           mapa: "pampa",
           mapaNombre: "Pampa",
+          jugadores: [
+            { orden: 0, uidTemporal: "host_uid", nombre: "Host" },
+            { orden: 1, uidTemporal: "guest_uid", nombre: "Guest" },
+          ],
         },
+      });
+      // Reproduce el caso real: una expulsión dejó un hueco, el reingreso reutilizó el
+      // contador y el documento de lobby terminó con un orden distinto al roster del match.
+      await updateDoc(doc(db, "partidas", "room_auth", "jugadores", "guest_uid"), {
+        orden: 4,
       });
       await setDoc(
         doc(db, "partidas", "room_auth", "repartos", "guest_uid"),
@@ -465,6 +482,27 @@ async function main() {
       phaseIndex: 7,
       modoCliente: "online",
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+    }));
+    await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+      matchId: "match_rules_1",
+      tipo: "accion_jugador",
+      actorId: "guest_uid",
+      actorNombre: "Guest",
+      actorEsHost: false,
+      objetivoNombre: "Host",
+      fase: "NOCHE_POLICIA",
+      ronda: 1,
+      phaseIndex: 3,
+      modoCliente: "android",
+      detalles: {
+        accion: "investigar",
+        actorOrden: 1,
+        objetivoOrden: 0,
+        faseResultado: "NOCHE_MEDICO",
+        phaseIndexResultado: 4,
+      },
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));

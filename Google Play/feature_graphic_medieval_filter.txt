@@ -1,0 +1,8 @@
+[0:v]scale=1024:576:flags=lanczos,crop=1024:500:0:38,setsar=1,
+eq=brightness=-0.09:contrast=1.10:saturation=0.82,
+vignette=PI/5,
+drawbox=x=0:y=0:w=1024:h=132:color=black@0.58:t=fill,
+drawbox=x=0:y=407:w=1024:h=93:color=black@0.64:t=fill,
+drawbox=x=417:y=160:w=190:h=180:color=black@0.22:t=fill,
+drawtext=fontfile='C\:/Users/Nacho/OneDrive/Desktop/Facultad/testeo TRAIDORES/app/src/main/res/font/cinzel.ttf':text='TRAIDORES':fontsize=91:fontcolor=0xD9AC52:borderw=2:bordercolor=0x4E3210:shadowx=4:shadowy=5:shadowcolor=black@0.95:x=(w-text_w)/2:y=22,
+drawtext=fontfile='C\:/Users/Nacho/OneDrive/Desktop/Facultad/testeo TRAIDORES/app/src/main/res/font/cinzel.ttf':text='¿EN QUIÉN VAS A CONFIAR?':fontsize=34:fontcolor=0xF1DFB2:borderw=1:bordercolor=black@0.95:shadowx=2:shadowy=3:shadowcolor=black@0.95:x=(w-text_w)/2:y=435

@@ -16,7 +16,10 @@ const {
   initializeTestEnvironment,
 } = require("@firebase/rules-unit-testing");
 const {
+  addDoc,
+  collection,
   doc,
+  runTransaction,
   setDoc,
   updateDoc,
   serverTimestamp,
@@ -230,6 +233,48 @@ async function main() {
       })
     );
 
+    // --- Salida de un invitado ---
+    // Reproduce la transacción Android: libera su documento y decrementa el contador sin
+    // necesitar permisos de anfitrión.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "partidas", "room_guest_exit"), {
+        ...roomData("reg_host_uid"),
+        jugadoresActuales: 2,
+      });
+      await setDoc(
+        doc(db, "partidas", "room_guest_exit", "jugadores", "reg_host_uid"),
+        registeredPlayer("reg_host_uid", "Host", 0)
+      );
+      await setDoc(
+        doc(db, "partidas", "room_guest_exit", "jugadores", "guest_uid"),
+        guestPlayer("guest_uid", "Aguafiestas 4821", 1)
+      );
+    });
+    await assertSucceeds(runTransaction(invitado, async (transaction) => {
+      const roomRef = doc(invitado, "partidas", "room_guest_exit");
+      const playerRef = doc(
+        invitado,
+        "partidas",
+        "room_guest_exit",
+        "jugadores",
+        "guest_uid"
+      );
+      await transaction.get(roomRef);
+      await transaction.get(playerRef);
+      transaction.update(playerRef, {
+        activoEnPartida: false,
+        listo: false,
+        estado: "desconectado",
+        ultimaConexion: serverTimestamp(),
+        ultimaConexionLocal: Date.now(),
+      });
+      transaction.update(roomRef, {
+        jugadoresActuales: 1,
+        actualizadaEn: serverTimestamp(),
+      });
+    }));
+
     // --- Anfitrion estable ---
     // Un invitado no puede quedarse con la sala aunque el creador este ausente.
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -332,6 +377,50 @@ async function main() {
         registeredPlayer("pgs_uid", "Nacho el Traidor", 4)
       )
     );
+
+    // --- Gameplay: invitado Detective con orden de lobby desfasado ---
+    // El roster del match ubica al invitado en 1, aunque su documento quedó en 2 por un
+    // hueco/reingreso. La identidad de la acción debe seguir el roster autoritativo.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_guest"), {
+        estado: "en_juego",
+        partidaInicialCreada: true,
+        partidaInicial: {
+          matchId: "match_guest_detective_1",
+          fase: "REPARTO",
+          mapa: "pampa",
+          mapaNombre: "Pampa",
+          jugadores: [
+            { orden: 0, uidTemporal: "reg_host_uid", nombre: "Host" },
+            { orden: 1, uidTemporal: "guest_uid", nombre: "Aguafiestas 4821" },
+          ],
+        },
+      });
+    });
+    await assertSucceeds(addDoc(
+      collection(invitado, "partidas", "room_guest", "acciones"),
+      {
+        matchId: "match_guest_detective_1",
+        tipo: "accion_jugador",
+        actorId: "guest_uid",
+        actorNombre: "Aguafiestas 4821",
+        actorEsHost: false,
+        objetivoNombre: "Host",
+        fase: "NOCHE_POLICIA",
+        ronda: 1,
+        phaseIndex: 3,
+        modoCliente: "android",
+        detalles: {
+          accion: "investigar",
+          actorOrden: 1,
+          objetivoOrden: 0,
+          faseResultado: "NOCHE_MEDICO",
+          phaseIndexResultado: 4,
+        },
+        creadaEn: serverTimestamp(),
+        creadaEnLocal: Date.now(),
+      }
+    ));
   } finally {
     await testEnv.cleanup();
   }

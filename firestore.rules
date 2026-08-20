@@ -271,15 +271,21 @@ service cloud.firestore {
     }
 
     function validActionActor(partidaId) {
-      let player = get(
-        /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid)
-      ).data;
+      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      let actorOrder = request.resource.data.detalles.actorOrden;
+      let matchPlayers = room.partidaInicial.jugadores;
       return isActiveRoomMember(partidaId)
         && request.resource.data.actorId == request.auth.uid
-        && request.resource.data.actorNombre == player.nombre
         && request.resource.data.actorEsHost == isRoomActiveHost(partidaId)
-        && request.resource.data.detalles.actorOrden is int
-        && request.resource.data.detalles.actorOrden == player.orden;
+        && actorOrder is int
+        && matchPlayers is list
+        && actorOrder >= 0
+        && actorOrder < matchPlayers.size()
+        // El orden que importa durante gameplay es el roster inmutable del match. El orden
+        // del documento de lobby puede tener huecos o duplicarse tras una expulsión y un
+        // reingreso; usarlo acá rechazaba acciones legítimas o atribuía un rol a otro UID.
+        && matchPlayers[actorOrder].uidTemporal == request.auth.uid
+        && matchPlayers[actorOrder].nombre == request.resource.data.actorNombre;
     }
 
     function activeHostCanUpdateRoom() {

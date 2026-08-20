@@ -63,72 +63,130 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="18sp" />
 
+            <Button
+                android:id="@+id/btnOpenTutorial"
+                style="@style/BtnGold"
+                android:layout_marginBottom="22dp"
+                android:text="@string/tutorial_open" />
+
             <TextView
+                android:id="@+id/helpTitleAbout"
                 style="@style/HelpSectionTitle"
                 android:text="DE QUÉ TRATA" />
 
             <TextView
+                android:id="@+id/helpBodyAbout"
                 style="@style/HelpBodyCard"
                 android:text="Traidores es un juego de deducción social, engaño y debate para 5 a 15 jugadores. Cada participante recibe un rol secreto. Algunos protegen al pueblo; otros intentan controlarlo desde las sombras; y ciertos neutrales persiguen una victoria propia.\n\nNo alcanza con descubrir la verdad: también hay que lograr que los demás te crean." />
 
             <TextView
+                android:id="@+id/helpTitleHow"
                 style="@style/HelpSectionTitle"
                 android:text="CÓMO SE JUEGA" />
 
             <TextView
+                android:id="@+id/helpBodyHow"
                 style="@style/HelpBodyCard"
                 android:text="1. ROL SECRETO\nLee tu carta y recordá tu objetivo. No se la muestres a nadie.\n\n2. NOCHE\nEl pueblo duerme. Los roles nocturnos actúan en secreto: los Traidores atacan, el Detective investiga, el Médico protege y otros roles usan sus habilidades.\n\n3. AMANECER Y DEBATE\nSe anuncia lo ocurrido. Los sobrevivientes preguntan, acusan, se defienden y forman alianzas.\n\n4. VOTACIÓN\nCada jugador habilitado elige a un sospechoso. El resultado puede expulsar a un jugador o activar una condición especial.\n\n5. NUEVA RONDA\nSi ningún bando alcanzó su victoria, vuelve a caer la noche." />
 
             <TextView
+                android:id="@+id/helpTitleModes"
+                style="@style/HelpSectionTitle"
+                android:text="LOCAL U ONLINE" />
+
+            <TextView
+                android:id="@+id/helpBodyModes"
+                style="@style/HelpBodyCard"
+                android:text="JUGAR vs IA\nEntrás solo, elegís mapa y cantidad de participantes, y el resto de la mesa es controlado por la IA. Es la mejor forma de practicar roles y aprender el ritmo.\n\nJUGAR EN LÍNEA\nLas partidas normales son para 5 a 15 personas. Una sala pública aparece en Buscar partida; una privada se comparte mediante su código. El anfitrión configura la mesa y todos deben marcar LISTO antes de comenzar.\n\nSi se corta la conexión, volvé a Jugar en línea: la app intentará recuperar tu sala activa." />
+
+            <TextView
+                android:id="@+id/helpTitleControls"
+                style="@style/HelpSectionTitle"
+                android:text="CONTROLES ESENCIALES" />
+
+            <TextView
+                android:id="@+id/helpBodyControls"
+                style="@style/HelpBodyCard"
+                android:text="- Leé el cartel central: indica la fase y qué espera el juego de vos.\n\n- Usá VER CARTA para recordar tu rol sin mostrar la pantalla.\n\n- Cuando tengas una acción, elegí una carta objetivo y confirmala antes de que termine el tiempo.\n\n- El chat público sirve para debatir. Algunos roles o estados habilitan canales privados.\n\n- Tocá la carta de otro jugador para consultar su perfil. En online también podés silenciar para vos su chat y sus emotes.\n\n- Desde el engranaje podés consultar opciones o abandonar la partida de forma segura." />
+
+            <TextView
+                android:id="@+id/helpTitleWin"
                 style="@style/HelpSectionTitle"
                 android:text="CÓMO SE GANA" />
 
             <TextView
+                android:id="@+id/helpBodyWin"
                 style="@style/HelpBodyCard"
                 android:text="PUEBLO\nGana cuando ya no queda ningún Asesino capaz de matar.\n\nTRAIDORES\nGanan cuando igualan o superan en número a los jugadores del bando del Pueblo. Los neutrales no entran en esa cuenta.\n\nBUFÓN (neutral)\nObtiene su victoria especial si el pueblo lo expulsa durante una votación. La partida principal continúa.\n\nDESERTOR (neutral)\nDebe sobrevivir y conseguir que gane el bando que eligió finalmente." />
 
             <TextView
+                android:id="@+id/helpTitleDeception"
                 style="@style/HelpSectionTitle"
                 android:text="EL ENGAÑO ES PARTE DEL JUEGO" />
 
             <TextView
+                android:id="@+id/helpBodyDeception"
                 style="@style/HelpHighlightCard"
                 android:text="Se permite mentir sobre tu rol, inventar una investigación, negar una acción, acusar para desviar sospechas o fingir que tienes información.\n\nLo que no se permite es mostrar la pantalla, enseñar la carta o usar información externa para demostrar que dices la verdad. Convencer debe depender de tus palabras y de lo ocurrido dentro de la partida." />
 
             <TextView
+                android:id="@+id/helpTitleCommunity"
+                style="@style/HelpSectionTitle"
+                android:text="NORMAS Y SEGURIDAD ONLINE" />
+
+            <TextView
+                android:id="@+id/helpBodyCommunity"
+                style="@style/HelpHighlightCard"
+                android:text="JUGÁ CON RESPETO\nEl engaño pertenece a la partida; los ataques personales, no. No se permiten insultos, amenazas, acoso, discriminación, contenido sexual, datos personales, spam, trampas ni suplantación.\n\nSILENCIAR PARA MÍ\nOculta solamente en tu dispositivo el chat y los emotes de esa persona. Es personal, inmediato y reversible.\n\nSILENCIO DE MESA\nEs una mecánica temporal que votan los jugadores vivos. Limita el texto libre, pero no equivale a un castigo de moderación.\n\nREPORTAR\nEnvía el caso para revisión. No expulsa automáticamente y debe usarse de buena fe.\n\nEXPULSAR O BLOQUEAR ESTA SALA\nSólo el anfitrión puede hacerlo. Expulsar saca al jugador; bloquear además impide que reingrese a esa sala. No es un bloqueo global de la cuenta." />
+
+            <TextView
+                android:id="@+id/helpTitleRules"
                 style="@style/HelpSectionTitle"
                 android:text="REGLAS IMPORTANTES" />
 
             <TextView
+                android:id="@+id/helpBodyRules"
                 style="@style/HelpBodyCard"
                 android:text="- Tu rol es secreto hasta que una regla indique lo contrario.\n\n- Los jugadores eliminados no hablan ni votan. La excepción es una voz invocada por el Oráculo: puede debatir, pero no votar ni usar habilidades.\n\n- Un jugador silenciado no puede hablar ni votar durante ese día.\n\n- El Alcalde revelado tiene voto doble y puede resolver ciertos empates.\n\n- Las habilidades de uso único no se recuperan en la ronda siguiente.\n\n- Mentir dentro del juego está permitido; insultar, molestar fuera del personaje o atacar personalmente a otro jugador, no." />
 
             <TextView
+                android:id="@+id/helpTitleTips"
                 style="@style/HelpSectionTitle"
                 android:text="CONSEJOS GENERALES" />
 
             <TextView
+                android:id="@+id/helpBodyTips"
                 style="@style/HelpBodyCard"
                 android:text="- Presta atención a quién acusa primero y quién cambia de versión.\n\n- No reveles información privada sin pensar quién puede protegerte.\n\n- Hablar mucho no demuestra inocencia, pero guardar silencio tampoco.\n\n- Un aliado puede equivocarse y un enemigo puede decir la verdad.\n\n- Recordá las votaciones anteriores: suelen revelar alianzas mejor que los discursos." />
 
             <TextView
+                android:id="@+id/helpTitleRoles"
                 style="@style/HelpSectionTitle"
                 android:text="CONSEJOS POR ROL" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:fontFamily="sans-serif"
-                android:text="Toca un rol para consultar su función y su consejo."
-                android:textColor="@color/text_secondary"
-                android:textSize="17sp" />
-
             <LinearLayout
-                android:id="@+id/roleGuidesContainer"
+                android:id="@+id/helpBodyRoles"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:layout_marginBottom="22dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="10dp"
+                    android:fontFamily="sans-serif"
+                    android:text="Tocá un rol para consultar su función y su consejo."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="17sp" />
+
+                <LinearLayout
+                    android:id="@+id/roleGuidesContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </LinearLayout>
 
         </LinearLayout>
     </ScrollView>

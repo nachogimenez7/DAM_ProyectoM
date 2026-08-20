@@ -201,12 +201,16 @@ object GameDialog {
         activity: Activity,
         title: String,
         message: String,
-        positiveLabel: String = "CONTINUAR"
+        positiveLabel: String = "CONTINUAR",
+        onPositive: (() -> Unit)? = null
     ): AlertDialog {
         val host = createHost(activity, title, message)
         host.negative.visibility = View.GONE
         host.positive.text = positiveLabel
-        host.positive.setOnClickListener { host.dialog.dismiss() }
+        host.positive.setOnClickListener {
+            onPositive?.invoke()
+            host.dialog.dismiss()
+        }
         show(activity, host.dialog)
         return host.dialog
     }

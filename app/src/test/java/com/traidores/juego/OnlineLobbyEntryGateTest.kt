@@ -74,6 +74,34 @@ class OnlineLobbyEntryGateTest {
         )
     }
 
+    @Test
+    fun locallyReadyHostCanReplaceOnlyItsOwnMissingRealtimeEcho() {
+        val expected = setOf("host", "guest-1", "guest-2")
+        val guestStates = mapOf(
+            "guest-1" to readyState("match-actual"),
+            "guest-2" to readyState("match-actual")
+        )
+
+        assertTrue(
+            OnlineLobbyEntryGate.canReleaseWithLocalReady(
+                expectedPlayerIds = expected,
+                matchId = "match-actual",
+                clientStates = guestStates,
+                localPlayerId = "host",
+                localPlayerReady = true
+            )
+        )
+        assertFalse(
+            OnlineLobbyEntryGate.canReleaseWithLocalReady(
+                expectedPlayerIds = expected,
+                matchId = "match-actual",
+                clientStates = mapOf("guest-1" to readyState("match-actual")),
+                localPlayerId = "host",
+                localPlayerReady = true
+            )
+        )
+    }
+
     private fun readyState(matchId: String): Map<String, Any?> {
         return mapOf(
             OnlineLobbyEntryGate.FIELD_MATCH_ID to matchId,

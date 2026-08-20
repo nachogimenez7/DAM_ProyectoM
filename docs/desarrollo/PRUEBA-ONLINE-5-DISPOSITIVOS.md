@@ -21,8 +21,8 @@ mismo APK debug. Comprobar Internet, fecha/hora automáticas y nombres distintos
    estado.
 5. Cerrar el anfitrión y comprobar que otro jugador activo toma la autoridad sin trabar la mesa.
 6. Terminar la partida: resultado y revelación final deben coincidir en los cinco.
-7. Jugar una revancha. Los roles se reparten de nuevo; los baneos de sala se conservan y los
-   silencios de mesa no.
+7. Jugar una revancha. Los roles se reparten de nuevo y ningún estado temporal de la mesa
+   anterior debe bloquear la nueva partida.
 
 ## Moderación
 
@@ -32,8 +32,8 @@ mismo APK debug. Comprobar Internet, fecha/hora automáticas y nombres distintos
    silenciado se le bloquea texto libre, incluso en Firebase, pero conserva respuestas rápidas.
 3. Reportar desde el perfil y repetir: en Firebase debe quedar un solo documento con id
    `matchId_reportanteUid_reportadoUid`.
-4. En una sala nueva usar **Expulsar y bloquear esta sala**. El afectado sale y no puede regresar
-   con el código. Luego desbloquearlo desde Opciones avanzadas > Administrar bloqueados.
+4. En una sala nueva usar **Expulsar de la sala**. El afectado debe salir de inmediato, ver un
+   único botón para volver al online y poder reingresar si el cupo sigue disponible.
 
 ## Red y sanciones
 

@@ -255,7 +255,8 @@
                 android:text="IDIOMA"
                 android:textColor="@color/accent_gold"
                 android:textSize="19sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:visibility="gone" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -264,7 +265,8 @@
                 android:background="@drawable/bg_btn_dark"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp">
+                android:padding="16dp"
+                android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="0dp"
@@ -299,70 +301,6 @@
                     android:backgroundTint="@color/accent_gold"
                     android:popupBackground="@color/bg_card"
                     android:spinnerMode="dropdown" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/titleAccount"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="8dp"
-                android:fontFamily="sans-serif"
-                android:text="CUENTA Y PERFIL"
-                android:textColor="@color/accent_gold"
-                android:textSize="19sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:id="@+id/accountCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="22dp"
-                android:background="@drawable/bg_btn_dark"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:id="@+id/accountStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="sans-serif"
-                    android:text="ONLINE EXPERIMENTAL"
-                    android:textColor="@color/text_primary"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/accountDescription"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:fontFamily="sans-serif"
-                    android:text="Firebase activo para pruebas. Publica las reglas, usa codigo de sala y revisa Logcat con TraidoresOnline. Las cuentas y estadisticas siguen pendientes."
-                    android:textColor="@color/text_secondary"
-                    android:textSize="15sp" />
-
-                <Button
-                    android:id="@+id/btnFirebaseSmokeTest"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="14dp"
-                    android:background="@drawable/bg_profile_selection_selected"
-                    android:fontFamily="sans-serif"
-                    android:text="PROBAR FIREBASE"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/firebaseSmokeStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:fontFamily="sans-serif"
-                    android:text="Comprueba pruebas/conexion_inicial. Para salas usa Jugar > Online."
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-
             </LinearLayout>
 
             <Button

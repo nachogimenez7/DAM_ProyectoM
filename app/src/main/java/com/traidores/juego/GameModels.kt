@@ -770,6 +770,9 @@ object LocalGameFactory {
                 if (count >= 10) counts[RoleCatalog.ESPIA] = 1
             }
         }
+        // Las composiciones publicas usan un mapa completo: un rol ausente vale cero, no
+        // `null`. Esto evita que UI, serializacion y pruebas interpreten distinto el preset.
+        editableRoleKeys().forEach { roleKey -> counts.putIfAbsent(roleKey, 0) }
         val specialCount = counts.values.sum()
         counts[RoleCatalog.ALDEANO] = (count - specialCount).coerceAtLeast(0)
         return RoleCompositionConfig(
@@ -835,7 +838,15 @@ object LocalGameFactory {
         }
         val normalized = linkedMapOf<String, Int>()
         editableRoleKeys().forEach { key ->
-            if (RoleCatalog.isAvailableOnMap(key, map) && playerCount >= RoleCatalog.minimumPlayers(key)) {
+            val allowedInThreePlayerTest = session.onlineTestMode && key in setOf(
+                RoleCatalog.ASESINO,
+                RoleCatalog.MEDICO,
+                RoleCatalog.POLICIA
+            )
+            if (
+                RoleCatalog.isAvailableOnMap(key, map) &&
+                (playerCount >= RoleCatalog.minimumPlayers(key) || allowedInThreePlayerTest)
+            ) {
                 normalized[key] = source.counts[key]?.coerceAtLeast(0) ?: 0
             } else {
                 normalized[key] = 0

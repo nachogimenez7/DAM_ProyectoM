@@ -14,16 +14,12 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
-import com.google.firebase.database.FirebaseDatabase
 
 class LobbyBrowserActivity : BaseActivity() {
 
     private val firestore = FirebaseFirestore.getInstance()
-    private val realtimeDatabase = FirebaseDatabase.getInstance()
     private var lobbyListener: ListenerRegistration? = null
     private var lobbies = emptyList<OnlineLobby>()
-    private var presenceValidationGeneration = 0
-    private var presenceRetryRunnable: Runnable? = null
 
     private lateinit var lobbyList: LinearLayout
     private lateinit var emptyState: TextView
@@ -45,9 +41,6 @@ class LobbyBrowserActivity : BaseActivity() {
     }
 
     override fun onStop() {
-        presenceValidationGeneration += 1
-        presenceRetryRunnable?.let(lobbyList::removeCallbacks)
-        presenceRetryRunnable = null
         lobbyListener?.remove()
         lobbyListener = null
         super.onStop()
@@ -82,106 +75,11 @@ class LobbyBrowserActivity : BaseActivity() {
                     ?.mapNotNull(::parseLobby)
                     ?.sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
                     .orEmpty()
-                beginRoomPresenceValidation(candidates)
+                lobbies = candidates
+                OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
+                showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
+                renderLobbyList()
             }
-    }
-
-    private fun beginRoomPresenceValidation(candidates: List<OnlineLobby>) {
-        presenceRetryRunnable?.let(lobbyList::removeCallbacks)
-        presenceRetryRunnable = null
-        val generation = ++presenceValidationGeneration
-        lobbies = emptyList()
-        showBrowserMessage(
-            if (candidates.isEmpty()) {
-                "Todavia no hay partidas online. Crea una sala o intenta mas tarde."
-            } else {
-                "Comprobando salas disponibles..."
-            }
-        )
-        renderLobbyList()
-        validateRoomPresence(
-            candidates = candidates,
-            generation = generation,
-            retryMissingOnce = true,
-            confirmed = emptyList()
-        )
-    }
-
-    private fun validateRoomPresence(
-        candidates: List<OnlineLobby>,
-        generation: Int,
-        retryMissingOnce: Boolean,
-        confirmed: List<OnlineLobby>
-    ) {
-        if (generation != presenceValidationGeneration) return
-        if (candidates.isEmpty()) {
-            publishPresenceValidatedLobbies(confirmed, generation)
-            return
-        }
-        val visible = confirmed.toMutableList()
-        val missing = mutableListOf<OnlineLobby>()
-        var pending = candidates.size
-        candidates.forEach { lobby ->
-            realtimeDatabase
-                .getReference("salas/${lobby.id}/presencia")
-                .get()
-                .addOnCompleteListener { task ->
-                    if (generation != presenceValidationGeneration) return@addOnCompleteListener
-                    val connectedPlayers = if (task.isSuccessful) {
-                        OnlineLobbyRules.connectedPresenceCount(
-                            task.result.children.map { presence ->
-                                presence.child("estado").getValue(String::class.java)
-                            }
-                        )
-                    } else {
-                        0
-                    }
-                    if (connectedPlayers > 0) {
-                        val visiblePlayers = connectedPlayers.coerceAtMost(lobby.limit)
-                        visible += lobby.copy(
-                            players = visiblePlayers,
-                            status = if (visiblePlayers >= lobby.limit) "Llena" else "Esperando"
-                        )
-                    } else {
-                        missing += lobby
-                        if (!task.isSuccessful) {
-                            OnlineDebugLog.e(
-                                "lobby_browser_room_presence_failure roomId=${lobby.id}",
-                                task.exception ?: IllegalStateException("No se pudo leer la presencia")
-                            )
-                        }
-                    }
-                    pending -= 1
-                    if (pending != 0) return@addOnCompleteListener
-                    publishPresenceValidatedLobbies(visible, generation)
-                    if (retryMissingOnce && missing.isNotEmpty()) {
-                        val retry = Runnable {
-                            presenceRetryRunnable = null
-                            validateRoomPresence(
-                                candidates = missing,
-                                generation = generation,
-                                retryMissingOnce = false,
-                                confirmed = visible
-                            )
-                        }
-                        presenceRetryRunnable = retry
-                        lobbyList.postDelayed(retry, HOST_PRESENCE_RETRY_MS)
-                    }
-                }
-        }
-    }
-
-    private fun publishPresenceValidatedLobbies(
-        validated: List<OnlineLobby>,
-        generation: Int
-    ) {
-        if (generation != presenceValidationGeneration) return
-        lobbies = validated
-            .distinctBy { it.id }
-            .sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
-        OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
-        showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
-        renderLobbyList()
     }
 
     private fun parseLobby(document: DocumentSnapshot): OnlineLobby? {
@@ -459,6 +357,5 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val DEFAULT_MAX_PLAYERS = 10
         private const val BROWSER_ROOM_LIMIT = 30L
         private const val ROOM_VISIBILITY_MS = 30L * 60L * 1000L
-        private const val HOST_PRESENCE_RETRY_MS = 1_500L
     }
 }

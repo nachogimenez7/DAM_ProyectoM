@@ -88,6 +88,8 @@ class OnlineModeActivity : BaseActivity() {
             }
             showCreateRoomDialog()
         }
+
+        CommunityRules.showBeforeFirstOnline(this)
     }
 
     override fun onStart() {
@@ -738,7 +740,8 @@ class OnlineModeActivity : BaseActivity() {
                             playerExists = player.exists(),
                             activeInMatch = player.getBoolean(
                                 OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH
-                            ) != false
+                            ) != false,
+                            inGameEntryReleased = isCurrentMatchEntryReleased(snapshot)
                         )
                         if (target == OnlineRecoveryTarget.CLEAR) {
                             OnlineRoomRecovery.clear(this)
@@ -839,7 +842,8 @@ class OnlineModeActivity : BaseActivity() {
                         playerExists = player.exists(),
                         activeInMatch = player.getBoolean(
                             OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH
-                        ) != false
+                        ) != false,
+                        inGameEntryReleased = isCurrentMatchEntryReleased(snapshot)
                     )
                 ) {
                     OnlineRecoveryTarget.LOBBY -> openRecoveredLobby(room, snapshot)
@@ -867,6 +871,15 @@ class OnlineModeActivity : BaseActivity() {
         OnlineRoomRecovery.clear(this)
         showRecoveredRoom(null)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun isCurrentMatchEntryReleased(snapshot: DocumentSnapshot): Boolean {
+        val initialMatch = snapshot.get(OnlineRoomFirestore.FIELD_INITIAL_MATCH) as? Map<*, *>
+        val matchId = (initialMatch?.get("matchId") as? String).orEmpty()
+        val releasedMatchId = snapshot.getString(
+            OnlineRoomFirestore.FIELD_ENTRY_RELEASED_MATCH_ID
+        ).orEmpty()
+        return OnlineLobbyEntryGate.isReleased(matchId, releasedMatchId)
     }
 
     private fun openRecoveredLobby(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
