@@ -13,7 +13,8 @@ data class PlayerProfile(
     val favoriteRoleKey: String,
     val featuredAchievementIds: List<String>,
     val emoteIds: List<String>,
-    val stats: PlayerStats
+    val stats: PlayerStats,
+    val playGamesAvatarUri: String = ""
 ) : Serializable
 
 data class PlayerStats(
@@ -82,7 +83,10 @@ object PlayerProfileStore {
                     .take(MAX_FEATURED_ACHIEVEMENTS)
             },
             emoteIds = EmoteLoadout.selectedIds(context),
-            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false)
+            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false),
+            playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
+                preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
+            )
         )
     }
 
@@ -126,7 +130,8 @@ object PlayerProfileStore {
         bio: String,
         avatarKey: String,
         bannerKey: String,
-        favoriteRoleKey: String
+        favoriteRoleKey: String,
+        playGamesAvatarUri: String? = null
     ) {
         val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         name.takeIf { it.isNotBlank() }?.let {
@@ -135,6 +140,12 @@ object PlayerProfileStore {
         }
         bio.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_BIO, it) }
         avatarKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_AVATAR, it) }
+        playGamesAvatarUri?.let {
+            editor.putString(
+                ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI,
+                PlayGamesProfileAvatar.normalize(it)
+            )
+        }
         bannerKey.takeIf { it.isNotBlank() }?.let {
             editor.putString(PREF_BANNER, ProfileCustomizationCatalog.normalizeBannerKey(it))
         }

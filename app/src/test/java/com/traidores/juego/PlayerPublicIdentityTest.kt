@@ -19,6 +19,7 @@ class PlayerPublicIdentityTest {
             publicId = "7",
             bio = "Juego callado hasta que hace falta hablar.",
             avatarKey = "grecia_oraculo",
+            playGamesAvatarUri = "https://lh3.googleusercontent.com/example-avatar",
             bannerKey = "medieval",
             favoriteRoleKey = "pampa_payador",
             featuredAchievementIds = emptyList(),
@@ -37,6 +38,10 @@ class PlayerPublicIdentityTest {
         assertEquals("Fede", fields[PlayerPublicIdentity.FIELD_ROOM_NAME])
         assertEquals("Juego callado hasta que hace falta habla", fields[PlayerPublicIdentity.FIELD_PROFILE_BIO])
         assertEquals("grecia_oraculo", fields[PlayerPublicIdentity.FIELD_PROFILE_AVATAR])
+        assertEquals(
+            "https://lh3.googleusercontent.com/example-avatar",
+            fields[PlayerPublicIdentity.FIELD_PROFILE_PLAY_GAMES_AVATAR]
+        )
         assertEquals("medieval", fields[PlayerPublicIdentity.FIELD_PROFILE_BANNER])
         assertEquals("pampa_payador", fields[PlayerPublicIdentity.FIELD_PROFILE_FAVORITE_ROLE])
     }

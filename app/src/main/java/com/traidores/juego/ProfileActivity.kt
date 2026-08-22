@@ -42,6 +42,7 @@ class ProfileActivity : BaseActivity() {
         var bio: String,
         var avatarKey: String,
         var localPhotoEnabled: Boolean,
+        var playGamesAvatarUri: String,
         var bannerKey: String,
         var favoriteRoleKey: String,
         var achievements: List<String>,
@@ -66,6 +67,7 @@ class ProfileActivity : BaseActivity() {
         applyProfileSelectionResult(result) {
             draftProfile.avatarKey = it
             draftProfile.localPhotoEnabled = false
+            draftProfile.playGamesAvatarUri = ""
         }
     }
     private val localPhotoLauncher = registerForActivityResult(
@@ -75,6 +77,7 @@ class ProfileActivity : BaseActivity() {
         LocalProfilePhotoStore.importPending(this, uri)
             .onSuccess {
                 draftProfile.localPhotoEnabled = true
+                draftProfile.playGamesAvatarUri = ""
                 renderProfile()
             }
             .onFailure { error ->
@@ -293,6 +296,7 @@ class ProfileActivity : BaseActivity() {
             avatarKey = profile.avatarKey,
             localPhotoEnabled = preferences.getBoolean(PREF_LOCAL_PHOTO_ENABLED, false) &&
                 LocalProfilePhotoStore.hasSavedPhoto(this),
+            playGamesAvatarUri = profile.playGamesAvatarUri,
             bannerKey = profile.bannerKey,
             favoriteRoleKey = profile.favoriteRoleKey,
             achievements = profile.featuredAchievementIds
@@ -996,6 +1000,21 @@ class ProfileActivity : BaseActivity() {
             return true
         }
         val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+        val fallbackRes = resources.getIdentifier(
+            avatarEntry.role.imageResName,
+            "drawable",
+            packageName
+        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+        if (
+            PlayGamesProfileAvatar.render(
+                context = this,
+                image = image,
+                uriValue = draftProfile.playGamesAvatarUri,
+                fallbackDrawableRes = fallbackRes
+            )
+        ) {
+            return true
+        }
         setRoleImage(image, avatarEntry.role)
         alignAvatarToFocus(image, avatarEntry.verticalFocus)
         return false
@@ -1064,6 +1083,10 @@ class ProfileActivity : BaseActivity() {
             .putString(PREF_BIO, draftProfile.bio)
             .putString(PREF_AVATAR, draftProfile.avatarKey)
             .putBoolean(PREF_LOCAL_PHOTO_ENABLED, draftProfile.localPhotoEnabled)
+            .putString(
+                PREF_PLAY_GAMES_AVATAR_URI,
+                PlayGamesProfileAvatar.normalize(draftProfile.playGamesAvatarUri)
+            )
             .putString(PREF_BANNER, draftProfile.bannerKey)
             .putString(PREF_FAVORITE_ROLE, draftProfile.favoriteRoleKey)
             .putString(
@@ -1118,6 +1141,10 @@ class ProfileActivity : BaseActivity() {
             outState.putString(STATE_DRAFT_BIO, draftProfile.bio)
             outState.putString(STATE_DRAFT_AVATAR, draftProfile.avatarKey)
             outState.putBoolean(STATE_DRAFT_LOCAL_PHOTO_ENABLED, draftProfile.localPhotoEnabled)
+            outState.putString(
+                STATE_DRAFT_PLAY_GAMES_AVATAR_URI,
+                draftProfile.playGamesAvatarUri
+            )
             outState.putString(STATE_DRAFT_BANNER, draftProfile.bannerKey)
             outState.putString(STATE_DRAFT_FAVORITE_ROLE, draftProfile.favoriteRoleKey)
             outState.putStringArrayList(
@@ -1166,9 +1193,11 @@ class ProfileActivity : BaseActivity() {
         GameDialog.choose(
             activity = this,
             title = "Foto de perfil",
-            message = "La foto de galería se guarda solamente en este dispositivo.",
+            message = "La galería queda solo en este dispositivo. La foto de Play Juegos " +
+                "puede verla el resto de la sala.",
             options = listOf(
                 "Elegir una foto de la galería",
+                "Usar mi foto de Google Play Juegos",
                 "Usar un avatar ilustrado"
             )
         ) { choice ->
@@ -1177,9 +1206,34 @@ class ProfileActivity : BaseActivity() {
                     if (requireAccountFor("Usar una foto de tu galería")) return@choose
                     localPhotoLauncher.launch("image/*")
                 }
-                1 -> showIllustratedAvatarSelector()
+                1 -> selectPlayGamesAvatar()
+                2 -> showIllustratedAvatarSelector()
             }
         }
+    }
+
+    private fun selectPlayGamesAvatar() {
+        if (requireAccountFor("Usar tu foto de Play Juegos")) return
+        PlayGamesProfileAvatar.requestCurrent(
+            activity = this,
+            onReady = { uri ->
+                draftProfile.localPhotoEnabled = false
+                draftProfile.playGamesAvatarUri = uri
+                renderProfile()
+                GameNotice.show(
+                    activity = this,
+                    message = "Foto de Play Juegos seleccionada. Guardá los cambios para aplicarla.",
+                    duration = GameNotice.Duration.LONG
+                )
+            },
+            onFailure = { message ->
+                GameNotice.show(
+                    activity = this,
+                    message = message,
+                    duration = GameNotice.Duration.LONG
+                )
+            }
+        )
     }
 
     private fun showIllustratedAvatarSelector() {
@@ -1873,6 +1927,12 @@ class ProfileActivity : BaseActivity() {
                 STATE_DRAFT_LOCAL_PHOTO_ENABLED,
                 savedProfile.localPhotoEnabled
             ),
+            playGamesAvatarUri = savedInstanceState
+                .getString(
+                    STATE_DRAFT_PLAY_GAMES_AVATAR_URI,
+                    savedProfile.playGamesAvatarUri
+                )
+                .orEmpty(),
             bannerKey = savedInstanceState
                 .getString(STATE_DRAFT_BANNER, savedProfile.bannerKey)
                 .orEmpty(),
@@ -1958,6 +2018,7 @@ class ProfileActivity : BaseActivity() {
         const val PREF_BIO = "profile_bio"
         const val PREF_AVATAR = "profile_avatar"
         const val PREF_LOCAL_PHOTO_ENABLED = "profile_local_photo_enabled"
+        const val PREF_PLAY_GAMES_AVATAR_URI = "profile_play_games_avatar_uri"
         const val PREF_BANNER = "profile_banner"
         const val PREF_FAVORITE_ROLE = "profile_favorite_role"
         const val ROLE_THUMBNAIL_ZOOM = 0.90f
@@ -1980,6 +2041,8 @@ class ProfileActivity : BaseActivity() {
         const val STATE_DRAFT_AVATAR = "profile_state_draft_avatar"
         const val STATE_DRAFT_LOCAL_PHOTO_ENABLED =
             "profile_state_draft_local_photo_enabled"
+        const val STATE_DRAFT_PLAY_GAMES_AVATAR_URI =
+            "profile_state_draft_play_games_avatar_uri"
         const val STATE_DRAFT_BANNER = "profile_state_draft_banner"
         const val STATE_DRAFT_FAVORITE_ROLE = "profile_state_draft_favorite_role"
         const val STATE_DRAFT_ACHIEVEMENTS = "profile_state_draft_achievements"

@@ -318,10 +318,10 @@
             <FrameLayout
                 android:id="@+id/chatAmbientFeed"
                 android:layout_width="match_parent"
-                android:layout_height="156dp"
+                android:layout_height="174dp"
                 android:layout_gravity="center"
                 android:layout_marginHorizontal="4dp"
-                android:layout_marginTop="86dp"
+                android:layout_marginTop="70dp"
                 android:layout_marginBottom="126dp"
                 android:background="@drawable/bg_reveal_text_shade"
                 android:clickable="true"
@@ -348,7 +348,7 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="match_parent"
                     android:orientation="vertical"
                     android:paddingHorizontal="13dp"
                     android:paddingTop="11dp"
@@ -363,30 +363,36 @@
                         android:gravity="center_vertical"
                         android:includeFontPadding="false"
                         android:maxLines="1"
-                        android:text="QUE SE DICE EN EL PUEBLO..."
+                        android:text="CHAT DEL PUEBLO"
                         android:textColor="@color/accent_gold"
-                        android:textSize="10sp"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
                         android:id="@+id/chatAmbientMessages"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="0dp"
+                        android:layout_weight="1"
+                        android:gravity="bottom"
                         android:orientation="vertical" />
 
                     <TextView
                         android:id="@+id/chatAmbientHint"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="36dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@drawable/bg_chat_compact_input"
+                        android:drawableStart="@drawable/ic_chat_speaking"
+                        android:drawablePadding="8dp"
+                        android:drawableTint="@color/accent_gold"
                         android:fontFamily="sans-serif"
-                        android:gravity="center"
+                        android:gravity="center_vertical|start"
                         android:includeFontPadding="false"
                         android:maxLines="1"
-                        android:paddingTop="6dp"
-                        android:text="Toca para hablar"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="9sp"
-                        android:textStyle="bold" />
+                        android:paddingHorizontal="12dp"
+                        android:text="Escribí un mensaje..."
+                        android:textColor="@color/text_primary"
+                        android:textSize="12sp" />
                 </LinearLayout>
             </FrameLayout>
 

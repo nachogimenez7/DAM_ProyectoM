@@ -470,11 +470,11 @@ object GameplayTableUi {
             GamePhase.CONTRAPUNTO ->
                 "Escucha a los participantes y señala al más sospechoso."
             GamePhase.VOTACION ->
-                "Elige a un jugador y confirma tu voto."
+                "Tocá una carta para votar. Tocá otra para cambiar antes del cierre."
             GamePhase.RECUENTO_VOTOS ->
                 "El pueblo cuenta los votos recibidos."
             GamePhase.DESEMPATE_VOTACION ->
-                "Vota solamente entre los jugadores empatados."
+                "Tocá una carta empatada para votar; podés cambiar antes del cierre."
             GamePhase.ALCALDE_DESEMPATE ->
                 "El Alcalde debe decidir entre los jugadores empatados."
             GamePhase.RESULTADO -> session.publicAnnouncement.ifBlank { fallback }

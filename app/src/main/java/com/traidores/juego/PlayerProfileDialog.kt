@@ -294,6 +294,7 @@ object PlayerProfileDialog {
     private fun identityRow(activity: Activity, profile: PlayerProfile, compact: Boolean): View {
         val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
         val useLocalPhoto = hasLocalPhotoFor(activity, profile)
+        val playGamesAvatarUri = if (useLocalPhoto) "" else profile.playGamesAvatarUri
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -311,11 +312,16 @@ object PlayerProfileDialog {
                 isFocusable = true
                 contentDescription = "Ampliar foto de perfil"
                 setOnClickListener {
-                    showExpandedAvatar(activity, avatarEntry, useLocalPhoto)
+                    showExpandedAvatar(
+                        activity,
+                        avatarEntry,
+                        useLocalPhoto,
+                        playGamesAvatarUri
+                    )
                 }
             }
             val avatar = CircleProfileImageView(activity).apply {
-                scaleType = if (useLocalPhoto) {
+                scaleType = if (useLocalPhoto || playGamesAvatarUri.isNotBlank()) {
                     ImageView.ScaleType.CENTER_CROP
                 } else {
                     ImageView.ScaleType.MATRIX
@@ -329,7 +335,21 @@ object PlayerProfileDialog {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             )
-            if (!useLocalPhoto || !LocalProfilePhotoStore.render(activity, avatar, false)) {
+            val fallbackRes = activity.resources.getIdentifier(
+                avatarEntry.role.imageResName,
+                "drawable",
+                activity.packageName
+            ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+            val showingLocalPhoto = useLocalPhoto &&
+                LocalProfilePhotoStore.render(activity, avatar, false)
+            val showingPlayGamesPhoto = !showingLocalPhoto &&
+                PlayGamesProfileAvatar.render(
+                    context = activity,
+                    image = avatar,
+                    uriValue = playGamesAvatarUri,
+                    fallbackDrawableRes = fallbackRes
+                )
+            if (!showingLocalPhoto && !showingPlayGamesPhoto) {
                 setRoleImage(activity, avatar, avatarEntry.role)
                 alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
             }
@@ -613,13 +633,26 @@ object PlayerProfileDialog {
     private fun showExpandedAvatar(
         activity: Activity,
         avatarEntry: ProfileRoleCatalog.Entry,
-        useLocalPhoto: Boolean
+        useLocalPhoto: Boolean,
+        playGamesAvatarUri: String
     ) {
         val content = activity.layoutInflater.inflate(R.layout.dialog_profile_avatar, null)
         val avatar = content.findViewById<ImageView>(R.id.expandedProfileAvatar)
         val showingLocalPhoto = useLocalPhoto &&
             LocalProfilePhotoStore.render(activity, avatar, false)
-        if (!showingLocalPhoto) {
+        val fallbackRes = activity.resources.getIdentifier(
+            avatarEntry.role.imageResName,
+            "drawable",
+            activity.packageName
+        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+        val showingPlayGamesPhoto = !showingLocalPhoto &&
+            PlayGamesProfileAvatar.render(
+                context = activity,
+                image = avatar,
+                uriValue = playGamesAvatarUri,
+                fallbackDrawableRes = fallbackRes
+            )
+        if (!showingLocalPhoto && !showingPlayGamesPhoto) {
             setRoleImage(activity, avatar, avatarEntry.role)
         }
         val dialog = AlertDialog.Builder(activity).setView(content).create()
@@ -633,7 +666,7 @@ object PlayerProfileDialog {
                     .coerceAtLeast(dp(activity, 220))
                 setLayout(dp(activity, 320).coerceAtMost(maxW), dp(activity, 320).coerceAtMost(maxH))
             }
-            if (!showingLocalPhoto) {
+            if (!showingLocalPhoto && !showingPlayGamesPhoto) {
                 alignAvatarToFocus(avatar, avatarEntry.verticalFocus)
             }
         }

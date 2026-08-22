@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.Button
 import android.widget.EditText
@@ -340,11 +341,7 @@ class LobbyActivity : BaseActivity() {
             button.setOnClickListener { applyOnlineRolePreset(preset) }
         }
         lobbyChatDock.setOnClickListener {
-            if (isLobbyChatPreviewHidden()) {
-                setLobbyChatPreviewHidden(false)
-            } else {
-                showLobbyChatSheet()
-            }
+            showLobbyChatSheet()
         }
         btnToggleLobbyChat.setOnClickListener {
             setLobbyChatPreviewHidden(!isLobbyChatPreviewHidden())
@@ -956,16 +953,28 @@ class LobbyActivity : BaseActivity() {
                     }
                 )
                 addView(CircleProfileImageView(this@LobbyActivity).apply {
-                    scaleType = ImageView.ScaleType.MATRIX
                     val resId = resources.getIdentifier(
                         avatarEntry.role.imageResName,
                         "drawable",
                         packageName
+                    ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+                    val showingPlayGamesPhoto = PlayGamesProfileAvatar.render(
+                        context = this@LobbyActivity,
+                        image = this,
+                        uriValue = onlinePlayer?.profile?.playGamesAvatarUri.orEmpty(),
+                        fallbackDrawableRes = resId
                     )
-                    setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+                    if (!showingPlayGamesPhoto) {
+                        scaleType = ImageView.ScaleType.MATRIX
+                        setImageResource(resId)
+                        alignLobbyAvatarToFocus(this, avatarEntry.verticalFocus)
+                    }
                     alpha = if (onlinePlayer == null || isOnlinePlayerConnected(onlinePlayer)) 1f else 0.4f
-                    contentDescription = "Avatar ilustrado de ${player.name}"
-                    alignLobbyAvatarToFocus(this, avatarEntry.verticalFocus)
+                    contentDescription = if (showingPlayGamesPhoto) {
+                        "Foto de Play Juegos de ${player.name}"
+                    } else {
+                        "Avatar ilustrado de ${player.name}"
+                    }
                 }, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
                 if (onlinePlayer?.ready == true) {
                     addView(TextView(this@LobbyActivity).apply {
@@ -1070,7 +1079,7 @@ class LobbyActivity : BaseActivity() {
         if (!visible) return
         val hidden = isLobbyChatPreviewHidden()
         lobbyChatPreview.visibility = if (hidden) View.GONE else View.VISIBLE
-        lobbyChatActionText.text = if (hidden) "Mostrar chat" else "Toca para hablar"
+        lobbyChatActionText.text = "Escribí un mensaje..."
         btnToggleLobbyChat.contentDescription = if (hidden) {
             "Mostrar vista previa del chat"
         } else {
@@ -1263,6 +1272,11 @@ class LobbyActivity : BaseActivity() {
         dialog.show()
         renderLobbyChatMessages(messageContainer)
         messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
+        input.post {
+            input.requestFocus()
+            (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     private fun renderLobbyChatMessages(container: LinearLayout) {
@@ -2652,6 +2666,9 @@ class LobbyActivity : BaseActivity() {
                 ?.take(40)
                 .orEmpty(),
             avatarKey = ProfileRoleCatalog.find(avatarKey).key,
+            playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
+                document.getString(PlayerPublicIdentity.FIELD_PROFILE_PLAY_GAMES_AVATAR).orEmpty()
+            ),
             bannerKey = ProfileCustomizationCatalog.normalizeBannerKey(bannerKey),
             favoriteRoleKey = ProfileRoleCatalog.find(favoriteRoleKey).key,
             featuredAchievementIds = emptyList(),

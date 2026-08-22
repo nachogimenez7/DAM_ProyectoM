@@ -12,6 +12,7 @@ object PlayerPublicIdentity {
     const val FIELD_ROOM_NAME = "nombreSala"
     const val FIELD_PROFILE_BIO = "bioPerfil"
     const val FIELD_PROFILE_AVATAR = "avatarPerfil"
+    const val FIELD_PROFILE_PLAY_GAMES_AVATAR = "fotoPlayGames"
     const val FIELD_PROFILE_BANNER = "bannerPerfil"
     const val FIELD_PROFILE_FAVORITE_ROLE = "rolFavoritoPerfil"
 
@@ -201,6 +202,11 @@ object PlayerPublicIdentity {
             FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(safeName, safePublicId),
             FIELD_PROFILE_BIO to safeBio,
             FIELD_PROFILE_AVATAR to ProfileRoleCatalog.find(profile.avatarKey).key,
+            FIELD_PROFILE_PLAY_GAMES_AVATAR to if (safePublicId.isBlank()) {
+                ""
+            } else {
+                PlayGamesProfileAvatar.normalize(profile.playGamesAvatarUri)
+            },
             FIELD_PROFILE_BANNER to ProfileCustomizationCatalog.normalizeBannerKey(profile.bannerKey),
             FIELD_PROFILE_FAVORITE_ROLE to ProfileRoleCatalog.find(profile.favoriteRoleKey).key
         )

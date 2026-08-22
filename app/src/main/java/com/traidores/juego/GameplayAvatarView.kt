@@ -60,15 +60,25 @@ class GameplayAvatarView @JvmOverloads constructor(
         initialView.text = fallbackInitial
         initialView.textSize = textSizeSp
 
-        val profile = player
-            ?.takeIf { it.isHuman }
-            ?.let { PlayerProfileStore.profileFor(context, session, it) }
-        val showingPhoto = profile != null &&
-            LocalProfilePhotoStore.renderForProfile(context, photoView, profile)
+        val profile = player?.let { PlayerProfileStore.profileFor(context, session, it) }
+        val avatarEntry = profile?.let { ProfileRoleCatalog.find(it.avatarKey) }
+        val fallbackRes = avatarEntry?.role?.imageResName
+            ?.let { resources.getIdentifier(it, "drawable", context.packageName) }
+            ?.takeIf { it != 0 }
+            ?: R.drawable.placeholder_local
+        val showingPhoto = profile != null && (
+            LocalProfilePhotoStore.renderForProfile(context, photoView, profile) ||
+                PlayGamesProfileAvatar.render(
+                    context = context,
+                    image = photoView,
+                    uriValue = profile.playGamesAvatarUri,
+                    fallbackDrawableRes = fallbackRes
+                )
+            )
         photoView.visibility = if (showingPhoto) View.VISIBLE else View.GONE
         initialView.visibility = if (showingPhoto) View.GONE else View.VISIBLE
         contentDescription = if (showingPhoto) {
-            "Foto de perfil de ${player?.name.orEmpty()}"
+            "Foto de perfil de ${player.name}"
         } else {
             "Avatar de ${player?.name.orEmpty().ifBlank { fallbackInitial }}"
         }

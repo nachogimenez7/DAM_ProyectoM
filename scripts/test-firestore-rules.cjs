@@ -70,6 +70,7 @@ const playerData = (uid, name = "Nacho", order = 0, isHost = false) => ({
   publicId: "1",
   bioPerfil: "No fui yo.",
   avatarPerfil: "grecia_oraculo",
+  fotoPlayGames: "https://lh3.googleusercontent.com/traidores-avatar",
   bannerPerfil: "pampa",
   rolFavoritoPerfil: "pampa_payador",
   esHost: isHost,
@@ -482,8 +483,35 @@ async function main() {
       phaseIndex: 7,
       modoCliente: "online",
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      cambiosVoto: 0,
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
+    }));
+    const guestVoteRef = doc(guest, guestAction.path);
+    await assertFails(updateDoc(guestVoteRef, {
+      objetivoNombre: "Guest",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 1 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now() + 1,
+    }));
+    await assertFails(updateDoc(guestVoteRef, {
+      objetivoNombre: "Host",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now() + 2,
+    }));
+    await assertFails(updateDoc(doc(host, guestAction.path), {
+      objetivoNombre: "Guest",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 1 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now() + 3,
+    }));
+    await assertFails(updateDoc(guestVoteRef, {
+      fase: "NOCHE_POLICIA",
+      objetivoNombre: "Host",
+      detalles: { accion: "investigar", actorOrden: 1, objetivoOrden: 0 },
+      creadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now() + 4,
     }));
     await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",
@@ -846,6 +874,7 @@ async function main() {
       nombreSala: "Guest #2",
       bioPerfil: "Vine a sospechar.",
       avatarPerfil: "grecia_oraculo",
+      fotoPlayGames: "https://lh3.googleusercontent.com/traidores-avatar",
       bannerPerfil: "pampa",
       rolFavoritoPerfil: "pampa_payador",
       actualizadaEn: serverTimestamp(),
@@ -854,6 +883,18 @@ async function main() {
       uidTemporal: "other_uid",
       publicId: "3",
       nombrePerfil: "Other",
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(setDoc(doc(guest, "perfiles_publicos", "guest_uid"), {
+      uidTemporal: "guest_uid",
+      publicId: "2",
+      nombrePerfil: "Guest",
+      nombreSala: "Guest #2",
+      bioPerfil: "Vine a sospechar.",
+      avatarPerfil: "grecia_oraculo",
+      fotoPlayGames: `https://${"a".repeat(1001)}`,
+      bannerPerfil: "pampa",
+      rolFavoritoPerfil: "pampa_payador",
       actualizadaEn: serverTimestamp(),
     }));
     await assertFails(deleteDoc(doc(guest, "codigosSala", "ABC234")));

@@ -493,6 +493,7 @@ service cloud.firestore {
           'publicId',
           'bioPerfil',
           'avatarPerfil',
+          'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
           'esHost',
@@ -515,6 +516,7 @@ service cloud.firestore {
         && isOptionalString(data, 'nombreSala', 32)
         && isOptionalString(data, 'bioPerfil', 40)
         && isOptionalString(data, 'avatarPerfil', 40)
+        && isOptionalString(data, 'fotoPlayGames', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && (!('publicId' in data) || validPublicId(data.publicId))
@@ -830,7 +832,8 @@ service cloud.firestore {
             'modoCliente',
             'detalles',
             'creadaEn',
-            'creadaEnLocal'
+            'creadaEnLocal',
+            'cambiosVoto'
           ])
           && hasAll(request.resource.data, [
             'matchId',
@@ -881,9 +884,21 @@ service cloud.firestore {
             request.resource.data.tipo == 'fase_avanzada'
             || isString(request.resource.data.detalles.accion, 1, 40)
           )
+          // Compatibilidad con el APK anterior: aceptaba el contador en la creación.
+          // Nunca se permite actualizar el documento, por lo que no agrega escrituras.
+          && (
+            !('cambiosVoto' in request.resource.data)
+            || (
+              request.resource.data.detalles.accion == 'votar'
+              && request.resource.data.fase in ['VOTACION', 'DESEMPATE_VOTACION']
+              && request.resource.data.cambiosVoto == 0
+            )
+          )
           && request.resource.data.creadaEnLocal is int
           && request.resource.data.creadaEn == request.time;
 
+        // Cada acción se confirma una sola vez. En votación, cambiar cartas ocurre únicamente
+        // en memoria local y nunca reemplaza el documento definitivo.
         allow update: if false;
         allow delete: if cleanupDeleteAllowed(partidaId)
           || roomTeardownAllowed(partidaId)
@@ -1017,6 +1032,7 @@ service cloud.firestore {
           'nombreSala',
           'bioPerfil',
           'avatarPerfil',
+          'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
           'actualizadaEn'
@@ -1027,6 +1043,7 @@ service cloud.firestore {
         && isOptionalString(request.resource.data, 'nombreSala', 32)
         && isOptionalString(request.resource.data, 'bioPerfil', 40)
         && isOptionalString(request.resource.data, 'avatarPerfil', 40)
+        && isOptionalString(request.resource.data, 'fotoPlayGames', 1000)
         && isOptionalString(request.resource.data, 'bannerPerfil', 40)
         && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40);
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara

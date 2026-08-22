@@ -65,8 +65,8 @@ object GameplayPhasePresentation {
         )
         GamePhase.VOTACION -> GameplayPhaseText(
             "VOTACIÓN",
-            "Selecciona un jugador y confirma tu voto.",
-            "VOTAR"
+            "Tocá una carta para votar. Tocá otra para cambiar antes del cierre.",
+            "VOTO"
         )
         GamePhase.RECUENTO_VOTOS -> GameplayPhaseText(
             "RECUENTO",
@@ -75,8 +75,8 @@ object GameplayPhasePresentation {
         )
         GamePhase.DESEMPATE_VOTACION -> GameplayPhaseText(
             "DESEMPATE",
-            "Vota solamente entre los jugadores empatados.",
-            "VOTAR"
+            "Tocá una carta empatada para votar; podés cambiar antes del cierre.",
+            "VOTO"
         )
         GamePhase.ALCALDE_DESEMPATE -> GameplayPhaseText(
             "DESEMPATE",

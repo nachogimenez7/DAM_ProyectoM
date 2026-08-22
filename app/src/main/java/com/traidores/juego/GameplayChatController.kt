@@ -29,6 +29,7 @@ import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.doAfterTextChanged
@@ -210,7 +211,7 @@ class GameplayChatController(
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
-        chatAmbientFeed.setOnClickListener { openExpanded() }
+        chatAmbientFeed.setOnClickListener { openExpanded(focusInput = true) }
         btnCloseChat.setOnClickListener { closeChatPanel() }
         btnChatFeedFilter.setOnClickListener { toggleFeedFilter() }
         btnChatPublicTab.setOnClickListener { selectChatChannel(ChatChannel.PUBLICO) }
@@ -325,7 +326,7 @@ class GameplayChatController(
         handler.removeCallbacksAndMessages(null)
     }
 
-    fun openExpanded() {
+    fun openExpanded(focusInput: Boolean = false) {
         if (isChatOpen || isClosingForInteractivePhase || !host.canOpenExpandedChat()) return
         GameplayEffects.play(root.context, GameplayEffect.PANEL)
         isChatOpen = true
@@ -335,6 +336,15 @@ class GameplayChatController(
         renderChatPanelVisibility(animate = true)
         renderChatPanel()
         renderChatBadge()
+        if (focusInput && chatInput.isEnabled) {
+            chatInput.post {
+                chatInput.requestFocus()
+                (root.context as? Activity)?.window?.let { window ->
+                    WindowCompat.getInsetsController(window, root)
+                        .show(WindowInsetsCompat.Type.ime())
+                }
+            }
+        }
     }
 
     fun openFromTieVote() {
@@ -895,9 +905,9 @@ class GameplayChatController(
         }
         chatAmbientHint.text = if (canChat) {
             when (channel) {
-                ChatChannel.PUBLICO -> "Toca para hablar"
-                ChatChannel.TRAIDORES -> "Toca para tramar"
-                ChatChannel.ESPECTADORES -> "Toca para hablar"
+                ChatChannel.PUBLICO -> "Escribí un mensaje..."
+                ChatChannel.TRAIDORES -> "Escribí al chat secreto..."
+                ChatChannel.ESPECTADORES -> "Escribí a los espectadores..."
             }
         } else {
             chatInputHint(canChat, channel)
@@ -1077,9 +1087,9 @@ class GameplayChatController(
             ChatChannel.PUBLICO -> Unit
         }
         val (compactTitle, expandedTitle) = when (host.currentSession.mapKey) {
-            "grecia" -> "QUE SE DICE EN LA POLIS..." to "CRONISTA DE LA POLIS"
-            "medieval" -> "QUE SE DICE EN EL FEUDO..." to "CRONISTA DEL FEUDO"
-            else -> "QUE SE DICE EN EL PUEBLO..." to "CRONISTA DEL PUEBLO"
+            "grecia" -> "CHAT DE LA POLIS" to "CRONISTA DE LA POLIS"
+            "medieval" -> "CHAT DEL FEUDO" to "CRONISTA DEL FEUDO"
+            else -> "CHAT DEL PUEBLO" to "CRONISTA DEL PUEBLO"
         }
         chatAmbientTitle.text = compactTitle
         chatFeedTitle.text = expandedTitle

@@ -107,7 +107,7 @@
             <TextView
                 android:id="@+id/helpBodyControls"
                 style="@style/HelpBodyCard"
-                android:text="- Leé el cartel central: indica la fase y qué espera el juego de vos.\n\n- Usá VER CARTA para recordar tu rol sin mostrar la pantalla.\n\n- Cuando tengas una acción, elegí una carta objetivo y confirmala antes de que termine el tiempo.\n\n- El chat público sirve para debatir. Algunos roles o estados habilitan canales privados.\n\n- Tocá la carta de otro jugador para consultar su perfil. En online también podés silenciar para vos su chat y sus emotes.\n\n- Desde el engranaje podés consultar opciones o abandonar la partida de forma segura." />
+                android:text="- Leé el cartel central: indica la fase y qué espera el juego de vos.\n\n- Usá VER CARTA para recordar tu rol sin mostrar la pantalla.\n\n- En la votación, tocá una carta para guardar tu voto. Podés cambiarlo una sola vez tocando otra carta; después queda definitivo. Las habilidades nocturnas sí se confirman con el botón de acción.\n\n- El chat público sirve para debatir. Algunos roles o estados habilitan canales privados.\n\n- Tocá la carta de otro jugador para consultar su perfil. En online también podés silenciar para vos su chat y sus emotes.\n\n- Desde el engranaje podés consultar opciones o abandonar la partida de forma segura." />
 
             <TextView
                 android:id="@+id/helpTitleWin"

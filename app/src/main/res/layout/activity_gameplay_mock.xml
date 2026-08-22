@@ -709,40 +709,43 @@
         android:id="@+id/rolePreviewOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#E6000000"
+        android:background="#8F000000"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone">
 
         <FrameLayout
             android:id="@+id/rolePreviewContent"
-            android:layout_width="330dp"
-            android:layout_height="330dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:background="@drawable/bg_translucent_game_panel"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_role_preview_panel"
             android:clickable="true"
             android:focusable="true"
             android:clipToOutline="true"
-            android:padding="12dp">
+            android:foreground="@drawable/bg_role_preview_border"
+            android:foregroundGravity="fill">
 
             <ImageView
                 android:id="@+id/rolePreviewMapBackground"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
                 android:alpha="0.68"
                 android:contentDescription="@null"
+                android:foreground="#8C18120D"
                 android:scaleType="centerCrop" />
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#8C18120D" />
-
             <LinearLayout
+                android:id="@+id/rolePreviewBody"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:gravity="center_horizontal"
-                android:orientation="vertical">
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -751,7 +754,7 @@
                     android:gravity="center"
                     android:text="TU ROL"
                     android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
+                    android:textSize="12sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -776,55 +779,55 @@
                     android:maxLines="1"
                     android:text="BANDO"
                     android:textColor="@color/text_secondary"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginTop="5dp"
-                    android:background="@color/btn_dark_border" />
+                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="#8A9A7137" />
 
-                <ScrollView
+                <LinearLayout
                     android:id="@+id/rolePreviewScroll"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:fadeScrollbars="false"
-                    android:fillViewport="false"
-                    android:overScrollMode="ifContentScrolls"
-                    android:paddingEnd="4dp"
-                    android:scrollbarAlwaysDrawVerticalTrack="true"
-                    android:scrollbarStyle="insideInset"
-                    android:scrollbars="vertical">
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="9dp"
+                    android:gravity="top"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/rolePreviewImage"
+                        android:layout_width="100dp"
+                        android:layout_height="150dp"
+                        android:adjustViewBounds="true"
+                        android:background="@drawable/bg_role_preview_image_frame"
+                        android:clipToOutline="true"
+                        android:contentDescription="Carta de rol ampliada"
+                        android:foreground="@drawable/bg_role_preview_image_border"
+                        android:foregroundGravity="fill"
+                        android:padding="2dp"
+                        android:scaleType="centerCrop" />
 
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:gravity="center"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:gravity="start"
                         android:orientation="vertical"
-                        android:paddingTop="7dp"
-                        android:paddingBottom="10dp">
-
-                        <ImageView
-                            android:id="@+id/rolePreviewImage"
-                            android:layout_width="@dimen/reveal_card_large_width"
-                            android:layout_height="@dimen/reveal_card_large_height"
-                            android:adjustViewBounds="true"
-                            android:background="@drawable/bg_role_card"
-                            android:contentDescription="Carta de rol ampliada"
-                            android:padding="3dp"
-                            android:scaleType="fitCenter" />
+                        android:paddingBottom="2dp">
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
                             android:fontFamily="sans-serif"
                             android:gravity="start"
-                            android:text="QUE HACE"
+                            android:text="QUÉ HACE"
                             android:textColor="@color/accent_gold"
-                            android:textSize="12sp"
+                            android:textSize="12.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -836,17 +839,17 @@
                             android:gravity="start"
                             android:lineSpacingExtra="1dp"
                             android:textColor="@color/text_primary"
-                            android:textSize="12sp" />
+                            android:textSize="13sp" />
 
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="9dp"
+                            android:layout_marginTop="8dp"
                             android:fontFamily="sans-serif"
                             android:gravity="start"
                             android:text="CONSEJO"
                             android:textColor="@color/accent_gold"
-                            android:textSize="12sp"
+                            android:textSize="12.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -858,15 +861,15 @@
                             android:gravity="start"
                             android:lineSpacingExtra="1dp"
                             android:textColor="@color/text_secondary"
-                            android:textSize="12sp" />
+                            android:textSize="13sp" />
                     </LinearLayout>
-                </ScrollView>
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/btnContinueRolePreview"
                     android:layout_width="150dp"
-                    android:layout_height="38dp"
-                    android:layout_marginTop="5dp"
+                    android:layout_height="40dp"
+                    android:layout_marginTop="11dp"
                     android:background="@drawable/bg_btn_gold"
                     android:fontFamily="sans-serif"
                     android:minHeight="0dp"

@@ -823,7 +823,7 @@ class GameplayTableUiTest {
             GameplayTableUi.centralPhaseMessage(dawn, "El pueblo despierta.")
         )
         assertEquals(
-            "Elige a un jugador y confirma tu voto.",
+            "Tocá una carta para votar. Tocá otra para cambiar antes del cierre.",
             GameplayTableUi.centralPhaseMessage(
                 base.copy(phase = GamePhase.VOTACION),
                 "Votacion"
