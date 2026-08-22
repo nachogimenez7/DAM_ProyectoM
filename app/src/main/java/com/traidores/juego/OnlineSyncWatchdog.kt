@@ -14,6 +14,9 @@ object OnlineSyncWatchdog {
     const val PRESENCE_JITTER_MS = 3_000L
     const val GUEST_AUTHORITY_GRACE_MS = 8_000L
     const val LONG_SYNC_WAIT_MS = 30_000L
+    // El pulso normal puede llegar a 13 s por el jitter y el watchdog corre cada 5 s.
+    // Veinte segundos evita falsos positivos sin aumentar la frecuencia de escrituras.
+    const val PRESENCE_RECONNECTING_AFTER_MS = 20_000L
 
     fun evaluate(
         isOnline: Boolean,
@@ -64,5 +67,15 @@ object OnlineSyncWatchdog {
         val possibleOffsets = (PRESENCE_JITTER_MS * 2L + 1L).toInt()
         val offset = Math.floorMod(seed, possibleOffsets).toLong() - PRESENCE_JITTER_MS
         return PRESENCE_PULSE_MS + offset
+    }
+
+    fun shouldShowReconnecting(
+        connected: Boolean,
+        lastHeartbeatEpochMs: Long,
+        nowEpochMs: Long
+    ): Boolean {
+        if (!connected) return true
+        if (lastHeartbeatEpochMs <= 0L || nowEpochMs < lastHeartbeatEpochMs) return false
+        return nowEpochMs - lastHeartbeatEpochMs > PRESENCE_RECONNECTING_AFTER_MS
     }
 }

@@ -12,6 +12,8 @@ data class OnlineStartupClientState(
 
 data class OnlineStartupGateResult(
     val expectedPlayers: Int,
+    val reportedPlayers: Int,
+    val roleReadPlayers: Int,
     val loadedPlayers: Int,
     val readyPlayers: Int,
     val mismatchedPlayers: Int,
@@ -37,6 +39,7 @@ data class OnlineStartupGateResult(
 
 object OnlineStartupGate {
     const val AUTO_START_AFTER_MS = 15_000L
+    const val HARD_STARTUP_TIMEOUT_MS = 25_000L
     const val STARTUP_PHASE_SYNCING = "sincronizando"
     const val STARTUP_PHASE_READING = "leyendo_rol"
     const val STARTUP_PHASE_READY = "rol_leido"
@@ -50,6 +53,10 @@ object OnlineStartupGate {
         val startupStates = clientStates
             .filter { it.inGameplay && it.phase == GamePhase.REPARTO.name && it.phaseIndex == 0 }
             .distinctBy { it.uid }
+        val reportedPlayers = startupStates.size.coerceAtMost(safeExpectedPlayers)
+        val roleReadPlayers = startupStates
+            .count { it.roleRead }
+            .coerceAtMost(safeExpectedPlayers)
 
         val loadedPlayers = startupStates
             .count { it.visiblePlayers == safeExpectedPlayers }
@@ -67,6 +74,8 @@ object OnlineStartupGate {
 
         return OnlineStartupGateResult(
             expectedPlayers = safeExpectedPlayers,
+            reportedPlayers = reportedPlayers,
+            roleReadPlayers = roleReadPlayers,
             loadedPlayers = loadedPlayers,
             readyPlayers = readyPlayers,
             mismatchedPlayers = mismatchedPlayers,
@@ -81,5 +90,19 @@ object OnlineStartupGate {
 
     fun shouldAutoStart(deadlineEpochMs: Long, nowEpochMs: Long): Boolean {
         return deadlineEpochMs > 0L && nowEpochMs >= deadlineEpochMs
+    }
+
+    fun shouldHardTimeoutStart(
+        startedAtEpochMs: Long,
+        nowEpochMs: Long,
+        reportedPlayers: Int,
+        roleReadPlayers: Int,
+        expectedPlayers: Int
+    ): Boolean {
+        if (startedAtEpochMs <= 0L || expectedPlayers <= 0) return false
+        val elapsed = nowEpochMs - startedAtEpochMs
+        return elapsed >= HARD_STARTUP_TIMEOUT_MS &&
+            reportedPlayers >= expectedPlayers &&
+            roleReadPlayers >= expectedPlayers
     }
 }

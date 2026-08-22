@@ -164,6 +164,34 @@ class OnlineSyncWatchdogTest {
     }
 
     @Test
+    fun reconnectingIndicatorWaitsForAStaleHeartbeat() {
+        val now = 50_000L
+
+        assertFalse(
+            OnlineSyncWatchdog.shouldShowReconnecting(
+                connected = true,
+                lastHeartbeatEpochMs = now - OnlineSyncWatchdog.PRESENCE_RECONNECTING_AFTER_MS,
+                nowEpochMs = now
+            )
+        )
+        assertTrue(
+            OnlineSyncWatchdog.shouldShowReconnecting(
+                connected = true,
+                lastHeartbeatEpochMs =
+                    now - OnlineSyncWatchdog.PRESENCE_RECONNECTING_AFTER_MS - 1L,
+                nowEpochMs = now
+            )
+        )
+        assertTrue(
+            OnlineSyncWatchdog.shouldShowReconnecting(
+                connected = false,
+                lastHeartbeatEpochMs = now,
+                nowEpochMs = now
+            )
+        )
+    }
+
+    @Test
     fun startupReadingIsNotReportedAsSynchronizationFailure() {
         val decision = OnlineSyncWatchdog.evaluate(
             isOnline = true,

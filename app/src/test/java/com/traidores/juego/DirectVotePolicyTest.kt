@@ -20,13 +20,17 @@ class DirectVotePolicyTest {
         assertTrue(DirectVotePolicy.canSelect("Mora", "Dina", confirmed = false))
         assertFalse(DirectVotePolicy.canSelect("Mora", "Mora", confirmed = false))
         assertFalse(DirectVotePolicy.canSelect("Mora", "Dina", confirmed = true))
+        assertTrue(DirectVotePolicy.shouldConfirm("Mora", "Mora", confirmed = false))
+        assertFalse(DirectVotePolicy.shouldConfirm("Mora", "Dina", confirmed = false))
+        assertFalse(DirectVotePolicy.shouldConfirm("Mora", "Mora", confirmed = true))
         assertEquals("Dina", DirectVotePolicy.select("Dina"))
     }
 
     @Test
-    fun `el temporizador usa la ultima seleccion solo durante una votacion directa`() {
-        assertEquals("Mora", DirectVotePolicy.timeoutTarget(GamePhase.VOTACION, "Mora"))
-        assertEquals("Dina", DirectVotePolicy.timeoutTarget(GamePhase.DESEMPATE_VOTACION, "Dina"))
-        assertEquals("", DirectVotePolicy.timeoutTarget(GamePhase.NOCHE_POLICIA, "Mora"))
+    fun `el temporizador solo usa un voto confirmado`() {
+        assertEquals("Mora", DirectVotePolicy.timeoutTarget(GamePhase.VOTACION, "Mora", true))
+        assertEquals("Dina", DirectVotePolicy.timeoutTarget(GamePhase.DESEMPATE_VOTACION, "Dina", true))
+        assertEquals("", DirectVotePolicy.timeoutTarget(GamePhase.VOTACION, "Mora", false))
+        assertEquals("", DirectVotePolicy.timeoutTarget(GamePhase.NOCHE_POLICIA, "Mora", true))
     }
 }

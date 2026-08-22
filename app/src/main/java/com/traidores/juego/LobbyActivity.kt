@@ -3536,6 +3536,7 @@ class LobbyActivity : BaseActivity() {
                         hostUid = onlineTempUid,
                         matchId = result.matchId,
                         members = result.realtimeAccess,
+                        resetGameplaySync = true,
                         onComplete = {
                             if (::startButton.isInitialized && !isFinishing && !isDestroyed) {
                                 startButton.post {

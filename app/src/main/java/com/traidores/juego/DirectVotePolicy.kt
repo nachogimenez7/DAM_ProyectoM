@@ -11,7 +11,15 @@ internal object DirectVotePolicy {
         return !confirmed && currentTarget != targetName
     }
 
-    fun timeoutTarget(phase: GamePhase, selectedTarget: String): String {
-        return selectedTarget.takeIf { isEnabled(phase) }.orEmpty()
+    fun shouldConfirm(currentTarget: String, targetName: String, confirmed: Boolean): Boolean {
+        return !confirmed && currentTarget.isNotBlank() && currentTarget == targetName
+    }
+
+    fun timeoutTarget(
+        phase: GamePhase,
+        selectedTarget: String,
+        confirmed: Boolean
+    ): String {
+        return selectedTarget.takeIf { confirmed && isEnabled(phase) }.orEmpty()
     }
 }

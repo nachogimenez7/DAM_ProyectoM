@@ -358,7 +358,13 @@ async function main() {
     await assertFails(bob.ref(`salas/${roomId}/chat`).remove());
     await assertSucceeds(alice.ref(`salas/${roomId}/chat`).remove());
     await assertFails(bob.ref(`salas/${roomId}/sincronizacion`).remove());
-    await assertSucceeds(alice.ref(`salas/${roomId}/sincronizacion`).remove());
+    // Al crear una revancha, el host cambia el matchId y purga los ACK efimeros en una
+    // unica escritura. Esto evita borrar confirmaciones que ya pertenezcan al match nuevo.
+    await assertSucceeds(alice.ref(`salas/${roomId}`).update({
+      "control/matchId": "match-456",
+      "control/actualizadaEn": Date.now(),
+      sincronizacion: null,
+    }));
     await assertFails(guest.ref(`salas/${roomId}`).remove());
 
     // Si el host activo cambió, el creador original solo puede retirar la sala cuando el

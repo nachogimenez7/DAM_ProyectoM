@@ -113,6 +113,77 @@ class OnlineStartupGateTest {
         assertEquals(1, result.loadedPlayers)
     }
 
+    @Test
+    fun hardStartupTimeoutFiresWhenPlayersAreStuck() {
+        val startedAt = 10_000L
+        assertEquals(25_000L, OnlineStartupGate.HARD_STARTUP_TIMEOUT_MS)
+
+        // Before 25 seconds: does not fire
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = startedAt,
+                nowEpochMs = 34_999L,
+                reportedPlayers = 5,
+                roleReadPlayers = 5,
+                expectedPlayers = 5
+            )
+        )
+
+        // At or after 25 seconds with at least minimum players: fires and starts night
+        assertTrue(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = startedAt,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 5,
+                roleReadPlayers = 5,
+                expectedPlayers = 5
+            )
+        )
+
+        // No fuerza una partida de 6 con solo 3 clientes presentes.
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = startedAt,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 3,
+                roleReadPlayers = 3,
+                expectedPlayers = 6
+            )
+        )
+
+        // Tampoco salta por encima de alguien que todavia no termino de leer su rol.
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = startedAt,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 6,
+                roleReadPlayers = 5,
+                expectedPlayers = 6
+            )
+        )
+    }
+
+    @Test
+    fun hardTimeoutCanRecoverVisibleRosterMismatchOnlyWhenEveryoneReportedReady() {
+        val states = (0 until 5).map { state("p$it", visiblePlayers = 6, roleRead = true) } +
+            state("slow", visiblePlayers = 5, roleRead = true)
+        val result = OnlineStartupGate.evaluate(expectedPlayers = 6, clientStates = states)
+
+        assertEquals(6, result.reportedPlayers)
+        assertEquals(6, result.roleReadPlayers)
+        assertEquals(5, result.loadedPlayers)
+        assertEquals(1, result.mismatchedPlayers)
+        assertTrue(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 35_000L,
+                reportedPlayers = result.reportedPlayers,
+                roleReadPlayers = result.roleReadPlayers,
+                expectedPlayers = result.expectedPlayers
+            )
+        )
+    }
+
     private fun state(
         uid: String,
         visiblePlayers: Int = 5,
