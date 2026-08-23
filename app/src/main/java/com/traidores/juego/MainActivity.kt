@@ -44,7 +44,7 @@ class MainActivity : BaseActivity() {
             introVisible = false
             if (!isFinishing) {
                 MusicManager.playMenuMusic(this)
-                maybeShowAccountInvitation()
+                maybeShowBetaNoticeThenAccountInvitation()
             }
         }
         if (savedInstanceState == null) {
@@ -53,7 +53,7 @@ class MainActivity : BaseActivity() {
             bandidoIntro.show()
         } else {
             findViewById<View>(R.id.brandIntroOverlay).post {
-                maybeShowAccountInvitation()
+                maybeShowBetaNoticeThenAccountInvitation()
             }
         }
         if (intent.getBooleanExtra("account_deleted", false)) {
@@ -202,6 +202,27 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    private fun maybeShowBetaNoticeThenAccountInvitation() {
+        if (isFinishing || isDestroyed) return
+        val preferences = getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
+        if (preferences.getBoolean(PREF_BETA_NOTICE_SEEN, false)) {
+            maybeShowAccountInvitation()
+            return
+        }
+        preferences.edit().putBoolean(PREF_BETA_NOTICE_SEEN, true).apply()
+        GameDialog.notice(
+            activity = this,
+            title = "VERSIÓN BETA",
+            message = "Traidores está en etapa de pruebas. Puede haber fallas o diferencias " +
+                "de sincronización mientras seguimos mejorando el juego. Gracias por probarlo " +
+                "y contarnos qué ocurrió si encontrás un problema.",
+            positiveLabel = "ENTENDIDO",
+            onPositive = {
+                findViewById<View>(R.id.btnPlay).post { maybeShowAccountInvitation() }
+            }
+        ).setCancelable(false)
+    }
+
     private fun submitOnboardingGoogleRequest(useAlternativePicker: Boolean = false) {
         GoogleAccountFlow.start(
             activity = this,
@@ -243,6 +264,7 @@ class MainActivity : BaseActivity() {
     private companion object {
         const val ONBOARDING_PREFS = "TraidoresPrefs"
         const val PREF_ACCOUNT_INVITATION_SEEN = "account_onboarding_seen_v4"
+        const val PREF_BETA_NOTICE_SEEN = "beta_notice_seen_v1"
     }
 
 }

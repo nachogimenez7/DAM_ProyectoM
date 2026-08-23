@@ -63,7 +63,7 @@
 
     <string name="lobby_start_local">INICIAR PARTIDA</string>
     <string name="lobby_start_waiting_host">ESPERANDO AL ANFITRIÓN</string>
-    <string name="lobby_start_sync_entry">SINCRONIZANDO ENTRADA…</string>
+    <string name="lobby_start_sync_entry">PREPARANDO PARTIDA…</string>
     <string name="lobby_start_cleaning">BORRANDO LAS HUELLAS…</string>
     <string name="lobby_start_online">INICIAR PARTIDA</string>
     <string name="lobby_start_with_present">JUGAR CON %1$d PRESENTES</string>
@@ -76,16 +76,16 @@
     <string name="lobby_start_progress_players">%1$d de %2$d jugadores</string>
     <string name="lobby_start_progress_ready">%1$d de %2$d listos</string>
 
-    <string name="lobby_practice_section">MODO PRÁCTICA</string>
-    <string name="lobby_practice_description">Elegí un rol para asegurarte de que te toque esta partida. Si no está en la composición actual, reemplaza a un Aldeano.</string>
+    <string name="lobby_practice_section">MODO DE PRUEBA</string>
+    <string name="lobby_practice_description">Elegí un rol específico para probar sus acciones. Si dejás AZAR, el reparto funciona normalmente; si el rol elegido no está en la composición, reemplaza a un Aldeano.</string>
     <string name="lobby_practice_role">Elegir rol: %1$s%2$s  ▾</string>
     <string name="lobby_practice_minimum"> (%1$d+)</string>
     <string name="lobby_practice_view_role">VER ROL</string>
     <string name="lobby_practice_view_role_description">Ver detalles de %1$s</string>
-    <string name="lobby_practice_summary">Práctica: %1$s%2$s</string>
-    <string name="lobby_practice_summary_default">Práctica: AZAR</string>
-    <string name="lobby_practice_summary_description">Rol de práctica: %1$s%2$s. Toca para cambiarlo.</string>
-    <string name="lobby_practice_picker_title">Elegir rol de práctica</string>
+    <string name="lobby_practice_summary">Prueba: %1$s%2$s</string>
+    <string name="lobby_practice_summary_default">Prueba: AZAR</string>
+    <string name="lobby_practice_summary_description">Rol del modo de prueba: %1$s%2$s. Toca para cambiarlo.</string>
+    <string name="lobby_practice_picker_title">Elegir rol para probar</string>
     <string name="lobby_practice_picker_description">Tocá el rol que querés recibir. Ya no hace falta recorrerlos uno por uno.</string>
     <string name="lobby_practice_random_description">Asignación normal</string>
     <string name="lobby_practice_role_choice_description">Elegir %1$s. %2$s.</string>

@@ -214,6 +214,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastOnlineStartupClientStates = emptyList<OnlineStartupClientState>()
     private var onlineNightResolutionInProgress = false
     private var onlineVoteResolutionInProgress = false
+    private var onlineVoteResolutionScheduledPhaseIndex = -1
+    private var onlineRoomAbandonedHandled = false
     private var onlineStateListener: ListenerRegistration? = null
     private var onlinePlayersListener: ListenerRegistration? = null
     private var onlineActionsListener: ListenerRegistration? = null
@@ -252,6 +254,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastOnlinePresencePulseAtMs = 0L
     private var onlinePresencePulseIntervalMs = OnlineSyncWatchdog.PRESENCE_PULSE_MS
     private var lastOnlineWatchdogReason = ""
+    private var onlineRecoveryInProgress = false
+    private var onlineRecoveryNoticeShown = false
     private val submittedOnlineNightActions = mutableSetOf<String>()
     private var onlineProvisionalVoteWrites = 0
     private var directVoteConfirmed = false
@@ -673,6 +677,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?.getString(STATE_ONLINE_WINNER_RETURN_ACK_KEY)
             .orEmpty()
         if (onlinePartidaId.isNotBlank() || onlinePlayerId.isNotBlank()) {
+            val recoveredRoom = OnlineRoomRecovery.load(this)
+            OnlineStabilityReport.beginRoom(
+                context = this,
+                roomCode = recoveredRoom?.roomCode.orEmpty(),
+                matchId = session.onlineMatchId,
+                isHost = onlineIsHost,
+                expectedPlayers = session.players.size
+            )
             OnlineDebugLog.i(
                 "gameplay_enter roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost restored=${savedInstanceState != null}"
             )
@@ -1056,6 +1068,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GameplayEffects.play(this, GameplayEffect.PANEL)
             AccessibilityOptionsDialog.show(
                 activity = this,
+                reportLabel = if (isOnlineGameplay()) "COPIAR REPORTE BETA" else null,
+                onReportRequested = if (isOnlineGameplay()) {
+                    { OnlineStabilityReport.copyToClipboard(this) }
+                } else {
+                    null
+                },
                 exitLabel = gameplayExitLabel(),
                 onExitRequested = ::requestIntentionalGameExit
             ) {
@@ -2336,10 +2354,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         directVoteConfirmed = true
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         val targetName = selectedTarget
-        session = session.copy(privateHint = "Voto confirmado: $targetName.")
+        session = session.copy(privateHint = "Votaste a: $targetName.")
         refreshDirectVoteUi(targetName, fromTieWindow)
         if (showNotice) {
-            GameNotice.show(this, "Voto confirmado: $targetName.")
+            GameNotice.show(this, "Votaste a: $targetName.")
         }
         if (isOnlineGameplay()) {
             recordOnlineFinalVote(
@@ -2370,7 +2388,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 onlineProvisionalVoteWrites = (onlineProvisionalVoteWrites - 1).coerceAtLeast(0)
                 if (selectedTarget == targetName) {
                     session = session.copy(
-                        privateHint = "Voto confirmado: $targetName."
+                        privateHint = "Votaste a: $targetName."
                     )
                 }
                 refreshDirectVoteUi(targetName, fromTieWindow)
@@ -2507,7 +2525,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         logSlowGameplayRender(renderStartedAtMs)
     }
 
-    private fun publishOnlineClientState() {
+    private fun publishOnlineClientState(forceHeartbeat: Boolean = false) {
         if (onlinePartidaId.isBlank() || onlinePlayerId.isBlank()) return
         val stateKey = listOf(
             OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
@@ -2523,7 +2541,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.publicAnnouncement,
             session.winner
         ).joinToString("|")
-        if (stateKey == lastPublishedOnlineStateKey) return
+        if (!forceHeartbeat && stateKey == lastPublishedOnlineStateKey) return
         lastPublishedOnlineStateKey = stateKey
 
         val human = GameEngine.humanPlayer(session)
@@ -2637,7 +2655,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ).joinToString("|")
         if (stateKey == lastPublishedAuthoritativeOnlineStateKey) return
         lastPublishedAuthoritativeOnlineStateKey = stateKey
-        OnlineDiagnostics.recordPhase(session, onlineIsHost, event = "host_publish")
+        OnlineDiagnostics.recordPhase(this, session, onlineIsHost, event = "host_publish")
 
         val roomUpdate = mutableMapOf<String, Any>(
             "estadoPartida" to mapOf(
@@ -2767,10 +2785,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     return@addSnapshotListener
                 }
                 val roomState = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
-                if (
-                    roomState == OnlineRoomFirestore.STATE_FINISHED ||
-                    roomState == OnlineRoomFirestore.STATE_ABANDONED
-                ) {
+                if (roomState == OnlineRoomFirestore.STATE_ABANDONED) {
+                    OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+                    if (!onlineRoomAbandonedHandled && !isFinishing && !isDestroyed) {
+                        onlineRoomAbandonedHandled = true
+                        returningToOnlineLobby = true
+                        GameNotice.show(
+                            this,
+                            "El anfitrión canceló el inicio porque la sala no logró sincronizarse.",
+                            GameNotice.Duration.LONG
+                        )
+                        finish()
+                    }
+                    return@addSnapshotListener
+                }
+                if (roomState == OnlineRoomFirestore.STATE_FINISHED) {
                     OnlineRoomRecovery.clearIf(this, onlinePartidaId)
                 }
                 onlineActiveHostId = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID)
@@ -2923,12 +2952,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             deadlineEpochMs = onlineStartupDeadlineEpochMs,
             nowEpochMs = System.currentTimeMillis()
         )
+        val connectedStartupPlayers = session.onlinePlayerUids.count { uid ->
+            isOnlineUidConnected(uid, legacyConnected = false)
+        }
         val shouldHardTimeoutStart = onlineIsHost && OnlineStartupGate.shouldHardTimeoutStart(
             startedAtEpochMs = onlineStartupStartedAtEpochMs,
             nowEpochMs = System.currentTimeMillis(),
             reportedPlayers = result.reportedPlayers,
             roleReadPlayers = result.roleReadPlayers,
-            expectedPlayers = expectedPlayers
+            expectedPlayers = expectedPlayers,
+            connectedPlayers = connectedStartupPlayers
         )
         when {
             onlineIsHost && shouldAutoStart -> startOnlineFirstNight("automatic_timeout")
@@ -3202,13 +3235,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             specialVictories = OnlineAuthoritativeStateMapper.specialVictoriesFromState(state),
             privateHint = previousPrivateHint
         )
-        OnlineDiagnostics.recordPhase(session, onlineIsHost, event = "guest_apply")
+        OnlineDiagnostics.recordPhase(this, session, onlineIsHost, event = "guest_apply")
         // El pedido ya llego a la mesa: se libera el candado local del dialogo para que la
         // ventana de reconsideracion pueda abrirse mas adelante.
         if (session.desertorTeam.isNotBlank()) {
             onlineDesertorChoiceSent = false
         }
         setOnlineAwaitingHostAdvance(false)
+        onlineRecoveryInProgress = false
+        onlineRecoveryNoticeShown = false
         lastAppliedAuthoritativePhaseLabel = latestAppliedPhaseLabel()
         if (phaseIndex != previousPhaseIndex) {
             if (previousPhaseIndex == 0 && phase != GamePhase.REPARTO) {
@@ -3830,8 +3865,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
         }
         if (decision.shouldForceSyncing) {
+            onlineRecoveryInProgress = true
             setOnlineAwaitingHostAdvance(true, now)
             lastPublishedOnlineStateKey = ""
+            if (!onlineRecoveryNoticeShown) {
+                onlineRecoveryNoticeShown = true
+                OnlineStabilityReport.recordEvent(this, "recuperacion_automatica", decision.reason)
+                GameNotice.show(
+                    activity = this,
+                    message = "Conexión interrumpida. Recuperando partida…",
+                    duration = GameNotice.Duration.LONG
+                )
+            }
             renderGame()
         } else if (
             decision.shouldPublishClientState &&
@@ -3841,12 +3886,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     decision.shouldPublishPresence
                 )
         ) {
-            publishOnlineClientState()
+            // El estado visual puede no cambiar durante varios minutos. El watchdog necesita
+            // renovar de todos modos `actualizadaEn`; de lo contrario los demás dispositivos
+            // muestran RECONECTANDO hasta que cambia la fase aunque el jugador siga activo.
+            publishOnlineClientState(forceHeartbeat = true)
         }
         if (decision.shouldReportLongWait && !onlineSyncDelayReported) {
             onlineSyncDelayReported = true
             realtimePresence?.refresh()
             OnlineDiagnostics.recordSyncDelay(
+                context = this,
                 session = session,
                 isHost = onlineIsHost,
                 connectedPlayers = onlinePresencePlayers.count {
@@ -5653,9 +5702,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             isOnlineStartupPhase() && onlineStartupCountdownSeconds() != null ->
                 "NOCHE EN ${onlineStartupCountdownSeconds()}"
             isOnlineStartupPhase() -> "ESPERANDO"
-            onlineAwaitingHostAdvance -> "SINCRONIZANDO"
+            onlineRecoveryInProgress -> "RECUPERANDO PARTIDA..."
+            onlineAwaitingHostAdvance && directVote -> "CONTANDO VOTOS..."
+            onlineAwaitingHostAdvance -> "ACTUALIZANDO PARTIDA..."
             directVote && onlineProvisionalVoteWrites > 0 -> "ENVIANDO VOTO..."
-            directVote && directVoteConfirmed -> "VOTO CONFIRMADO: $selectedTarget"
+            directVote && directVoteConfirmed -> "✓ VOTO CONFIRMADO"
             directVote && selectedTarget.isNotBlank() -> "TOCÁ DE NUEVO PARA CONFIRMAR"
             directVote -> "SELECCIONÁ A UN JUGADOR"
             selectedAction != null -> primaryTargetActionLabel(selectedAction, selectedTarget)
@@ -5692,9 +5743,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 !mayorNeedsRevealBeforeDecision &&
                 (!mandatoryTargetSelection || selectedAction != null || canSelfProtect || specialDecision)
         }
-        applyPrimaryActionVisual(label, requiresAttention)
+        val confirmedVoteVisible = directVote &&
+            directVoteConfirmed &&
+            onlineProvisionalVoteWrites == 0
+        if (confirmedVoteVisible) {
+            btnAction.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#234A2D"))
+                setStroke(dp(2), Color.parseColor("#78C98A"))
+                cornerRadius = dp(6).toFloat()
+            }
+            btnAction.setTextColor(Color.parseColor("#E9F8EC"))
+            btnAction.contentDescription = "Voto confirmado por $selectedTarget"
+        } else {
+            applyPrimaryActionVisual(label, requiresAttention)
+            btnAction.contentDescription = label
+        }
         renderMayorRevealSecondaryButton(mayorRevealAvailable)
         btnAction.alpha = when {
+            confirmedVoteVisible -> 1f
             btnAction.isEnabled -> 1f
             requiresAttention -> 0.92f
             else -> 0.55f
@@ -7682,6 +7749,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         if (
+            isOnlineGameplay() &&
+            onlineIsHost &&
+            OnlineVoteResolutionGate.blocksCountdown(
+                phase = session.phase,
+                phaseIndex = session.phaseIndex,
+                scheduledPhaseIndex = onlineVoteResolutionScheduledPhaseIndex,
+                resolutionInProgress = onlineVoteResolutionInProgress
+            )
+        ) {
+            clearCountdown()
+            return
+        }
+        if (
             DirectVotePolicy.isEnabled(session.phase) &&
             directVoteGracePhaseIndex == session.phaseIndex
         ) {
@@ -7956,16 +8036,33 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun scheduleOnlineVoteResolution(tieVote: Boolean) {
         val expectedPhaseIndex = session.phaseIndex
-        session = session.copy(privateHint = "Cerrando votos...")
+        if (
+            !OnlineVoteResolutionGate.canSchedule(
+                isOnline = isOnlineGameplay(),
+                isHost = onlineIsHost,
+                phase = session.phase,
+                phaseIndex = expectedPhaseIndex,
+                scheduledPhaseIndex = onlineVoteResolutionScheduledPhaseIndex,
+                resolutionInProgress = onlineVoteResolutionInProgress
+            )
+        ) {
+            return
+        }
+        onlineVoteResolutionScheduledPhaseIndex = expectedPhaseIndex
+        clearCountdown()
+        session = session.copy(privateHint = "Contando votos...")
         renderGame()
         autoAdvanceHandler.postDelayed(
             {
-                if (
+                val shouldResolve =
                     isOnlineGameplay() &&
                     onlineIsHost &&
                     session.phaseIndex == expectedPhaseIndex &&
                     DirectVotePolicy.isEnabled(session.phase)
-                ) {
+                if (onlineVoteResolutionScheduledPhaseIndex == expectedPhaseIndex) {
+                    onlineVoteResolutionScheduledPhaseIndex = -1
+                }
+                if (shouldResolve) {
                     resolveOnlineVotingFromFirestore(tieVote)
                 }
             },
@@ -8548,38 +8645,49 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun notifyLocalOnlineAfkChange(before: GameSession, after: GameSession) {
         if (!isOnlineGameplay()) return
-        val expelledNames = before.players.mapIndexedNotNull { index, previous ->
+        val expelledIndices = before.players.mapIndexedNotNull { index, previous ->
             val updated = after.players.getOrNull(index) ?: return@mapIndexedNotNull null
-            previous.name.takeIf {
+            index.takeIf {
                 previous.alive && !updated.alive && updated.deathCause == DeathCause.AFK
             }
         }
+        val expelledNames = expelledIndices.map { before.players[it].name }
         if (expelledNames.isNotEmpty()) {
+            // El nombre visible no identifica de forma segura al jugador: dos cuentas pueden
+            // elegir el mismo nombre. La posición del roster sí es estable durante el match.
+            val humanIndex = before.players.indexOfFirst { it.isHuman }
+            val humanWasExpelled = humanIndex in expelledIndices
+            val consequence = if (after.winner.isNotBlank()) {
+                "Esto decidió la partida. A continuación verás el resultado."
+            } else if (humanWasExpelled) {
+                "Podés seguir observando la partida como espectador."
+            } else if (expelledNames.size == 1) {
+                "La partida continúa sin ese jugador."
+            } else {
+                "La partida continúa sin ellos."
+            }
+            if (humanWasExpelled) {
+                GameDialog.notice(
+                    activity = this,
+                    title = "FUISTE EXPULSADO POR INACTIVIDAD",
+                    message = "${AfkPolicy.selfExpelledMessage()} $consequence"
+                )
+                return
+            }
             val names = when (expelledNames.size) {
                 1 -> expelledNames.first()
                 2 -> expelledNames.joinToString(" y ")
                 else -> expelledNames.dropLast(1).joinToString(", ") + " y " + expelledNames.last()
             }
-            val humanName = before.players.firstOrNull { it.isHuman }?.name.orEmpty()
             val base = if (expelledNames.size == 1) {
                 "$names fue expulsado por inactividad."
             } else {
                 "$names fueron expulsados por inactividad."
             }
-            val consequence = if (after.winner.isNotBlank()) {
-                "Esto decidió la partida. A continuación verás el resultado."
-            } else {
-                "La partida continúa sin ellos."
-            }
-            val personal = if (humanName in expelledNames) {
-                "\n\nTambién quedaste fuera y seguirás como espectador."
-            } else {
-                ""
-            }
             GameDialog.notice(
                 activity = this,
                 title = "INACTIVIDAD",
-                message = "$base $consequence$personal"
+                message = "$base $consequence"
             )
             return
         }
@@ -9299,8 +9407,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return when {
                 onlineProvisionalVoteWrites > 0 -> "Enviando voto por $selectedTarget..."
                 directVoteConfirmed && directVoteGracePhaseIndex == session.phaseIndex ->
-                    "Voto confirmado: $selectedTarget. Cerrando la votación...$progressSuffix"
-                directVoteConfirmed -> "Voto confirmado: $selectedTarget.$progressSuffix"
+                    "Votaste a: $selectedTarget. Cerrando la votación...$progressSuffix"
+                directVoteConfirmed -> "Votaste a: $selectedTarget.$progressSuffix"
                 else ->
                     "Seleccionaste a $selectedTarget. Tocá nuevamente su carta para confirmar o elegí otra.$progressSuffix"
             }
@@ -11706,10 +11814,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val ONLINE_DEATH_REVEAL_BEAT_MS = 900L
         private const val PRESENTATION_GATE_TICK_MS = 250L
-        private const val DIRECT_VOTE_CLOSING_GRACE_MS = 1_500L
+        private const val DIRECT_VOTE_CLOSING_GRACE_MS = 750L
         private const val DIRECT_VOTE_CONFIRM_URGENCY_MS = 5_000L
-        private const val ONLINE_CONFIRMED_VOTE_RESOLUTION_GRACE_MS = 750L
-        private const val ONLINE_VOTE_SUBMISSION_GRACE_MS = 2_500L
+        private const val ONLINE_CONFIRMED_VOTE_RESOLUTION_GRACE_MS = 350L
+        private const val ONLINE_VOTE_SUBMISSION_GRACE_MS = 1_500L
         /**
          * Cuanto se espera a que aparezca una cuenta registrada antes de dejar que un invitado
          * tome el anfitrionazgo. Pasado ese tiempo, la unica alternativa es una partida que no

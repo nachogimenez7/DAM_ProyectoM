@@ -60,7 +60,6 @@ object RealtimeRoomAccess {
         creatorUid: String? = null,
         matchId: String,
         members: Map<String, RealtimeRoomMemberAccess>,
-        resetGameplaySync: Boolean = false,
         onComplete: () -> Unit = {},
         onFailure: (Exception) -> Unit = {}
     ) {
@@ -78,7 +77,6 @@ object RealtimeRoomAccess {
                                 hostUid = hostUid,
                                 matchId = matchId,
                                 members = members,
-                                resetGameplaySync = resetGameplaySync,
                                 database = database,
                                 onComplete = onComplete,
                                 onFailure = onFailure
@@ -119,7 +117,6 @@ object RealtimeRoomAccess {
         hostUid: String,
         matchId: String,
         members: Map<String, RealtimeRoomMemberAccess>,
-        resetGameplaySync: Boolean,
         database: FirebaseDatabase,
         onComplete: () -> Unit,
         onFailure: (Exception) -> Unit
@@ -164,17 +161,9 @@ object RealtimeRoomAccess {
         updates["$NODE_CONTROL/matchId"] = matchId.take(80)
         updates["$NODE_CONTROL/jugadoresVivos"] = members.values.count { it.alive && !it.inLobby }
         updates["$NODE_CONTROL/actualizadaEn"] = ServerValue.TIMESTAMP
-        if (resetGameplaySync) {
-            // Se elimina en la misma escritura atomica que publica el nuevo matchId. Asi ningun
-            // cliente puede registrar el ACK de la partida nueva antes de esta limpieza.
-            updates[NODE_GAMEPLAY_SYNC] = null
-        }
-
         database.getReference("salas/$roomId")
             .updateChildren(updates)
             .addOnSuccessListener { onComplete() }
             .addOnFailureListener(onFailure)
     }
-
-    private const val NODE_GAMEPLAY_SYNC = "sincronizacion"
 }

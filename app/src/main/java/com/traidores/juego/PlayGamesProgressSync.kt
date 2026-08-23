@@ -10,11 +10,15 @@ object PlayGamesProgressSync {
         PlayGamesCloudSave.restoreOrUpload(activity) {
             syncAllAchievements(activity)
             submitLeaderboards(activity)
-            PlayerPublicIdentity.ensurePublicId(
-                context = activity,
-                firestore = FirebaseFirestore.getInstance(),
-                onReady = {}
-            )
+            PlayGamesProfileAvatar.applyCurrentAsDefault(activity) {
+                // `ensurePublicId` también vuelve a publicar el perfil visual. Así la URL de
+                // Play Juegos llega al lobby sin subir la imagen a Firebase Storage.
+                PlayerPublicIdentity.ensurePublicId(
+                    context = activity,
+                    firestore = FirebaseFirestore.getInstance(),
+                    onReady = {}
+                )
+            }
         }
     }
 

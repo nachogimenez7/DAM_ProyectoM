@@ -2,6 +2,11 @@ package com.traidores.juego
 
 object OnlineLobbyEntryGate {
 
+    // Si todos confirman, la entrada se libera antes. Este plazo solo evita que un eco de
+    // presencia demorado congele la sala completa; no retrasa el reparto autoritativo.
+    const val HARD_RELEASE_AFTER_MS = 1_000L
+    const val FULLY_CONNECTED_RELEASE_AFTER_MS = 3_000L
+
     fun shouldResetForWaitingLobby(previousState: String, currentState: String): Boolean {
         return currentState == OnlineLobbyRules.ROOM_STATE_WAITING &&
             previousState != OnlineLobbyRules.ROOM_STATE_WAITING
@@ -68,6 +73,50 @@ object OnlineLobbyEntryGate {
             localPlayerReady = localPlayerReady
         )
         return expectedPlayerIds.all(ready::contains)
+    }
+
+    fun canReleaseAfterTimeout(
+        expectedPlayerIds: Set<String>,
+        matchId: String,
+        clientStates: Map<String, Any?>,
+        localPlayerId: String,
+        localPlayerReady: Boolean,
+        connectedPlayerIds: Set<String>,
+        elapsedMs: Long
+    ): Boolean {
+        if (elapsedMs < HARD_RELEASE_AFTER_MS) return false
+        val ready = readyPlayerIds(
+            expectedPlayerIds = expectedPlayerIds,
+            matchId = matchId,
+            clientStates = clientStates,
+            localPlayerId = localPlayerId,
+            localPlayerReady = localPlayerReady
+        ).size
+        val connected = connectedPlayerIds.count(expectedPlayerIds::contains)
+        val quorumReached = OnlineStartQuorum.isReached(
+            expectedPlayers = expectedPlayerIds.size,
+            readyPlayers = ready,
+            connectedPlayers = connected
+        )
+        val fullyConnectedFallback =
+            elapsedMs >= FULLY_CONNECTED_RELEASE_AFTER_MS &&
+                localPlayerReady &&
+                connected == expectedPlayerIds.size
+        return quorumReached || fullyConnectedFallback
+    }
+
+    /**
+     * El estado observado en RTDB es la verdad para una confirmación efímera. Un `setValue`
+     * exitoso no puede impedir reenviarla si una limpieza o reconexión la hizo desaparecer.
+     */
+    fun shouldPublishAcknowledgement(
+        playerId: String,
+        matchId: String,
+        clientStates: Map<String, Any?>,
+        publishInProgress: Boolean
+    ): Boolean {
+        if (playerId.isBlank() || matchId.isBlank() || publishInProgress) return false
+        return playerId !in acknowledgedPlayerIds(matchId, clientStates)
     }
 
     const val FIELD_MATCH_ID = "matchId"

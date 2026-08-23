@@ -22,4 +22,12 @@ class AfkPolicyTest {
             AfkPolicy.warning(AfkOpportunity.VOTE, expulsionEnabled = false)
         )
     }
+
+    @Test
+    fun selfExpulsionAddressesTheLocalPlayerWithoutRepeatingTheirName() {
+        assertEquals(
+            "Fuiste expulsado por permanecer inactivo durante dos oportunidades consecutivas.",
+            AfkPolicy.selfExpelledMessage()
+        )
+    }
 }

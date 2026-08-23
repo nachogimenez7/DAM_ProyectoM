@@ -14,9 +14,12 @@ object OnlineSyncWatchdog {
     const val PRESENCE_JITTER_MS = 3_000L
     const val GUEST_AUTHORITY_GRACE_MS = 8_000L
     const val LONG_SYNC_WAIT_MS = 30_000L
-    // El pulso normal puede llegar a 13 s por el jitter y el watchdog corre cada 5 s.
-    // Veinte segundos evita falsos positivos sin aumentar la frecuencia de escrituras.
-    const val PRESENCE_RECONNECTING_AFTER_MS = 20_000L
+    // El pulso normal varía entre 7 y 13 segundos. Dar margen para dos pulsos demorados evita
+    // marcar como ausente a alguien que sigue jugando; una desconexión real de RTDB continúa
+    // detectándose de inmediato mediante onDisconnect.
+    // Dos pulsos máximos (13 s cada uno) pueden perderse y el siguiente todavía llegar a
+    // los 39 s. Este margen evita mostrar "Reconectando" durante ese intervalo válido.
+    const val PRESENCE_RECONNECTING_AFTER_MS = 42_000L
 
     fun evaluate(
         isOnline: Boolean,

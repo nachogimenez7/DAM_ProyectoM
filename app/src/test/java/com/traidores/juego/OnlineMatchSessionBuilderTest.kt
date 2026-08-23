@@ -299,6 +299,65 @@ class OnlineMatchSessionBuilderTest {
         assertEquals(1, session.players.count { it.role != null })
     }
 
+    @Test
+    fun hostAuthorityRejectsARepartoWithOnlyItsOwnRole() {
+        val publicPlayers = defaultPlayers().map {
+            it - setOf("rolKey", "rolNombre", "rolEquipo", "rolImagen")
+        }
+        val assassin = privateAssignment(defaultPlayers()[0])
+
+        val result = OnlineMatchSessionBuilder.build(
+            initialMatchRaw = initialMatch(publicPlayers),
+            matchStateRaw = initialState(),
+            uidTemporal = "uid_1",
+            expectedPlayers = 5,
+            fallbackRoomId = "room",
+            fallbackRoomCode = "",
+            fallbackMapKey = "grecia",
+            fallbackMapName = "Grecia",
+            revealRolesOnDeath = false,
+            showIndividualVotes = true,
+            privateRoleAssignments = listOf(assassin),
+            requireCompleteRoleAssignments = true
+        )
+
+        assertEquals(
+            OnlineMatchSessionError.INCOMPLETE_PRIVATE_ROLES,
+            (result as OnlineMatchSessionResult.Failure).reason
+        )
+    }
+
+    @Test
+    fun completeHostAuthorityDetectsTownVictoryAfterLastAssassinDies() {
+        val sourcePlayers = defaultPlayers()
+        val publicPlayers = sourcePlayers.map {
+            it - setOf("rolKey", "rolNombre", "rolEquipo", "rolImagen")
+        }
+        val result = OnlineMatchSessionBuilder.build(
+            initialMatchRaw = initialMatch(publicPlayers),
+            matchStateRaw = initialState(),
+            uidTemporal = "uid_1",
+            expectedPlayers = 5,
+            fallbackRoomId = "room",
+            fallbackRoomCode = "",
+            fallbackMapKey = "grecia",
+            fallbackMapName = "Grecia",
+            revealRolesOnDeath = false,
+            showIndividualVotes = true,
+            privateRoleAssignments = sourcePlayers.map(::privateAssignment),
+            requireCompleteRoleAssignments = true
+        )
+
+        val session = (result as OnlineMatchSessionResult.Success).session
+        assertEquals(5, session.players.count { it.role != null })
+        val assassinEliminated = session.copy(
+            players = session.players.map { player ->
+                if (player.role?.key == RoleCatalog.ASESINO) player.copy(alive = false) else player
+            }
+        )
+        assertEquals(GameRules.TOWN_WINNER, GameRules.winnerFor(assassinEliminated))
+    }
+
     private fun buildSession(
         uidTemporal: String,
         initialMatch: Map<String, Any?> = initialMatch(players = defaultPlayers())
@@ -347,6 +406,14 @@ class OnlineMatchSessionBuilderTest {
             player("uid_5", "Eva", RoleCatalog.ALDEANO, 4)
         )
     }
+
+    private fun privateAssignment(player: Map<String, Any?>): Map<String, Any?> = mapOf(
+        "orden" to player["orden"],
+        "rolKey" to player["rolKey"],
+        "rolNombre" to player["rolNombre"],
+        "rolEquipo" to player["rolEquipo"],
+        "rolImagen" to player["rolImagen"]
+    )
 
     private fun player(
         uid: String,

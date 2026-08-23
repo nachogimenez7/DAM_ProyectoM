@@ -10,6 +10,7 @@ enum class OnlineMatchSessionError(val userMessage: String) {
     MISSING_MATCH_STATE("La sala perdio el estado de partida. Creen una sala nueva."),
     MISSING_PLAYERS("La sala no tiene jugadores suficientes para reconstruir la partida."),
     INCOMPLETE_PLAYERS("La sala todavía está sincronizando jugadores."),
+    INCOMPLETE_PRIVATE_ROLES("El reparto privado todavía está sincronizando."),
     MISSING_HUMAN_PLAYER("No encontramos tu jugador en esta sala. Entren de nuevo con el codigo."),
     INVALID_PHASE("La sala tiene una fase invalida. Creen una sala nueva."),
     INCOMPATIBLE_STATE("La sala pertenece a una version anterior. Creen una sala nueva.")
@@ -28,7 +29,8 @@ object OnlineMatchSessionBuilder {
         fallbackMapName: String,
         revealRolesOnDeath: Boolean,
         showIndividualVotes: Boolean,
-        privateRoleAssignments: List<Map<String, Any?>> = emptyList()
+        privateRoleAssignments: List<Map<String, Any?>> = emptyList(),
+        requireCompleteRoleAssignments: Boolean = false
     ): OnlineMatchSessionResult {
         val initialMatch = initialMatchRaw.asStringAnyMap()
             ?: return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_INITIAL_MATCH)
@@ -99,6 +101,14 @@ object OnlineMatchSessionBuilder {
         }
         if (players.none { it.isHuman }) {
             return OnlineMatchSessionResult.Failure(OnlineMatchSessionError.MISSING_HUMAN_PLAYER)
+        }
+        // El anfitrión ejecuta todas las reglas autoritativas (acciones nocturnas, votos y
+        // victoria). Nunca puede entrar con solo su rol privado: en ese estado descartaría
+        // acciones válidas de otros roles y tampoco podría calcular correctamente al ganador.
+        if (requireCompleteRoleAssignments && players.any { it.role == null }) {
+            return OnlineMatchSessionResult.Failure(
+                OnlineMatchSessionError.INCOMPLETE_PRIVATE_ROLES
+            )
         }
 
         val initialMapKey = (initialMatch["mapa"] as? String).orEmpty()

@@ -782,7 +782,7 @@ class OnlineModeActivity : BaseActivity() {
 
     private fun openRecoveredRoom(room: OnlineRecoveredRoom) {
         btnRecoverRoom.isEnabled = false
-        btnRecoverRoom.text = "RECUPERANDO..."
+        btnRecoverRoom.text = "RECUPERANDO PARTIDA..."
         OnlineTempIdentity.ensureAuthenticated(this)
             .addOnFailureListener { error ->
                 btnRecoverRoom.isEnabled = true
@@ -972,6 +972,9 @@ class OnlineModeActivity : BaseActivity() {
         privateRoles: List<Map<String, Any?>>
     ) {
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
+        val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uidTemporal ||
+            snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uidTemporal ||
+            room.isHost
         val mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
             ?.takeIf { it.isNotBlank() }
             ?: room.mapKey
@@ -997,13 +1000,11 @@ class OnlineModeActivity : BaseActivity() {
             fallbackMapName = selectedMap.name,
             revealRolesOnDeath = defaults.revealRolesOnDeath,
             showIndividualVotes = defaults.showIndividualVotes,
-            privateRoleAssignments = privateRoles
+            privateRoleAssignments = privateRoles,
+            requireCompleteRoleAssignments = isHost
         )
         when (result) {
             is OnlineMatchSessionResult.Success -> {
-                val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uidTemporal ||
-                    snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uidTemporal ||
-                    room.isHost
                 OnlineRoomRecovery.save(
                     this,
                     roomId = room.roomId,

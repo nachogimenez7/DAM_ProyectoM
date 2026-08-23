@@ -867,6 +867,56 @@ async function main() {
       });
     }));
 
+    // El botón manual "Pasar anfitrión" cambia la autoridad sin sacar al anfitrión
+    // anterior ni alterar la cantidad de jugadores de la sala.
+    await seedRoom(testEnv, "room_manual_transfer", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_manual_transfer", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_manual_transfer"), {
+        jugadoresActuales: 2,
+      });
+    });
+    await assertSucceeds(runTransaction(host, async (transaction) => {
+      transaction.update(doc(host, "partidas", "room_manual_transfer"), {
+        hostId: "guest_uid",
+        hostNombre: "Guest",
+        hostActivoId: "guest_uid",
+        hostVersion: increment(1),
+        jugadoresActuales: 2,
+        actualizadaEn: serverTimestamp(),
+      });
+      transaction.update(doc(host, "partidas", "room_manual_transfer", "jugadores", "host_uid"), {
+        esHost: false,
+      });
+      transaction.update(doc(host, "partidas", "room_manual_transfer", "jugadores", "guest_uid"), {
+        esHost: true,
+      });
+    }));
+
+    // Si no hay otra cuenta registrada, el anfitrión cierra la sala de forma autoritativa.
+    // No borra los documentos de los invitados: así sus clientes leen "abandonada" y no
+    // confunden la desaparición de su membresía con una expulsión.
+    await seedRoom(testEnv, "room_host_close", "host_uid");
+    await assertSucceeds(runTransaction(host, async (transaction) => {
+      transaction.update(doc(host, "partidas", "room_host_close"), {
+        estado: "abandonada",
+        jugadoresActuales: 0,
+        actualizadaEn: serverTimestamp(),
+        ultimaActividadOnline: serverTimestamp(),
+      });
+      transaction.update(doc(host, "partidas", "room_host_close", "jugadores", "host_uid"), {
+        esHost: true,
+        activoEnPartida: false,
+        listo: false,
+        estado: "desconectado",
+        ultimaConexion: serverTimestamp(),
+        ultimaConexionLocal: Date.now(),
+      });
+    }));
+
     await assertSucceeds(setDoc(doc(guest, "perfiles_publicos", "guest_uid"), {
       uidTemporal: "guest_uid",
       publicId: "2",
@@ -978,6 +1028,26 @@ async function main() {
     await assertFails(getDoc(doc(guest, "reportes", reportId)));
     await assertFails(setDoc(doc(guest, "reportes", `${reportId}_duplicado`), report));
     await assertFails(setDoc(doc(intruder, "reportes", reportId), report));
+
+    // Si el reparto ya fue enviado pero la barrera de entrada queda bloqueada, el anfitrión
+    // puede cancelar ese inicio. Un invitado no puede abandonar la partida para toda la sala.
+    await seedRoom(testEnv, "room_start_cancel", "host_uid");
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_start_cancel"), {
+      estado: "en_juego",
+      partidaInicialCreada: true,
+      estadoPartida: { fase: "REPARTO", ganador: "" },
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(guest, "partidas", "room_start_cancel"), {
+      estado: "abandonada",
+      actualizadaEn: serverTimestamp(),
+      ultimaActividadOnline: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(host, "partidas", "room_start_cancel"), {
+      estado: "abandonada",
+      actualizadaEn: serverTimestamp(),
+      ultimaActividadOnline: serverTimestamp(),
+    }));
 
     // --- Cierre completo de salas vacias (teardown) ---
     await seedRoom(testEnv, "room_teardown_empty", "host_uid");

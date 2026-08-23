@@ -17,5 +17,5 @@ object AfkPolicy {
     }
 
     fun selfExpelledMessage(): String =
-        "Fuiste expulsado por AFK tras ausentarte dos veces seguidas."
+        "Fuiste expulsado por permanecer inactivo durante dos oportunidades consecutivas."
 }

@@ -97,12 +97,16 @@ object OnlineStartupGate {
         nowEpochMs: Long,
         reportedPlayers: Int,
         roleReadPlayers: Int,
-        expectedPlayers: Int
+        expectedPlayers: Int,
+        connectedPlayers: Int
     ): Boolean {
         if (startedAtEpochMs <= 0L || expectedPlayers <= 0) return false
         val elapsed = nowEpochMs - startedAtEpochMs
         return elapsed >= HARD_STARTUP_TIMEOUT_MS &&
-            reportedPlayers >= expectedPlayers &&
-            roleReadPlayers >= expectedPlayers
+            OnlineStartQuorum.isReached(
+                expectedPlayers = expectedPlayers,
+                readyPlayers = minOf(reportedPlayers, roleReadPlayers),
+                connectedPlayers = connectedPlayers
+            )
     }
 }

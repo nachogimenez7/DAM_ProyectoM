@@ -62,6 +62,52 @@ object PlayGamesProfileAvatar {
         return candidate.takeIf { uri.scheme.equals("https", ignoreCase = true) }.orEmpty()
     }
 
+    /**
+     * Adopta la foto de Play Juegos como opción inicial, sin abrir ninguna ventana de acceso.
+     * Si Google no entrega una URL HTTPS compartible, se conserva el avatar ilustrado.
+     */
+    fun applyCurrentAsDefault(
+        activity: Activity,
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        if (
+            !PlayGamesIdentity.isReady(activity) ||
+            !ProfileAvatarSourceStore.allowsAutomaticPlayGamesPhoto(activity)
+        ) {
+            onComplete(false)
+            return
+        }
+        PlayGames.getPlayersClient(activity).currentPlayer
+            .addOnSuccessListener { player ->
+                val uri = firstShareableUri(
+                    player.hiResImageUri?.toString().orEmpty(),
+                    player.iconImageUri?.toString().orEmpty()
+                )
+                if (uri.isBlank()) {
+                    OnlineDebugLog.i("play_games_default_avatar_unavailable")
+                    onComplete(false)
+                    return@addOnSuccessListener
+                }
+                activity.getSharedPreferences(
+                    ProfileActivity.PREFS_NAME,
+                    Context.MODE_PRIVATE
+                ).edit()
+                    .putBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
+                    .putString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, uri)
+                    .apply()
+                LocalProfilePhotoStore.deleteSavedPhoto(activity)
+                ProfileAvatarSourceStore.saveSelection(
+                    activity,
+                    ProfileAvatarSource.PLAY_GAMES
+                )
+                onComplete(true)
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e("play_games_default_avatar_failure", error)
+                onComplete(false)
+            }
+    }
+
     fun render(
         context: Context,
         image: ImageView,
@@ -91,11 +137,16 @@ object PlayGamesProfileAvatar {
     ) {
         PlayGames.getPlayersClient(activity).currentPlayer
             .addOnSuccessListener { player ->
-                val uri = normalize(
-                    (player.hiResImageUri ?: player.iconImageUri)?.toString().orEmpty()
+                val uri = firstShareableUri(
+                    player.hiResImageUri?.toString().orEmpty(),
+                    player.iconImageUri?.toString().orEmpty()
                 )
                 if (uri.isBlank()) {
-                    onFailure("Tu perfil de Play Juegos no tiene una foto pública disponible.")
+                    onFailure(
+                        "Play Juegos quedó conectado, pero ese perfil no comparte una foto que " +
+                            "Traidores pueda mostrar en las salas. Podés elegir una imagen desde " +
+                            "tu perfil de Play Juegos y reintentar, o usar un avatar ilustrado."
+                    )
                 } else {
                     onReady(uri)
                 }
@@ -104,5 +155,13 @@ object PlayGamesProfileAvatar {
                 OnlineDebugLog.e("play_games_avatar_player_failure", error)
                 onFailure("No pudimos obtener tu foto de Play Juegos.")
             }
+    }
+
+    /** La imagen grande puede ser local aunque la miniatura sí sea una URL pública. */
+    private fun firstShareableUri(vararg candidates: String): String {
+        return candidates.asSequence()
+            .map(::normalize)
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
     }
 }

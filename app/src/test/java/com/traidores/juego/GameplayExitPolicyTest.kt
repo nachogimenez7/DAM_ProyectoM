@@ -40,9 +40,9 @@ class GameplayExitPolicyTest {
     }
 
     @Test
-    fun assigningRolesBlocksOnlyOnlineExit() {
+    fun assigningRolesOffersSafeOnlineExit() {
         assertEquals(
-            GameplayExitAction.BLOCK_ONLINE_EXIT,
+            GameplayExitAction.RETURN_TO_LOBBY,
             GameplayExitPolicy.assigningBackAction(isOnlineGameplay = true)
         )
         assertEquals(
@@ -72,6 +72,34 @@ class GameplayExitPolicyTest {
                 roomState = OnlineRoomFirestore.STATE_IN_GAME,
                 hasLiveMatch = true,
                 returnedFromGameplay = false
+            )
+        )
+    }
+
+    @Test
+    fun hostCanCancelAStartedMatchThatIsStillBlockedInLobby() {
+        assertTrue(
+            GameplayExitPolicy.shouldOfferStartedMatchCancellation(
+                roomState = OnlineRoomFirestore.STATE_IN_GAME,
+                hasLiveMatch = true,
+                isHost = true,
+                returnedFromGameplay = false
+            )
+        )
+        assertFalse(
+            GameplayExitPolicy.shouldOfferStartedMatchCancellation(
+                roomState = OnlineRoomFirestore.STATE_IN_GAME,
+                hasLiveMatch = true,
+                isHost = false,
+                returnedFromGameplay = false
+            )
+        )
+        assertFalse(
+            GameplayExitPolicy.shouldOfferStartedMatchCancellation(
+                roomState = OnlineRoomFirestore.STATE_IN_GAME,
+                hasLiveMatch = true,
+                isHost = true,
+                returnedFromGameplay = true
             )
         )
     }

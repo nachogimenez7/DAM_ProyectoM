@@ -135,12 +135,10 @@ class ProfileActivity : BaseActivity() {
     private lateinit var statWinsValue: TextView
     private lateinit var statWinRateValue: TextView
     private lateinit var profileStatsHint: TextView
+    private lateinit var accountSection: View
     private lateinit var accountStateText: TextView
     private lateinit var accountButton: Button
-    private lateinit var playGamesActions: View
-    private lateinit var playGamesAchievementsButton: Button
-    private lateinit var playGamesLeaderboardsButton: Button
-    private lateinit var playGamesFriendsButton: Button
+    private lateinit var playGamesHubButton: Button
     private var accountRequestInProgress = false
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
@@ -215,9 +213,7 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
         accountButton.setOnClickListener { showAccountDialog() }
-        playGamesAchievementsButton.setOnClickListener { showPlayGamesAchievements() }
-        playGamesLeaderboardsButton.setOnClickListener { showPlayGamesLeaderboards() }
-        playGamesFriendsButton.setOnClickListener { loadPlayGamesFriends() }
+        playGamesHubButton.setOnClickListener { showPlayGamesMenu() }
         if (intent.getBooleanExtra(EXTRA_OPEN_ACCOUNT, false)) {
             intent.removeExtra(EXTRA_OPEN_ACCOUNT)
             accountButton.post { showAccountDialog() }
@@ -259,12 +255,10 @@ class ProfileActivity : BaseActivity() {
         statWinsValue = findViewById(R.id.statWinsValue)
         statWinRateValue = findViewById(R.id.statWinRateValue)
         profileStatsHint = findViewById(R.id.profileStatsHint)
+        accountSection = findViewById(R.id.profileAccountSection)
         accountStateText = findViewById(R.id.profileAccountState)
         accountButton = findViewById(R.id.btnProfileAccount)
-        playGamesActions = findViewById(R.id.profilePlayGamesActions)
-        playGamesAchievementsButton = findViewById(R.id.btnPlayGamesAchievements)
-        playGamesLeaderboardsButton = findViewById(R.id.btnPlayGamesLeaderboards)
-        playGamesFriendsButton = findViewById(R.id.btnPlayGamesFriends)
+        playGamesHubButton = findViewById(R.id.btnPlayGamesHub)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -339,7 +333,10 @@ class ProfileActivity : BaseActivity() {
         val passwordLinked = AccountLink.hasPasswordProvider()
         val googleLinked = GoogleAccountLink.hasGoogleProvider()
         val playGamesLinked = PlayGamesIdentity.hasPlayGamesProvider()
+        accountSection.visibility = if (isEditing) View.GONE else View.VISIBLE
         accountStateText.text = when {
+            googleLinked && playGamesLinked ->
+                "Cuenta: ${email.ifBlank { "Google" }} · Google y Play Juegos vinculados"
             googleLinked -> getString(
                 R.string.profile_account_google_linked,
                 email.ifBlank { "Google" }
@@ -350,18 +347,38 @@ class ProfileActivity : BaseActivity() {
         }
         accountButton.isEnabled = !googleLinked && !accountRequestInProgress
         accountButton.alpha = if (accountButton.isEnabled) 1f else 0.5f
+        accountButton.visibility = if (googleLinked) View.GONE else View.VISIBLE
         accountButton.text = when {
-            googleLinked -> getString(R.string.profile_account_action_linked)
             passwordLinked -> getString(R.string.profile_account_action_link_google)
             playGamesLinked -> getString(R.string.profile_account_action_add_email)
             else -> getString(R.string.profile_account_action)
         }
-        playGamesActions.visibility = if (
+        playGamesHubButton.visibility = if (
             playGamesLinked && PlayGamesConfig.isIdentityConfigured(this)
         ) {
             View.VISIBLE
         } else {
             View.GONE
+        }
+    }
+
+    private fun showPlayGamesMenu() {
+        if (!PlayGamesIdentity.isReady(this)) return
+        GameDialog.choose(
+            activity = this,
+            title = "PLAY JUEGOS",
+            message = "Elegí qué sección querés abrir.",
+            options = listOf(
+                "Logros",
+                "Tablas de clasificación",
+                "Amigos"
+            )
+        ) { choice ->
+            when (choice) {
+                0 -> showPlayGamesAchievements()
+                1 -> showPlayGamesLeaderboards()
+                2 -> loadPlayGamesFriends()
+            }
         }
     }
 
@@ -1051,6 +1068,7 @@ class ProfileActivity : BaseActivity() {
         } else {
             "Entrar al modo edicion del perfil"
         }
+        renderAccountSection()
         updateInteractiveContentDescriptions(favoriteRoleName.text.toString())
     }
 
@@ -1094,6 +1112,14 @@ class ProfileActivity : BaseActivity() {
                 draftProfile.achievements.joinToString(ACHIEVEMENT_SEPARATOR)
             )
             .apply()
+        ProfileAvatarSourceStore.saveSelection(
+            context = this,
+            source = when {
+                draftProfile.localPhotoEnabled -> ProfileAvatarSource.LOCAL_PHOTO
+                draftProfile.playGamesAvatarUri.isNotBlank() -> ProfileAvatarSource.PLAY_GAMES
+                else -> ProfileAvatarSource.ILLUSTRATED
+            }
+        )
         if (!draftProfile.localPhotoEnabled) {
             LocalProfilePhotoStore.deleteSavedPhoto(this)
         }
@@ -1214,6 +1240,24 @@ class ProfileActivity : BaseActivity() {
 
     private fun selectPlayGamesAvatar() {
         if (requireAccountFor("Usar tu foto de Play Juegos")) return
+        if (!PlayGamesIdentity.hasPlayGamesProvider()) {
+            GameDialog.confirm(
+                activity = this,
+                title = "Conectar Play Juegos",
+                message = "Para buscar tu foto vamos a conectar Play Juegos con Traidores. " +
+                    "Esto también activa logros, tablas de clasificación y respaldo del progreso. " +
+                    "La foto solo se usará si tu perfil de Play Juegos la comparte públicamente.",
+                positiveLabel = "CONECTAR",
+                negativeLabel = "AHORA NO"
+            ) {
+                requestPlayGamesAvatar()
+            }
+            return
+        }
+        requestPlayGamesAvatar()
+    }
+
+    private fun requestPlayGamesAvatar() {
         PlayGamesProfileAvatar.requestCurrent(
             activity = this,
             onReady = { uri ->

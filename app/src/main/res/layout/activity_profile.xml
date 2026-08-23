@@ -207,6 +207,7 @@
                 android:textStyle="bold" />
 
             <LinearLayout
+                android:id="@+id/profileAccountSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
@@ -659,37 +660,16 @@
                     android:minHeight="48dp"
                     android:text="@string/profile_account_action" />
 
-                <LinearLayout
-                    android:id="@+id/profilePlayGamesActions"
+                <Button
+                    android:id="@+id/btnPlayGamesHub"
+                    style="@style/BtnDark"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
-
-                    <Button
-                        android:id="@+id/btnPlayGamesAchievements"
-                        style="@style/BtnDark"
-                        android:layout_marginBottom="0dp"
-                        android:minHeight="48dp"
-                        android:text="@string/play_games_achievements_action" />
-
-                    <Button
-                        android:id="@+id/btnPlayGamesLeaderboards"
-                        style="@style/BtnDark"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginBottom="0dp"
-                        android:minHeight="48dp"
-                        android:text="@string/play_games_leaderboards_action" />
-
-                    <Button
-                        android:id="@+id/btnPlayGamesFriends"
-                        style="@style/BtnDark"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginBottom="0dp"
-                        android:minHeight="48dp"
-                        android:text="@string/play_games_friends_action" />
-                </LinearLayout>
+                    android:layout_marginBottom="0dp"
+                    android:minHeight="48dp"
+                    android:text="PLAY JUEGOS"
+                    android:visibility="gone" />
 
             </LinearLayout>
 

@@ -1,12 +1,14 @@
 package com.traidores.juego
 
+import android.content.Context
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 /**
  * Diagnósticos acotados del gameplay online. No registra sala, UID, nombres ni mensajes.
  */
 object OnlineDiagnostics {
-    fun recordPhase(session: GameSession, isHost: Boolean, event: String) {
+    fun recordPhase(context: Context, session: GameSession, isHost: Boolean, event: String) {
+        OnlineStabilityReport.recordPhase(context, session, isHost, event)
         val crashlytics = FirebaseCrashlytics.getInstance()
         crashlytics.setCustomKey("online_phase", session.phase.name)
         crashlytics.setCustomKey("online_phase_index", session.phaseIndex)
@@ -16,6 +18,7 @@ object OnlineDiagnostics {
     }
 
     fun recordSyncDelay(
+        context: Context,
         session: GameSession,
         isHost: Boolean,
         connectedPlayers: Int,
@@ -23,7 +26,19 @@ object OnlineDiagnostics {
         reason: String
     ) {
         val crashlytics = FirebaseCrashlytics.getInstance()
-        recordPhase(session, isHost, event = "sync_delay")
+        OnlineStabilityReport.recordPhase(
+            context = context,
+            session = session,
+            isHost = isHost,
+            event = "sync_delay",
+            connectedPlayers = connectedPlayers,
+            expectedPlayers = expectedPlayers,
+            reason = reason
+        )
+        crashlytics.setCustomKey("online_phase", session.phase.name)
+        crashlytics.setCustomKey("online_phase_index", session.phaseIndex)
+        crashlytics.setCustomKey("online_round", session.round)
+        crashlytics.setCustomKey("online_is_host", isHost)
         crashlytics.setCustomKey("online_connected_players", connectedPlayers)
         crashlytics.setCustomKey("online_expected_players", expectedPlayers)
         crashlytics.setCustomKey("online_sync_reason", reason.take(80))

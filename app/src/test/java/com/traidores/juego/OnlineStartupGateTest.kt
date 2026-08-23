@@ -125,7 +125,8 @@ class OnlineStartupGateTest {
                 nowEpochMs = 34_999L,
                 reportedPlayers = 5,
                 roleReadPlayers = 5,
-                expectedPlayers = 5
+                expectedPlayers = 5,
+                connectedPlayers = 5
             )
         )
 
@@ -136,7 +137,8 @@ class OnlineStartupGateTest {
                 nowEpochMs = 35_000L,
                 reportedPlayers = 5,
                 roleReadPlayers = 5,
-                expectedPlayers = 5
+                expectedPlayers = 5,
+                connectedPlayers = 5
             )
         )
 
@@ -147,18 +149,20 @@ class OnlineStartupGateTest {
                 nowEpochMs = 35_000L,
                 reportedPlayers = 3,
                 roleReadPlayers = 3,
-                expectedPlayers = 6
+                expectedPlayers = 6,
+                connectedPlayers = 6
             )
         )
 
-        // Tampoco salta por encima de alguien que todavia no termino de leer su rol.
+        // No salta si ni siquiera tres cuartos terminaron de leer su rol.
         assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = startedAt,
                 nowEpochMs = 35_000L,
                 reportedPlayers = 6,
-                roleReadPlayers = 5,
-                expectedPlayers = 6
+                roleReadPlayers = 4,
+                expectedPlayers = 6,
+                connectedPlayers = 6
             )
         )
     }
@@ -179,7 +183,66 @@ class OnlineStartupGateTest {
                 nowEpochMs = 35_000L,
                 reportedPlayers = result.reportedPlayers,
                 roleReadPlayers = result.roleReadPlayers,
-                expectedPlayers = result.expectedPlayers
+                expectedPlayers = result.expectedPlayers,
+                connectedPlayers = 6
+            )
+        )
+    }
+
+    @Test
+    fun fourteenPlayerRoomStartsWithElevenReadyButNotTen() {
+        assertTrue(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 11,
+                roleReadPlayers = 11,
+                expectedPlayers = 14,
+                connectedPlayers = 14
+            )
+        )
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 10,
+                roleReadPlayers = 10,
+                expectedPlayers = 14,
+                connectedPlayers = 14
+            )
+        )
+    }
+
+    @Test
+    fun threePlayerStartupRecoversWithTwoRoleReadersAfterHardTimeout() {
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 34_999L,
+                reportedPlayers = 2,
+                roleReadPlayers = 2,
+                expectedPlayers = 3,
+                connectedPlayers = 3
+            )
+        )
+        assertTrue(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 2,
+                roleReadPlayers = 2,
+                expectedPlayers = 3,
+                connectedPlayers = 3
+            )
+        )
+        assertFalse(
+            OnlineStartupGate.shouldHardTimeoutStart(
+                startedAtEpochMs = 10_000L,
+                nowEpochMs = 35_000L,
+                reportedPlayers = 1,
+                roleReadPlayers = 1,
+                expectedPlayers = 3,
+                connectedPlayers = 3
             )
         )
     }

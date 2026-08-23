@@ -20,7 +20,7 @@ object GameplayExitPolicy {
 
     fun assigningBackAction(isOnlineGameplay: Boolean): GameplayExitAction {
         return if (isOnlineGameplay) {
-            GameplayExitAction.BLOCK_ONLINE_EXIT
+            GameplayExitAction.RETURN_TO_LOBBY
         } else {
             GameplayExitAction.CONFIRM_LOCAL_EXIT
         }
@@ -32,6 +32,18 @@ object GameplayExitPolicy {
         returnedFromGameplay: Boolean
     ): Boolean {
         return returnedFromGameplay &&
+            roomState == OnlineRoomFirestore.STATE_IN_GAME &&
+            hasLiveMatch
+    }
+
+    fun shouldOfferStartedMatchCancellation(
+        roomState: String,
+        hasLiveMatch: Boolean,
+        isHost: Boolean,
+        returnedFromGameplay: Boolean
+    ): Boolean {
+        return isHost &&
+            !returnedFromGameplay &&
             roomState == OnlineRoomFirestore.STATE_IN_GAME &&
             hasLiveMatch
     }

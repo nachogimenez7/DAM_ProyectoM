@@ -559,7 +559,30 @@ class AssigningRolesActivity : BaseActivity() {
                 "La partida online está comenzando. Esperá a que termine el reparto."
             )
             GameplayExitAction.CONFIRM_LOCAL_EXIT -> showLocalExitConfirmation()
-            GameplayExitAction.RETURN_TO_LOBBY -> leaveAssigningScreen()
+            GameplayExitAction.RETURN_TO_LOBBY -> showOnlineExitConfirmation()
+        }
+    }
+
+    private fun showOnlineExitConfirmation() {
+        if (exitConfirmationDialog?.isShowing == true) return
+        exitConfirmationDialog = GameDialog.confirm(
+            activity = this,
+            title = "¿Salir durante el reparto?",
+            message = "Podés salir aunque la partida esté preparando las cartas. Tu dispositivo " +
+                "volverá a Online y la sala podrá continuar con el resto.",
+            positiveLabel = "SALIR",
+            negativeLabel = "SEGUIR ESPERANDO",
+            onDismiss = { exitConfirmationDialog = null }
+        ) {
+            val roomId = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
+            OnlineStabilityReport.recordEvent(this, "salida_durante_reparto")
+            OnlineRoomRecovery.clearIf(this, roomId)
+            startActivity(
+                Intent(this, OnlineModeActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            )
+            leaveAssigningScreen()
         }
     }
 

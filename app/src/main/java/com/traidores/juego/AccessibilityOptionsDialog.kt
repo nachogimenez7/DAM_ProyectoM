@@ -20,6 +20,8 @@ object AccessibilityOptionsDialog {
 
     fun show(
         activity: AppCompatActivity,
+        reportLabel: String? = null,
+        onReportRequested: (() -> Unit)? = null,
         exitLabel: String? = null,
         onExitRequested: (() -> Unit)? = null,
         onTextSizeChanged: (Int) -> Unit = {}
@@ -153,6 +155,25 @@ object AccessibilityOptionsDialog {
         }
         content.addView(textSizeRow)
         var dialog: AlertDialog? = null
+        if (reportLabel != null && onReportRequested != null) {
+            content.addView(Button(activity).apply {
+                text = reportLabel
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                minWidth = 0
+                minHeight = 0
+                setTextColor(activity.getColor(R.color.text_primary))
+                setBackgroundResource(R.drawable.bg_btn_dark_ripple)
+                setOnClickListener {
+                    dialog?.dismiss()
+                    onReportRequested()
+                }
+            }, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                activity.dp(44)
+            ).apply {
+                topMargin = activity.dp(16)
+            })
+        }
         if (exitLabel != null && onExitRequested != null) {
             content.addView(Button(activity).apply {
                 text = exitLabel
@@ -169,7 +190,7 @@ object AccessibilityOptionsDialog {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 activity.dp(44)
             ).apply {
-                topMargin = activity.dp(16)
+                topMargin = activity.dp(if (reportLabel == null) 16 else 8)
             })
         }
         refreshRows()
