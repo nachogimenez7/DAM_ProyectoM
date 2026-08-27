@@ -185,6 +185,7 @@ class GameplayChatController(
     private val chatUnreadBadge: TextView = root.findViewById(R.id.chatUnreadBadge)
 
     private val centerColumn: FrameLayout = root.findViewById(R.id.centerColumn)
+    private val topStatus: LinearLayout = root.findViewById(R.id.topStatus)
     private val bottomPlayerPanel: LinearLayout = root.findViewById(R.id.bottomPlayerPanel)
     private val roleCard: View = root.findViewById(R.id.roleCard)
     private val currentPlayerName: TextView = root.findViewById(R.id.currentPlayerName)

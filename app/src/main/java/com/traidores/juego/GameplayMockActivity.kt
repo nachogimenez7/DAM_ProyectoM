@@ -591,8 +591,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val key: String,
         val imageRes: Int,
         val label: String,
-        val toneHex: String
-    )
+        val toneHex: String,
+        val description: String = ""
+    ) {
+        fun tooltipText(): String {
+            return if (description.isBlank()) label else "$label\n$description"
+        }
+    }
 
     private data class OnlineChatEntry(
         val id: String,
@@ -5666,7 +5671,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             key = emotionKey,
             imageRes = imageRes,
             label = label,
-            toneHex = toneHex
+            toneHex = toneHex,
+            description = description
         )
     }
 
