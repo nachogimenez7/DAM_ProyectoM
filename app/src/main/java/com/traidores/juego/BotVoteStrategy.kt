@@ -140,8 +140,20 @@ internal fun conversationVotePlan(
         )
     }
 
-    declaredSuspicionTarget(session, voter)
+    val currentStance = currentRoundDeclaredStance(session, voter)
+    currentStance
+        ?.target
         ?.takeIf { it in aliveNames }
+        ?.let { target ->
+            rawPlans += VotePlan(
+                target = target,
+                reason = currentStance?.reason?.takeIf { it.isNotBlank() }
+                    ?: "yo ya venia marcando eso",
+                confidence = 10
+            )
+        }
+    declaredSuspicionTarget(session, voter)
+        ?.takeIf { it in aliveNames && it != currentStance?.target }
         ?.let { rawPlans += VotePlan(it, "yo ya venia marcando eso", 9) }
 
     ranked.firstOrNull()?.takeIf { it.score >= 9 }?.let { read ->

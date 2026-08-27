@@ -496,10 +496,11 @@ object PlayerProfileDialog {
                     val spec = EmoteCatalog.byId(id) ?: return@forEach
                     addView(
                         ImageView(activity).apply {
-                            setImageResource(spec.imageRes)
+                            setEmoteImageResource(spec.imageRes)
                             background = chipBackground(activity, "#20150D", spec.toneHex, 8)
                             setPadding(dp(activity, 5), dp(activity, 5), dp(activity, 5), dp(activity, 5))
-                            contentDescription = spec.label
+                            contentDescription = spec.tooltipText()
+                            androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
                             isClickable = true
                             isFocusable = true
                             setOnClickListener {
@@ -684,7 +685,7 @@ object PlayerProfileDialog {
             setPadding(dp(activity, 18), dp(activity, 18), dp(activity, 18), dp(activity, 16))
             background = chipBackground(activity, "#14100A", spec.toneHex, 16)
             addView(
-                ImageView(activity).apply { setImageResource(spec.imageRes) },
+                ImageView(activity).apply { setEmoteImageResource(spec.imageRes) },
                 LinearLayout.LayoutParams(dp(activity, 168), dp(activity, 168))
             )
             addView(
@@ -701,6 +702,21 @@ object PlayerProfileDialog {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
+            if (spec.description.isNotBlank()) {
+                addView(
+                    TextView(activity).apply {
+                        text = spec.description
+                        setTextColor(Color.parseColor("#B9AD92"))
+                        textSize = 13f
+                        gravity = Gravity.CENTER
+                        setPadding(0, dp(activity, 4), 0, 0)
+                    },
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
         }
         val dialog = AlertDialog.Builder(activity).setView(container).create()
         container.setOnClickListener { dialog.dismiss() }

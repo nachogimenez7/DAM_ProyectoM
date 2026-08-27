@@ -188,6 +188,39 @@ internal fun eventReactionLine(
 ): String {
     val target = event.target
     val personality = personalityFor(session, bot)
+    if (session.round <= 2) {
+        val earlyOptions = when (event.type) {
+            BotEventType.MUERTE_NOCTURNA -> if (session.round == 1) {
+                listOf(
+                    "murió $target. alguien sabe algo de anoche?",
+                    "antes de acusar, alguien tiene una pista sobre lo de $target?",
+                    "lo de $target es lo único seguro. alguien vio algo?"
+                )
+            } else {
+                listOf(
+                    "murió $target. comparemos esto con lo que se dijo ayer",
+                    "alguien tiene una pista concreta sobre lo de $target?",
+                    "antes de votar, revisemos quién había hablado de $target"
+                )
+            }
+            BotEventType.EXPULSION -> listOf(
+                "se fue $target. anotemos quiénes empujaron ese voto",
+                "lo de $target ya está. ahora revisemos qué información dejó",
+                "no repitamos el voto a $target por inercia"
+            )
+            BotEventType.SILENCIO -> listOf(
+                "$target no puede hablar. preguntemos a quienes sí pueden responder",
+                "como $target está silenciado, no lo acusemos sin que pueda contestar",
+                "$target hoy no puede explicar nada. busquemos otra pista"
+            )
+        }
+        return chooseFreshLine(
+            earlyOptions,
+            session,
+            bot,
+            "event:early:${event.type}:$target:$index:${socialChatSize(session)}"
+        )
+    }
     if (
         event.type == BotEventType.MUERTE_NOCTURNA &&
         session.botDifficulty == BotDifficulty.HARD &&

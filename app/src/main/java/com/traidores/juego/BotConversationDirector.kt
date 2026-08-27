@@ -36,14 +36,18 @@ internal object BotConversationDirector {
             GamePhase.VOTACION,
             GamePhase.DESEMPATE_VOTACION -> speakers.coerceAtMost(2)
             GamePhase.CONTRAPUNTO -> speakers.coerceAtMost(3)
-            GamePhase.DIA_DEBATE -> speakers.coerceAtMost(3)
+            GamePhase.DIA_DEBATE -> speakers.coerceAtMost(
+                if (session.round <= 2) 2 else 3
+            )
             else -> 0
         }
     }
 
     fun pauseAfterBotStreak(session: GameSession): Int {
         return when (session.phase) {
-            GamePhase.DIA_DEBATE -> 2
+            // Al principio los bots abren un hilo y le dejan espacio real al jugador.
+            // En rondas avanzadas pueden cruzarse entre ellos antes de pedir su lectura.
+            GamePhase.DIA_DEBATE -> if (session.round <= 2) 1 else 2
             else -> 1
         }
     }
@@ -197,22 +201,22 @@ internal object BotConversationDirector {
         reaction: Boolean,
         speaker: String? = null
     ): Long {
-        val base = if (reaction) 1_400L else 1_900L
-        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 900).toLong()
-        val readingDelay = (message.length * 12L).coerceAtMost(700L)
+        val base = if (reaction) 3_500L else 4_200L
+        val jitter = (stableNoise("${session.code}:${session.phaseIndex}:$beatIndex:$message") % 1_200).toLong()
+        val readingDelay = (message.length * 18L).coerceAtMost(1_100L)
         val normalized = normalizedForParsing(message)
         val thoughtDelay = if (
             message.contains("?") ||
             normalized.contains("por que") ||
             normalized.contains("que rol")
-        ) 250L else 0L
+        ) 400L else 0L
         val personalityDelay = speaker
             ?.let { GameEngine.playerByName(session, it) }
             ?.let { bot ->
                 when (personalityFor(session, bot)) {
-                    BotPersonality.IMPULSIVO -> -300L
-                    BotPersonality.JODON -> -200L
-                    BotPersonality.PICANTE -> -100L
+                    BotPersonality.IMPULSIVO -> -250L
+                    BotPersonality.JODON -> -100L
+                    BotPersonality.PICANTE -> 0L
                     BotPersonality.TRANQUI -> 100L
                     BotPersonality.DESCONFIADO -> 250L
                     BotPersonality.ANALITICO -> 450L
@@ -236,17 +240,17 @@ internal object BotConversationDirector {
             "explica",
             "version"
         ).any(normalized::contains)
-        val maximumDelay = if (complexAnswer) 4_800L else 3_600L
+        val maximumDelay = if (complexAnswer) 7_800L else 6_800L
         return (base + jitter + readingDelay + thoughtDelay + personalityDelay + competitivenessDelay)
-            .coerceIn(1_400L, maximumDelay)
+            .coerceIn(3_600L, maximumDelay)
     }
 
     fun burstDelayMs(session: GameSession, beatIndex: Int, speaker: String, message: String): Long {
         val jitter = stableNoise(
             "${session.code}:${session.phaseIndex}:$beatIndex:$speaker:burst:$message"
-        ) % 350
-        val typingTime = (message.length * 8L).coerceAtMost(400L)
-        return (550L + jitter + typingTime).coerceIn(600L, 1_450L)
+        ) % 700
+        val typingTime = (message.length * 16L).coerceAtMost(900L)
+        return (2_400L + jitter + typingTime).coerceIn(2_400L, 4_000L)
     }
 
     fun silenceDelayMs(session: GameSession, idleLinesUsed: Int): Long {
@@ -263,20 +267,36 @@ internal object BotConversationDirector {
         val humanName = safeName(human, session)
         val message = when (personalityFor(session, bot)) {
             BotPersonality.PICANTE ->
-                "$humanName no te me borres ahora, a quien votarias?"
+                "$humanName, a quien votarias ahora?"
             BotPersonality.DESCONFIADO ->
-                "$humanName te quedaste mirando de afuera. quien te hace mas ruido?"
+                "$humanName, quien te parece mas raro?"
             BotPersonality.JODON ->
-                "$humanName tira algo aunque sea, despues fingimos que fue una gran teoria"
+                "$humanName, que rol decis tener?"
             BotPersonality.ANALITICO ->
-                "$humanName cerremos una idea: a quien escucharias y a quien votarias?"
+                "$humanName, a quien queres escuchar antes de votar?"
             else ->
-                "$humanName, vos que pensas? tira una sospecha y la vemos"
+                "$humanName, que pensas? a quien mirarias?"
         }
         return BotConversationBeat(
             speaker = speaker,
             message = sanitizeBotSpeech(message, session),
             promptsSilentHuman = true
+        )
+    }
+
+    fun spamReactionBeat(session: GameSession, lastSpeaker: String?): BotConversationBeat? {
+        if (!canRun(session)) return null
+        val speaker = chooseSpeakers(session, lastSpeaker).firstOrNull() ?: return null
+        val bot = GameEngine.playerByName(session, speaker) ?: return null
+        val message = when (personalityFor(session, bot)) {
+            BotPersonality.PICANTE -> "para un poco, no llegamos a responderte"
+            BotPersonality.JODON -> "una por vez, si mandas todo junto se pierde el hilo"
+            BotPersonality.ANALITICO -> "vamos de a una, si mandas todo junto se pierde el hilo"
+            else -> "para un poco, no llegamos a responder"
+        }
+        return BotConversationBeat(
+            speaker = speaker,
+            message = sanitizeBotSpeech(message, session)
         )
     }
 
@@ -293,10 +313,10 @@ internal object BotConversationDirector {
         val speaker = chooseSpeakers(session, lastSpeaker).firstOrNull() ?: return null
         val humanName = safeName(human, session)
         val message = when (personalityFor(session, GameEngine.playerByName(session, speaker)!!)) {
-            BotPersonality.PICANTE -> "$humanName estas muy callado, juga un poco: a quien votarias?"
-            BotPersonality.DESCONFIADO -> "$humanName estas mirando de afuera, eso tambien hace ruido. a quien miras?"
-            BotPersonality.JODON -> "$humanName si te quedas mudo te van a usar de voto facil, tira una sospecha"
-            else -> "$humanName estas muy callado, a quien miras vos?"
+            BotPersonality.PICANTE -> "$humanName estas muy callado, a quien votarias?"
+            BotPersonality.DESCONFIADO -> "$humanName no dijiste mucho, quien te parece raro?"
+            BotPersonality.JODON -> "$humanName, que rol decis tener?"
+            else -> "$humanName estas muy callado, a quien miras?"
         }
         return BotConversationBeat(
             speaker = speaker,

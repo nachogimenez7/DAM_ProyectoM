@@ -38,6 +38,9 @@
     <string name="about_contact_support">CONTACTAR A BANDIDO GAMES</string>
     <string name="about_support_subject">Soporte de Traidores</string>
     <string name="about_support_unavailable">No encontramos una aplicación de correo. Escribinos a %1$s.</string>
+    <string name="feedback_action">COMENTARIOS / ERRORES</string>
+    <string name="feedback_subject">Comentarios y errores de Traidores</string>
+    <string name="feedback_unavailable">No encontramos una aplicación de correo. Podés escribirnos a %1$s.</string>
     <string name="about_link_unavailable">No encontramos una aplicación para abrir este enlace.</string>
     <string name="about_open">Acerca de Traidores</string>
     <string name="privacy_policy_action">POLÍTICA DE PRIVACIDAD</string>
@@ -144,4 +147,14 @@
     <string name="account_delete_password_error">Ingresá tu contraseña actual.</string>
     <string name="account_delete_progress">Eliminando tu cuenta y tus datos…</string>
     <string name="account_delete_success">Tu cuenta y los datos de Traidores fueron eliminados.</string>
+    <string name="notification_channel_beta_id" translatable="false">beta_novedades</string>
+    <string name="notification_channel_beta_name">Novedades de Traidores</string>
+    <string name="notification_channel_beta_description">Mejoras, nuevas pruebas y avisos importantes de la beta.</string>
+    <string name="notification_invitation_title">NOVEDADES DE LA BETA</string>
+    <string name="notification_invitation_message">¿Querés recibir avisos sobre nuevas pruebas, mejoras y actualizaciones de Traidores? Podés desactivarlos cuando quieras desde Opciones.</string>
+    <string name="notification_enabled">Notificaciones activadas.</string>
+    <string name="notification_disabled">Notificaciones desactivadas.</string>
+    <string name="notification_permission_denied">No se activaron. Podés habilitarlas más tarde desde Opciones.</string>
+    <string name="first_beta_notification_title">Primera notificación, que emoción!!!!</string>
+    <string name="first_beta_notification_body">Hemos añadido mejoras gracias a sus feedback en el modo vs IA. Están invitados a probarlas.</string>
 </resources>

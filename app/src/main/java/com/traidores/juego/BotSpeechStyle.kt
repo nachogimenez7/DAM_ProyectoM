@@ -95,34 +95,12 @@ internal fun finishSpeech(
 ): String {
     val personality = personalityFor(session, bot)
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:style:$context")
-    var text = raw.lowercase()
-        .replace("porque", if (seed % 3 == 0) "pq" else "porque")
-        .replace("que ", if (seed % 5 == 0) "q " else "que ")
-        .replace("tambien", if (seed % 4 == 0) "tmb" else "tambien")
-        .replace("no se", if (seed % 2 == 0) "nose" else "no se")
-
-    if (personality == BotPersonality.PICANTE && seed % 4 == 0 && !text.startsWith("dale")) {
-        text = "dale, $text"
-    }
-    if (
-        personality == BotPersonality.JODON &&
-        seed % 3 == 0 &&
-        !containsLaugh(text) &&
-        session.botDifficulty != BotDifficulty.HARD
-    ) {
-        text = "${laughFor(seed)} $text"
-    }
-    if (personality == BotPersonality.IMPULSIVO && seed % 5 == 0) {
-        text = text.replace("para ", "PARA ")
-    }
-    if (personality == BotPersonality.TRANQUI && seed % 4 == 0 && !text.startsWith("igual")) {
-        text = "igual $text"
-    }
+    var text = seriousNaturalSpeech(raw)
     text = applyPersonalitySignature(
         text,
         personality,
         seed,
-        playful = session.botDifficulty != BotDifficulty.HARD
+        playful = false
     )
     text = text
         .replace(Regex("[.!]{1,}$"), "")
@@ -145,6 +123,36 @@ internal fun finishSpeech(
     return guarded
 }
 
+internal fun seriousNaturalSpeech(raw: String): String {
+    return raw.lowercase()
+        .replace(Regex("\\b(?:(?:ja){2,}|jsjs+|kj{2,})\\b"), "")
+        .replace(Regex("\\bq\\b"), "que")
+        .replace(Regex("\\bpq\\b"), "por que")
+        .replace(Regex("\\btmb\\b"), "tambien")
+        .replace(Regex("\\bnose\\b"), "no se")
+        .replace(Regex("\\btoy\\b"), "estoy")
+        .replace("flasheando", "equivocando")
+        .replace("mandar fruta", "acusar sin motivo")
+        .replace("vendehumo de feria", "eso no cierra")
+        .replace("no me copa", "no me convence")
+        .replace("al toque", "de entrada")
+        .replace(Regex("\\btranqui\\b"), "con calma")
+        .replace(Regex("\\bjoda\\b"), "bromas")
+        .replace("una banda", "demasiado")
+        .replace("me fui al pasto", "me apure")
+        .replace("esta re raro", "esta muy raro")
+        .replace("flojisimo", "muy flojo")
+        .replace("bancas", "defendes")
+        .replace("bancando", "defendiendo")
+        .replace("banco", "defiendo")
+        .replace(Regex("\\bposta\\b"), "en serio")
+        .replace(Regex("\\bamigo\\b[,]?"), "")
+        .replace(Regex("\\b(?:che|dale)\\b[,]?"), "")
+        .replace(Regex("^(?:(?:che|dale|eh)[, ]+)+"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
 internal fun applyPersonalitySignature(
     text: String,
     personality: BotPersonality,
@@ -159,11 +167,11 @@ internal fun applyPersonalitySignature(
         return "$text $suffix"
     }
     val prefix = when (personality) {
-        BotPersonality.TRANQUI -> listOf("igual,", "tranqui,", "che tranqui, quedate con esto:")[variantIndex]
+        BotPersonality.TRANQUI -> listOf("igual,", "esperen,", "antes de votar,")[variantIndex]
         BotPersonality.PICANTE -> listOf("te lo digo derecho,", "sin vueltas,", "a las claras,")[variantIndex]
-        BotPersonality.DESCONFIADO -> listOf("ojo,", "mmm,", "no se eh,")[variantIndex]
-        BotPersonality.IMPULSIVO -> listOf("va,", "dale,", "ya esta,")[variantIndex]
-        BotPersonality.ANALITICO -> listOf("mira:", "pensandolo bien:", "van dos cosas:")[variantIndex]
+        BotPersonality.DESCONFIADO -> listOf("ojo,", "no se,", "hay algo raro:")[variantIndex]
+        BotPersonality.IMPULSIVO -> listOf("bueno,", "para mi,", "yo digo esto:")[variantIndex]
+        BotPersonality.ANALITICO -> listOf("mira:", "pensandolo bien:", "ordenemos esto:")[variantIndex]
         BotPersonality.JODON -> error("handled above")
     }
     val prefixStart = prefix.substringBefore(',').substringBefore(':')

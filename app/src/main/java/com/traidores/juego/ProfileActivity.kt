@@ -24,9 +24,7 @@ import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.gms.games.PlayGames
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
@@ -99,20 +97,6 @@ class ProfileActivity : BaseActivity() {
     ) { result ->
         applyProfileSelectionResult(result) { draftProfile.favoriteRoleKey = it }
     }
-    private val playGamesFriendsPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            loadPlayGamesFriends(forceReload = true)
-        } else {
-            Toast.makeText(
-                this,
-                getString(R.string.play_games_friends_permission_denied),
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
     private lateinit var savedProfile: ProfileDraft
     private lateinit var draftProfile: ProfileDraft
     private var isEditing = false
@@ -138,7 +122,6 @@ class ProfileActivity : BaseActivity() {
     private lateinit var accountSection: View
     private lateinit var accountStateText: TextView
     private lateinit var accountButton: Button
-    private lateinit var playGamesHubButton: Button
     private var accountRequestInProgress = false
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
@@ -213,7 +196,6 @@ class ProfileActivity : BaseActivity() {
         findViewById<View>(R.id.editEmotes).contentDescription = "Editar emotes del perfil"
 
         accountButton.setOnClickListener { showAccountDialog() }
-        playGamesHubButton.setOnClickListener { showPlayGamesMenu() }
         if (intent.getBooleanExtra(EXTRA_OPEN_ACCOUNT, false)) {
             intent.removeExtra(EXTRA_OPEN_ACCOUNT)
             accountButton.post { showAccountDialog() }
@@ -258,7 +240,6 @@ class ProfileActivity : BaseActivity() {
         accountSection = findViewById(R.id.profileAccountSection)
         accountStateText = findViewById(R.id.profileAccountState)
         accountButton = findViewById(R.id.btnProfileAccount)
-        playGamesHubButton = findViewById(R.id.btnPlayGamesHub)
         achievementViews = listOf(
             findViewById(R.id.achievementOne),
             findViewById(R.id.achievementTwo),
@@ -335,8 +316,6 @@ class ProfileActivity : BaseActivity() {
         val playGamesLinked = PlayGamesIdentity.hasPlayGamesProvider()
         accountSection.visibility = if (isEditing) View.GONE else View.VISIBLE
         accountStateText.text = when {
-            googleLinked && playGamesLinked ->
-                "Cuenta: ${email.ifBlank { "Google" }} · Google y Play Juegos vinculados"
             googleLinked -> getString(
                 R.string.profile_account_google_linked,
                 email.ifBlank { "Google" }
@@ -353,146 +332,6 @@ class ProfileActivity : BaseActivity() {
             playGamesLinked -> getString(R.string.profile_account_action_add_email)
             else -> getString(R.string.profile_account_action)
         }
-        playGamesHubButton.visibility = if (
-            playGamesLinked && PlayGamesConfig.isIdentityConfigured(this)
-        ) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-    }
-
-    private fun showPlayGamesMenu() {
-        if (!PlayGamesIdentity.isReady(this)) return
-        GameDialog.choose(
-            activity = this,
-            title = "PLAY JUEGOS",
-            message = "Elegí qué sección querés abrir.",
-            options = listOf(
-                "Logros",
-                "Tablas de clasificación",
-                "Amigos"
-            )
-        ) { choice ->
-            when (choice) {
-                0 -> showPlayGamesAchievements()
-                1 -> showPlayGamesLeaderboards()
-                2 -> loadPlayGamesFriends()
-            }
-        }
-    }
-
-    private fun showPlayGamesAchievements() {
-        if (!PlayGamesIdentity.isReady(this)) return
-        PlayGames.getAchievementsClient(this)
-            .achievementsIntent
-            .addOnSuccessListener(::startActivity)
-            .addOnFailureListener {
-                Toast.makeText(
-                    this,
-                    getString(R.string.play_games_open_failed),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-    }
-
-    private fun showPlayGamesLeaderboards() {
-        if (!PlayGamesIdentity.isReady(this)) return
-        PlayGames.getLeaderboardsClient(this)
-            .allLeaderboardsIntent
-            .addOnSuccessListener(::startActivity)
-            .addOnFailureListener {
-                Toast.makeText(
-                    this,
-                    getString(R.string.play_games_open_failed),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-    }
-
-    private fun loadPlayGamesFriends(forceReload: Boolean = false) {
-        if (!PlayGamesIdentity.isReady(this)) return
-        PlayGamesFriends.load(this, forceReload) { result ->
-            when (result) {
-                is PlayGamesFriendsResult.Loaded -> showPlayGamesFriends(result.friends)
-                is PlayGamesFriendsResult.PermissionRequired -> {
-                    runCatching {
-                        playGamesFriendsPermissionLauncher.launch(
-                            IntentSenderRequest.Builder(result.resolution).build()
-                        )
-                    }.onFailure {
-                        Toast.makeText(
-                            this,
-                            getString(R.string.play_games_open_failed),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-                is PlayGamesFriendsResult.Failed -> {
-                    OnlineDebugLog.e("play_games_friends_failure", result.error)
-                    Toast.makeText(
-                        this,
-                        getString(R.string.play_games_friends_unavailable),
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-    }
-
-    private fun showPlayGamesFriends(friends: List<PlayGamesFriend>) {
-        val rows = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-        }
-        rows.addView(
-            TextView(this).apply {
-                text = getString(R.string.play_games_friends_title)
-                setTextColor(getColor(R.color.accent_gold))
-                textSize = 18f
-                gravity = Gravity.CENTER
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding(0, 0, 0, dp(10))
-            }
-        )
-        if (friends.isEmpty()) {
-            rows.addView(
-                TextView(this).apply {
-                    text = getString(R.string.play_games_friends_empty)
-                    setTextColor(getColor(R.color.text_secondary))
-                    textSize = 14f
-                    gravity = Gravity.CENTER
-                    setPadding(dp(10), dp(18), dp(10), dp(18))
-                }
-            )
-        } else {
-            friends.forEach { friend ->
-                rows.addView(
-                    TextView(this).apply {
-                        text = friend.displayName.ifBlank {
-                            getString(R.string.play_games_friend_unknown)
-                        }
-                        setTextColor(getColor(R.color.text_primary))
-                        textSize = 16f
-                        gravity = Gravity.CENTER_VERTICAL
-                        setBackgroundResource(R.drawable.bg_btn_dark)
-                        minHeight = dp(48)
-                        setPadding(dp(14), dp(10), dp(14), dp(10))
-                    },
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = dp(6) }
-                )
-            }
-        }
-        GameDialog.custom(
-            activity = this,
-            contentView = ScrollView(this).apply { addView(rows) },
-            widthDp = 420,
-            contentHeightDp = 360,
-            negativeLabel = getString(R.string.play_games_close)
-        )
     }
 
     /**
@@ -996,8 +835,9 @@ class ProfileActivity : BaseActivity() {
         }
         emoteViews.forEachIndexed { index, image ->
             val spec = EmoteCatalog.byId(ids[index]) ?: return@forEachIndexed
-            image.setImageResource(spec.imageRes)
-            image.contentDescription = "${spec.label} - ${spec.themeLabel}"
+            image.setEmoteImageResource(spec.imageRes)
+            image.contentDescription = spec.tooltipText()
+            androidx.appcompat.widget.TooltipCompat.setTooltipText(image, spec.tooltipText())
             image.isClickable = isEditing
             image.isFocusable = isEditing
         }
@@ -1022,18 +862,25 @@ class ProfileActivity : BaseActivity() {
             "drawable",
             packageName
         ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+        // El retrato ilustrado queda preparado y correctamente enfocado mientras llega la
+        // foto remota. Si Google devuelve una URL vencida, no mostramos ese retrato con el
+        // recorte CENTER_CROP de una fotografía (que era lo que cortaba caras).
+        setRoleImage(image, avatarEntry.role)
+        alignAvatarToFocus(image, avatarEntry.verticalFocus)
         if (
             PlayGamesProfileAvatar.render(
                 context = this,
                 image = image,
                 uriValue = draftProfile.playGamesAvatarUri,
-                fallbackDrawableRes = fallbackRes
+                fallbackDrawableRes = fallbackRes,
+                onUnavailable = {
+                    setRoleImage(image, avatarEntry.role)
+                    alignAvatarToFocus(image, avatarEntry.verticalFocus)
+                }
             )
         ) {
             return true
         }
-        setRoleImage(image, avatarEntry.role)
-        alignAvatarToFocus(image, avatarEntry.verticalFocus)
         return false
     }
 
@@ -1219,11 +1066,11 @@ class ProfileActivity : BaseActivity() {
         GameDialog.choose(
             activity = this,
             title = "Foto de perfil",
-            message = "La galería queda solo en este dispositivo. La foto de Play Juegos " +
+            message = "La galería queda solo en este dispositivo. La foto pública de Google " +
                 "puede verla el resto de la sala.",
             options = listOf(
                 "Elegir una foto de la galería",
-                "Usar mi foto de Google Play Juegos",
+                "Usar mi foto de Google",
                 "Usar un avatar ilustrado"
             )
         ) { choice ->
@@ -1239,14 +1086,15 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun selectPlayGamesAvatar() {
-        if (requireAccountFor("Usar tu foto de Play Juegos")) return
+        if (requireAccountFor("Usar tu foto de Google")) return
         if (!PlayGamesIdentity.hasPlayGamesProvider()) {
             GameDialog.confirm(
                 activity = this,
                 title = "Conectar Play Juegos",
-                message = "Para buscar tu foto vamos a conectar Play Juegos con Traidores. " +
+                message = "Para buscar tu foto vamos a conectar Google Play Juegos con Traidores. " +
                     "Esto también activa logros, tablas de clasificación y respaldo del progreso. " +
-                    "La foto solo se usará si tu perfil de Play Juegos la comparte públicamente.",
+                    "Primero buscaremos la foto pública de Play Juegos y, si no existe, la de tu " +
+                    "cuenta Google vinculada.",
                 positiveLabel = "CONECTAR",
                 negativeLabel = "AHORA NO"
             ) {
@@ -1266,11 +1114,18 @@ class ProfileActivity : BaseActivity() {
                 renderProfile()
                 GameNotice.show(
                     activity = this,
-                    message = "Foto de Play Juegos seleccionada. Guardá los cambios para aplicarla.",
+                    message = "Foto de Google seleccionada. Guardá los cambios para aplicarla.",
                     duration = GameNotice.Duration.LONG
                 )
             },
             onFailure = { message ->
+                if (
+                    !draftProfile.localPhotoEnabled &&
+                    draftProfile.playGamesAvatarUri.isNotBlank()
+                ) {
+                    draftProfile.playGamesAvatarUri = ""
+                    renderProfile()
+                }
                 GameNotice.show(
                     activity = this,
                     message = message,
@@ -1494,7 +1349,8 @@ class ProfileActivity : BaseActivity() {
                     isClickable = true
                     isFocusable = true
                     setPadding(dp(4), dp(4), dp(4), dp(4))
-                    contentDescription = "${spec.label} - ${spec.themeLabel}"
+                    contentDescription = spec.tooltipText()
+                    androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
                     setOnClickListener {
                         val currentIndex = selectedIds.indexOf(spec.id)
                         if (currentIndex >= 0) {
@@ -1508,7 +1364,7 @@ class ProfileActivity : BaseActivity() {
                     }
                 }
                 val icon = ImageView(this).apply {
-                    setImageResource(spec.imageRes)
+                    setEmoteImageResource(spec.imageRes)
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     contentDescription = null
                 }

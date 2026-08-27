@@ -1,6 +1,8 @@
 package com.traidores.juego
 
 import android.content.Context
+import android.graphics.drawable.Animatable
+import android.widget.ImageView
 
 data class EmoteSpec(
     val id: String,
@@ -10,8 +12,13 @@ data class EmoteSpec(
     val toneHex: String,
     val themeKey: String,
     val themeLabel: String,
-    val isPremium: Boolean = false
-)
+    val isPremium: Boolean = false,
+    val description: String = ""
+) {
+    fun tooltipText(): String {
+        return if (description.isBlank()) label else "$label\n$description"
+    }
+}
 
 object EmoteCatalog {
     const val LOADOUT_SIZE = 4
@@ -158,6 +165,57 @@ object EmoteCatalog {
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
             isPremium = true
+        ),
+        emote(
+            id = "premium_genio",
+            emotionKey = "premium_genio",
+            imageRes = R.drawable.reaction_premium_genio,
+            label = "Genio",
+            description = "¿Hace falta decirlo?",
+            toneHex = "#D49332",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_medico_timido",
+            emotionKey = "premium_medico_timido",
+            imageRes = R.drawable.reaction_premium_medico_timido,
+            label = "Médico tímido",
+            toneHex = "#74805C",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_desertor_lengua",
+            emotionKey = "premium_desertor_lengua",
+            imageRes = R.drawable.reaction_premium_desertor_lengua,
+            label = "Desertor desatado",
+            toneHex = "#C46F35",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_oraculo_mmm_nie",
+            emotionKey = "premium_oraculo_mmm_nie",
+            imageRes = R.drawable.reaction_premium_oraculo_mmm_nie,
+            label = "Mmmm... ñe",
+            toneHex = "#D49B37",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
+        ),
+        emote(
+            id = "premium_six_seven",
+            emotionKey = "premium_six_seven",
+            imageRes = R.drawable.reaction_premium_six_seven,
+            label = "6 7",
+            toneHex = "#B56A3B",
+            themeKey = THEME_PREMIUM,
+            themeLabel = "Premium",
+            isPremium = true
         )
     )
 
@@ -181,10 +239,26 @@ object EmoteCatalog {
         toneHex: String,
         themeKey: String,
         themeLabel: String,
-        isPremium: Boolean = false
+        isPremium: Boolean = false,
+        description: String = ""
     ): EmoteSpec {
-        return EmoteSpec(id, emotionKey, imageRes, label, toneHex, themeKey, themeLabel, isPremium)
+        return EmoteSpec(
+            id,
+            emotionKey,
+            imageRes,
+            label,
+            toneHex,
+            themeKey,
+            themeLabel,
+            isPremium,
+            description
+        )
     }
+}
+
+fun ImageView.setEmoteImageResource(imageRes: Int) {
+    setImageResource(imageRes)
+    (drawable as? Animatable)?.start()
 }
 
 object EmoteLoadout {

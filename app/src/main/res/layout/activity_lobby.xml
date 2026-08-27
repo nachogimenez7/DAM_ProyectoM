@@ -952,7 +952,8 @@
                     android:text="@string/lobby_practice_summary_default"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    android:visibility="gone" />
 
                 <TextView
                     android:layout_width="match_parent"
@@ -1006,13 +1007,13 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <ScrollView
+            <LinearLayout
                 android:id="@+id/playersListPanel"
                 android:layout_width="match_parent"
-                android:layout_height="360dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_game_panel"
-                android:fillViewport="true"
+                android:orientation="vertical"
                 android:padding="10dp">
 
                 <LinearLayout
@@ -1020,7 +1021,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
-            </ScrollView>
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 

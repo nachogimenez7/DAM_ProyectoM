@@ -622,6 +622,54 @@ service cloud.firestore {
         && request.resource.data.creadaEn == request.time;
     }
 
+    // Comentarios enviados desde el formulario interno. Son inmutables y nunca se pueden
+    // consultar desde la app: solo el desarrollador los ve desde Firebase. La lista cerrada
+    // de campos evita usar este buzón como almacenamiento arbitrario.
+    match /comentarios/{comentarioId} {
+      allow read, update, delete: if false;
+      allow create: if signedIn()
+        && hasOnly(request.resource.data, [
+          'uid',
+          'nombre',
+          'asunto',
+          'mensaje',
+          'destino',
+          'estado',
+          'origen',
+          'version',
+          'dispositivo',
+          'android',
+          'fechaLocal',
+          'creadaEn'
+        ])
+        && hasAll(request.resource.data, [
+          'uid',
+          'nombre',
+          'asunto',
+          'mensaje',
+          'destino',
+          'estado',
+          'origen',
+          'version',
+          'dispositivo',
+          'android',
+          'fechaLocal',
+          'creadaEn'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && isString(request.resource.data.nombre, 2, 40)
+        && isString(request.resource.data.asunto, 3, 80)
+        && isString(request.resource.data.mensaje, 10, 1200)
+        && request.resource.data.destino == 'bandidogamesestudio@gmail.com'
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.origen == 'formulario_app'
+        && isString(request.resource.data.version, 0, 32)
+        && isString(request.resource.data.dispositivo, 1, 100)
+        && isString(request.resource.data.android, 1, 32)
+        && request.resource.data.fechaLocal is int
+        && request.resource.data.creadaEn == request.time;
+    }
+
     // Reserva única de códigos. Solo se consulta por id exacto; no se puede enumerar para
     // descubrir códigos de salas privadas.
     match /codigosSala/{codigo} {

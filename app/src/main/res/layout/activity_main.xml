@@ -175,6 +175,22 @@
             android:layout_height="1dp"
             android:layout_weight="1" />
 
+        <Button
+            android:id="@+id/btnFeedback"
+            style="@style/BtnDark"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginBottom="0dp"
+            android:background="@drawable/bg_btn_dark_ripple"
+            android:minWidth="0dp"
+            android:paddingHorizontal="14dp"
+            android:text="@string/feedback_action"
+            android:textSize="11sp"
+            app:autoSizeMaxTextSize="11sp"
+            app:autoSizeMinTextSize="8sp"
+            app:autoSizeStepGranularity="1sp"
+            app:autoSizeTextType="uniform" />
+
     </LinearLayout>
 
     <FrameLayout

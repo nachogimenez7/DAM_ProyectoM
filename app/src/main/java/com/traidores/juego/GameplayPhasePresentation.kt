@@ -11,6 +11,94 @@ data class GameplayPhaseText(
  * Esta frontera puede moverse a un futuro modulo KMP `commonMain`.
  */
 object GameplayPhasePresentation {
+    fun phaseAdvice(session: GameSession): String? {
+        val human = GameEngine.humanPlayer(session)
+        val roleKey = human.role?.key ?: return null
+        val allies = session.players
+            .filter {
+                !it.isHuman &&
+                    it.role?.key in GameRules.traitorRoleKeys
+            }
+            .joinToString(", ") { it.name }
+
+        if (!human.alive) return "Estás eliminado. Observa la partida y lee el cronista."
+        if (human.muted && session.phase == GamePhase.DIA_DEBATE) {
+            return "Estás silenciado. Lee el debate y prepara tu voto."
+        }
+
+        return when (session.phase) {
+            GamePhase.NOCHE_ASESINO -> if (roleKey in GameRules.killerRoleKeys) {
+                val allyHint = if (allies.isNotBlank()) " Aliados: $allies." else ""
+                "Elige una víctima y confirma MATAR.$allyHint"
+            } else {
+                "No actúas en esta fase. Puedes mirar la noche o saltarla."
+            }
+            GamePhase.NOCHE_MERCENARIO -> if (roleKey == RoleCatalog.MERCENARIO) {
+                "Elige a quién silenciar y confirma SILENCIAR."
+            } else {
+                "No actúas en esta fase. Puedes mirar la noche o saltarla."
+            }
+            GamePhase.NOCHE_POLICIA -> if (roleKey == RoleCatalog.POLICIA) {
+                "Elige a quién investigar y confirma INVESTIGAR."
+            } else {
+                "No actúas en esta fase. Puedes mirar la noche o saltarla."
+            }
+            GamePhase.NOCHE_MEDICO -> if (roleKey == RoleCatalog.MEDICO) {
+                "Elige a quién proteger y confirma PROTEGER."
+            } else {
+                "No actúas en esta fase. Puedes mirar la noche o saltarla."
+            }
+            GamePhase.NOCHE_ORACULO -> when {
+                roleKey != RoleCatalog.ORACULO ->
+                    "No actúas en esta fase. Puedes mirar la noche o saltarla."
+                session.oracleUsed ->
+                    "Ya usaste la invocación. Espera el amanecer."
+                GameEngine.oracleCandidates(session).isEmpty() ->
+                    "Todavía no hay muertos para invocar. Tu poder se conserva automáticamente."
+                else ->
+                    "Elige un muerto para invocar o guarda el poder para otra noche."
+            }
+            GamePhase.DIA_DEBATE -> when (roleKey) {
+                RoleCatalog.PAYADOR -> if (session.payadorUsed) {
+                    "El Contrapunto ya fue usado. Debate y prepara tu voto."
+                } else {
+                    "Puedes iniciar Contrapunto con dos jugadores o seguir al voto."
+                }
+                RoleCatalog.ALCALDE -> if (session.alcaldeRevealed) {
+                    "Tu voto vale doble. Ordena el debate antes de votar."
+                } else {
+                    "Puedes revelarte como Alcalde o guardar tu autoridad."
+                }
+                RoleCatalog.ORACULO -> if (session.oracleInvitedPlayer.isNotBlank()) {
+                    "Escucha al invocado y decide si conviene creerle."
+                } else {
+                    "Debate con el pueblo y guarda tu invocación para una muerte clave."
+                }
+                RoleCatalog.BUFON ->
+                    "Tu objetivo es que el pueblo te expulse durante la votación."
+                else ->
+                    "Debate, compara versiones y prepara tu voto."
+            }
+            GamePhase.CONTRAPUNTO ->
+                "Elige al participante que queda más sospechoso y confirma SEÑALAR."
+            GamePhase.VOTACION ->
+                "Tocá una carta para votar. Tocá otra para cambiar antes del cierre."
+            GamePhase.DESEMPATE_VOTACION ->
+                "Tocá una carta empatada para votar; podés cambiar antes del cierre."
+            GamePhase.ALCALDE_DESEMPATE -> if (roleKey == RoleCatalog.ALCALDE) {
+                "Elige quién será expulsado entre los empatados."
+            } else {
+                "El Alcalde debe resolver el empate."
+            }
+            GamePhase.AMANECER ->
+                "Lee el resultado de la noche antes de debatir."
+            GamePhase.RESULTADO ->
+                "Revisa el resultado y continua cuando estes listo."
+            GamePhase.REPARTO,
+            GamePhase.RECUENTO_VOTOS -> null
+        }
+    }
+
     fun phaseText(
         phase: GamePhase,
         round: Int,

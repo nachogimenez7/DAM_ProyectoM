@@ -422,6 +422,21 @@ internal fun declaredSuspicionTarget(session: GameSession, bot: GamePlayer): Str
         .firstOrNull()
 }
 
+internal fun currentRoundDeclaredStance(session: GameSession, bot: GamePlayer): ClaimRecord? {
+    val aliveNames = GameEngine.alivePlayers(session)
+        .asSequence()
+        .map { it.name }
+        .filter { it != bot.name }
+        .toSet()
+    return session.claimLedger[bot.name].orEmpty()
+        .asReversed()
+        .firstOrNull { record ->
+            record.round == session.round &&
+                record.target?.let { it in aliveNames } == true &&
+                record.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
+        }
+}
+
 internal fun socialRead(session: GameSession, bot: GamePlayer): SocialRead {
     val recent = recentPublicMessages(session)
     val candidates = GameEngine.alivePlayers(session).filter { it.name != bot.name }

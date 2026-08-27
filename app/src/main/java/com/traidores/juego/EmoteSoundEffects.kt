@@ -16,7 +16,12 @@ object EmoteSoundEffects {
         R.raw.sfx_emote_angry,
         R.raw.sfx_emote_premium_hermosa_manana,
         R.raw.sfx_emote_premium_mate,
-        R.raw.sfx_emote_premium_dormida
+        R.raw.sfx_emote_premium_dormida,
+        R.raw.sfx_emote_premium_genio,
+        R.raw.sfx_emote_premium_medico_timido,
+        R.raw.sfx_emote_premium_desertor_lengua,
+        R.raw.sfx_emote_premium_oraculo_mmm_nie,
+        R.raw.sfx_emote_premium_six_seven
     )
 
     fun preload(context: Context) {
@@ -50,6 +55,11 @@ object EmoteSoundEffects {
         "premium_hermosa_manana" -> R.raw.sfx_emote_premium_hermosa_manana
         "premium_mate" -> R.raw.sfx_emote_premium_mate
         "premium_dormida" -> R.raw.sfx_emote_premium_dormida
+        "premium_genio" -> R.raw.sfx_emote_premium_genio
+        "premium_medico_timido" -> R.raw.sfx_emote_premium_medico_timido
+        "premium_desertor_lengua" -> R.raw.sfx_emote_premium_desertor_lengua
+        "premium_oraculo_mmm_nie" -> R.raw.sfx_emote_premium_oraculo_mmm_nie
+        "premium_six_seven" -> R.raw.sfx_emote_premium_six_seven
         else -> null
     }
 }

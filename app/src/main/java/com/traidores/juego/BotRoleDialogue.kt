@@ -625,16 +625,12 @@ internal fun finishTraitorSpeech(
 ): String {
     val personality = personalityFor(session, bot)
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:traitor-style:$context")
-    var text = raw.lowercase()
-        .replace("porque", if (seed % 3 == 0) "pq" else "porque")
-        .replace("que ", if (seed % 5 == 0) "q " else "que ")
-        .replace("tambien", if (seed % 4 == 0) "tmb" else "tambien")
-        .replace("no se", if (seed % 2 == 0) "nose" else "no se")
+    var text = seriousNaturalSpeech(raw)
     text = applyPersonalitySignature(
         text,
         personality,
         seed,
-        playful = session.botDifficulty != BotDifficulty.HARD
+        playful = false
     )
     return text
         .replace(Regex("[.!]{1,}$"), "")

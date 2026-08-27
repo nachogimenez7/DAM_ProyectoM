@@ -581,12 +581,26 @@ object LocalGameFactory {
     }
 
     fun addMockPlayer(session: GameSession): GameSession {
+        return addMockPlayer(session, preferredName = null)
+    }
+
+    fun addMockPlayer(session: GameSession, preferredName: String?): GameSession {
         if (session.players.size >= MAX_PLAYERS) return session
-        val currentNames = session.players.map { it.name }.toSet()
-        val nextName = defaultBots.firstOrNull { it !in currentNames } ?: return session
+        val currentNames = session.players.mapTo(mutableSetOf()) { it.name.lowercase() }
+        val requestedName = preferredName
+            ?.trim()
+            ?.take(18)
+            ?.takeIf { it.isNotBlank() && it.lowercase() !in currentNames }
+        val nextName = requestedName
+            ?: defaultBots.firstOrNull { it.lowercase() !in currentNames }
+            ?: return session
         val next = GamePlayer(nextName, playerInitial(nextName))
         return session.copy(players = session.players + next)
     }
+
+    internal fun defaultBotName(slot: Int): String? = defaultBots.getOrNull(slot)
+
+    internal fun botSlots(): IntRange = defaultBots.indices
 
     fun removeLastPlayer(session: GameSession): GameSession {
         if (session.players.size <= 1) return session

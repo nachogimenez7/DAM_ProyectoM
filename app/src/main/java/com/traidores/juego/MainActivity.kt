@@ -1,6 +1,9 @@
 package com.traidores.juego
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -9,8 +12,10 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.content.ContextCompat
 import com.traidores.juego.GameToast as Toast
 import java.util.concurrent.TimeoutException
 
@@ -20,6 +25,20 @@ class MainActivity : BaseActivity() {
     private lateinit var bandidoIntro: BandidoIntroController
     private var isMusicOn = true
     private var introVisible = false
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            enableNotifications()
+        } else {
+            NotificationPreferences.setEnabled(this, false)
+            Toast.makeText(
+                this,
+                getString(R.string.notification_permission_denied),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -31,6 +50,7 @@ class MainActivity : BaseActivity() {
         val btnRoles: Button = findViewById(R.id.btnRoles)
         val btnHelp: Button = findViewById(R.id.btnHelp)
         val btnOptions: Button = findViewById(R.id.btnOptions)
+        val btnFeedback: Button = findViewById(R.id.btnFeedback)
         val btnAbout: View = findViewById(R.id.btnAbout)
 
         // Bind bottom-bar action
@@ -86,6 +106,8 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, OpcionesActivity::class.java))
         }
 
+        btnFeedback.setOnClickListener { FeedbackDialog.show(this) }
+
         btnAbout.setOnClickListener {
             startActivity(Intent(this, AcercaDeActivity::class.java))
         }
@@ -129,9 +151,16 @@ class MainActivity : BaseActivity() {
     }
 
     private fun maybeShowAccountInvitation() {
-        if (isFinishing || isDestroyed || !GuestIdentity.isGuest()) return
+        if (isFinishing || isDestroyed) return
+        if (!GuestIdentity.isGuest()) {
+            maybeShowNotificationInvitation()
+            return
+        }
         val preferences = getSharedPreferences(ONBOARDING_PREFS, MODE_PRIVATE)
-        if (preferences.getBoolean(PREF_ACCOUNT_INVITATION_SEEN, false)) return
+        if (preferences.getBoolean(PREF_ACCOUNT_INVITATION_SEEN, false)) {
+            maybeShowNotificationInvitation()
+            return
+        }
         preferences.edit().putBoolean(PREF_ACCOUNT_INVITATION_SEEN, true).apply()
 
         val content = LinearLayout(this).apply {
@@ -191,6 +220,10 @@ class MainActivity : BaseActivity() {
         dialog.findViewById<Button>(R.id.gameDialogNegative)?.apply {
             isAllCaps = false
             textSize = 12f
+            setOnClickListener {
+                dialog.dismiss()
+                maybeShowNotificationInvitation()
+            }
         }
         dialog.findViewById<Button>(R.id.gameDialogPositive)?.apply {
             isAllCaps = false
@@ -200,6 +233,43 @@ class MainActivity : BaseActivity() {
             dialog.dismiss()
             submitOnboardingGoogleRequest()
         }
+    }
+
+    private fun maybeShowNotificationInvitation() {
+        if (isFinishing || isDestroyed ||
+            NotificationPreferences.wasInvitationSeen(this)
+        ) return
+        NotificationPreferences.markInvitationSeen(this)
+        GameDialog.confirm(
+            activity = this,
+            title = getString(R.string.notification_invitation_title),
+            message = getString(R.string.notification_invitation_message),
+            positiveLabel = "ACTIVAR",
+            negativeLabel = "AHORA NO",
+            onConfirm = { requestNotificationPermissionOrEnable() }
+        ).setCancelable(false)
+    }
+
+    private fun requestNotificationPermissionOrEnable() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            enableNotifications()
+        } else {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun enableNotifications() {
+        NotificationPreferences.setEnabled(this, true)
+        Toast.makeText(
+            this,
+            getString(R.string.notification_enabled),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun maybeShowBetaNoticeThenAccountInvitation() {

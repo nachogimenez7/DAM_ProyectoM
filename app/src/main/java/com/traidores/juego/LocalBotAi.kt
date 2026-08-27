@@ -331,7 +331,10 @@ internal object LocalBotAi {
         limit: Int = 3
     ): List<Pair<String, String>> {
         if (session.winner.isNotBlank() || recentBotStreak(session) >= 3) return emptyList()
-        val boundedLimit = limit.coerceIn(1, 3)
+        // La noticia de una muerte no debe disparar un muro instantáneo de bots. Durante
+        // los dos primeros días habla uno; las demás intervenciones llegan después de que
+        // el jugador haya tenido tiempo de leer y responder.
+        val boundedLimit = limit.coerceIn(1, if (session.round <= 2) 1 else 3)
         val target = event.target
         val suspects = GameEngine.alivePlayers(session)
             .filter { it.name != target }
@@ -370,6 +373,7 @@ internal object LocalBotAi {
             val objective = roundObjectiveFor(session, bot)
             val objectiveLine = objectiveLine(session, bot, objective, index)
             val plannedTraitorLine = traitorPlannedDayLine(session, bot, index)
+            val directBotReply = botToBotLine(session, bot)
             val conversationRole = conversationRole(index)
             val coordinationLine = coordinationLine(
                 session = session,
@@ -400,9 +404,18 @@ internal object LocalBotAi {
             }.let { toneAdjustedIntent(session, it) }
             val hardLine = hardOpeningLine(session, bot, conversationRole, target, index)
             val pastThreadLine = pastRoundThreadLine(session, bot, index)
+            val earlyRoundLine = earlyRoundOpeningLine(
+                session = session,
+                target = target,
+                dawnVictim = dawnVictim,
+                noDeath = noDeath,
+                index = index
+            )
             val line = when {
                 contradiction != null && index <= 1 ->
                     contradictionLine(read.player.name, contradiction)
+                directBotReply != null -> directBotReply
+                earlyRoundLine != null -> earlyRoundLine
                 dawnVictim != null && index == 0 ->
                     "lo de $dawnVictim anoche cambia todo, $target explica bien pq $reason"
                 noDeath && index == 0 ->
@@ -417,8 +430,6 @@ internal object LocalBotAi {
                 plannedTraitorLine != null -> plannedTraitorLine
                 roleLine != null -> roleLine
                 coordinationLine != null -> coordinationLine
-                botToBotLine(session, bot, index) != null ->
-                    botToBotLine(session, bot, index).orEmpty()
                 muted != null && index == 0 ->
                     "bueno $muted no puede contestar, $target vos q onda? bancas lo q dijiste?"
                 fakeClaim != null -> fakeClaim
@@ -426,7 +437,7 @@ internal object LocalBotAi {
                 hardLine != null -> hardLine
                 playerLine != null -> playerLine
                 agendaLine != null -> agendaLine
-                weakRead -> lowEvidenceOpeningLine(session, bot, index)
+                weakRead -> lowEvidenceOpeningLine(session, bot, target, index)
                 isTraitor(bot) && social.heated && index == 0 ->
                     traitorDeflectionLine(session, bot, target, reason)
                 else -> lineForIntent(session, bot, intent, target, reason, contextSeed)
@@ -437,15 +448,50 @@ internal object LocalBotAi {
         }.dropEchoesOfRecentChat(session).dedupeBotMessages()
     }
 
+    /**
+     * Apertura deliberadamente sobria. En los primeros días todavía no existe suficiente
+     * historia para que los bots inventen certezas; primero piden roles y pistas, y recién
+     * después dejan que la memoria y las contradicciones guíen la conversación.
+     */
+    private fun earlyRoundOpeningLine(
+        session: GameSession,
+        target: String,
+        dawnVictim: String?,
+        noDeath: Boolean,
+        index: Int
+    ): String? {
+        if (session.round > 2) return null
+        return when (index) {
+            0 -> when {
+                dawnVictim != null && session.round == 1 ->
+                    "murió $dawnVictim. alguien sabe algo de anoche?"
+                dawnVictim != null ->
+                    "antes de acusar por lo de $dawnVictim, alguien tiene una pista?"
+                noDeath ->
+                    "no murió nadie. alguien hizo algo útil anoche?"
+                else ->
+                    "alguien tiene alguna pista concreta?"
+            }
+            1 -> if (session.round == 1) {
+                "$target, que rol decis tener?"
+            } else {
+                "$target, que hiciste anoche?"
+            }
+            else -> if (session.round == 1) {
+                "si no hay una pista concreta, no votemos por apuro"
+            } else {
+                "comparemos lo que dijeron antes y después decidimos"
+            }
+        }
+    }
+
     fun votingIntentMessages(session: GameSession, limit: Int = 4): List<Pair<String, String>> {
         return messageBots(session, limit).mapIndexed { index, bot ->
             val ranked = rankedPublicSuspects(session, bot)
-            val votePlan = traitorPlanVotePlan(session, bot) ?: conversationVotePlan(session, bot, ranked)
-            val read = votePlan
-                ?.target
-                ?.let { target -> ranked.firstOrNull { it.player.name == target } }
-                ?: ranked.firstOrNull()
-            val target = votePlan?.target ?: speechTarget(session, bot, read)
+            val target = chooseVoteTarget(session, bot)
+            val votePlan = (traitorPlanVotePlan(session, bot) ?: conversationVotePlan(session, bot, ranked))
+                ?.takeIf { it.target == target }
+            val read = ranked.firstOrNull { it.player.name == target }
             val role = conversationRole(index)
             val contextSeed = "vote:$index:${session.phaseIndex}:${socialChatSize(session)}"
             val reason = votePlan?.reason ?: informalReason(read?.reason(), contextSeed)
@@ -453,6 +499,7 @@ internal object LocalBotAi {
             val social = socialRead(session, bot)
             val contradiction = read?.player?.name?.let { publicContradiction(session, it) }
             val pastThreadLine = pastRoundThreadLine(session, bot, index)
+                ?.takeIf { line -> mentionsName(line, target) }
             val templates = if (votePlan != null && votePlan.beats >= 3 && role == BotConversationRole.OPENER) {
                 listOf(
                     "voy con $target por toda la secuencia: $reason",

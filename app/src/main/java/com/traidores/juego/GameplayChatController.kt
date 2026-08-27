@@ -137,6 +137,11 @@ class GameplayChatController(
     private var directorBeatCounter = 0
     private var directorPendingHumanMessage = ""
     private var directorPendingIntentHint: HumanMessageIntent? = null
+    private var directorQueuedHumanMessage = ""
+    private var directorQueuedIntentHint: HumanMessageIntent? = null
+    private val directorRecentHumanMessageTimes = mutableListOf<Long>()
+    private var directorSpamNoticePending = false
+    private var directorSpamNoticeShownPhaseIndex = -1
     private var directorLastSpeaker: String? = null
     private var directorHumanSpokePhaseIndex = -1
     private var directorPromptedSilentHuman = false
@@ -396,6 +401,10 @@ class GameplayChatController(
         cancelScheduledBotChat()
         directorPendingHumanMessage = ""
         directorPendingIntentHint = null
+        directorQueuedHumanMessage = ""
+        directorQueuedIntentHint = null
+        directorRecentHumanMessageTimes.clear()
+        directorSpamNoticePending = false
         directorReactionLines = 0
     }
 
@@ -483,6 +492,10 @@ class GameplayChatController(
     private fun cancelPublicDirectorState() {
         directorPendingHumanMessage = ""
         directorPendingIntentHint = null
+        directorQueuedHumanMessage = ""
+        directorQueuedIntentHint = null
+        directorRecentHumanMessageTimes.clear()
+        directorSpamNoticePending = false
         directorReactionLines = 0
         directorIdleLines = 0
     }
@@ -496,14 +509,34 @@ class GameplayChatController(
         val reactions = LocalBotAi.reactionsToEvent(session, event, limit = MAX_EVENT_BOT_REACTIONS)
         if (reactions.isEmpty()) return
         stagedEventReactionKey = key
-        reactions.forEachIndexed { index, (speaker, message) ->
-            scheduleBotChatMessage(
-                speaker = speaker,
-                message = message,
-                phaseIndex = session.phaseIndex,
-                phase = session.phase,
-                delayMs = EVENT_BOT_REACTION_DELAY_MS + index * NEXT_BOT_REACTION_DELAY_MS
-            )
+        // El amanecer tiene prioridad sobre el dialogo ambiente. Cancelar la linea ociosa
+        // que pudo armarse al cambiar de fase evita dos bots escribiendo al mismo tiempo.
+        cancelScheduledBotChat()
+        scheduleEventReactionSequence(session, reactions, index = 0)
+    }
+
+    private fun scheduleEventReactionSequence(
+        session: GameSession,
+        reactions: List<Pair<String, String>>,
+        index: Int
+    ) {
+        val (speaker, message) = reactions.getOrNull(index) ?: return
+        scheduleBotChatMessage(
+            speaker = speaker,
+            message = message,
+            phaseIndex = session.phaseIndex,
+            phase = session.phase,
+            delayMs = if (index == 0) {
+                EVENT_BOT_REACTION_DELAY_MS
+            } else {
+                NEXT_BOT_REACTION_DELAY_MS
+            }
+        ) { committed ->
+            if (index + 1 < reactions.size) {
+                scheduleEventReactionSequence(committed, reactions, index + 1)
+            } else {
+                scheduleNextIdleBeat(committed)
+            }
         }
     }
 
@@ -759,7 +792,23 @@ class GameplayChatController(
             (root.resources.configuration.screenHeightDp * CHAT_SHEET_HEIGHT_RATIO).toInt()
         )
         val keyboardGap = if (isChatKeyboardCompact) host.dp(CHAT_SHEET_KEYBOARD_GAP_DP) else 0
-        val maxVisibleHeight = (viewport.visibleHeight - keyboardGap * 2).coerceAtLeast(1)
+        val topClearance = if (isChatKeyboardCompact) {
+            0
+        } else {
+            (topStatus.height.takeIf { it > 0 }
+                ?: host.dp(CHAT_SHEET_TOP_CLEARANCE_DP)) + host.dp(CHAT_SHEET_TOP_GAP_DP)
+        }
+        val bottomClearance = if (isChatKeyboardCompact) {
+            0
+        } else {
+            (bottomPlayerPanel.height.takeIf { it > 0 }
+                ?: host.dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)) + host.dp(CHAT_SHEET_PLAYER_GAP_DP)
+        }
+        // El chat abierto vive entre la cabecera y la ficha propia. Antes se centraba usando
+        // toda la pantalla y sus 62 % inferiores tapaban nombre, rol y acciones del jugador.
+        val maxVisibleHeight = (
+            viewport.visibleHeight - keyboardGap * 2 - topClearance - bottomClearance
+        ).coerceAtLeast(1)
         val minVisibleHeight = host.dp(CHAT_SHEET_MIN_HEIGHT_DP).coerceAtMost(maxVisibleHeight)
         params.width = (centerColumn.width.takeIf { it > 0 } ?: (root.width - host.dp(140)))
             .coerceAtLeast(host.dp(210))
@@ -775,7 +824,7 @@ class GameplayChatController(
             } else {
                 0
             }
-            bottomMargin = 0
+            bottomMargin = if (isChatKeyboardCompact) 0 else bottomClearance
         }
         (params as? RelativeLayout.LayoutParams)?.apply {
             if (isChatKeyboardCompact) {
@@ -785,16 +834,16 @@ class GameplayChatController(
                 addRule(RelativeLayout.ALIGN_PARENT_TOP, RelativeLayout.TRUE)
             } else {
                 addRule(RelativeLayout.ALIGN_PARENT_TOP, 0)
-                addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, 0)
-                addRule(RelativeLayout.CENTER_HORIZONTAL, 0)
-                addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
+                addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, RelativeLayout.TRUE)
+                addRule(RelativeLayout.CENTER_HORIZONTAL, RelativeLayout.TRUE)
+                addRule(RelativeLayout.CENTER_IN_PARENT, 0)
             }
         }
         (params as? FrameLayout.LayoutParams)?.apply {
             gravity = if (isChatKeyboardCompact) {
                 Gravity.TOP or Gravity.CENTER_HORIZONTAL
             } else {
-                Gravity.CENTER
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             }
         }
         chatPanel.layoutParams = params
@@ -2787,12 +2836,13 @@ class GameplayChatController(
         }
         directorHumanSpokePhaseIndex = session.phaseIndex
         directorPromptedSilentHuman = false
+        registerHumanMessageBurst(session.phaseIndex)
         if (directorPendingHumanMessage.isNotBlank()) {
-            cancelScheduledBotChat()
-            directorPendingHumanMessage = humanMessage
-            directorPendingIntentHint = intentHint
-            directorReactionLines = 0
-            scheduleNextHumanReactionBeat()
+            // No cancelar la respuesta que ya se esta preparando: con spam continuo eso
+            // dejaba a los bots mudos. Conservamos solo el mensaje mas reciente para que
+            // tenga respuesta apenas termine el turno conversacional activo.
+            directorQueuedHumanMessage = humanMessage
+            directorQueuedIntentHint = intentHint
             return
         }
         cancelScheduledBotChat()
@@ -2871,6 +2921,11 @@ class GameplayChatController(
         directorBeatCounter = 0
         directorPendingHumanMessage = ""
         directorPendingIntentHint = null
+        directorQueuedHumanMessage = ""
+        directorQueuedIntentHint = null
+        directorRecentHumanMessageTimes.clear()
+        directorSpamNoticePending = false
+        directorSpamNoticeShownPhaseIndex = -1
         directorLastSpeaker = recentPublicMessages(session)
             .lastOrNull { !it.isGod && isBotSpeaker(session, it.speaker) }
             ?.speaker
@@ -2934,11 +2989,60 @@ class GameplayChatController(
     }
 
     private fun finishHumanConversation(sessionOverride: GameSession? = null) {
+        val session = sessionOverride ?: host.currentSession
         directorReactionLines = 0
         directorPendingHumanMessage = ""
         directorPendingIntentHint = null
-        schedulePlayerNudge(sessionOverride)
+        if (
+            directorQueuedHumanMessage.isNotBlank() &&
+            directorPhaseIndex == session.phaseIndex &&
+            BotConversationDirector.canRun(session)
+        ) {
+            directorPendingHumanMessage = directorQueuedHumanMessage
+            directorPendingIntentHint = directorQueuedIntentHint
+            directorQueuedHumanMessage = ""
+            directorQueuedIntentHint = null
+            scheduleQueuedHumanReaction(session)
+            renderChatPanel()
+            return
+        }
+        directorQueuedHumanMessage = ""
+        directorQueuedIntentHint = null
+        schedulePlayerNudge(session)
         renderChatPanel()
+    }
+
+    private fun registerHumanMessageBurst(phaseIndex: Int) {
+        val now = SystemClock.elapsedRealtime()
+        directorRecentHumanMessageTimes.removeAll { now - it > HUMAN_MESSAGE_BURST_WINDOW_MS }
+        directorRecentHumanMessageTimes += now
+        if (
+            directorRecentHumanMessageTimes.size >= HUMAN_MESSAGE_BURST_THRESHOLD &&
+            directorSpamNoticeShownPhaseIndex != phaseIndex
+        ) {
+            directorSpamNoticePending = true
+        }
+    }
+
+    private fun scheduleQueuedHumanReaction(session: GameSession) {
+        if (directorSpamNoticePending && directorSpamNoticeShownPhaseIndex != session.phaseIndex) {
+            val beat = BotConversationDirector.spamReactionBeat(session, directorLastSpeaker)
+            if (beat != null) {
+                directorSpamNoticePending = false
+                directorSpamNoticeShownPhaseIndex = session.phaseIndex
+                scheduleBotConversationBeat(
+                    beat = beat,
+                    phaseIndex = session.phaseIndex,
+                    phase = session.phase,
+                    delayMs = SPAM_REACTION_DELAY_MS
+                ) { _, _ ->
+                    directorLastSpeaker = beat.speaker
+                    scheduleNextHumanReactionBeat()
+                }
+                return
+            }
+        }
+        scheduleNextHumanReactionBeat()
     }
 
     private fun schedulePlayerNudge(sessionOverride: GameSession? = null) {
@@ -3231,7 +3335,7 @@ class GameplayChatController(
     }
 
     private fun botTypingVisibleMs(delayMs: Long, message: String, silentPauseMs: Long): Long {
-        val desiredWritingTime = (700L + message.length * 18L).coerceIn(
+        val desiredWritingTime = (1_100L + message.length * 22L).coerceIn(
             MIN_BOT_TYPING_VISIBLE_MS,
             MAX_BOT_TYPING_VISIBLE_MS
         )
@@ -3594,13 +3698,19 @@ class GameplayChatController(
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_CHAT_CHANNEL = "chat_channel"
-        private const val CHAT_SHEET_HEIGHT_RATIO = 0.52f
-        private const val CHAT_SHEET_MIN_HEIGHT_DP = 320
-        private const val CHAT_SHEET_MAX_HEIGHT_DP = 560
+        private const val CHAT_SHEET_HEIGHT_RATIO = 0.62f
+        private const val CHAT_SHEET_MIN_HEIGHT_DP = 340
+        private const val CHAT_SHEET_MAX_HEIGHT_DP = 680
         private const val CHAT_SHEET_KEYBOARD_GAP_DP = 6
+        private const val CHAT_SHEET_TOP_CLEARANCE_DP = 82
+        private const val CHAT_SHEET_TOP_GAP_DP = 12
+        private const val CHAT_SHEET_PLAYER_GAP_DP = 8
         private const val IME_FRAME_TOLERANCE_DP = 8
         private const val IME_RESIZE_TOLERANCE_DP = 48
         private const val CHAT_AMBIENT_MAX_MESSAGES = 4
+        private const val HUMAN_MESSAGE_BURST_THRESHOLD = 3
+        private const val HUMAN_MESSAGE_BURST_WINDOW_MS = 3_500L
+        private const val SPAM_REACTION_DELAY_MS = 2_600L
         private const val CHAT_AMBIENT_SOURCE_LIMIT = 8
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
@@ -3622,13 +3732,13 @@ class GameplayChatController(
             RoleCatalog.ESPIA,
             RoleCatalog.MERCENARIO
         )
-        private const val NEXT_BOT_REACTION_DELAY_MS = 2_650L
-        private const val EVENT_BOT_REACTION_DELAY_MS = 2_400L
+        private const val NEXT_BOT_REACTION_DELAY_MS = 4_000L
+        private const val EVENT_BOT_REACTION_DELAY_MS = 4_800L
         private const val TRANSITION_RETRY_DELAY_MS = 650L
-        private const val PRIMARY_BOT_THINKING_PAUSE_MS = 700L
-        private const val BURST_BOT_THINKING_PAUSE_MS = 250L
-        private const val MIN_BOT_TYPING_VISIBLE_MS = 550L
-        private const val MAX_BOT_TYPING_VISIBLE_MS = 2_400L
+        private const val PRIMARY_BOT_THINKING_PAUSE_MS = 1_500L
+        private const val BURST_BOT_THINKING_PAUSE_MS = 850L
+        private const val MIN_BOT_TYPING_VISIBLE_MS = 1_200L
+        private const val MAX_BOT_TYPING_VISIBLE_MS = 3_800L
     }
 
     private enum class PrivateChatTheme {

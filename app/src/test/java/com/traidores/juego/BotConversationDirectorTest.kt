@@ -114,6 +114,172 @@ class BotConversationDirectorTest {
     }
 
     @Test
+    fun directSuspectQuestionGetsOnlyTheAddressedBotsAnswer() {
+        val reactions = LocalBotAi.reactionsToHumanMessage(
+            session(),
+            "Mora, a quien sospechas?"
+        )
+
+        assertEquals(1, reactions.size)
+        assertEquals("Mora", reactions.single().first)
+        assertTrue(reactions.single().second.isNotBlank())
+    }
+
+    @Test
+    fun botDoesNotInventAVoteWhenAskedForAReason() {
+        val reply = LocalBotAi.reactionsToHumanMessage(
+            session(),
+            "Mora, por que me votaste?"
+        ).single().second
+
+        assertTrue(reply, reply.contains("no vote") || reply.contains("no tengo un voto"))
+        assertFalse(reply, reply.contains("te vote porque"))
+    }
+
+    @Test
+    fun botCorrectsTheHumanWhenAskedAboutTheWrongVoteTarget() {
+        val withVote = session().copy(
+            actionHistory = listOf(
+                GameAction(
+                    type = GameActionType.VOTE,
+                    actor = "Mora",
+                    target = "Beto",
+                    round = 1,
+                    phase = GamePhase.VOTACION,
+                    publiclyKnown = true
+                )
+            )
+        )
+
+        val reply = LocalBotAi.reactionsToHumanMessage(
+            withVote,
+            "Mora, por que votaste a Valen?"
+        ).single().second
+
+        assertTrue(reply, reply.contains("Beto"))
+        assertTrue(reply, reply.contains("Valen"))
+    }
+
+    @Test
+    fun followUpWhyQuestionKeepsTheBotsDeclaredTarget() {
+        val withStance = session().copy(
+            claimLedger = mapOf(
+                "Mora" to listOf(
+                    ClaimRecord(
+                        round = 1,
+                        phase = GamePhase.DIA_DEBATE,
+                        statementType = StatementType.ACCUSE,
+                        target = "Beto",
+                        reason = "cambio su version"
+                    )
+                )
+            )
+        )
+
+        val reply = LocalBotAi.reactionsToHumanMessage(
+            withStance,
+            "Mora, por que decis eso?"
+        ).single().second
+
+        assertTrue(reply, reply.contains("Beto"))
+    }
+
+    @Test
+    fun currentRoundStanceRemainsTheBotsObjectiveWithoutNewStrongEvidence() {
+        val withStance = session().copy(
+            claimLedger = mapOf(
+                "Mora" to listOf(
+                    ClaimRecord(
+                        round = 1,
+                        phase = GamePhase.DIA_DEBATE,
+                        statementType = StatementType.ACCUSE,
+                        target = "Beto",
+                        reason = "cambio su version"
+                    )
+                )
+            )
+        )
+        val mora = GameEngine.playerByName(withStance, "Mora")!!
+
+        val objective = roundObjectiveFor(withStance, mora)
+
+        assertEquals("Beto", objective.target)
+        assertEquals("cambio su version", objective.reason)
+    }
+
+    @Test
+    fun aDirectBotQuestionIsAnsweredByTheAddressedBot() {
+        val withQuestion = session().copy(
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Mora, a quien sospechas?")
+            )
+        )
+        val mora = GameEngine.playerByName(withQuestion, "Mora")!!
+
+        val reply = botToBotLine(withQuestion, mora)
+
+        assertTrue(reply.orEmpty().isNotBlank())
+    }
+
+    @Test
+    fun aHumanMessagePreventsReplyingToAnOlderBotQuestion() {
+        val withHumanReply = session().copy(
+            chatHistory = listOf(
+                GameChatMessage("Beto", "Mora, a quien sospechas?"),
+                GameChatMessage("Humano", "no se, todavia estoy pensando")
+            )
+        )
+        val mora = GameEngine.playerByName(withHumanReply, "Mora")!!
+
+        assertNull(botToBotLine(withHumanReply, mora))
+    }
+
+    @Test
+    fun everyVotingMessageNamesTheTargetThatBotWillActuallyVote() {
+        val voting = session().copy(phase = GamePhase.VOTACION)
+
+        val messages = LocalBotAi.votingIntentMessages(voting, limit = 4)
+
+        assertTrue(messages.isNotEmpty())
+        messages.forEach { (speaker, message) ->
+            val voter = GameEngine.playerByName(voting, speaker)!!
+            val target = LocalBotAi.chooseVoteTarget(voting, voter)
+            assertTrue("$speaker dijo '$message' pero votaria a $target", mentionsName(message, target))
+        }
+    }
+
+    @Test
+    fun mentionedBotSpeaksAboutItselfInFirstPerson() {
+        val session = session()
+        val mora = GameEngine.playerByName(session, "Mora")!!
+
+        val reply = pendingAnswerReply(
+            session = session,
+            bot = mora,
+            humanMessage = "A Mora",
+            memory = memoryFor(session, mora),
+            index = 0
+        )
+
+        assertTrue(reply, reply.contains("mi") || reply.contains("soy yo"))
+        assertFalse(reply, reply.contains("que conteste", ignoreCase = true))
+    }
+
+    @Test
+    fun spamReactionUsesOneAvailableBotAndKeepsTheConversationHuman() {
+        val beat = BotConversationDirector.spamReactionBeat(session(), lastSpeaker = "Beto")
+
+        assertNotNull(beat)
+        assertNotEquals("Beto", beat?.speaker)
+        assertTrue(
+            beat?.message.orEmpty(),
+            beat?.message.orEmpty().contains("una por vez") ||
+                beat?.message.orEmpty().contains("no llegamos") ||
+                beat?.message.orEmpty().contains("vamos de a una")
+        )
+    }
+
+    @Test
     fun directlyAskedTraitorClaimsOneRoleAndKeepsTheSameStory() {
         val firstQuestion = GameEngine.addHumanChatMessage(
             session(),
@@ -278,7 +444,7 @@ class BotConversationDirectorTest {
     }
 
     @Test
-    fun burstDelayIsShorterThanAFullThinkingPauseRange() {
+    fun burstDelayLeavesTimeToReadAndSeeTheBotTyping() {
         val delay = BotConversationDirector.burstDelayMs(
             session = session(),
             beatIndex = 1,
@@ -286,11 +452,11 @@ class BotConversationDirectorTest {
             message = "y otra cosa"
         )
 
-        assertTrue(delay in 600L..1_450L)
+        assertTrue(delay in 2_400L..4_000L)
     }
 
     @Test
-    fun ordinaryThinkingDelayFeelsResponsiveWithoutAppearingInstantly() {
+    fun ordinaryThinkingDelayFeelsHumanWithoutAppearingInstantly() {
         val delays = (0..12).map { beatIndex ->
             BotConversationDirector.naturalDelayMs(
                 session = session(),
@@ -301,7 +467,39 @@ class BotConversationDirectorTest {
             )
         }
 
-        assertTrue(delays.all { it in 1_400L..3_600L })
+        assertTrue(delays.all { it in 3_600L..6_800L })
+    }
+
+    @Test
+    fun seriousNaturalToneKeepsCasualSpanishWithoutTeenSlang() {
+        val line = seriousNaturalSpeech("KJjj dale amigo, q rol decis tener? posta")
+
+        assertTrue(line.contains("que rol decis tener?"))
+        assertFalse(line.contains("kjjj"))
+        assertFalse(line.contains("amigo"))
+        assertFalse(line.contains(" q "))
+    }
+
+    @Test
+    fun strategicQuestionsUseTheShortNaturalRoleWording() {
+        val questions = linesFor(
+            intent = BotSpeechIntent.ASK,
+            spokenTarget = "Mora",
+            reason = "cambio su version"
+        )
+
+        assertTrue(questions.contains("Mora, que rol decis tener?"))
+        assertTrue(questions.any { it.contains("que hiciste anoche?") })
+    }
+
+    @Test
+    fun firstOffTopicMessageDoesNotDistractTheBots() {
+        val reactions = LocalBotAi.reactionsToHumanMessage(
+            session(),
+            "anoche vi una pelicula buenisima"
+        )
+
+        assertTrue(reactions.isEmpty())
     }
 
     @Test
@@ -417,11 +615,11 @@ class BotConversationDirectorTest {
     @Test
     fun personalitySignatureAddsRecognizableFiller() {
         assertEquals(
-            "mmm, no me cierra",
+            "no se, no me cierra",
             applyPersonalitySignature("no me cierra", BotPersonality.DESCONFIADO, seed = 6)
         )
         assertEquals(
-            "van dos cosas: ordenemos esto",
+            "ordenemos esto",
             applyPersonalitySignature("ordenemos esto", BotPersonality.ANALITICO, seed = 12)
         )
         val variants = listOf(6, 12, 18).map { seed ->
@@ -436,6 +634,62 @@ class BotConversationDirectorTest {
                 seed = 6,
                 playful = false
             )
+        )
+    }
+
+    @Test
+    fun firstTwoDaysLeaveSpaceForTheHuman() {
+        val firstDay = session().copy(round = 1)
+        val secondDay = session().copy(round = 2)
+        val thirdDay = session().copy(round = 3)
+
+        assertEquals(2, BotConversationDirector.idleBudget(firstDay))
+        assertEquals(2, BotConversationDirector.idleBudget(secondDay))
+        assertEquals(3, BotConversationDirector.idleBudget(thirdDay))
+        assertEquals(1, BotConversationDirector.pauseAfterBotStreak(firstDay))
+        assertEquals(2, BotConversationDirector.pauseAfterBotStreak(thirdDay))
+    }
+
+    @Test
+    fun firstDayDeathProducesOneNeutralReaction() {
+        val earlySession = session().copy(
+            round = 1,
+            publicAnnouncement = "Amanecer: murió Valen."
+        )
+
+        val reactions = LocalBotAi.reactionsToEvent(
+            earlySession,
+            BotEvent(BotEventType.MUERTE_NOCTURNA, "Valen"),
+            limit = 3
+        )
+
+        assertEquals(1, reactions.size)
+        val line = reactions.single().second
+        assertTrue(line, line.contains("Valen"))
+        assertTrue(
+            line,
+            line.contains("pista", ignoreCase = true) ||
+                line.contains("sabe", ignoreCase = true) ||
+                line.contains("vio", ignoreCase = true)
+        )
+    }
+
+    @Test
+    fun earlyDebateAsksBeforeAccusing() {
+        val messages = LocalBotAi.openingDebateMessages(
+            session().copy(
+                round = 1,
+                publicAnnouncement = "Amanecer: murió Valen."
+            ),
+            limit = 3
+        )
+
+        assertTrue(messages.isNotEmpty())
+        assertTrue(
+            messages.take(2).all { (_, message) ->
+                message.contains("?", ignoreCase = true) ||
+                    message.contains("no votemos por apuro", ignoreCase = true)
+            }
         )
     }
 

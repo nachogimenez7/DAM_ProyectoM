@@ -1,8 +1,11 @@
 package com.traidores.juego
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
@@ -13,6 +16,8 @@ import android.widget.ImageButton
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.traidores.juego.GameToast as Toast
 import androidx.appcompat.widget.SwitchCompat
 
@@ -32,9 +37,12 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var titleLanguage: TextView
     private lateinit var labelLanguage: TextView
     private lateinit var descLanguage: TextView
+    private lateinit var titleNotifications: TextView
+    private lateinit var descNotifications: TextView
     private lateinit var switchMusic: SwitchCompat
     private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
+    private lateinit var switchNotifications: SwitchCompat
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
@@ -45,6 +53,22 @@ class OpcionesActivity : BaseActivity() {
     private var currentLanguage = LANGUAGE_SPANISH
     private var updatingControls = false
     private var languageListenerReady = false
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        updatingControls = true
+        switchNotifications.isChecked = granted
+        updatingControls = false
+        NotificationPreferences.setEnabled(this, granted)
+        Toast.makeText(
+            this,
+            getString(
+                if (granted) R.string.notification_enabled
+                else R.string.notification_permission_denied
+            ),
+            if (granted) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+        ).show()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +80,19 @@ class OpcionesActivity : BaseActivity() {
         loadPreferences()
         updateOptionTexts()
         handleRequestedSection()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!::switchNotifications.isInitialized) return
+        val available = NotificationPreferences.canPostNotifications(this)
+        val enabled = NotificationPreferences.isEnabled(this) && available
+        updatingControls = true
+        switchNotifications.isChecked = enabled
+        updatingControls = false
+        if (!available && NotificationPreferences.isEnabled(this)) {
+            NotificationPreferences.setEnabled(this, false)
+        }
     }
 
     private fun bindViews() {
@@ -73,9 +110,12 @@ class OpcionesActivity : BaseActivity() {
         titleLanguage = findViewById(R.id.titleLanguage)
         labelLanguage = findViewById(R.id.labelLanguage)
         descLanguage = findViewById(R.id.descLanguage)
+        titleNotifications = findViewById(R.id.titleNotifications)
+        descNotifications = findViewById(R.id.descNotifications)
         switchMusic = findViewById(R.id.switchMusic)
         switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
+        switchNotifications = findViewById(R.id.switchNotifications)
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
@@ -149,6 +189,21 @@ class OpcionesActivity : BaseActivity() {
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
 
+        switchNotifications.setOnCheckedChangeListener { _, enabled ->
+            if (updatingControls) return@setOnCheckedChangeListener
+            NotificationPreferences.markInvitationSeen(this)
+            if (enabled) {
+                requestNotificationPermissionOrEnable()
+            } else {
+                NotificationPreferences.setEnabled(this, false)
+                Toast.makeText(
+                    this,
+                    getString(R.string.notification_disabled),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
         btnAbout.setOnClickListener {
@@ -168,6 +223,8 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = AudioPreferences.isMusicEnabled(preferences)
         switchEffects.isChecked = AudioPreferences.areEffectsEnabled(preferences)
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
+        switchNotifications.isChecked = NotificationPreferences.isEnabled(this) &&
+            NotificationPreferences.canPostNotifications(this)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
@@ -262,6 +319,9 @@ class OpcionesActivity : BaseActivity() {
             titleLanguage.text = "LANGUAGE"
             labelLanguage.text = "Game language"
             descLanguage.text = "The full translation is still in development."
+            titleNotifications.text = "NEWS"
+            switchNotifications.text = "Notifications"
+            descNotifications.text = "Receive beta improvements, tests and important updates."
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
@@ -277,6 +337,9 @@ class OpcionesActivity : BaseActivity() {
             titleLanguage.text = "IDIOMA"
             labelLanguage.text = "Idioma del juego"
             descLanguage.text = "La traducción completa sigue en desarrollo."
+            titleNotifications.text = "NOVEDADES"
+            switchNotifications.text = "Notificaciones"
+            descNotifications.text = "Recibí mejoras, pruebas y avisos importantes de la beta."
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
         updateVolumeLabels()
@@ -301,12 +364,14 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = true
         switchEffects.isChecked = true
         switchVibration.isChecked = false
+        switchNotifications.isChecked = false
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)
         updatingControls = false
         updateAudioControlState()
         updateOptionTexts()
         MusicManager.refresh(this)
+        NotificationPreferences.setEnabled(this, false)
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
         Toast.makeText(this, "Opciones restablecidas.", Toast.LENGTH_SHORT).show()
     }
@@ -317,6 +382,24 @@ class OpcionesActivity : BaseActivity() {
                 spinnerLanguage.requestFocus()
                 Toast.makeText(this, focusLanguageMessage(), Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun requestNotificationPermissionOrEnable() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            NotificationPreferences.setEnabled(this, true)
+            Toast.makeText(
+                this,
+                getString(R.string.notification_enabled),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

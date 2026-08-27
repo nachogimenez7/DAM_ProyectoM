@@ -3,9 +3,12 @@ package com.traidores.juego
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.widget.ImageView
 import com.google.android.gms.common.images.ImageManager
 import com.google.android.gms.games.PlayGames
+import com.google.firebase.auth.FirebaseAuth
 import java.net.URI
 
 /**
@@ -79,28 +82,33 @@ object PlayGamesProfileAvatar {
         }
         PlayGames.getPlayersClient(activity).currentPlayer
             .addOnSuccessListener { player ->
-                val uri = firstShareableUri(
-                    player.hiResImageUri?.toString().orEmpty(),
-                    player.iconImageUri?.toString().orEmpty()
+                resolveFirstUsableUri(
+                    activity = activity,
+                    candidates = shareableUris(
+                        player.hiResImageUri?.toString().orEmpty(),
+                        player.iconImageUri?.toString().orEmpty(),
+                        linkedGoogleAccountPhoto()
+                    ),
+                    onReady = { uri ->
+                        activity.getSharedPreferences(
+                            ProfileActivity.PREFS_NAME,
+                            Context.MODE_PRIVATE
+                        ).edit()
+                            .putBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
+                            .putString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, uri)
+                            .apply()
+                        LocalProfilePhotoStore.deleteSavedPhoto(activity)
+                        ProfileAvatarSourceStore.saveSelection(
+                            activity,
+                            ProfileAvatarSource.PLAY_GAMES
+                        )
+                        onComplete(true)
+                    },
+                    onUnavailable = {
+                        OnlineDebugLog.i("play_games_default_avatar_unavailable")
+                        onComplete(false)
+                    }
                 )
-                if (uri.isBlank()) {
-                    OnlineDebugLog.i("play_games_default_avatar_unavailable")
-                    onComplete(false)
-                    return@addOnSuccessListener
-                }
-                activity.getSharedPreferences(
-                    ProfileActivity.PREFS_NAME,
-                    Context.MODE_PRIVATE
-                ).edit()
-                    .putBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
-                    .putString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, uri)
-                    .apply()
-                LocalProfilePhotoStore.deleteSavedPhoto(activity)
-                ProfileAvatarSourceStore.saveSelection(
-                    activity,
-                    ProfileAvatarSource.PLAY_GAMES
-                )
-                onComplete(true)
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("play_games_default_avatar_failure", error)
@@ -112,16 +120,28 @@ object PlayGamesProfileAvatar {
         context: Context,
         image: ImageView,
         uriValue: String,
-        fallbackDrawableRes: Int
+        fallbackDrawableRes: Int,
+        onUnavailable: (() -> Unit)? = null
     ): Boolean {
         val normalized = normalize(uriValue)
         if (normalized.isBlank()) return false
-        image.scaleType = ImageView.ScaleType.CENTER_CROP
+        image.scaleType = ImageView.ScaleType.FIT_CENTER
+        image.setImageResource(fallbackDrawableRes)
         return runCatching {
             ImageManager.create(context.applicationContext).loadImage(
-                image,
-                Uri.parse(normalized),
-                fallbackDrawableRes
+                ImageManager.OnImageLoadedListener { _, drawable, isRequestedDrawable ->
+                    image.post {
+                        if (isRequestedDrawable && drawable != null) {
+                            image.scaleType = ImageView.ScaleType.CENTER_CROP
+                            image.setImageDrawable(drawable)
+                        } else {
+                            image.scaleType = ImageView.ScaleType.FIT_CENTER
+                            image.setImageResource(fallbackDrawableRes)
+                            onUnavailable?.invoke()
+                        }
+                    }
+                },
+                Uri.parse(normalized)
             )
             true
         }.getOrElse { error ->
@@ -137,19 +157,22 @@ object PlayGamesProfileAvatar {
     ) {
         PlayGames.getPlayersClient(activity).currentPlayer
             .addOnSuccessListener { player ->
-                val uri = firstShareableUri(
-                    player.hiResImageUri?.toString().orEmpty(),
-                    player.iconImageUri?.toString().orEmpty()
+                resolveFirstUsableUri(
+                    activity = activity,
+                    candidates = shareableUris(
+                        player.hiResImageUri?.toString().orEmpty(),
+                        player.iconImageUri?.toString().orEmpty(),
+                        linkedGoogleAccountPhoto()
+                    ),
+                    onReady = onReady,
+                    onUnavailable = {
+                        onFailure(
+                            "Google no comparte una foto que Traidores pueda mostrar. " +
+                                "Mantenemos tu avatar ilustrado; podés agregar una foto pública " +
+                                "a tu cuenta y reintentar."
+                        )
+                    }
                 )
-                if (uri.isBlank()) {
-                    onFailure(
-                        "Play Juegos quedó conectado, pero ese perfil no comparte una foto que " +
-                            "Traidores pueda mostrar en las salas. Podés elegir una imagen desde " +
-                            "tu perfil de Play Juegos y reintentar, o usar un avatar ilustrado."
-                    )
-                } else {
-                    onReady(uri)
-                }
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("play_games_avatar_player_failure", error)
@@ -157,11 +180,89 @@ object PlayGamesProfileAvatar {
             }
     }
 
-    /** La imagen grande puede ser local aunque la miniatura sí sea una URL pública. */
-    private fun firstShareableUri(vararg candidates: String): String {
+    /** Descarta URI locales, duplicados o demasiado largos antes de intentar descargarlos. */
+    private fun shareableUris(vararg candidates: String): List<String> {
         return candidates.asSequence()
             .map(::normalize)
-            .firstOrNull { it.isNotBlank() }
-            .orEmpty()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
     }
+
+    /**
+     * Comprueba la imagen real antes de anunciar que fue seleccionada. Algunas cuentas
+     * entregan una URL de Play Juegos válida en apariencia pero sin contenido público; antes
+     * eso hacía que ImageManager mostrara silenciosamente el retrato ilustrado de respaldo.
+     */
+    private fun resolveFirstUsableUri(
+        activity: Activity,
+        candidates: List<String>,
+        onReady: (String) -> Unit,
+        onUnavailable: () -> Unit
+    ) {
+        if (candidates.isEmpty()) {
+            onUnavailable()
+            return
+        }
+        val handler = Handler(Looper.getMainLooper())
+        val manager = ImageManager.create(activity.applicationContext)
+
+        fun attempt(index: Int) {
+            if (index >= candidates.size) {
+                onUnavailable()
+                return
+            }
+            val candidate = candidates[index]
+            var completed = false
+            val timeout = Runnable {
+                if (!completed) {
+                    completed = true
+                    attempt(index + 1)
+                }
+            }
+            handler.postDelayed(timeout, IMAGE_CHECK_TIMEOUT_MS)
+            runCatching {
+                manager.loadImage(
+                    ImageManager.OnImageLoadedListener { _, drawable, isRequestedDrawable ->
+                        if (!completed) {
+                            completed = true
+                            handler.removeCallbacks(timeout)
+                            if (isRequestedDrawable && drawable != null) {
+                                onReady(candidate)
+                            } else {
+                                attempt(index + 1)
+                            }
+                        }
+                    },
+                    Uri.parse(candidate)
+                )
+            }.onFailure { error ->
+                if (!completed) {
+                    completed = true
+                    handler.removeCallbacks(timeout)
+                    OnlineDebugLog.e("play_games_avatar_candidate_failure", error)
+                    attempt(index + 1)
+                }
+            }
+        }
+
+        attempt(0)
+    }
+
+    /**
+     * Play Juegos puede autenticar correctamente y devolver ambos URI de jugador en null.
+     * Cuando la cuenta de Traidores está vinculada con Google, Firebase Auth conserva la foto
+     * pública de esa misma identidad y sirve como alternativa sin subir archivos a Storage.
+     */
+    private fun linkedGoogleAccountPhoto(): String {
+        val user = FirebaseAuth.getInstance().currentUser ?: return ""
+        val googleProvider = user.providerData.firstOrNull { provider ->
+            provider.providerId == "google.com"
+        } ?: return ""
+        return googleProvider.photoUrl?.toString()
+            ?: user.photoUrl?.toString()
+            ?: ""
+    }
+
+    private const val IMAGE_CHECK_TIMEOUT_MS = 6_000L
 }

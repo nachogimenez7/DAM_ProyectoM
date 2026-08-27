@@ -30,6 +30,31 @@ class GameplayPhasePresentationTest {
     }
 
     @Test
+    fun medicAdviceMatchesTheVisibleProtectionAction() {
+        val map = RoleMap.PAMPA
+        val session = GameSession(
+            code = "MEDIC-ADVICE",
+            mapKey = "pampa",
+            mapName = "Pampa",
+            phase = GamePhase.NOCHE_MEDICO,
+            players = listOf(
+                GamePlayer(
+                    "Humano",
+                    "H",
+                    RoleCatalog.gameRole(RoleCatalog.MEDICO, map),
+                    isHuman = true
+                ),
+                GamePlayer("Mora", "M", RoleCatalog.gameRole(RoleCatalog.ALDEANO, map))
+            )
+        )
+
+        assertEquals(
+            "Elige a quién proteger y confirma PROTEGER.",
+            GameplayPhasePresentation.phaseAdvice(session)
+        )
+    }
+
+    @Test
     fun resultOnlyShowsFinalWhenThereIsAWinner() {
         val ongoing = GameplayPhasePresentation.phaseText(
             GamePhase.RESULTADO,

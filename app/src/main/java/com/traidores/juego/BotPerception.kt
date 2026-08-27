@@ -190,8 +190,14 @@ internal object BotPerception {
             text.contains("por que me acusaste") || text.contains("porque me acusaste") ||
                 text.contains("por que me acusas") || text.contains("porque me acusas") ||
                 text.contains("por que lo acusas") || text.contains("porque lo acusas") ||
-                text.contains("por que acusas") || text.contains("porque acusas") ->
+                text.contains("por que acusas") || text.contains("porque acusas") ||
+                text.contains("por que sospechas de") || text.contains("porque sospechas de") ->
                 HumanQuestionKind.WHY_ACCUSE
+            text.contains("por que pensas eso") || text.contains("porque pensas eso") ||
+                text.contains("por que decis eso") || text.contains("porque decis eso") ||
+                text.contains("por que dijiste eso") || text.contains("porque dijiste eso") ||
+                text.contains("en que te basas") || text.contains("en que te basaste") ->
+                HumanQuestionKind.EXPLAIN_STANCE
             text.contains("que pensas de") || text.contains("que opinas de") ||
                 text.contains("como ves a") || text.contains("que te parece") ->
                 HumanQuestionKind.OPINION
@@ -208,11 +214,16 @@ internal object BotPerception {
                 text.contains("q rol soy") || text.contains("mi rol") -> HumanQuestionKind.ROLE_HELP
             text.contains("a quien voto") || text.contains("a quien votamos") ||
                 text.contains("a quien votas") || text.contains("a quien votarias") ||
-                text.contains("quien voto") || text.contains("voto a quien") -> HumanQuestionKind.VOTE_HELP
+                text.contains("quien voto") || text.contains("voto a quien") ||
+                text.contains("con quien vas") || text.contains("por quien vas") -> HumanQuestionKind.VOTE_HELP
             text.contains("que hago") || text.contains("q hago") ||
                 text.contains("que deberia hacer") || text.contains("como juego") -> HumanQuestionKind.ACTION_HELP
             text.contains("quien sospecha") || text.contains("de quien sospechan") ||
-                text.contains("a quien miramos") || text.contains("quien les parece") -> HumanQuestionKind.SUSPECT_HELP
+                text.contains("a quien sospechas") || text.contains("de quien sospechas") ||
+                text.contains("a quien miramos") || text.contains("a quien miras") ||
+                text.contains("quien les parece") || text.contains("quien te parece raro") ||
+                text.contains("quien te parece rara") || text.contains("quien te hace ruido") ->
+                HumanQuestionKind.SUSPECT_HELP
             else -> null
         }
     }
@@ -258,7 +269,9 @@ internal object BotPerception {
                 val directLanguage = listOf(
                     "vos", "votaste", "votas", "acusaste", "acusas", "pensaste", "pensas",
                     "opinaste", "opinas", "dijiste", "decis", "hiciste", "haces", "sos",
-                    "me crees", "me bancas", "explica", "contesta", "responde"
+                    "sospechas", "miras", "votarias", "crees", "me crees", "me bancas",
+                    "por que", "porque", "en que", "que rol", "q rol", "que hago", "q hago",
+                    "a quien", "explica", "contesta", "responde"
                 ).any { signal -> tail == signal || tail.startsWith("$signal ") || tail.contains(" $signal ") }
                 rawPunctuation || directLanguage
             }

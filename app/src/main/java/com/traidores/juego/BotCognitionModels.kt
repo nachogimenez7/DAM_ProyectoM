@@ -146,6 +146,7 @@ internal enum class HumanQuestionKind {
     SUSPECT_HELP,
     WHY_VOTE,
     WHY_ACCUSE,
+    EXPLAIN_STANCE,
     OPINION,
     BELIEF
 }

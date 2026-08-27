@@ -93,7 +93,7 @@ class LobbyActivity : BaseActivity() {
     private lateinit var lobbyOptionsRow: LinearLayout
     private lateinit var localPlayerControlsRow: LinearLayout
     private lateinit var lobbyConfigurationLabel: TextView
-    private lateinit var playersListPanel: ScrollView
+    private lateinit var playersListPanel: LinearLayout
     private lateinit var lobbyPlayersLabel: TextView
     private lateinit var lobbyBodyScroll: ScrollView
     private lateinit var lobbyStartDock: LinearLayout
@@ -219,9 +219,17 @@ class LobbyActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_lobby)
 
-        session = PlayerProfileStore.withProfiles(this, readSession() ?: LocalGameFactory.createSession())
-        onlineLobbyConfig = OnlineLobbyConfig.fromSession(session)
         lobbyMode = intent.getStringExtra(EXTRA_LOBBY_MODE) ?: MODE_LOCAL
+        val incomingSession = readSession() ?: LocalGameFactory.createSession()
+        session = PlayerProfileStore.withProfiles(
+            this,
+            if (lobbyMode == MODE_LOCAL) {
+                LocalBotNameStore.apply(this, incomingSession)
+            } else {
+                incomingSession
+            }
+        )
+        onlineLobbyConfig = OnlineLobbyConfig.fromSession(session)
         onlineLobbyName = intent.getStringExtra(EXTRA_LOBBY_NAME).orEmpty()
         onlinePartidaId = intent.getStringExtra(EXTRA_PARTIDA_ID).orEmpty()
         onlineRoomCode = intent.getStringExtra(EXTRA_ROOM_CODE).orEmpty()
@@ -367,12 +375,20 @@ class LobbyActivity : BaseActivity() {
         updateOnlineControlState()
 
         btnAddPlayer.setOnClickListener {
-            val updated = LocalGameFactory.addMockPlayer(session)
+            val previousPlayerCount = session.players.size
+            val preferredBotName = LocalBotNameStore.nextAvailableName(this, session)
+            val updated = LocalGameFactory.addMockPlayer(session, preferredBotName)
             if (updated.players.size == session.players.size) {
                 Toast.makeText(this, "Maximo ${LocalGameFactory.MAX_PLAYERS} jugadores en esta demo.", Toast.LENGTH_SHORT).show()
             }
-            session = PlayerProfileStore.withProfiles(this, updated)
+            session = PlayerProfileStore.withProfiles(
+                this,
+                LocalBotNameStore.apply(this, updated)
+            )
             renderLobby()
+            if (session.players.size > previousPlayerCount) {
+                revealLastLocalPlayer()
+            }
         }
 
         btnRemovePlayer.setOnClickListener {
@@ -630,10 +646,25 @@ class LobbyActivity : BaseActivity() {
                 val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
                 val onlinePlayer = visibleOnlinePlayers.getOrNull(index)
                 row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
-                row.findViewById<TextView>(R.id.playerName).text = player.name
+                row.findViewById<TextView>(R.id.playerName).apply {
+                    text = player.name
+                    if (!player.isHuman) {
+                        setCompoundDrawablesRelativeWithIntrinsicBounds(
+                            0,
+                            0,
+                            R.drawable.ic_edit_pencil,
+                            0
+                        )
+                        compoundDrawablePadding = dp(6)
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Cambiar nombre de ${player.name}"
+                        setOnClickListener { showLocalBotNameEditor(index) }
+                    }
+                }
                 row.findViewById<TextView>(R.id.playerStatus).text =
                     onlinePlayer?.statusLabel(onlineHostId.ifBlank { onlineActiveHostId })
-                        ?: if (index == 0) "Anfitrion" else "Listo"
+                        ?: if (index == 0) "Anfitrion" else "Bot"
                 row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
                     showPlayerProfile(player, onlinePlayer)
                 }
@@ -695,7 +726,9 @@ class LobbyActivity : BaseActivity() {
         onlinePlayersScroll.visibility = presentation.onlinePlayersVisible.toVisibility()
         playersListPanel.visibility = presentation.localPlayersVisible.toVisibility()
         lobbyPlayersLabel.visibility = presentation.localPlayersVisible.toVisibility()
-        practiceRoleSummary.visibility = presentation.localPlayersVisible.toVisibility()
+        // El selector de rol es una herramienta de prueba: se mantiene únicamente dentro
+        // de Opciones avanzadas para no ocupar ni distraer en el lobby normal.
+        practiceRoleSummary.visibility = View.GONE
         mapVoteCardsRow.layoutParams = mapVoteCardsRow.layoutParams.apply {
             height = dp(presentation.mapVoteCardsHeightDp)
         }
@@ -746,7 +779,6 @@ class LobbyActivity : BaseActivity() {
                 mapVoteResultHint,
                 mapDescription,
                 lobbyOptionsRow,
-                practiceRoleSummary,
                 lobbyPlayersLabel,
                 localPlayerControlsRow
             )
@@ -6506,6 +6538,45 @@ class LobbyActivity : BaseActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
+    private fun revealLastLocalPlayer() {
+        lobbyBodyScroll.post {
+            val lastPlayer = playersContainer.getChildAt(playersContainer.childCount - 1)
+                ?: return@post
+            lastPlayer.requestRectangleOnScreen(
+                android.graphics.Rect(0, 0, lastPlayer.width, lastPlayer.height),
+                true
+            )
+        }
+    }
+
+    private fun showLocalBotNameEditor(playerIndex: Int) {
+        val player = session.players.getOrNull(playerIndex)
+            ?.takeUnless(GamePlayer::isHuman)
+            ?: return
+        val slot = LocalBotNameStore.slotForPlayer(this, session, playerIndex) ?: return
+        GameDialog.input(
+            activity = this,
+            title = "Cambiar nombre del bot",
+            currentValue = player.name,
+            hint = "Nombre del bot",
+            maxLength = LocalBotNameStore.MAX_NAME_LENGTH,
+            positiveLabel = "GUARDAR"
+        ) { rawName ->
+            LocalBotNameStore.validationError(session, playerIndex, rawName)?.let {
+                return@input it
+            }
+            val name = LocalBotNameStore.normalize(rawName)
+            LocalBotNameStore.save(this, slot, name)
+            session = PlayerProfileStore.withProfiles(
+                this,
+                LocalBotNameStore.apply(this, session)
+            )
+            renderLobby()
+            Toast.makeText(this, "Ahora el bot se llama $name.", Toast.LENGTH_SHORT).show()
+            null
+        }
+    }
+
     private fun showPlayerProfile(
         player: GamePlayer,
         onlinePlayer: OnlineLobbyPlayer? = null
@@ -6610,10 +6681,27 @@ class LobbyActivity : BaseActivity() {
             )
             return
         }
+        val localBotIndex = if (lobbyMode == MODE_LOCAL && !player.isHuman) {
+            session.players.indexOfFirst { it === player || it.name == player.name }
+        } else {
+            -1
+        }
         PlayerProfileDialog.showFull(
             activity = this,
             profile = profile,
-            canEdit = player.isHuman
+            canEdit = player.isHuman,
+            actions = if (localBotIndex >= 0) {
+                listOf(
+                    PlayerProfileAction(
+                        label = "CAMBIAR NOMBRE",
+                        description = "Se guarda para tus próximas partidas contra la IA."
+                    ) {
+                        showLocalBotNameEditor(localBotIndex)
+                    }
+                )
+            } else {
+                emptyList()
+            }
         )
     }
 

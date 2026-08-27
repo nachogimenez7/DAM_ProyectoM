@@ -62,12 +62,25 @@ internal object BotMessageBursts {
             rankedPublicSuspects(session, bot, setOf(targetName))
                 .firstOrNull { it.player.name == targetName }
         }
+        val hasRecordedVote = session.actionHistory.any { action ->
+            action.actor == bot.name && action.type == GameActionType.VOTE
+        }
+        val hasRecordedStance = session.claimLedger[bot.name].orEmpty().any { record ->
+            record.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
+        }
 
         val options = when {
             direct && questionKind == HumanQuestionKind.ASK_ROLE -> listOf(
                 "ahora decime que te hizo preguntarme justo a mi"
             )
-            direct && questionKind in setOf(HumanQuestionKind.WHY_VOTE, HumanQuestionKind.WHY_ACCUSE) -> listOf(
+            direct && questionKind == HumanQuestionKind.WHY_VOTE && !hasRecordedVote -> emptyList()
+            direct && questionKind == HumanQuestionKind.WHY_ACCUSE && !hasRecordedStance -> emptyList()
+            direct && questionKind == HumanQuestionKind.EXPLAIN_STANCE && !hasRecordedStance -> emptyList()
+            direct && questionKind in setOf(
+                HumanQuestionKind.WHY_VOTE,
+                HumanQuestionKind.WHY_ACCUSE,
+                HumanQuestionKind.EXPLAIN_STANCE
+            ) -> listOf(
                 if (hasGroundedSuspicion(read)) {
                     "no salio de la nada: ${read?.reason().orEmpty()}"
                 } else {
@@ -102,7 +115,11 @@ internal object BotMessageBursts {
 
         val followUpCount = when {
             questionKind == HumanQuestionKind.ASK_ROLE -> 1
-            questionKind in setOf(HumanQuestionKind.WHY_VOTE, HumanQuestionKind.WHY_ACCUSE) &&
+            questionKind in setOf(
+                HumanQuestionKind.WHY_VOTE,
+                HumanQuestionKind.WHY_ACCUSE,
+                HumanQuestionKind.EXPLAIN_STANCE
+            ) &&
                 hasGroundedSuspicion(read) -> 2
             else -> 1
         }
@@ -153,8 +170,8 @@ internal object BotMessageBursts {
             }
         } else {
             when {
-                allowsThree && roll < 12 + competitivenessAdjustment / 2 -> 2
-                roll < 52 + competitivenessAdjustment -> 1
+                allowsThree && roll < 6 + competitivenessAdjustment / 3 -> 2
+                roll < 26 + competitivenessAdjustment -> 1
                 else -> 0
             }
         }

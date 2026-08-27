@@ -132,6 +132,10 @@ internal fun roundObjectiveFor(session: GameSession, bot: GamePlayer): RoundObje
     val human = GameEngine.humanPlayer(session).takeIf { it.alive }
     val humanRead = human?.let { target -> reads.firstOrNull { it.player.name == target.name } }
     val contradiction = reads.firstOrNull { publicContradiction(session, it.player.name) != null }
+    val declaredStance = currentRoundDeclaredStance(session, bot)
+    val declaredRead = declaredStance
+        ?.target
+        ?.let { target -> reads.firstOrNull { it.player.name == target } }
     val tableMemory = conversationMemory(session)
     val unansweredTarget = tableMemory.entries.firstOrNull { (_, memory) ->
         memory.pendingQuestionFrom == bot.name
@@ -169,6 +173,19 @@ internal fun roundObjectiveFor(session: GameSession, bot: GamePlayer): RoundObje
             target = safeName(contradiction.player, session),
             reason = contradiction.reason,
             confidence = contradiction.score
+        )
+    }
+
+    if (declaredStance != null && declaredRead != null && declaredRead.level != TrustLevel.CONFIA) {
+        val keepsPressure = declaredRead.level in setOf(TrustLevel.SOSPECHA, TrustLevel.PRESIONA) ||
+            declaredRead.score >= 8
+        return RoundObjective(
+            type = if (keepsPressure) RoundObjectiveType.PUSH_VOTE else RoundObjectiveType.ASK_PLAYER,
+            target = safeName(declaredRead.player, session),
+            reason = declaredStance.reason
+                ?.takeIf { it.isNotBlank() }
+                ?: declaredRead.reason,
+            confidence = declaredRead.score.coerceAtLeast(if (keepsPressure) 9 else 5)
         )
     }
 

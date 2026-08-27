@@ -6,8 +6,13 @@ internal object BotHumanMessageEngine {
         HumanQuestionKind.ASK_ROLE,
         HumanQuestionKind.WHY_VOTE,
         HumanQuestionKind.WHY_ACCUSE,
+        HumanQuestionKind.EXPLAIN_STANCE,
         HumanQuestionKind.OPINION,
-        HumanQuestionKind.BELIEF
+        HumanQuestionKind.BELIEF,
+        HumanQuestionKind.VOTE_HELP,
+        HumanQuestionKind.ACTION_HELP,
+        HumanQuestionKind.SUSPECT_HELP,
+        HumanQuestionKind.ROLE_HELP
     )
     private val multiReplyIntents = setOf(
         HumanMessageIntent.ROLE_CLAIM,
@@ -46,18 +51,21 @@ internal object BotHumanMessageEngine {
                 .filter { it.speaker == GameEngine.humanPlayer(session).name }
                 .take(2)
                 .count { BotPerception.isOffTopicMessage(session, it.message) } >= 2
+        if (understanding.intent == HumanMessageIntent.OFF_TOPIC && !repeatedOffTopic) {
+            return emptyList()
+        }
         val desiredReplyCount = when {
             understanding.directAddressee != null && understanding.questionKind in directQuestionKinds -> 1
             understanding.directAddressee != null && understanding.socialSignal != null -> 1
-            understanding.intent == HumanMessageIntent.OFF_TOPIC -> if (repeatedOffTopic) 2 else 1
+            understanding.intent == HumanMessageIntent.OFF_TOPIC -> 1
             understanding.roleClaim != null && understanding.publicStatement != null -> 4
             understanding.intent in multiReplyIntents || understanding.focusNames.isNotEmpty() -> 3
             understanding.publicStatement != null ||
                 understanding.claimsHiddenInfo ||
                 understanding.intent == HumanMessageIntent.ANSWER_PENDING ||
                 humanMessage.length > 45 -> 2
-            understanding.casualMessage -> 2
-            else -> 2
+            understanding.casualMessage -> 1
+            else -> 1
         }
         val replyCount = limitedReplyCount(session, desiredReplyCount)
         val preferredResponder = understanding.directAddressee

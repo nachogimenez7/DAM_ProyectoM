@@ -660,17 +660,6 @@
                     android:minHeight="48dp"
                     android:text="@string/profile_account_action" />
 
-                <Button
-                    android:id="@+id/btnPlayGamesHub"
-                    style="@style/BtnDark"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="0dp"
-                    android:minHeight="48dp"
-                    android:text="PLAY JUEGOS"
-                    android:visibility="gone" />
-
             </LinearLayout>
 
             <Button

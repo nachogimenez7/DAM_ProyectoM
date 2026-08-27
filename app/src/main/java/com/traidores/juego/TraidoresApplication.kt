@@ -18,6 +18,8 @@ class TraidoresApplication : Application() {
         configureAppCheck()
         configurePlayGames()
         configureFirestore()
+        TraidoresNotifications.createChannel(this)
+        NotificationPreferences.restoreSubscription(this)
         GameplaySoundEffects.preload(this)
         EmoteSoundEffects.preload(this)
     }

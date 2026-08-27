@@ -5,7 +5,7 @@ internal fun openingIntent(session: GameSession, bot: GamePlayer, index: Int): B
     return when (personality) {
         BotPersonality.TRANQUI -> if (index == 0) BotSpeechIntent.CALM_DOWN else BotSpeechIntent.ASK
         BotPersonality.PICANTE -> BotSpeechIntent.ACCUSE
-        BotPersonality.JODON -> BotSpeechIntent.TEASE
+        BotPersonality.JODON -> BotSpeechIntent.ASK
         BotPersonality.DESCONFIADO -> BotSpeechIntent.ASK
         BotPersonality.IMPULSIVO -> BotSpeechIntent.ACCUSE
         BotPersonality.ANALITICO -> if (unansweredQuestionFor(session, bot) != null) BotSpeechIntent.FOLLOW_UP else BotSpeechIntent.ASK
@@ -72,8 +72,12 @@ internal fun conversationRole(index: Int): BotConversationRole {
 }
 
 internal fun toneAdjustedIntent(session: GameSession, intent: BotSpeechIntent): BotSpeechIntent {
-    if (session.botDifficulty != BotDifficulty.HARD) return intent
-    return if (intent == BotSpeechIntent.TEASE) BotSpeechIntent.ACCUSE else intent
+    if (intent != BotSpeechIntent.TEASE) return intent
+    return if (session.botDifficulty == BotDifficulty.HARD) {
+        BotSpeechIntent.ACCUSE
+    } else {
+        BotSpeechIntent.ASK
+    }
 }
 
 internal fun hardOpeningLine(
@@ -85,9 +89,9 @@ internal fun hardOpeningLine(
 ): String? {
     if (session.botDifficulty != BotDifficulty.HARD || role != BotConversationRole.OPENER) return null
     val options = listOf(
-        "vamos por partes: quien tiene una contradiccion real, no una sospecha del aire",
-        "hoy no hay lugar para joda, necesito una lectura seria de cada uno",
-        "menos vueltas, mas estrategia: $target, quiero tu version exacta de anoche"
+        "vamos por partes, quien tiene una contradiccion real?",
+        "$target, que rol decis tener?",
+        "$target, que hiciste anoche?"
     )
     return chooseFreshLine(options, session, bot, "hard-opening:$target:$index:${socialChatSize(session)}")
 }
@@ -186,6 +190,8 @@ internal fun pendingAnswerReply(
     val mentionedTarget = mentionedPlayerNames(session, humanMessage)
         .firstOrNull { it != GameEngine.humanPlayer(session).name }
         ?.let { target -> GameEngine.playerByName(session, target)?.let { safeName(it, session) } ?: target }
+    val botWasMentioned = mentionedTarget != null &&
+        normalizedForParsing(mentionedTarget) == normalizedForParsing(safeName(bot, session))
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:pending-answer:$index:$humanMessage")
     val priorStatement = if (isDirectClarification(humanMessage)) {
         previousHumanStatement(session, humanMessage)
@@ -210,6 +216,11 @@ internal fun pendingAnswerReply(
             "ok, dijiste ${claim.label}. ahora falta ver si alguien te cruza",
             "bien, queda ese rol anotado. no lo cambiemos después eh",
             "listo, dijiste ${claim.label}. ahora explica la jugada sin regalar de más"
+        )
+        botWasMentioned -> listOf(
+            "me nombraste a mi, que queres que responda?",
+            "si, soy yo. decime que queres saber",
+            "me estas mirando a mi? decime por que"
         )
         statement?.type in setOf(StatementType.ACCUSE, StatementType.VOTE) && statementTarget != null -> listOf(
             "ok, entonces estas mirando a $statementTarget. que responda eso",
@@ -304,6 +315,7 @@ internal fun humanQuestionReply(
         }
         HumanQuestionKind.WHY_VOTE,
         HumanQuestionKind.WHY_ACCUSE,
+        HumanQuestionKind.EXPLAIN_STANCE,
         HumanQuestionKind.OPINION,
         HumanQuestionKind.BELIEF,
         HumanQuestionKind.ASK_ROLE -> listOf(
@@ -326,45 +338,97 @@ internal fun directHumanQuestionReply(
     val mentionedTarget = mentionedPlayerNames(session, humanMessage)
         .firstOrNull { it != bot.name && it != human.name }
         ?.let { GameEngine.playerByName(session, it) }
-    val latestVoteTarget = session.actionHistory
+    val latestVoteAction = session.actionHistory
         .asReversed()
         .firstOrNull { action -> action.actor == bot.name && action.type == GameActionType.VOTE }
-        ?.target
-        ?.let { GameEngine.playerByName(session, it) }
-    val declaredTarget = declaredSuspicionTarget(session, bot)
-        ?.let { GameEngine.playerByName(session, it) }
-    val target = mentionedTarget ?: latestVoteTarget ?: declaredTarget
+    val latestVoteTarget = latestVoteAction?.target?.let { GameEngine.playerByName(session, it) }
+    val latestStance = session.claimLedger[bot.name].orEmpty()
+        .asReversed()
+        .firstOrNull { record ->
+            record.target != null && record.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
+        }
+    val declaredTarget = latestStance?.target?.let { GameEngine.playerByName(session, it) }
+    val rankedRead = rankedPublicSuspects(session, bot).firstOrNull()
+    val rankedTarget = rankedRead
+        ?.takeUnless(::isWeakSuspicion)
+        ?.player
+    val target = when (kind) {
+        HumanQuestionKind.WHY_VOTE -> latestVoteTarget ?: mentionedTarget
+        HumanQuestionKind.WHY_ACCUSE,
+        HumanQuestionKind.EXPLAIN_STANCE -> declaredTarget ?: mentionedTarget ?: latestVoteTarget ?: rankedTarget
+        HumanQuestionKind.OPINION -> mentionedTarget ?: declaredTarget ?: rankedTarget
+        HumanQuestionKind.VOTE_HELP,
+        HumanQuestionKind.SUSPECT_HELP -> declaredTarget ?: latestVoteTarget ?: rankedTarget
+        else -> mentionedTarget ?: declaredTarget ?: rankedTarget
+    }
     val targetRead = target?.let { relationshipRead(session, bot, it) }
     val targetName = target?.let { safeName(it, session) } ?: "esa persona"
-    val reason = informalReason(targetRead?.reason, "direct-question:${bot.name}:$kind:${socialChatSize(session)}")
+    val recordedReason = latestStance
+        ?.takeIf { stance -> stance.target == target?.name }
+        ?.reason
+    val reason = informalReason(
+        recordedReason ?: targetRead?.reason,
+        "direct-question:${bot.name}:$kind:${socialChatSize(session)}"
+    )
     val options = when (kind) {
-        HumanQuestionKind.WHY_VOTE -> if (target?.isHuman == true) {
-            listOf(
+        HumanQuestionKind.WHY_VOTE -> when {
+            latestVoteAction == null -> listOf(
+                "todavia no vote a nadie, sigo escuchando antes de cerrarlo",
+                "no tengo un voto hecho para justificar; primero quiero ordenar la ronda"
+            )
+            mentionedTarget != null && latestVoteTarget?.name != mentionedTarget.name -> listOf(
+                "no vote a ${safeName(mentionedTarget, session)}; mi voto fue a $targetName por $reason",
+                "ojo, fui con $targetName, no con ${safeName(mentionedTarget, session)}. fue por $reason"
+            )
+            target?.isHuman == true -> listOf(
                 "te vote porque $reason, no fue por copiar al resto",
                 "fui con vos por $reason. si cambia eso puedo revisar",
                 "mi voto contra vos salio de esto: $reason"
             )
-        } else {
-            listOf(
+            else -> listOf(
                 "fui con $targetName porque $reason, no fue por copiar al resto",
                 "vote a $targetName por $reason. si cambia eso puedo revisar",
                 "mi voto a $targetName salio de esto: $reason"
             )
         }
-        HumanQuestionKind.WHY_ACCUSE -> if (target?.isHuman == true) {
-            listOf(
+        HumanQuestionKind.WHY_ACCUSE -> when {
+            latestStance == null -> listOf(
+                "todavia no acuse a nadie como seguro, estoy tratando de ordenar las versiones",
+                "no tengo una acusacion cerrada; si marco a alguien quiero tener un motivo"
+            )
+            mentionedTarget != null && declaredTarget?.name != mentionedTarget.name -> listOf(
+                "no estaba marcando a ${safeName(mentionedTarget, session)}; venia mirando a $targetName por $reason",
+                "mi duda era con $targetName, no con ${safeName(mentionedTarget, session)}. me hizo ruido por $reason"
+            )
+            target?.isHuman == true -> listOf(
                 "te marque porque $reason, pero quiero escuchar tu respuesta",
                 "lo tuyo me hace ruido por $reason, no lo invente de la nada",
                 "te acuse por $reason. si lo explicas bien, aflojo"
             )
-        } else {
-            listOf(
+            else -> listOf(
                 "marque a $targetName porque $reason, pero quiero escuchar su respuesta",
                 "lo de $targetName me hace ruido por $reason, no lo invente de la nada",
                 "acuse a $targetName por $reason. si lo explica bien, aflojo"
             )
         }
-        HumanQuestionKind.OPINION -> when (targetRead?.level) {
+        HumanQuestionKind.EXPLAIN_STANCE -> if (target != null) {
+            listOf(
+                "lo digo por $targetName: $reason",
+                "mi punto con $targetName es este: $reason",
+                "vengo siguiendo a $targetName por $reason; si aparece algo mejor, cambio"
+            )
+        } else {
+            listOf(
+                "todavia no tire una acusacion concreta; me falta una respuesta clara",
+                "no tengo una postura cerrada para defender, sigo juntando datos"
+            )
+        }
+        HumanQuestionKind.OPINION -> if (target == null) {
+            listOf(
+                "decime de quien queres mi opinion y te respondo directo",
+                "sobre quien? dame un nombre y te digo como lo veo"
+            )
+        } else when (targetRead?.level) {
             TrustLevel.CONFIA -> listOf(
                 "a $targetName lo vengo bancando, por ahora me cierra mas que el resto",
                 "$targetName hoy me parece bastante limpio, aunque no lo doy por seguro"
@@ -397,6 +461,33 @@ internal fun directHumanQuestionReply(
                 )
             }
         }
+        HumanQuestionKind.VOTE_HELP,
+        HumanQuestionKind.SUSPECT_HELP -> if (target != null) {
+            val cautiousSuffix = if (session.botDifficulty == BotDifficulty.NORMAL) {
+                ", aunque primero quiero escucharlo"
+            } else {
+                ", es la lectura que mejor cierra ahora"
+            }
+            listOf(
+                "si tengo que elegir ahora, voy con $targetName por $reason$cautiousSuffix",
+                "hoy tengo mas arriba a $targetName: $reason$cautiousSuffix",
+                "mi principal duda es $targetName por $reason$cautiousSuffix"
+            )
+        } else {
+            listOf(
+                "todavia no tengo un nombre firme; preguntaria antes de votar",
+                "no voy a inventar un sospechoso: me falta escuchar una respuesta"
+            )
+        }
+        HumanQuestionKind.ACTION_HELP -> listOf(
+            "hace una pregunta concreta sobre la ronda y fijate si la respuesta coincide con lo anterior",
+            "marca una duda con motivo, escucha la defensa y recien despues decidi el voto",
+            "revisa lo que se dijo, pregunta por una contradiccion y no regales tu carta porque si"
+        )
+        HumanQuestionKind.ROLE_HELP -> listOf(
+            "tu carta la ves vos; lee su objetivo y no la reveles sin necesidad",
+            "mira tu carta y usa el boton de la fase cuando corresponda; no regales el rol de entrada"
+        )
         else -> listOf("te respondo directo: todavia no lo tengo claro")
     }
     return chooseFreshLine(options, session, bot, "direct-question:$kind:$humanMessage")
@@ -432,21 +523,13 @@ internal fun casualHumanReply(
     index: Int
 ): String {
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:casual:$index:$humanMessage")
-    val options = if (session.botDifficulty == BotDifficulty.HARD) {
-        listOf(
-            "no tenemos tiempo para la joda, aporta algo de la ronda",
-            "guardemos los chistes para despues, ahora hay que pensar",
-            "che, concentrate, esto se juega en serio"
-        )
-    } else {
-        listOf(
-            "hola, pero tiren algo util asi no votamos al aire",
-            "buenas, arranquemos tranqui y con datos",
-            "toy, pero hablemos de la ronda que sino es humo",
-            "dale, igual ordenemos un poco quien hizo que",
-            "ok, por ahora no tengo nada fuerte"
-        )
-    }
+    val options = listOf(
+        "hola, pero hablemos de la ronda",
+        "buenas, quien les parece raro?",
+        "estoy, pero primero ordenemos que paso",
+        "por ahora no tengo nada fuerte, quiero escuchar",
+        "a quien votarias ahora?"
+    )
     return chooseFreshLine(options, session, bot, "casual:$seed")
 }
 
@@ -456,45 +539,30 @@ internal fun offTopicReply(
     repeated: Boolean,
     index: Int
 ): String {
-    val personality = personalityFor(session, bot)
     val options = if (repeated) {
         listOf(
-            "en serio, si no jugas te van a votar por dar vueltas. a quien miras?",
-            "dale, volve a la partida: quien te parece raro hoy?"
+            "volvamos a la partida, quien te parece raro?",
+            "eso no ayuda a decidir el voto, a quien miras?"
         )
     } else {
-        when (personality) {
-            BotPersonality.TRANQUI -> listOf(
-                "jaja despues lo hablamos, ahora concentrate: a quien miras vos?"
-            )
-            BotPersonality.PICANTE -> listOf(
-                "eso que tiene que ver? aca hay un traidor suelto, deci algo util"
-            )
-            BotPersonality.JODON -> listOf(
-                "buenisimo, contalo en el velorio del que muera esta noche. dale, a quien votas?"
-            )
-            BotPersonality.DESCONFIADO -> listOf(
-                "cambias de tema justo ahora... te estas haciendo el distraido? a quien miras?"
-            )
-            BotPersonality.IMPULSIVO -> listOf(
-                "menos vueltas y mas juego: tira un nombre o una pregunta"
-            )
-            BotPersonality.ANALITICO -> listOf(
-                "volvamos a la ronda: quien te genera mas dudas y por que?"
-            )
-        }
+        listOf("volvamos a la ronda, quien te genera mas dudas?")
     }
     return chooseFreshLine(options, session, bot, "off-topic:$repeated:$index:${socialChatSize(session)}")
 }
 
-internal fun lowEvidenceOpeningLine(session: GameSession, bot: GamePlayer, index: Int): String {
+internal fun lowEvidenceOpeningLine(
+    session: GameSession,
+    bot: GamePlayer,
+    target: String,
+    index: Int
+): String {
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:low-evidence:$index:${socialChatSize(session)}")
     val options = listOf(
         "por ahora no tengo nada fuerte, escuchemos versiones",
-        "arranquemos tranqui, acusar por acusar no sirve",
-        "yo preguntaria roles solo si hace falta, no quememos todo al toque",
-        "si alguien tiene dato real que lo tire sin regalar de mas",
-        "no me copa votar por silencio nomas, falta charla"
+        "$target, que rol decis tener?",
+        "$target, que hiciste anoche?",
+        "antes de votar quiero saber por que sospechan",
+        "si alguien tiene un dato que lo diga sin mostrar toda la carta"
     )
     return chooseFreshLine(options, session, bot, "low-evidence:$seed")
 }
@@ -618,107 +686,88 @@ internal fun chooseFreshLine(
 internal fun linesFor(intent: BotSpeechIntent, spokenTarget: String, reason: String): List<String> {
     return when (intent) {
         BotSpeechIntent.ASK -> listOf(
-            "$spokenTarget pq hiciste eso?",
-            "$spokenTarget explica bien lo tuyo, pq $reason?",
-            "che $spokenTarget y vos q decis de todo esto?",
-            "$spokenTarget posta no te parece raro q $reason?",
-            "$spokenTarget tirame una razon concreta",
-            "a ver $spokenTarget, conta bien que onda",
-            "$spokenTarget no te estoy acusando, pero explica eso",
-            "che posta $spokenTarget, eso como lo justificas?"
+            "$spokenTarget, que rol decis tener?",
+            "$spokenTarget, que hiciste anoche?",
+            "$spokenTarget, por que decis eso?",
+            "$spokenTarget, explica bien lo tuyo",
+            "$spokenTarget, a quien votarias ahora?",
+            "$spokenTarget, dame una razon concreta"
         )
         BotSpeechIntent.FOLLOW_UP -> listOf(
-            "$spokenTarget si pero no respondiste lo q te preguntaron",
-            "no no, para $spokenTarget, responde eso primero",
-            "$spokenTarget estas esquivando la pregunta hace rato",
-            "dale $spokenTarget contesta bien, pq $reason?",
-            "$spokenTarget no saltes a otra cosa, cerrá lo anterior",
-            "me falta la respuesta de $spokenTarget todavía",
-            "$spokenTarget estás pateando la pelota, respondé",
-            "eso de $spokenTarget quedo colgado"
+            "$spokenTarget, no respondiste lo que te preguntaron",
+            "$spokenTarget, responde eso primero",
+            "$spokenTarget estas evitando la pregunta",
+            "$spokenTarget, falta que expliques $reason",
+            "$spokenTarget no cambies de tema, cerra lo anterior",
+            "todavia falta la respuesta de $spokenTarget"
         )
         BotSpeechIntent.ACCUSE -> listOf(
-            "para mi $spokenTarget se esta regalando, $reason",
-            "$spokenTarget no me cierra nada amigo",
-            "dale $spokenTarget, $reason y queres q no sospeche?",
-            "yo lo digo ahora, $spokenTarget esta re raro",
-            "$spokenTarget viene flojisimo con eso",
-            "no me gusta nada lo de $spokenTarget",
-            "para mi hay que mirar fuerte a $spokenTarget",
+            "para mi hay que mirar a $spokenTarget por $reason",
+            "$spokenTarget no me cierra",
+            "$spokenTarget esta muy raro por $reason",
+            "$spokenTarget viene muy flojo con eso",
             "$spokenTarget cada vez me cierra menos",
-            "yo a $spokenTarget no le fío ni una moneda, $reason",
-            "$spokenTarget jura mucho y explica poco"
+            "$spokenTarget afirma mucho y explica poco"
         )
         BotSpeechIntent.DEFEND -> listOf(
-            "nah tampoco para matarlo por eso",
-            "yo a $spokenTarget no lo veo tan raro todavía",
-            "banco un toque a $spokenTarget, dejenlo explicar",
-            "capaz estamos flasheando cualquiera con $spokenTarget",
-            "no compremos tan rapido contra $spokenTarget",
-            "$spokenTarget todavía puede explicar, aflojen",
-            "a mi $spokenTarget no me parece el peor ahora",
-            "si vamos contra $spokenTarget que sea con algo mas",
-            "no quememos a $spokenTarget en la plaza sin escucharlo"
+            "eso no alcanza para votar a $spokenTarget",
+            "yo a $spokenTarget no lo veo tan raro todavia",
+            "dejen que $spokenTarget explique",
+            "capaz nos estamos equivocando con $spokenTarget",
+            "no cerremos tan rapido contra $spokenTarget",
+            "si vamos contra $spokenTarget que sea por algo concreto"
         )
         BotSpeechIntent.TEASE -> listOf(
-            "jajaja $spokenTarget esa explicacion fue malisima",
-            "$spokenTarget te estas regalando solo jsjs",
-            "kjjj dale $spokenTarget inventate una mejor",
-            "no puede ser $spokenTarget, cada vez te hundis mas jajaj",
-            "$spokenTarget esa no te la compra nadie",
-            "amigo $spokenTarget, ayudate un poco",
-            "$spokenTarget estas actuando para la tribuna",
-            "na $spokenTarget, eso sono muy armado",
-            "$spokenTarget esa mentira no sobrevive ni al primer gallo",
-            "jajaja $spokenTarget vendehumo de feria"
+            "$spokenTarget, esa explicacion no alcanza",
+            "$spokenTarget, eso sono muy armado",
+            "$spokenTarget, explica mejor porque no cierra",
+            "$spokenTarget, cada respuesta deja mas dudas"
         )
         BotSpeechIntent.CALM_DOWN -> listOf(
-            "para un toque, dejen hablar a $spokenTarget",
-            "bajen un cambio y q $spokenTarget explique",
-            "igual no votemos por votar, escuchemos a $spokenTarget",
-            "tranqui, primero veamos pq $reason",
+            "esperen, dejen hablar a $spokenTarget",
+            "primero que $spokenTarget explique",
+            "no votemos solo por seguir al resto",
             "no se apuren, falta escuchar a $spokenTarget",
-            "paren un poco, todavía hay tiempo",
-            "si lo van a marcar a $spokenTarget que sea con calma",
-            "ordenemos esto, porque sino votamos cualquier cosa",
-            "no armemos la horca antes del juicio, escuchemos a $spokenTarget"
+            "ordenemos esto antes de votar"
         )
         BotSpeechIntent.ADMIT_DOUBT -> listOf(
-            "igual nose, capaz estoy flasheando",
-            "puede ser eh, no la tengo tan clara",
-            "bueno capaz me fui al pasto con $spokenTarget",
-            "mmm no se, lo quiero pensar un toque",
-            "no estoy cerrado igual",
-            "me hace ruido pero puedo estar viendo fantasmas",
-            "capaz estoy viendo brujas donde no hay",
-            "si me equivoco después me hago cargo",
-            "lo tengo en duda, no como sentencia"
+            "igual puedo estar equivocado",
+            "puede ser, no la tengo tan clara",
+            "capaz me apure con $spokenTarget",
+            "no se, lo quiero pensar un poco",
+            "me hace ruido pero no estoy seguro",
+            "lo tengo en duda, no como algo seguro"
         )
     }
 }
 
 internal fun defensiveLine(session: GameSession, bot: GamePlayer, mood: BotMood): String {
     return when {
-        mood == BotMood.ANNOYED -> "dale amigo me marcas a mi y ni explicas pq"
-        personalityFor(session, bot) == BotPersonality.JODON -> "jajaja ahora yo? dale, tirame una razon aunque sea"
+        mood == BotMood.ANNOYED -> "me marcas a mi y ni explicas por que"
+        personalityFor(session, bot) == BotPersonality.JODON -> "ahora yo? dame una razon concreta"
         personalityFor(session, bot) == BotPersonality.IMPULSIVO -> "para para yo no dije eso, no inventes"
-        else -> "bueno me marcas a mi, pero decime q hice concretamente"
+        else -> "me marcas a mi, pero decime que hice concretamente"
     }
 }
 
-internal fun botToBotLine(session: GameSession, bot: GamePlayer, index: Int): String? {
-    if (index == 0) return null
+internal fun botToBotLine(session: GameSession, bot: GamePlayer): String? {
     val recent = recentPublicMessages(session)
-    val lastBotMessage = recent.asReversed().firstOrNull { message ->
+    val lastBotMessage = recent.lastOrNull()?.takeIf { message ->
         message.speaker != bot.name &&
             session.players.any { !it.isHuman && it.name == message.speaker }
     } ?: return null
     val speaker = lastBotMessage.speaker
-    if (
-        mentionsName(lastBotMessage.message, bot.name) &&
-        hasAccusatoryTargetSignal(lastBotMessage.message)
-    ) {
+    val botWasAddressed = mentionsName(lastBotMessage.message, bot.name)
+    val directStatement = LocalBotAi.publicStatementFrom(session, lastBotMessage.message)
+    val directlyAccusesBot = directStatement?.target == bot.name &&
+        directStatement.type in setOf(StatementType.ACCUSE, StatementType.VOTE)
+    if (botWasAddressed && directlyAccusesBot) {
         return defensiveLine(session, bot, moodFor(session, bot, lastBotMessage.message))
+    }
+    if (botWasAddressed && lastBotMessage.message.contains("?")) {
+        BotPerception.humanQuestionKind(lastBotMessage.message)?.let { kind ->
+            return directHumanQuestionReply(session, bot, lastBotMessage.message, kind)
+        }
     }
     val target = mentionedPlayerNames(session, lastBotMessage.message)
         .firstOrNull { it != bot.name && it != speaker }

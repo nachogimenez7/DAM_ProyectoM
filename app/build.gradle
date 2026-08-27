@@ -17,8 +17,8 @@ android {
         applicationId "com.traidores.juego"
         minSdk 24
         targetSdk 36
-        versionCode 14
-        versionName "0.1.13"
+        versionCode 15
+        versionName "0.1.14"
     }
 
     buildTypes {
@@ -59,6 +59,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-database'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
     implementation 'com.google.firebase:firebase-crashlytics'
+    implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.android.gms:play-services-games-v2:21.0.0'
     debugImplementation 'com.google.firebase:firebase-appcheck-debug'
 
