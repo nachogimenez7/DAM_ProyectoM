@@ -15,14 +15,10 @@ class DirectVotePolicyTest {
     }
 
     @Test
-    fun `la seleccion puede cambiar localmente hasta confirmar`() {
-        assertTrue(DirectVotePolicy.canSelect("", "Mora", confirmed = false))
-        assertTrue(DirectVotePolicy.canSelect("Mora", "Dina", confirmed = false))
-        assertFalse(DirectVotePolicy.canSelect("Mora", "Mora", confirmed = false))
-        assertFalse(DirectVotePolicy.canSelect("Mora", "Dina", confirmed = true))
-        assertTrue(DirectVotePolicy.shouldConfirm("Mora", "Mora", confirmed = false))
-        assertFalse(DirectVotePolicy.shouldConfirm("Mora", "Dina", confirmed = false))
-        assertFalse(DirectVotePolicy.shouldConfirm("Mora", "Mora", confirmed = true))
+    fun `el voto se registra con un toque y puede cambiar de objetivo`() {
+        assertTrue(DirectVotePolicy.canSelect("", "Mora"))
+        assertTrue(DirectVotePolicy.canSelect("Mora", "Dina"))
+        assertFalse(DirectVotePolicy.canSelect("Mora", "Mora"))
         assertEquals("Dina", DirectVotePolicy.select("Dina"))
     }
 

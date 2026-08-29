@@ -108,7 +108,9 @@ class GameplayChatController(
     private var lastObservedPhaseIndex = -1
     private var wasOracleInvitedToPublicChat = false
     private var unreadChatCount = 0
+    private var unreadMessagesOnOpen = 0
     private var lastAmbientFeedRenderKey = ""
+    private var lastAnimatedAmbientEntryKey = ""
     private var lastExpandedChatRenderKey = ""
     private var lastChatBackgroundRenderKey = ""
     private var onlineChatQuery: Query? = null
@@ -161,10 +163,19 @@ class GameplayChatController(
     private val btnChatPrivateTab: Button = root.findViewById(R.id.btnChatPrivateTab)
     private val chatAmbientFeed: FrameLayout = root.findViewById(R.id.chatAmbientFeed)
     private val chatAmbientBackground: ImageView = root.findViewById(R.id.chatAmbientBackground)
+    private val chatAmbientComposition: TextView = root.findViewById(R.id.chatAmbientComposition)
     private val chatAmbientHint: TextView = root.findViewById(R.id.chatAmbientHint)
     private val chatAmbientMessages: LinearLayout = root.findViewById(R.id.chatAmbientMessages)
+    private val chatAmbientParticles: AmbientParticlesView = root.findViewById(R.id.chatAmbientParticles)
+    private val chatAmbientRoundCard: LinearLayout = root.findViewById(R.id.chatAmbientRoundCard)
+    private val chatAmbientRoundSubtitle: TextView = root.findViewById(R.id.chatAmbientRoundSubtitle)
+    private val chatAmbientRoundTitle: TextView = root.findViewById(R.id.chatAmbientRoundTitle)
+    private val chatAmbientScroll: ScrollView = root.findViewById(R.id.chatAmbientScroll)
     private val chatAmbientShade: View = root.findViewById(R.id.chatAmbientShade)
     private val chatAmbientTitle: TextView = root.findViewById(R.id.chatAmbientTitle)
+    private val chatAmbientTitleDividerEnd: View = root.findViewById(R.id.chatAmbientTitleDividerEnd)
+    private val chatAmbientTitleDividerSeal: TextView = root.findViewById(R.id.chatAmbientTitleDividerSeal)
+    private val chatAmbientTitleDividerStart: View = root.findViewById(R.id.chatAmbientTitleDividerStart)
     private val chatCharacterCount: TextView = root.findViewById(R.id.chatCharacterCount)
     private val chatComposer: LinearLayout = root.findViewById(R.id.chatComposer)
     private val chatFeedTitle: TextView = root.findViewById(R.id.chatFeedTitle)
@@ -186,6 +197,7 @@ class GameplayChatController(
 
     private val centerColumn: FrameLayout = root.findViewById(R.id.centerColumn)
     private val topStatus: LinearLayout = root.findViewById(R.id.topStatus)
+    private val btnReadyToVote: Button = root.findViewById(R.id.btnReadyToVote)
     private val bottomPlayerPanel: LinearLayout = root.findViewById(R.id.bottomPlayerPanel)
     private val roleCard: View = root.findViewById(R.id.roleCard)
     private val currentPlayerName: TextView = root.findViewById(R.id.currentPlayerName)
@@ -206,7 +218,8 @@ class GameplayChatController(
             ?.let { savedChannel -> runCatching { ChatChannel.valueOf(savedChannel) }.getOrNull() }
             ?: when {
                 oracleInvited -> ChatChannel.PUBLICO
-                host.isOnlineGameplay() && !humanAlive -> ChatChannel.ESPECTADORES
+                (host.isOnlineGameplay() || initialSession.onlineTestMode) && !humanAlive ->
+                    ChatChannel.ESPECTADORES
                 GameEngine.canSeeTraitorChat(initialHuman) &&
                     GameplayTableUi.isNightPhase(initialSession.phase) -> ChatChannel.TRAIDORES
                 else -> ChatChannel.PUBLICO
@@ -217,7 +230,7 @@ class GameplayChatController(
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
-        chatAmbientFeed.setOnClickListener { openExpanded(focusInput = true) }
+        chatAmbientHint.setOnClickListener { openExpanded(focusInput = true) }
         btnCloseChat.setOnClickListener { closeChatPanel() }
         btnChatFeedFilter.setOnClickListener { toggleFeedFilter() }
         btnChatPublicTab.setOnClickListener { selectChatChannel(ChatChannel.PUBLICO) }
@@ -336,6 +349,7 @@ class GameplayChatController(
         if (isChatOpen || isClosingForInteractivePhase || !host.canOpenExpandedChat()) return
         GameplayEffects.play(root.context, GameplayEffect.PANEL)
         isChatOpen = true
+        unreadMessagesOnOpen = unreadChatCount
         unreadChatCount = 0
         newChatMessagesWhileTyping = 0
         lastSeenChatCount = host.currentSession.chatHistory.size
@@ -573,12 +587,13 @@ class GameplayChatController(
         animate: Boolean,
         onClosed: (() -> Unit)? = null
     ) {
+        val shouldAnimate = animate && !VisualEffectsPreferences.isReduced(root.context)
         chatPanel.animate().cancel()
         renderAmbientChatFeed()
         if (isChatOpen) {
             chatAmbientFeed.visibility = View.GONE
             chatPanel.visibility = View.VISIBLE
-            if (animate) {
+            if (shouldAnimate) {
                 chatPanel.translationX = 0f
                 chatPanel.translationY = host.dp(8).toFloat()
                 chatPanel.scaleX = 0.96f
@@ -594,7 +609,7 @@ class GameplayChatController(
             } else {
                 resetChatPanelTransform()
             }
-        } else if (animate && chatPanel.visibility == View.VISIBLE) {
+        } else if (shouldAnimate && chatPanel.visibility == View.VISIBLE) {
             chatPanel.animate()
                 .translationY(host.dp(8).toFloat())
                 .scaleX(0.96f)
@@ -911,7 +926,12 @@ class GameplayChatController(
         }
 
         val channel = activeChatChannel()
-        val sourceMessages = activeChannelMessages(channel).let { messages ->
+        val sourceMessages = activeChannelMessages(channel)
+            .filterNot { message ->
+                message.isGod &&
+                    message.message.startsWith("Dios preparo una partida", ignoreCase = true)
+            }
+            .let { messages ->
             if (channel == ChatChannel.TRAIDORES) {
                 messages.filter { it.round == host.currentSession.round }
             } else {
@@ -922,20 +942,23 @@ class GameplayChatController(
             sourceMessages.takeLast(CHAT_AMBIENT_SOURCE_LIMIT)
         )
             .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
+            .filterNot { entry ->
+                entry.kind == ChronicleEntryKind.SYSTEM &&
+                    entry.text.startsWith("Dios preparo una partida", ignoreCase = true)
+            }
             .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
         val canChat = canHumanChatInChannel(channel)
+        updateAmbientFeedInsets()
         val renderKey = listOf(
             channel.name,
             entries,
             canChat,
             host.currentSession.phase.name,
+            host.currentSession.round,
+            host.currentSession.publicAnnouncement,
+            host.currentSession.players.mapNotNull { it.role?.key },
             host.gameplayTextScale
         ).joinToString("|")
-        if (entries.isEmpty() && !canChat) {
-            chatAmbientFeed.visibility = View.GONE
-            lastAmbientFeedRenderKey = renderKey
-            return
-        }
 
         if (lastAmbientFeedRenderKey == renderKey && chatAmbientMessages.childCount > 0) {
             chatAmbientFeed.visibility = View.VISIBLE
@@ -943,29 +966,43 @@ class GameplayChatController(
         }
         lastAmbientFeedRenderKey = renderKey
 
+        val ambientContent = chatAmbientScroll.getChildAt(0)
+        val wasFollowingLatest = ambientContent == null ||
+            chatAmbientScroll.scrollY + chatAmbientScroll.height >=
+            ambientContent.height - host.dp(CHAT_AMBIENT_BOTTOM_TOLERANCE_DP)
+
         renderChatBackgrounds()
         renderChatTitle()
+        renderAmbientPinnedInfo(channel)
         chatAmbientMessages.removeAllViews()
+        chatAmbientMessages.gravity = if (entries.isEmpty()) Gravity.CENTER else Gravity.BOTTOM
         if (entries.isEmpty()) {
             chatAmbientMessages.addView(createAmbientPlaceholderRow())
+            lastAnimatedAmbientEntryKey = ""
         } else {
-            entries.forEach { entry ->
-                chatAmbientMessages.addView(createAmbientFeedRow(entry))
+            val newestEntryKey = ambientEntryAnimationKey(channel, entries.last(), entries.size)
+            entries.forEachIndexed { index, entry ->
+                val row = createAmbientFeedRow(entry)
+                chatAmbientMessages.addView(row)
+                if (index == entries.lastIndex && newestEntryKey != lastAnimatedAmbientEntryKey) {
+                    animateAmbientEntry(row)
+                }
             }
+            lastAnimatedAmbientEntryKey = newestEntryKey
         }
-        chatAmbientHint.text = if (canChat) {
-            when (channel) {
-                ChatChannel.PUBLICO -> "Escribí un mensaje..."
-                ChatChannel.TRAIDORES -> "Escribí al chat secreto..."
-                ChatChannel.ESPECTADORES -> "Escribí a los espectadores..."
-            }
-        } else {
-            chatInputHint(canChat, channel)
+        if (wasFollowingLatest) {
+            chatAmbientScroll.post { chatAmbientScroll.fullScroll(View.FOCUS_DOWN) }
         }
+        chatAmbientHint.text = ambientInvitation(channel, canChat)
         chatAmbientHint.visibility = View.VISIBLE
 
         if (chatAmbientFeed.visibility != View.VISIBLE) {
             chatAmbientFeed.visibility = View.VISIBLE
+            if (VisualEffectsPreferences.isReduced(root.context)) {
+                chatAmbientFeed.alpha = 1f
+                chatAmbientFeed.translationY = 0f
+                return
+            }
             chatAmbientFeed.alpha = 0f
             chatAmbientFeed.translationY = host.dp(6).toFloat()
             chatAmbientFeed.animate()
@@ -978,15 +1015,25 @@ class GameplayChatController(
 
     private fun createAmbientPlaceholderRow(): View {
         val channel = activeChatChannel()
+        val accent = when (channel) {
+            ChatChannel.PUBLICO -> Color.parseColor("#D7A646")
+            ChatChannel.TRAIDORES -> Color.parseColor("#D76A65")
+            ChatChannel.ESPECTADORES -> Color.parseColor("#A9C8EA")
+        }
+        val fill = when (channel) {
+            ChatChannel.PUBLICO -> Color.parseColor("#341B150E")
+            ChatChannel.TRAIDORES -> Color.parseColor("#451C0D11")
+            ChatChannel.ESPECTADORES -> Color.parseColor("#45101E30")
+        }
         return TextView(root.context).apply {
             text = when (channel) {
-                ChatChannel.PUBLICO -> "El pueblo aun no hablo"
-                ChatChannel.TRAIDORES -> "El plan aun no tiene notas"
-                ChatChannel.ESPECTADORES -> "Los muertos todavía no hablaron"
+                ChatChannel.PUBLICO -> "◆  La plaza espera la primera acusación…"
+                ChatChannel.TRAIDORES -> "◆  La noche aguarda una decisión…"
+                ChatChannel.ESPECTADORES -> "◆  Los muertos observan en silencio…"
             }
             gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            maxLines = 2
+            minHeight = host.dp(92)
             setTextColor(
                 root.context.getColor(
                     when (channel) {
@@ -996,10 +1043,50 @@ class GameplayChatController(
                     }
                 )
             )
-            textSize = 12f * host.gameplayTextScale
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
-            setPadding(0, host.dp(2), 0, host.dp(2))
+            textSize = 11.5f * host.gameplayTextScale
+            typeface = Typeface.create(cronistaTypeface(), Typeface.ITALIC)
+            background = angularBackground(
+                fillColor = fill,
+                strokeColor = colorWithAlpha(accent, 118),
+                cornerRadiusDp = 4
+            )
+            setPadding(host.dp(12), host.dp(12), host.dp(12), host.dp(12))
         }
+    }
+
+    private fun ambientEntryAnimationKey(
+        channel: ChatChannel,
+        entry: ChronicleEntry,
+        visibleEntryCount: Int
+    ): String = listOf(
+        channel.name,
+        visibleEntryCount,
+        entry.kind.name,
+        entry.round,
+        entry.speaker,
+        entry.text
+    ).joinToString("|")
+
+    private fun animateAmbientEntry(view: View) {
+        if (VisualEffectsPreferences.isReduced(root.context)) {
+            view.alpha = 1f
+            view.translationY = 0f
+            view.scaleX = 1f
+            view.scaleY = 1f
+            return
+        }
+        view.alpha = 0f
+        view.translationY = host.dp(12).toFloat()
+        view.scaleX = 0.985f
+        view.scaleY = 0.985f
+        view.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(320L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
     }
 
     private fun createAmbientFeedRow(entry: ChronicleEntry): View {
@@ -1007,7 +1094,7 @@ class GameplayChatController(
         val channel = activeChatChannel()
         val row = LinearLayout(root.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.TOP
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
         val speakerName = entry.speaker.orEmpty()
@@ -1027,8 +1114,7 @@ class GameplayChatController(
         }
         val body = TextView(root.context).apply {
             text = entry.text
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            maxLines = CHAT_AMBIENT_MESSAGE_MAX_LINES
             setTextColor(
                 root.context.getColor(
                     when (channel) {
@@ -1059,8 +1145,7 @@ class GameplayChatController(
     private fun createAmbientGodRow(message: GameChatMessage): View {
         return TextView(root.context).apply {
             text = "✦ ${message.message}"
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            maxLines = CHAT_AMBIENT_MESSAGE_MAX_LINES
             setTextColor(root.context.getColor(R.color.accent_gold))
             textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
@@ -1072,8 +1157,14 @@ class GameplayChatController(
         val event = eventPresentationFor(entry)
         val row = LinearLayout(root.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, host.dp(2), 0, host.dp(2))
+            gravity = Gravity.TOP
+            setPadding(host.dp(7), host.dp(6), host.dp(7), host.dp(6))
+            background = gradientBackground(
+                startColor = colorWithAlpha(event.backgroundColor, 196),
+                endColor = Color.parseColor("#C423190F"),
+                strokeColor = colorWithAlpha(event.strokeColor, 188),
+                cornerRadiusDp = 4
+            )
         }
         val iconView = ImageView(root.context).apply {
             setImageResource(event.iconRes)
@@ -1095,12 +1186,18 @@ class GameplayChatController(
         })
         row.addView(TextView(root.context).apply {
             text = entry.text
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            maxLines = CHAT_AMBIENT_MESSAGE_MAX_LINES
             setTextColor(event.iconColor)
             textSize = 11.5f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = host.dp(3)
+            bottomMargin = host.dp(3)
+        }
         return row
     }
 
@@ -1136,13 +1233,8 @@ class GameplayChatController(
             }
             ChatChannel.PUBLICO -> Unit
         }
-        val (compactTitle, expandedTitle) = when (host.currentSession.mapKey) {
-            "grecia" -> "CHAT DE LA POLIS" to "CRONISTA DE LA POLIS"
-            "medieval" -> "CHAT DEL FEUDO" to "CRONISTA DEL FEUDO"
-            else -> "CHAT DEL PUEBLO" to "CRONISTA DEL PUEBLO"
-        }
-        chatAmbientTitle.text = compactTitle
-        chatFeedTitle.text = expandedTitle
+        chatAmbientTitle.text = "CHAT DEL PUEBLO"
+        chatFeedTitle.text = "CHAT DEL PUEBLO"
         chatFeedTitle.maxLines = 1
         chatFeedTitle.ellipsize = TextUtils.TruncateAt.END
         chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -1739,7 +1831,8 @@ class GameplayChatController(
             typingBotSpeakers.toList(),
             host.gameplayTextScale,
             chatPanel.width,
-            host.isOnlineGameplay()
+            host.isOnlineGameplay(),
+            unreadMessagesOnOpen
         ).joinToString("|")
         if (lastExpandedChatRenderKey == renderKey && chatMessagesContainer.childCount > 0) {
             return
@@ -1781,16 +1874,20 @@ class GameplayChatController(
         val humanName = GameEngine.humanPlayer(host.currentSession).name
         val bubbleMaxWidth = ((chatPanel.width.takeIf { it > 0 } ?: host.dp(360)) - host.dp(56))
             .coerceIn(host.dp(190), host.dp(420))
-        entries.forEach { entry ->
+        val unreadStart = (entries.size - unreadMessagesOnOpen).coerceIn(0, entries.size)
+        entries.forEachIndexed { index, entry ->
+            if (unreadMessagesOnOpen > 0 && index == unreadStart) {
+                chatMessagesContainer.addView(createUnreadDivider(unreadMessagesOnOpen))
+            }
             when (entry.kind) {
                 ChronicleEntryKind.DAY_DIVIDER -> {
                     chatMessagesContainer.addView(createDayDivider(entry))
-                    return@forEach
+                    return@forEachIndexed
                 }
                 ChronicleEntryKind.PLAYER -> Unit
                 else -> {
                     addGodEventBanner(entry)
-                    return@forEach
+                    return@forEachIndexed
                 }
             }
             val speakerName = entry.speaker.orEmpty()
@@ -1848,10 +1945,238 @@ class GameplayChatController(
         chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
     }
 
+    private fun renderAmbientPinnedInfo(channel: ChatChannel) {
+        val session = host.currentSession
+        val composition = ambientCompositionText(session)
+        chatAmbientComposition.text = composition
+        val compositionSizeSp = when {
+            composition.length > 130 -> 7.0f
+            composition.length > 100 -> 7.7f
+            composition.length > 76 -> 8.5f
+            else -> 9.5f
+        }
+        chatAmbientComposition.setTextSize(TypedValue.COMPLEX_UNIT_SP, compositionSizeSp)
+        chatAmbientComposition.maxLines = if (composition.length > 130) 4 else 3
+        chatAmbientComposition.minHeight = host.dp(if (composition.length > 130) 50 else 34)
+        chatAmbientComposition.ellipsize = null
+        val (roundTitle, roundSubtitle) = ambientRoundPresentation(session, channel)
+        chatAmbientRoundTitle.text = roundTitle
+        chatAmbientRoundSubtitle.text = roundSubtitle
+
+        val traitors = channel == ChatChannel.TRAIDORES
+        val spectators = channel == ChatChannel.ESPECTADORES
+        val accent = Color.parseColor(
+            when {
+                traitors -> "#D76A65"
+                spectators -> "#A9C8EA"
+                else -> "#D7A646"
+            }
+        )
+        val text = Color.parseColor(
+            when {
+                traitors -> "#F0DDD1"
+                spectators -> "#E1ECF7"
+                else -> "#F0E2C5"
+            }
+        )
+        val compositionFill = Color.parseColor(
+            when {
+                traitors -> "#B0150B0E"
+                spectators -> "#B00C1827"
+                else -> "#A51A160F"
+            }
+        )
+        val roundFill = Color.parseColor(
+            when {
+                traitors -> "#C02B1116"
+                spectators -> "#C0142940"
+                else -> "#B72B2113"
+            }
+        )
+        chatAmbientComposition.setTextColor(text)
+        chatAmbientComposition.background = angularBackground(
+            fillColor = compositionFill,
+            strokeColor = colorWithAlpha(accent, 150),
+            cornerRadiusDp = 3
+        )
+        chatAmbientRoundCard.background = gradientBackground(
+            startColor = roundFill,
+            endColor = colorWithAlpha(roundFill, 205),
+            strokeColor = colorWithAlpha(accent, 205),
+            cornerRadiusDp = 4
+        )
+        chatAmbientRoundTitle.setTextColor(accent)
+        chatAmbientRoundSubtitle.setTextColor(text)
+        chatAmbientTitleDividerStart.setBackgroundColor(colorWithAlpha(accent, 212))
+        chatAmbientTitleDividerEnd.setBackgroundColor(colorWithAlpha(accent, 212))
+        chatAmbientTitleDividerSeal.setTextColor(accent)
+        chatAmbientParticles.setMode(
+            when (channel) {
+                ChatChannel.PUBLICO -> AmbientParticlesView.Mode.PUBLIC
+                ChatChannel.TRAIDORES -> AmbientParticlesView.Mode.TRAITORS
+                ChatChannel.ESPECTADORES -> AmbientParticlesView.Mode.SPECTATORS
+            }
+        )
+        chatAmbientParticles.setReducedMotion(VisualEffectsPreferences.isReduced(root.context))
+    }
+
+    private fun ambientCompositionText(session: GameSession): String {
+        val counts = session.players
+            .mapNotNull { it.role?.key }
+            .groupingBy { it }
+            .eachCount()
+        if (counts.isEmpty()) return "PARTIDA · ${session.players.size} jugadores"
+        val order = listOf(
+            RoleCatalog.ALDEANO,
+            RoleCatalog.POLICIA,
+            RoleCatalog.MEDICO,
+            RoleCatalog.ALCALDE,
+            RoleCatalog.ASESINO,
+            RoleCatalog.MERCENARIO,
+            RoleCatalog.ESPIA,
+            RoleCatalog.DESERTOR,
+            RoleCatalog.PAYADOR,
+            RoleCatalog.ORACULO,
+            RoleCatalog.BUFON
+        )
+        val orderedKeys = order.filter { it in counts } + counts.keys.filterNot { it in order }.sorted()
+        return "PARTIDA · " + orderedKeys.joinToString(" · ") { key ->
+            val count = counts.getValue(key)
+            "$count ${ambientRoleLabel(key, count)}"
+        }
+    }
+
+    private fun createUnreadDivider(count: Int): View {
+        val accent = when (activeChatChannel()) {
+            ChatChannel.PUBLICO -> Color.parseColor("#D7A646")
+            ChatChannel.TRAIDORES -> Color.parseColor("#D76A65")
+            ChatChannel.ESPECTADORES -> Color.parseColor("#A9C8EA")
+        }
+        return TextView(root.context).apply {
+            text = if (count == 1) "◆  1 MENSAJE NUEVO  ◆" else "◆  $count MENSAJES NUEVOS  ◆"
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setTextColor(accent)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+            typeface = Typeface.DEFAULT_BOLD
+            background = angularBackground(
+                fillColor = Color.parseColor("#B51B150F"),
+                strokeColor = colorWithAlpha(accent, 180),
+                cornerRadiusDp = 3
+            )
+            setPadding(host.dp(8), host.dp(5), host.dp(8), host.dp(5))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = host.dp(5)
+                bottomMargin = host.dp(5)
+                marginStart = host.dp(18)
+                marginEnd = host.dp(18)
+            }
+        }
+    }
+
+    private fun ambientRoleLabel(roleKey: String, count: Int): String = when (roleKey) {
+        RoleCatalog.ALDEANO -> if (count == 1) "Aldeano" else "Aldeanos"
+        RoleCatalog.POLICIA -> if (count == 1) "Detective" else "Detectives"
+        RoleCatalog.MEDICO -> if (count == 1) "Médico" else "Médicos"
+        RoleCatalog.ALCALDE -> if (count == 1) "Alcalde" else "Alcaldes"
+        RoleCatalog.ASESINO -> if (count == 1) "Asesino" else "Asesinos"
+        RoleCatalog.MERCENARIO -> if (count == 1) "Mercenario" else "Mercenarios"
+        RoleCatalog.ESPIA -> if (count == 1) "Espía" else "Espías"
+        RoleCatalog.DESERTOR -> if (count == 1) "Desertor" else "Desertores"
+        RoleCatalog.PAYADOR -> if (count == 1) "Payador" else "Payadores"
+        RoleCatalog.ORACULO -> if (count == 1) "Oráculo" else "Oráculos"
+        RoleCatalog.BUFON -> if (count == 1) "Bufón" else "Bufones"
+        else -> roleKey.replaceFirstChar { it.uppercase() }
+    }
+
+    private fun ambientRoundPresentation(
+        session: GameSession,
+        channel: ChatChannel
+    ): Pair<String, String> {
+        if (channel == ChatChannel.ESPECTADORES) {
+            val period = if (GameplayTableUi.isNightPhase(session.phase)) "NOCHE" else "DÍA"
+            return "OBSERVANDO · $period ${session.round}" to
+                session.publicAnnouncement.ifBlank { "La partida continúa sin vos." }
+        }
+        return when (session.phase) {
+            GamePhase.REPARTO -> "COMIENZA LA PARTIDA" to "Conocé tu rol y observá bien la mesa."
+            GamePhase.NOCHE_ASESINO,
+            GamePhase.NOCHE_MERCENARIO,
+            GamePhase.NOCHE_POLICIA,
+            GamePhase.NOCHE_MEDICO,
+            GamePhase.NOCHE_ORACULO -> {
+                val subtitle = if (channel == ChatChannel.TRAIDORES) {
+                    "El pueblo duerme. Los Traidores planean en secreto."
+                } else {
+                    "El pueblo duerme. El chat vuelve al amanecer."
+                }
+                "NOCHE ${session.round}" to subtitle
+            }
+            GamePhase.AMANECER -> "AMANECER · DÍA ${session.round}" to morningSummary(session)
+            GamePhase.DIA_DEBATE -> "DÍA ${session.round} · DEBATE" to morningSummary(session)
+            GamePhase.CONTRAPUNTO -> "CONTRAPUNTO · DÍA ${session.round}" to
+                session.publicAnnouncement.ifBlank { "Dos voces quedan frente a frente." }
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION,
+            GamePhase.ALCALDE_DESEMPATE -> "VOTACIÓN · DÍA ${session.round}" to
+                "Tocá una carta para votar. Podés cambiar hasta el cierre."
+            GamePhase.RECUENTO_VOTOS -> "RECUENTO · DÍA ${session.round}" to
+                session.publicAnnouncement.ifBlank { "El pueblo espera el resultado." }
+            GamePhase.RESULTADO -> "FIN DE LA PARTIDA" to
+                session.publicAnnouncement.ifBlank { "La mesa ya tiene un ganador." }
+        }
+    }
+
+    private fun morningSummary(session: GameSession): String {
+        return session.publicHistory.asReversed().firstOrNull { line ->
+            line.contains("Amanecer", ignoreCase = true) ||
+                line.contains("murió", ignoreCase = true) ||
+                line.contains("murio", ignoreCase = true) ||
+                line.contains("sobreviv", ignoreCase = true) ||
+                line.contains("no murió", ignoreCase = true)
+        } ?: session.publicAnnouncement.ifBlank { "El pueblo despierta y empieza a debatir." }
+    }
+
+    private fun ambientInvitation(channel: ChatChannel, canChat: Boolean): String {
+        if (!canChat) return chatInputHint(canChat, channel)
+        return when (channel) {
+            ChatChannel.PUBLICO -> "Rompé el silencio. ¿Quién te parece sospechoso?"
+            ChatChannel.TRAIDORES -> "Hablen bajo. El pueblo no debe oírlos."
+            ChatChannel.ESPECTADORES -> "¿Qué viste que los vivos todavía no?"
+        }
+    }
+
     private fun selectChatChannel(channel: ChatChannel) {
         val allowed = channel == ChatChannel.PUBLICO || channel == privateChatChannelForUi()
         if (!allowed || selectedChatChannel == channel) return
         GameplayEffects.play(root.context, GameplayEffect.PANEL)
+        if (VisualEffectsPreferences.isReduced(root.context)) {
+            applySelectedChatChannel(channel)
+            return
+        }
+        val transitionTarget: View = if (isChatOpen) chatPanelContent else chatAmbientFeed
+        transitionTarget.animate().cancel()
+        transitionTarget.animate()
+            .alpha(0f)
+            .translationX(host.dp(if (channel == ChatChannel.PUBLICO) -8 else 8).toFloat())
+            .setDuration(115L)
+            .withEndAction {
+                applySelectedChatChannel(channel)
+                transitionTarget.translationX =
+                    host.dp(if (channel == ChatChannel.PUBLICO) 8 else -8).toFloat()
+                transitionTarget.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .setDuration(190L)
+                    .start()
+            }
+            .start()
+    }
+
+    private fun applySelectedChatChannel(channel: ChatChannel) {
         selectedChatChannel = channel
         showOnlyEvents = false
         lastExpandedChatRenderKey = ""
@@ -3025,6 +3350,36 @@ class GameplayChatController(
         }
     }
 
+    private fun updateAmbientFeedInsets() {
+        val params = chatAmbientFeed.layoutParams as? FrameLayout.LayoutParams ?: return
+        val topHeight = topStatus.layoutParams.height.takeIf { it > 0 }
+            ?: topStatus.height.takeIf { it > 0 }
+            ?: host.dp(CHAT_AMBIENT_FALLBACK_TOP_HEIGHT_DP)
+        val bottomPanelHeight = bottomPlayerPanel.layoutParams.height.takeIf { it > 0 }
+            ?: bottomPlayerPanel.height.takeIf { it > 0 }
+            ?: host.dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)
+        val topMargin = topHeight + host.dp(CHAT_AMBIENT_EDGE_GAP_DP)
+        var bottomMargin = bottomPanelHeight + host.dp(CHAT_AMBIENT_EDGE_GAP_DP)
+
+        if (btnReadyToVote.visibility == View.VISIBLE) {
+            val readyParams = btnReadyToVote.layoutParams as? FrameLayout.LayoutParams
+            val readyHeight = btnReadyToVote.layoutParams.height.takeIf { it > 0 }
+                ?: btnReadyToVote.height.takeIf { it > 0 }
+                ?: host.dp(CHAT_AMBIENT_READY_HEIGHT_DP)
+            val readyBottomMargin = readyParams?.bottomMargin
+                ?: host.dp(CHAT_AMBIENT_READY_BOTTOM_MARGIN_DP)
+            bottomMargin = maxOf(
+                bottomMargin,
+                readyBottomMargin + readyHeight + host.dp(CHAT_AMBIENT_READY_GAP_DP)
+            )
+        }
+
+        if (params.topMargin == topMargin && params.bottomMargin == bottomMargin) return
+        params.topMargin = topMargin
+        params.bottomMargin = bottomMargin
+        chatAmbientFeed.layoutParams = params
+    }
+
     private fun scheduleQueuedHumanReaction(session: GameSession) {
         if (directorSpamNoticePending && directorSpamNoticeShownPhaseIndex != session.phaseIndex) {
             val beat = BotConversationDirector.spamReactionBeat(session, directorLastSpeaker)
@@ -3426,9 +3781,13 @@ class GameplayChatController(
         ).joinToString("|")
         if (lastChatBackgroundRenderKey == renderKey) return
         lastChatBackgroundRenderKey = renderKey
-        val logDrawable = host.chatLogDrawableRes()
-        chatPanelBackground.setImageResource(logDrawable)
-        chatAmbientBackground.setImageResource(logDrawable)
+        val backgroundDrawable = when (channel) {
+            ChatChannel.TRAIDORES -> R.drawable.chat_background_traitors
+            ChatChannel.ESPECTADORES -> R.drawable.chat_background_spectators
+            ChatChannel.PUBLICO -> host.chatLogDrawableRes()
+        }
+        chatPanelBackground.setImageResource(backgroundDrawable)
+        chatAmbientBackground.setImageResource(backgroundDrawable)
         when (channel) {
             ChatChannel.TRAIDORES -> {
                 renderPrivateChatBackgrounds(PrivateChatTheme.TRAITORS)
@@ -3489,15 +3848,16 @@ class GameplayChatController(
         val muted = Color.parseColor(if (traitors) "#9F7775" else "#7891AD")
 
         chatPanel.background = angularBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 244 else 230),
+            fillColor = colorWithAlpha(bg, if (writable) 70 else 88),
             strokeColor = accent,
             cornerRadiusDp = 5,
             strokeWidthDp = 2
         )
         chatAmbientFeed.background = angularBackground(
-            fillColor = colorWithAlpha(bg, if (writable) 232 else 218),
-            strokeColor = colorWithAlpha(accent, 210),
-            cornerRadiusDp = 5
+            fillColor = colorWithAlpha(bg, if (writable) 54 else 74),
+            strokeColor = accentBright,
+            cornerRadiusDp = 5,
+            strokeWidthDp = 2
         )
         applyChatFrameForegrounds(
             panelFrame = if (traitors) {
@@ -3512,14 +3872,14 @@ class GameplayChatController(
             }
         )
         chatPanelShade.background = gradientBackground(
-            startColor = colorWithAlpha(panel, 238),
-            endColor = colorWithAlpha(bg, 249),
+            startColor = colorWithAlpha(panel, 96),
+            endColor = colorWithAlpha(bg, 142),
             strokeColor = colorWithAlpha(accent, 95),
             cornerRadiusDp = 4
         )
         chatAmbientShade.background = gradientBackground(
-            startColor = colorWithAlpha(panel, 222),
-            endColor = colorWithAlpha(bg, 240),
+            startColor = colorWithAlpha(panel, 82),
+            endColor = colorWithAlpha(bg, 134),
             strokeColor = colorWithAlpha(accent, 72),
             cornerRadiusDp = 4
         )
@@ -3557,8 +3917,8 @@ class GameplayChatController(
         )
         btnCloseChat.setColorFilter(text)
         chatNewMessages.setTextColor(accentBright)
-        chatAmbientBackground.alpha = if (writable) 0.18f else 0.12f
-        chatPanelBackground.alpha = if (writable) 0.14f else 0.09f
+        chatAmbientBackground.alpha = if (writable) 0.92f else 0.84f
+        chatPanelBackground.alpha = if (writable) 0.88f else 0.80f
     }
 
     private fun applyChatFrameForegrounds(
@@ -3601,7 +3961,7 @@ class GameplayChatController(
         return when (channel) {
             ChatChannel.PUBLICO -> GameEngine.canHumanChat(session)
             ChatChannel.TRAIDORES -> GameEngine.canHumanChatTraitor(session)
-            ChatChannel.ESPECTADORES -> host.isOnlineGameplay() &&
+            ChatChannel.ESPECTADORES -> (host.isOnlineGameplay() || session.onlineTestMode) &&
                 GameEngine.canHumanChatSpectator(session)
         }
     }
@@ -3627,7 +3987,7 @@ class GameplayChatController(
     }
 
     private fun canUseSpectatorChatUi(session: GameSession): Boolean {
-        return host.isOnlineGameplay() &&
+        return (host.isOnlineGameplay() || session.onlineTestMode) &&
             GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session))
     }
 
@@ -3708,11 +4068,18 @@ class GameplayChatController(
         private const val CHAT_SHEET_PLAYER_GAP_DP = 8
         private const val IME_FRAME_TOLERANCE_DP = 8
         private const val IME_RESIZE_TOLERANCE_DP = 48
-        private const val CHAT_AMBIENT_MAX_MESSAGES = 4
+        private const val CHAT_AMBIENT_MAX_MESSAGES = 10
         private const val HUMAN_MESSAGE_BURST_THRESHOLD = 3
         private const val HUMAN_MESSAGE_BURST_WINDOW_MS = 3_500L
         private const val SPAM_REACTION_DELAY_MS = 2_600L
-        private const val CHAT_AMBIENT_SOURCE_LIMIT = 8
+        private const val CHAT_AMBIENT_SOURCE_LIMIT = 16
+        private const val CHAT_AMBIENT_BOTTOM_TOLERANCE_DP = 24
+        private const val CHAT_AMBIENT_MESSAGE_MAX_LINES = 3
+        private const val CHAT_AMBIENT_FALLBACK_TOP_HEIGHT_DP = 76
+        private const val CHAT_AMBIENT_EDGE_GAP_DP = 8
+        private const val CHAT_AMBIENT_READY_HEIGHT_DP = 34
+        private const val CHAT_AMBIENT_READY_BOTTOM_MARGIN_DP = 152
+        private const val CHAT_AMBIENT_READY_GAP_DP = 6
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42

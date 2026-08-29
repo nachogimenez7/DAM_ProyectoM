@@ -40,6 +40,26 @@
         android:textSize="22sp"
         android:textStyle="bold" />
 
+    <Button
+        android:id="@+id/btnEditProfile"
+        style="@style/BtnGold"
+        android:layout_width="108dp"
+        android:layout_height="44dp"
+        android:layout_alignTop="@id/btnBack"
+        android:layout_alignParentEnd="true"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="0dp"
+        android:maxLines="1"
+        android:minHeight="0dp"
+        android:minWidth="0dp"
+        android:paddingHorizontal="8dp"
+        android:text="EDITAR"
+        android:textSize="11sp"
+        app:autoSizeMaxTextSize="11sp"
+        app:autoSizeMinTextSize="8sp"
+        app:autoSizeStepGranularity="1sp"
+        app:autoSizeTextType="uniform" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -662,12 +682,6 @@
 
             </LinearLayout>
 
-            <Button
-                android:id="@+id/btnEditProfile"
-                style="@style/BtnGold"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="0dp"
-                android:text="EDITAR PERFIL" />
         </LinearLayout>
     </ScrollView>
 </RelativeLayout>

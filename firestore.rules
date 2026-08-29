@@ -880,6 +880,7 @@ service cloud.firestore {
             'modoCliente',
             'detalles',
             'creadaEn',
+            'actualizadaEn',
             'creadaEnLocal',
             'cambiosVoto'
           ])
@@ -942,12 +943,53 @@ service cloud.firestore {
               && request.resource.data.cambiosVoto == 0
             )
           )
+          && (
+            !('actualizadaEn' in request.resource.data)
+            || (
+              request.resource.data.detalles.accion == 'votar'
+              && request.resource.data.fase in ['VOTACION', 'DESEMPATE_VOTACION']
+              && request.resource.data.actualizadaEn == request.time
+            )
+          )
           && request.resource.data.creadaEnLocal is int
           && request.resource.data.creadaEn == request.time;
 
-        // Cada acción se confirma una sola vez. En votación, cambiar cartas ocurre únicamente
-        // en memoria local y nunca reemplaza el documento definitivo.
-        allow update: if false;
+        // Un voto ocupa un único slot por jugador y fase. El dueño puede reemplazar solamente
+        // su objetivo mientras la partida sigue abierta; identidad, ronda y fase son inmutables.
+        // El contador alto no limita una decisión normal, pero evita escrituras ilimitadas desde
+        // un cliente modificado.
+        allow update: if validActionActor(partidaId)
+          && !isGloballyBanned()
+          && !isBannedFromRoom(partidaId)
+          && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado == 'en_juego'
+          && resource.data.actorId == request.auth.uid
+          && resource.data.tipo == 'accion_jugador'
+          && resource.data.detalles.accion == 'votar'
+          && resource.data.fase in ['VOTACION', 'DESEMPATE_VOTACION']
+          && request.resource.data.detalles.accion == 'votar'
+          && request.resource.data.fase == resource.data.fase
+          && request.resource.data.matchId == resource.data.matchId
+          && validCurrentMatchId(partidaId, request.resource.data.matchId)
+          && changedOnly([
+            'objetivoNombre',
+            'detalles',
+            'actualizadaEn',
+            'cambiosVoto'
+          ])
+          && request.resource.data.detalles.diff(resource.data.detalles)
+            .affectedKeys().hasOnly(['objetivoOrden'])
+          && isString(request.resource.data.objetivoNombre, 1, 18)
+          && request.resource.data.objetivoNombre != resource.data.objetivoNombre
+          && request.resource.data.detalles.objetivoOrden is int
+          && request.resource.data.detalles.objetivoOrden >= 0
+          && request.resource.data.detalles.objetivoOrden <= 14
+          && request.resource.data.detalles.objetivoOrden
+            != request.resource.data.detalles.actorOrden
+          && request.resource.data.cambiosVoto is int
+          && request.resource.data.cambiosVoto
+            == (('cambiosVoto' in resource.data) ? resource.data.cambiosVoto : 0) + 1
+          && request.resource.data.cambiosVoto <= 24
+          && request.resource.data.actualizadaEn == request.time;
         allow delete: if cleanupDeleteAllowed(partidaId)
           || roomTeardownAllowed(partidaId)
           || staleCreatorCleanupAllowed(partidaId);

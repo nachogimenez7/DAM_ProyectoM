@@ -5,8 +5,8 @@
             <corners android:radius="18dp" />
             <solid android:color="@android:color/transparent" />
             <stroke
-                android:width="1dp"
-                android:color="#A8C79A3F" />
+                android:width="2dp"
+                android:color="#E8C79A3F" />
         </shape>
     </item>
     <item
@@ -19,7 +19,7 @@
             <solid android:color="@android:color/transparent" />
             <stroke
                 android:width="1dp"
-                android:color="#4AF3D681" />
+                android:color="#92F3D681" />
         </shape>
     </item>
     <item

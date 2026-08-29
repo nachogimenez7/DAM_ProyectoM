@@ -39,10 +39,13 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var descLanguage: TextView
     private lateinit var titleNotifications: TextView
     private lateinit var descNotifications: TextView
+    private lateinit var titleVisualEffects: TextView
+    private lateinit var descReducedVisualEffects: TextView
     private lateinit var switchMusic: SwitchCompat
     private lateinit var switchEffects: SwitchCompat
     private lateinit var switchVibration: SwitchCompat
     private lateinit var switchNotifications: SwitchCompat
+    private lateinit var switchReducedVisualEffects: SwitchCompat
     private lateinit var seekMusic: SeekBar
     private lateinit var seekVoices: SeekBar
     private lateinit var spinnerTextSize: Spinner
@@ -112,10 +115,13 @@ class OpcionesActivity : BaseActivity() {
         descLanguage = findViewById(R.id.descLanguage)
         titleNotifications = findViewById(R.id.titleNotifications)
         descNotifications = findViewById(R.id.descNotifications)
+        titleVisualEffects = findViewById(R.id.titleVisualEffects)
+        descReducedVisualEffects = findViewById(R.id.descReducedVisualEffects)
         switchMusic = findViewById(R.id.switchMusic)
         switchEffects = findViewById(R.id.switchEffects)
         switchVibration = findViewById(R.id.switchVibration)
         switchNotifications = findViewById(R.id.switchNotifications)
+        switchReducedVisualEffects = findViewById(R.id.switchReducedVisualEffects)
         seekMusic = findViewById(R.id.seekMusic)
         seekVoices = findViewById(R.id.seekVoices)
         spinnerTextSize = findViewById(R.id.spinnerTextSize)
@@ -189,6 +195,11 @@ class OpcionesActivity : BaseActivity() {
             if (enabled) GameplayEffects.play(this, GameplayEffect.CONFIRM)
         }
 
+        switchReducedVisualEffects.setOnCheckedChangeListener { _, enabled ->
+            if (updatingControls) return@setOnCheckedChangeListener
+            VisualEffectsPreferences.setReduced(this, enabled)
+        }
+
         switchNotifications.setOnCheckedChangeListener { _, enabled ->
             if (updatingControls) return@setOnCheckedChangeListener
             NotificationPreferences.markInvitationSeen(this)
@@ -225,6 +236,7 @@ class OpcionesActivity : BaseActivity() {
         switchVibration.isChecked = preferences.getBoolean(PREF_VIBRATION_ON, false)
         switchNotifications.isChecked = NotificationPreferences.isEnabled(this) &&
             NotificationPreferences.canPostNotifications(this)
+        switchReducedVisualEffects.isChecked = VisualEffectsPreferences.isReduced(this)
         spinnerLanguage.setSelection(if (currentLanguage == LANGUAGE_ENGLISH) 1 else 0, false)
         configureTextSizeAdapter(
             preferences.getInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE).coerceIn(0, 2)
@@ -322,6 +334,10 @@ class OpcionesActivity : BaseActivity() {
             titleNotifications.text = "NEWS"
             switchNotifications.text = "Notifications"
             descNotifications.text = "Receive beta improvements, tests and important updates."
+            titleVisualEffects.text = "VISUAL EFFECTS"
+            switchReducedVisualEffects.text = "Reduce animations"
+            descReducedVisualEffects.text =
+                "Removes particles and simplifies transitions for a calmer experience."
             btnResetOptions.text = "RESET OPTIONS"
         } else {
             titleOptions.text = "OPCIONES"
@@ -340,6 +356,10 @@ class OpcionesActivity : BaseActivity() {
             titleNotifications.text = "NOVEDADES"
             switchNotifications.text = "Notificaciones"
             descNotifications.text = "Recibí mejoras, pruebas y avisos importantes de la beta."
+            titleVisualEffects.text = "EFECTOS VISUALES"
+            switchReducedVisualEffects.text = "Reducir animaciones"
+            descReducedVisualEffects.text =
+                "Quita partículas y simplifica transiciones para una experiencia más tranquila."
             btnResetOptions.text = "RESTABLECER OPCIONES"
         }
         updateVolumeLabels()
@@ -353,6 +373,7 @@ class OpcionesActivity : BaseActivity() {
             .putInt(PREF_MUSIC_VOLUME, DEFAULT_VOLUME)
             .putInt(PREF_VOICE_VOLUME, DEFAULT_VOLUME)
             .putBoolean(PREF_VIBRATION_ON, false)
+            .putBoolean(VisualEffectsPreferences.KEY_REDUCED_EFFECTS, false)
             .putInt(PREF_GAMEPLAY_TEXT_SIZE, DEFAULT_TEXT_SIZE)
             .putString(PREF_LANGUAGE, LANGUAGE_SPANISH)
             .apply()
@@ -364,6 +385,7 @@ class OpcionesActivity : BaseActivity() {
         switchMusic.isChecked = true
         switchEffects.isChecked = true
         switchVibration.isChecked = false
+        switchReducedVisualEffects.isChecked = false
         switchNotifications.isChecked = false
         spinnerLanguage.setSelection(0, false)
         configureTextSizeAdapter(DEFAULT_TEXT_SIZE)

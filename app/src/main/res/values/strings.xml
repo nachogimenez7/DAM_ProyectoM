@@ -25,7 +25,7 @@
     <string name="tutorial_debate_body">Durante el día, compará versiones, preguntá, acusá y defendete. El chat y lo ocurrido en rondas anteriores son tus mejores pistas.</string>
     <string name="tutorial_debate_hint">Decir la verdad no alcanza: también tenés que lograr que el pueblo te crea.</string>
     <string name="tutorial_vote_title">VOTÁ Y SOBREVIVÍ</string>
-    <string name="tutorial_vote_body">Tocá la carta de tu sospechoso para votar. Si cambiás de opinión, podés tocar otra carta una sola vez; después el voto queda definitivo. La partida continúa hasta que un bando cumpla su objetivo.</string>
+    <string name="tutorial_vote_body">Tocá la carta de tu sospechoso para votar. Si cambiás de opinión, podés tocar otra carta hasta que cierre la votación. La partida continúa hasta que un bando cumpla su objetivo.</string>
     <string name="tutorial_vote_hint">Para practicar sin presión, empezá en JUGAR vs IA. Podés repetir este tutorial desde AYUDA.</string>
     <string name="btn_local">JUGAR vs IA</string>
     <string name="btn_online">JUGAR EN LÍNEA</string>

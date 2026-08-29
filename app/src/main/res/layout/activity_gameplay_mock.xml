@@ -1872,8 +1872,16 @@
                 android:layout_height="match_parent"
                 android:contentDescription="@null"
                 android:scaleType="fitXY"
-                android:alpha="0"
-                android:src="@drawable/bg_winner_premium_panel" />
+                android:alpha="1"
+                android:src="@drawable/winner_ceremony_background" />
+
+            <com.traidores.juego.AmbientParticlesView
+                android:id="@+id/winnerRevealParticles"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false"
+                android:importantForAccessibility="no" />
 
             <View
                 android:id="@+id/winnerRevealShine"
@@ -1886,6 +1894,7 @@
                 android:id="@+id/winnerRevealScroll"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:layout_marginBottom="68dp"
                 android:fadeScrollbars="false"
                 android:fillViewport="true"
                 android:overScrollMode="ifContentScrolls"
@@ -1900,16 +1909,16 @@
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
                     android:paddingHorizontal="22dp"
-                    android:paddingTop="12dp"
-                    android:paddingBottom="14dp">
+                    android:paddingTop="45dp"
+                    android:paddingBottom="18dp">
 
                 <TextView
                     android:id="@+id/winnerRevealTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="10dp"
-                    android:background="@drawable/bg_winner_title_badge"
-                    android:fontFamily="sans-serif"
+                    android:background="@android:color/transparent"
+                    android:fontFamily="@font/bree_serif"
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:maxLines="1"
@@ -1917,8 +1926,8 @@
                     android:shadowDx="0"
                     android:shadowDy="1"
                     android:shadowRadius="5"
-                    android:text="EL PUEBLO HA GANADO"
-                    android:textColor="#3A2413"
+                    android:text="VICTORIA DEL PUEBLO"
+                    android:textColor="#F3D488"
                     android:textSize="27sp"
                     android:textStyle="bold"
                     app:autoSizeMaxTextSize="27sp"
@@ -1930,18 +1939,18 @@
                     android:id="@+id/winnerRevealPersonalResult"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="3dp"
-                    android:background="@drawable/bg_winner_title_badge"
+                    android:layout_marginTop="5dp"
+                    android:background="@android:color/transparent"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:maxLines="1"
-                    android:text="VICTORIA"
-                    android:textColor="#765019"
-                    android:textSize="26sp"
-                    android:textStyle="bold"
-                    app:autoSizeMaxTextSize="26sp"
-                    app:autoSizeMinTextSize="18sp"
+                    android:text="La plaza vuelve a respirar."
+                    android:textColor="#D8C9AA"
+                    android:textSize="15sp"
+                    android:textStyle="italic"
+                    app:autoSizeMaxTextSize="16sp"
+                    app:autoSizeMinTextSize="12sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
 
@@ -1953,23 +1962,47 @@
                     android:gravity="center"
                     android:orientation="vertical" />
 
+                <TextView
+                    android:id="@+id/winnerCeremonySummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="14dp"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:text="3 supervivientes · 4 rondas"
+                    android:textColor="#B9AD92"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+
                 <View
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
-                    android:minHeight="34dp" />
+                    android:layout_height="14dp" />
 
                     <LinearLayout
                         android:id="@+id/winnerSummaryPanel"
                         android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="4dp"
-                    android:layout_marginTop="12dp"
-                    android:background="@drawable/bg_winner_premium_summary"
+                        android:layout_marginTop="12dp"
+                        android:background="@drawable/bg_winner_premium_summary"
                     android:gravity="center_vertical"
                     android:orientation="vertical"
                         android:paddingHorizontal="8dp"
-                        android:paddingVertical="6dp">
+                        android:paddingVertical="8dp"
+                        android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="7dp"
+                        android:fontFamily="@font/bree_serif"
+                        android:gravity="center"
+                        android:text="CRÓNICA DE LA PARTIDA"
+                        android:textColor="#F3D488"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
 
                     <LinearLayout
                         android:id="@+id/winnerSummaryStatsRow"
@@ -2046,22 +2079,59 @@
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnWinnerReturnLobby"
-                    style="@style/BtnGold"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:layout_marginStart="20dp"
-                    android:layout_marginTop="10dp"
-                    android:layout_marginEnd="20dp"
-                    android:layout_marginBottom="10dp"
-                    android:minHeight="0dp"
-                    android:minWidth="0dp"
-                    android:padding="0dp"
-                    android:text="VOLVER A SALA"
-                    android:textSize="12sp" />
                 </LinearLayout>
             </ScrollView>
+
+            <LinearLayout
+                android:id="@+id/winnerRevealActions"
+                android:layout_width="match_parent"
+                android:layout_height="62dp"
+                android:layout_gravity="bottom"
+                android:layout_marginHorizontal="18dp"
+                android:layout_marginBottom="11dp"
+                android:background="@drawable/bg_winner_actions_plate"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:padding="6dp">
+
+                <Button
+                    android:id="@+id/btnWinnerChronicle"
+                    android:background="@drawable/bg_winner_action_secondary"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:elevation="0dp"
+                    android:fontFamily="@font/bree_serif"
+                    android:letterSpacing="0.025"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="4dp"
+                    android:stateListAnimator="@null"
+                    android:text="VER CRÓNICA"
+                    android:textColor="#F3D488"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnWinnerReturnLobby"
+                    android:background="@drawable/bg_winner_action_primary"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:elevation="0dp"
+                    android:fontFamily="@font/bree_serif"
+                    android:letterSpacing="0.025"
+                    android:minHeight="0dp"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="4dp"
+                    android:stateListAnimator="@null"
+                    android:text="VOLVER A SALA"
+                    android:textColor="#24170A"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </FrameLayout>
     </FrameLayout>
 

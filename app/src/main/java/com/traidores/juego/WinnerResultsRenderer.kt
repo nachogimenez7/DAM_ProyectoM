@@ -70,7 +70,7 @@ class WinnerResultsRenderer(
             .ifBlank { "Día 1: no murió nadie y nadie fue silenciado." }
         timeline.text = listOfNotNull(
             keyMoments?.let { "MOMENTOS CLAVE\n$it" },
-            "BITACORA\n$dayLog"
+            "RONDA POR RONDA\n$dayLog"
         ).joinToString("\n\n")
         return cardViews + specialCardViews
     }
@@ -214,7 +214,7 @@ class WinnerResultsRenderer(
     }
 
     private fun applyThemeInsets() {
-        content.setPadding(dp(22), dp(20), dp(22), dp(10))
+        content.setPadding(dp(22), dp(45), dp(22), dp(18))
     }
 
     private fun sectionHeader(text: String, color: Int): View {

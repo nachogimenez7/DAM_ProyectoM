@@ -909,7 +909,7 @@ class ProfileActivity : BaseActivity() {
             it.isFocusable = editing
         }
         editPublicIdIcon.visibility = View.GONE
-        editProfileButton.text = if (editing) "GUARDAR CAMBIOS" else "EDITAR PERFIL"
+        editProfileButton.text = if (editing) "GUARDAR ✓" else "EDITAR"
         editProfileButton.contentDescription = if (editing) {
             "Guardar cambios del perfil"
         } else {

@@ -421,6 +421,7 @@ async function main() {
           jugadores: [
             { orden: 0, uidTemporal: "host_uid", nombre: "Host" },
             { orden: 1, uidTemporal: "guest_uid", nombre: "Guest" },
+            { orden: 2, uidTemporal: "bot_uid", nombre: "Bot" },
           ],
         },
       });
@@ -485,33 +486,49 @@ async function main() {
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
       cambiosVoto: 0,
       creadaEn: serverTimestamp(),
+      actualizadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
     const guestVoteRef = doc(guest, guestAction.path);
+    await assertSucceeds(updateDoc(guestVoteRef, {
+      objetivoNombre: "Bot",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 2 },
+      cambiosVoto: 1,
+      actualizadaEn: serverTimestamp(),
+    }));
     await assertFails(updateDoc(guestVoteRef, {
       objetivoNombre: "Guest",
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 1 },
-      creadaEn: serverTimestamp(),
-      creadaEnLocal: Date.now() + 1,
+      cambiosVoto: 2,
+      actualizadaEn: serverTimestamp(),
     }));
     await assertFails(updateDoc(guestVoteRef, {
-      objetivoNombre: "Host",
-      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
-      creadaEn: serverTimestamp(),
-      creadaEnLocal: Date.now() + 2,
+      objetivoNombre: "Bot",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 2 },
+      cambiosVoto: 2,
+      actualizadaEn: serverTimestamp(),
     }));
     await assertFails(updateDoc(doc(host, guestAction.path), {
-      objetivoNombre: "Guest",
-      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 1 },
-      creadaEn: serverTimestamp(),
-      creadaEnLocal: Date.now() + 3,
+      objetivoNombre: "Host",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      cambiosVoto: 2,
+      actualizadaEn: serverTimestamp(),
     }));
     await assertFails(updateDoc(guestVoteRef, {
       fase: "NOCHE_POLICIA",
       objetivoNombre: "Host",
       detalles: { accion: "investigar", actorOrden: 1, objetivoOrden: 0 },
-      creadaEn: serverTimestamp(),
-      creadaEnLocal: Date.now() + 4,
+      cambiosVoto: 2,
+      actualizadaEn: serverTimestamp(),
+    }));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), guestAction.path), { cambiosVoto: 24 });
+    });
+    await assertFails(updateDoc(guestVoteRef, {
+      objetivoNombre: "Host",
+      detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
+      cambiosVoto: 25,
+      actualizadaEn: serverTimestamp(),
     }));
     await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",

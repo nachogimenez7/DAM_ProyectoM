@@ -7,12 +7,8 @@ internal object DirectVotePolicy {
 
     fun select(targetName: String): String = targetName
 
-    fun canSelect(currentTarget: String, targetName: String, confirmed: Boolean): Boolean {
-        return !confirmed && currentTarget != targetName
-    }
-
-    fun shouldConfirm(currentTarget: String, targetName: String, confirmed: Boolean): Boolean {
-        return !confirmed && currentTarget.isNotBlank() && currentTarget == targetName
+    fun canSelect(currentTarget: String, targetName: String): Boolean {
+        return currentTarget != targetName
     }
 
     fun timeoutTarget(

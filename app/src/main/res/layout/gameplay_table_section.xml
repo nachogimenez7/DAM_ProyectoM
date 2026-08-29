@@ -318,16 +318,16 @@
             <FrameLayout
                 android:id="@+id/chatAmbientFeed"
                 android:layout_width="match_parent"
-                android:layout_height="174dp"
-                android:layout_gravity="center"
+                android:layout_height="match_parent"
+                android:layout_gravity="center_horizontal"
                 android:layout_marginHorizontal="4dp"
-                android:layout_marginTop="70dp"
-                android:layout_marginBottom="126dp"
+                android:layout_marginTop="84dp"
+                android:layout_marginBottom="154dp"
                 android:background="@drawable/bg_reveal_text_shade"
-                android:clickable="true"
+                android:clickable="false"
                 android:clipToOutline="true"
                 android:elevation="9dp"
-                android:focusable="true"
+                android:focusable="false"
                 android:visibility="gone">
 
                 <ImageView
@@ -338,6 +338,15 @@
                     android:contentDescription="@null"
                     android:scaleType="fitXY"
                     android:src="@drawable/log_gaucho" />
+
+                <com.traidores.juego.AmbientParticlesView
+                    android:id="@+id/chatAmbientParticles"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:alpha="0.9"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:importantForAccessibility="no" />
 
                 <View
                     android:id="@+id/chatAmbientShade"
@@ -351,13 +360,66 @@
                     android:layout_height="match_parent"
                     android:orientation="vertical"
                     android:paddingHorizontal="13dp"
-                    android:paddingTop="11dp"
+                    android:paddingTop="10dp"
                     android:paddingBottom="14dp">
+
+                    <TextView
+                        android:id="@+id/chatAmbientComposition"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:includeFontPadding="false"
+                        android:maxLines="3"
+                        android:minHeight="34dp"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="5dp"
+                        android:text="PARTIDA · 2 Aldeanos · 1 Detective · 1 Médico · 1 Asesino"
+                        android:textColor="@color/text_primary"
+                        android:textSize="9.5sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/chatAmbientRoundCard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="6dp">
+
+                        <TextView
+                            android:id="@+id/chatAmbientRoundTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="18dp"
+                            android:fontFamily="@font/bree_serif"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:text="PRIMERA NOCHE"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="13sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/chatAmbientRoundSubtitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:maxLines="2"
+                            android:text="El pueblo duerme."
+                            android:textColor="@color/text_secondary"
+                            android:textSize="9.5sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
 
                     <TextView
                         android:id="@+id/chatAmbientTitle"
                         android:layout_width="match_parent"
                         android:layout_height="18dp"
+                        android:layout_marginTop="7dp"
                         android:ellipsize="end"
                         android:fontFamily="sans-serif"
                         android:gravity="center_vertical"
@@ -369,17 +431,64 @@
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:id="@+id/chatAmbientMessages"
+                        android:id="@+id/chatAmbientTitleDivider"
+                        android:layout_width="match_parent"
+                        android:layout_height="14dp"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="2dp">
+
+                        <View
+                            android:id="@+id/chatAmbientTitleDividerStart"
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1"
+                            android:alpha="0.82"
+                            android:background="@color/accent_gold" />
+
+                        <TextView
+                            android:id="@+id/chatAmbientTitleDividerSeal"
+                            android:layout_width="24dp"
+                            android:layout_height="14dp"
+                            android:fontFamily="@font/bree_serif"
+                            android:gravity="center"
+                            android:includeFontPadding="false"
+                            android:text="◆"
+                            android:textColor="@color/accent_gold"
+                            android:textSize="8sp" />
+
+                        <View
+                            android:id="@+id/chatAmbientTitleDividerEnd"
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1"
+                            android:alpha="0.82"
+                            android:background="@color/accent_gold" />
+                    </LinearLayout>
+
+                    <ScrollView
+                        android:id="@+id/chatAmbientScroll"
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
                         android:layout_weight="1"
-                        android:gravity="bottom"
-                        android:orientation="vertical" />
+                        android:clipToPadding="false"
+                        android:fillViewport="true"
+                        android:overScrollMode="ifContentScrolls"
+                        android:scrollbarStyle="outsideOverlay">
+
+                        <LinearLayout
+                            android:id="@+id/chatAmbientMessages"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="bottom"
+                            android:orientation="vertical"
+                            android:paddingEnd="3dp" />
+                    </ScrollView>
 
                     <TextView
                         android:id="@+id/chatAmbientHint"
                         android:layout_width="match_parent"
-                        android:layout_height="36dp"
+                        android:layout_height="42dp"
                         android:layout_marginTop="6dp"
                         android:background="@drawable/bg_chat_compact_input"
                         android:drawableStart="@drawable/ic_chat_speaking"
@@ -388,11 +497,11 @@
                         android:fontFamily="sans-serif"
                         android:gravity="center_vertical|start"
                         android:includeFontPadding="false"
-                        android:maxLines="1"
+                        android:maxLines="2"
                         android:paddingHorizontal="12dp"
                         android:text="Escribí un mensaje..."
                         android:textColor="@color/text_primary"
-                        android:textSize="12sp" />
+                        android:textSize="10.5sp" />
                 </LinearLayout>
             </FrameLayout>
 
