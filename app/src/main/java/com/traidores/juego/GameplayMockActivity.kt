@@ -515,6 +515,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var winnerRevealOverlay: FrameLayout
     private lateinit var winnerRevealPanel: FrameLayout
     private lateinit var winnerRevealParticles: AmbientParticlesView
+    private lateinit var winnerRevealHeading: LinearLayout
     private lateinit var winnerRevealPersonalResult: TextView
     private lateinit var winnerRevealScroll: ScrollView
     private lateinit var winnerRevealShine: View
@@ -1067,6 +1068,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealOverlay = findViewById(R.id.winnerRevealOverlay)
         winnerRevealPanel = findViewById(R.id.winnerRevealPanel)
         winnerRevealParticles = findViewById(R.id.winnerRevealParticles)
+        winnerRevealHeading = findViewById(R.id.winnerRevealHeading)
         winnerRevealPersonalResult = findViewById(R.id.winnerRevealPersonalResult)
         winnerRevealScroll = findViewById(R.id.winnerRevealScroll)
         winnerRevealShine = findViewById(R.id.winnerRevealShine)
@@ -10757,6 +10759,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun setWinnerCeremonyContentVisible(visible: Boolean) {
         val visibility = if (visible) View.VISIBLE else View.GONE
+        winnerRevealHeading.visibility = visibility
         winnerRevealTitle.visibility = visibility
         winnerRevealPersonalResult.visibility = visibility
         winnerRevealCards.visibility = visibility
@@ -10774,7 +10777,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         winnerRevealPanel.setBackgroundResource(R.drawable.bg_winner_premium_panel)
         winnerRevealBackground.alpha = 1f
         winnerRevealTitle.setBackgroundResource(android.R.color.transparent)
-        winnerRevealTitle.setTextColor(Color.parseColor("#F3D488"))
+        winnerRevealTitle.setTextColor(Color.parseColor("#FFF0BC"))
+        winnerRevealTitle.setShadowLayer(dp(3).toFloat(), 0f, dp(1).toFloat(), Color.parseColor("#E6000000"))
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealTitle,
             26,
@@ -10784,7 +10788,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
         winnerRevealTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34f)
         winnerRevealPersonalResult.setBackgroundResource(android.R.color.transparent)
-        winnerRevealPersonalResult.setTextColor(Color.parseColor("#D8C9AA"))
+        winnerRevealPersonalResult.setTextColor(Color.parseColor("#F7E8D0"))
+        winnerRevealPersonalResult.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.parseColor("#F0000000"))
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
             winnerRevealPersonalResult,
             11,
