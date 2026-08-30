@@ -3,14 +3,14 @@
     android:oneshot="true">
     <item
         android:drawable="@drawable/reaction_premium_six_seven_a"
-        android:duration="300" />
+        android:duration="110" />
     <item
         android:drawable="@drawable/reaction_premium_six_seven_b"
-        android:duration="300" />
+        android:duration="110" />
     <item
         android:drawable="@drawable/reaction_premium_six_seven_a"
-        android:duration="300" />
+        android:duration="110" />
     <item
         android:drawable="@drawable/reaction_premium_six_seven_b"
-        android:duration="300" />
+        android:duration="110" />
 </animation-list>

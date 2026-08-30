@@ -414,12 +414,10 @@ internal object LocalBotAi {
             val line = when {
                 contradiction != null && index <= 1 ->
                     contradictionLine(read.player.name, contradiction)
+                // Una pregunta o acusacion directa debe poder hacer que el bot ponga
+                // su rol sobre la mesa, incluso durante los primeros dias.
+                roleLine != null -> roleLine
                 directBotReply != null -> directBotReply
-                earlyRoundLine != null -> earlyRoundLine
-                dawnVictim != null && index == 0 ->
-                    "lo de $dawnVictim anoche cambia todo, $target explica bien pq $reason"
-                noDeath && index == 0 ->
-                    "no murió nadie pero no nos durmamos, $target vos q hiciste ayer?"
                 social.failedPush != null ->
                     "ayer me pude haber equivocado con ${social.failedPush}, hoy quiero escuchar mas antes de mandar fruta"
                 social.ignoredBy != null ->
@@ -427,8 +425,12 @@ internal object LocalBotAi {
                 pastThreadLine != null -> pastThreadLine
                 expelled != null && index == 1 ->
                     "ayer sacamos a $expelled y seguimos igual, no votemos por inercia"
+                earlyRoundLine != null -> earlyRoundLine
+                dawnVictim != null && index == 0 ->
+                    "lo de $dawnVictim anoche cambia todo, $target explica bien pq $reason"
+                noDeath && index == 0 ->
+                    "no murió nadie pero no nos durmamos, $target vos q hiciste ayer?"
                 plannedTraitorLine != null -> plannedTraitorLine
-                roleLine != null -> roleLine
                 coordinationLine != null -> coordinationLine
                 muted != null && index == 0 ->
                     "bueno $muted no puede contestar, $target vos q onda? bancas lo q dijiste?"
@@ -477,11 +479,9 @@ internal object LocalBotAi {
             } else {
                 "$target, que hiciste anoche?"
             }
-            else -> if (session.round == 1) {
-                "si no hay una pista concreta, no votemos por apuro"
-            } else {
-                "comparemos lo que dijeron antes y después decidimos"
-            }
+            // Desde el tercer mensaje dejamos que cada personalidad tome un rol
+            // distinto (preguntar, dudar o calmar) para evitar aperturas repetidas.
+            else -> null
         }
     }
 

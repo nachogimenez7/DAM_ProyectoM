@@ -397,6 +397,34 @@ internal fun unansweredQuestionFor(session: GameSession, bot: GamePlayer): Strin
     return if (answered) null else "$target"
 }
 
+/**
+ * Detecta un hilo que toda la mesa dejó pendiente, aunque el bot elegido para responder
+ * no haya sido quien hizo la última pregunta. Exige al menos dos interlocutores distintos
+ * para no perseguir a alguien por una sola pregunta casual.
+ */
+internal fun collectivelyUnansweredTarget(session: GameSession): String? {
+    val messages = recentPublicMessages(session)
+    return GameEngine.alivePlayers(session)
+        .asSequence()
+        .map { target ->
+            val lastAnswerIndex = messages.indexOfLast { it.speaker == target.name }
+            val questioners = messages.withIndex()
+                .filter { (index, message) ->
+                    index > lastAnswerIndex &&
+                        message.speaker != target.name &&
+                        message.message.contains("?") &&
+                        mentionsName(message.message, target.name)
+                }
+                .map { it.value.speaker }
+                .distinct()
+            target.name to questioners.size
+        }
+        .filter { (_, questionerCount) -> questionerCount >= 2 }
+        .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+        .firstOrNull()
+        ?.first
+}
+
 internal fun declaredSuspicionTarget(session: GameSession, bot: GamePlayer): String? {
     val candidates = GameEngine.alivePlayers(session)
         .filter { it.name != bot.name }

@@ -15,6 +15,7 @@ object PlayerPublicIdentity {
     const val FIELD_PROFILE_PLAY_GAMES_AVATAR = "fotoPlayGames"
     const val FIELD_PROFILE_BANNER = "bannerPerfil"
     const val FIELD_PROFILE_FAVORITE_ROLE = "rolFavoritoPerfil"
+    const val FIELD_PROFILE_COSMETIC_THEME = "temaCosmeticoPerfil"
 
     private const val PREFS_NAME = "TraidoresPrefs"
     private const val PREF_PUBLIC_ID = "profile_public_id"
@@ -208,7 +209,10 @@ object PlayerPublicIdentity {
                 PlayGamesProfileAvatar.normalize(profile.playGamesAvatarUri)
             },
             FIELD_PROFILE_BANNER to ProfileCustomizationCatalog.normalizeBannerKey(profile.bannerKey),
-            FIELD_PROFILE_FAVORITE_ROLE to ProfileRoleCatalog.find(profile.favoriteRoleKey).key
+            FIELD_PROFILE_FAVORITE_ROLE to ProfileRoleCatalog.find(profile.favoriteRoleKey).key,
+            FIELD_PROFILE_COSMETIC_THEME to (
+                CosmeticPilot.normalizeTheme(profile.cosmeticThemeId) ?: CosmeticPilot.THEME_CLASSIC
+            )
         )
         // Un invitado no tiene numero. El campo se omite en vez de mandarse vacio: las reglas
         // aceptan que `publicId` no exista, pero rechazan una cadena que no sean digitos.

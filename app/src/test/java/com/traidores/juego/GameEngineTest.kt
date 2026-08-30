@@ -2146,7 +2146,9 @@ class GameEngineTest {
         assertTrue("Respuestas: $botText", botText.contains("yo soy medico"))
         assertTrue(
             "Respuestas: $botText",
-            botText.contains("doble claim") || botText.contains("dos q dicen lo mismo")
+            botText.contains("doble claim") ||
+                botText.contains("dos q dicen lo mismo") ||
+                botText.contains("dos que dicen lo mismo")
         )
     }
 
@@ -2718,6 +2720,7 @@ class GameEngineTest {
                 dinaLine.contains("ahora yo") ||
                 dinaLine.contains("tirame una razon") ||
                 dinaLine.contains("decime q hice") ||
+                dinaLine.contains("decime que hice") ||
                 dinaLine.contains("yo no dije")
         )
     }
@@ -2738,6 +2741,7 @@ class GameEngineTest {
         val replies = LocalBotAi.reactionsToHumanMessage(session, "yo sigo dudando de ema")
             .joinToString(" ") { it.second }
 
+        assertEquals("Dina", collectivelyUnansweredTarget(session))
         assertTrue(
             "Respuestas: $replies",
             replies.contains("no respondiste") ||
@@ -2764,7 +2768,10 @@ class GameEngineTest {
         assertTrue(replies.isNotBlank())
         assertTrue(
             "Respuestas: $replies",
-            listOf("dale", "para", "jaja", "amigo", "no inventes", "decime", "q hice", "q decis", "posta", "nose", "mmm", "explica")
+            listOf(
+                "dale", "para", "jaja", "amigo", "no inventes", "decime", "q hice",
+                "q decis", "posta", "nose", "mmm", "explica", "ahora yo", "razon concreta"
+            )
                 .any { replies.contains(it) }
         )
     }

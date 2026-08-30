@@ -12,6 +12,8 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
@@ -193,6 +195,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return LocalMuteStore.isMuted(this, publicId, actorId)
     }
     override fun isOwnPlayerTableSilenced(): Boolean = ownPlayerTableSilenced
+    override fun cosmeticThemeForPlayer(playerName: String): String {
+        val player = session.players.firstOrNull { it.name == playerName }
+        if (player?.isHuman == true) return CosmeticPilot.selectedTheme(this)
+        return CosmeticPilot.normalizeTheme(session.playerProfiles[playerName]?.cosmeticThemeId)
+            ?: CosmeticPilot.THEME_CLASSIC
+    }
     private var onlinePartidaId = ""
     private var onlinePlayerId = ""
     private var onlineIsHost = false
@@ -2544,6 +2552,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
         currentPlayerName.text = GameEngine.humanPlayer(session).name
+        renderHumanCosmeticTheme()
         renderPersonalStatus()
         currentPlayerHint.text = privateHintText()
         if (isOnlineStartupPhase()) {
@@ -5443,8 +5452,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             }
             palette.addView(
                 option,
-                LinearLayout.LayoutParams(dp(45), dp(45)).apply {
-                    if (index > 0) leftMargin = dp(6)
+                LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                    if (index > 0) leftMargin = dp(7)
                 }
             )
         }
@@ -5471,7 +5480,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         GameplayEffects.play(this, GameplayEffect.PANEL)
     }
 
-    private fun reactionOptionBackground(spec: ReactionSpec): GradientDrawable {
+    private fun reactionOptionBackground(spec: ReactionSpec): Drawable {
+        if (CosmeticPilot.isSpaceEnabled(this)) {
+            return CosmeticPilot.emoteFrame(this)
+        }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(10).toFloat()
@@ -5590,6 +5602,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun clearReactionBubbles() {
         activeReactionBubbles.values.toList().forEach { bubble ->
             bubble.animate().cancel()
+            stopEmoteAnimations(bubble)
             (bubble.parent as? ViewGroup)?.removeView(bubble)
         }
         activeReactionBubbles.clear()
@@ -5607,15 +5620,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         activeReactionBubbles.remove(playerName)?.let { oldBubble ->
             oldBubble.animate().cancel()
+            stopEmoteAnimations(oldBubble)
             (oldBubble.parent as? ViewGroup)?.removeView(oldBubble)
         }
 
         val humanName = GameEngine.humanPlayer(session).name
         val isHuman = playerName == humanName
-        val bubbleSize = dp(if (isHuman) 58 else 46)
+        val bubbleSize = dp(if (isHuman) 66 else 52)
         val tailSize = dp(if (isHuman) 12 else 9)
         val bubbleWidth = bubbleSize
         val bubbleHeight = bubbleSize + tailSize / 2
+        val usesSpaceCosmetic = CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(playerName))
 
         val bubble = FrameLayout(this).apply {
             clipChildren = false
@@ -5628,16 +5643,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val shell = FrameLayout(this).apply {
             setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(13).toFloat()
-                setColor(Color.parseColor("#2A2318"))
-                setStroke(dp(2), Color.parseColor(spec.toneHex))
+            background = if (usesSpaceCosmetic) {
+                CosmeticPilot.bubbleShell(this@GameplayMockActivity)
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(13).toFloat()
+                    setColor(Color.parseColor("#2A2318"))
+                    setStroke(dp(2), Color.parseColor(spec.toneHex))
+                }
             }
             elevation = dp(8).toFloat()
         }
         val icon = ImageView(this).apply {
-            setEmoteImageResource(spec.imageRes)
+            if (
+                spec.key == "premium_six_seven" &&
+                VisualEffectsPreferences.isReduced(this@GameplayMockActivity)
+            ) {
+                setImageResource(R.drawable.reaction_premium_six_seven_a)
+            } else {
+                setEmoteImageResource(
+                    spec.imageRes,
+                    loop = spec.key == "premium_six_seven"
+                )
+            }
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = spec.label
         }
@@ -5653,13 +5682,46 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             FrameLayout.LayoutParams(bubbleSize, bubbleSize, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         )
 
+        if (usesSpaceCosmetic) {
+            listOf(Gravity.TOP or Gravity.START, Gravity.TOP or Gravity.END).forEach { starGravity ->
+                bubble.addView(
+                    TextView(this).apply {
+                        text = "✦"
+                        includeFontPadding = false
+                        gravity = Gravity.CENTER
+                        setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setShadowLayer(
+                            dp(4).toFloat(),
+                            0f,
+                            0f,
+                            Color.parseColor(CosmeticPilot.accentViolet)
+                        )
+                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    },
+                    FrameLayout.LayoutParams(dp(16), dp(16), starGravity).apply {
+                        topMargin = -dp(3)
+                        if (starGravity and Gravity.START == Gravity.START) {
+                            leftMargin = -dp(3)
+                        } else {
+                            rightMargin = -dp(3)
+                        }
+                    }
+                )
+            }
+        }
+
         val tail = View(this).apply {
             rotation = 45f
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(2).toFloat()
-                setColor(Color.parseColor("#2A2318"))
-                setStroke(dp(1), Color.parseColor(spec.toneHex))
+            background = if (usesSpaceCosmetic) {
+                CosmeticPilot.bubbleTail(this@GameplayMockActivity)
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(2).toFloat()
+                    setColor(Color.parseColor("#2A2318"))
+                    setStroke(dp(1), Color.parseColor(spec.toneHex))
+                }
             }
         }
         bubble.addView(
@@ -5705,11 +5767,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         if (activeReactionBubbles[playerName] === bubble) {
                             activeReactionBubbles.remove(playerName)
                         }
+                        stopEmoteAnimations(bubble)
                         (bubble.parent as? ViewGroup)?.removeView(bubble)
                     }
                     .start()
             }
             .start()
+    }
+
+    private fun stopEmoteAnimations(view: View) {
+        (view as? ImageView)?.drawable?.let { drawable ->
+            (drawable as? Animatable)?.stop()
+        }
+        (view as? ViewGroup)?.let { group ->
+            repeat(group.childCount) { index -> stopEmoteAnimations(group.getChildAt(index)) }
+        }
     }
 
     private fun reactionAnchorFor(playerName: String): View? {
@@ -9170,11 +9242,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             getColor(R.color.accent_gold)
         }
-        roleCard.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#E6231810"))
-            setStroke(dp(3), borderColor)
-            cornerRadius = dp(8).toFloat()
+        roleCard.background = if (
+            CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(GameEngine.humanPlayer(session).name))
+        ) {
+            CosmeticPilot.gameplayRoleFrame(this, borderColor)
+        } else {
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.parseColor("#E6231810"))
+                setStroke(dp(3), borderColor)
+                cornerRadius = dp(8).toFloat()
+            }
         }
         roleName.setTextColor(getColor(if (showRole) R.color.text_primary else R.color.text_secondary))
         val human = GameEngine.humanPlayer(session)
@@ -9488,6 +9566,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             else -> " Objetivo: $selectedTarget."
         }
         return "$base$selection"
+    }
+
+    private fun renderHumanCosmeticTheme() {
+        val humanName = GameEngine.humanPlayer(session).name
+        val spaceEnabled = CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(humanName))
+        if (spaceEnabled) {
+            bottomPlayerPanel.background = CosmeticPilot.gameplayPlayerPanel(this)
+            // El marco general ya identifica el conjunto. Una segunda placa alrededor del
+            // nombre lo encerraba entre dos líneas y hacía demasiado ruido en una tarjeta
+            // que debe leerse de un vistazo.
+            currentPlayerName.background = null
+            currentPlayerName.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+            currentPlayerName.setPadding(0, 0, 0, 0)
+        } else {
+            bottomPlayerPanel.setBackgroundResource(R.drawable.bg_hud_parchment)
+            currentPlayerName.background = null
+            currentPlayerName.setTextColor(getColor(R.color.accent_gold))
+            currentPlayerName.setPadding(0, 0, 0, 0)
+        }
     }
 
     override fun renderPersonalStatus() {

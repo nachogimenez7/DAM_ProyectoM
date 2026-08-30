@@ -496,6 +496,7 @@ service cloud.firestore {
           'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
+          'temaCosmeticoPerfil',
           'esHost',
           'estado',
           'uidTemporal',
@@ -519,6 +520,8 @@ service cloud.firestore {
         && isOptionalString(data, 'fotoPlayGames', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
+        && (!('temaCosmeticoPerfil' in data)
+          || data.temaCosmeticoPerfil in ['classic', 'space'])
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
         && validPlayerState(data.estado)
@@ -1125,6 +1128,7 @@ service cloud.firestore {
           'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
+          'temaCosmeticoPerfil',
           'actualizadaEn'
         ])
         && request.resource.data.uidTemporal == uidTemporal
@@ -1135,7 +1139,9 @@ service cloud.firestore {
         && isOptionalString(request.resource.data, 'avatarPerfil', 40)
         && isOptionalString(request.resource.data, 'fotoPlayGames', 1000)
         && isOptionalString(request.resource.data, 'bannerPerfil', 40)
-        && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40);
+        && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40)
+        && (!('temaCosmeticoPerfil' in request.resource.data)
+          || request.resource.data.temaCosmeticoPerfil in ['classic', 'space']);
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
       // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
       allow delete: if isSelf(uidTemporal);

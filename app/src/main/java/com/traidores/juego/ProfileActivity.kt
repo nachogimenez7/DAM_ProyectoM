@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
@@ -76,7 +77,10 @@ class ProfileActivity : BaseActivity() {
             .onSuccess {
                 draftProfile.localPhotoEnabled = true
                 draftProfile.playGamesAvatarUri = ""
-                renderProfile()
+                if (persistProfileChanges()) {
+                    renderProfile()
+                    showAutoSavedNotice("Foto actualizada.")
+                }
             }
             .onFailure { error ->
                 OnlineDebugLog.e("local_profile_photo_import", error)
@@ -102,14 +106,29 @@ class ProfileActivity : BaseActivity() {
     private var isEditing = false
 
     private lateinit var profileAvatar: ImageView
+    private lateinit var profileAvatarFrame: View
     private lateinit var profileBanner: View
+    private lateinit var profileScreenBackground: ImageView
+    private lateinit var profileScreenShade: View
+    private lateinit var profileTitle: TextView
+    private lateinit var profileBackButton: ImageButton
+    private lateinit var profileContentPanel: ViewGroup
+    private lateinit var profileNamePlate: View
+    private lateinit var profileBioBlock: View
+    private lateinit var emoteLoadoutContainer: View
+    private lateinit var profileAccountCard: View
+    private lateinit var cosmeticSurfaceViews: List<View>
+    private lateinit var cosmeticGoldTextViews: List<TextView>
     private lateinit var favoriteRoleImage: ImageView
     private lateinit var favoriteRoleCard: LinearLayout
     private lateinit var profileName: TextView
     private lateinit var profilePublicId: TextView
     private lateinit var profileBio: TextView
     private lateinit var favoriteRoleName: TextView
-    private lateinit var editProfileButton: Button
+    private lateinit var editProfileButton: ImageButton
+    private lateinit var profileDecorationRow: View
+    private lateinit var profileDecorationLabel: TextView
+    private lateinit var profileDecorationButton: ImageButton
     private lateinit var editPublicIdIcon: View
     private lateinit var lastMatchCard: LinearLayout
     private lateinit var lastMatchMapRole: TextView
@@ -126,6 +145,7 @@ class ProfileActivity : BaseActivity() {
     private lateinit var achievementViews: List<TextView>
     private lateinit var emoteViews: List<ImageView>
     private lateinit var editIcons: List<View>
+    private var profileCloudSyncPending = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -214,13 +234,25 @@ class ProfileActivity : BaseActivity() {
         }
 
         editProfileButton.setOnClickListener {
-            if (isEditing) saveChanges() else startEditing()
+            if (isEditing) finishEditing() else startEditing()
         }
+        profileDecorationRow.setOnClickListener { showCosmeticSelector() }
+        profileDecorationButton.setOnClickListener { showCosmeticSelector() }
     }
 
     private fun bindViews() {
         profileAvatar = findViewById(R.id.profileAvatar)
+        profileAvatarFrame = findViewById(R.id.profileAvatarFrame)
         profileBanner = findViewById(R.id.profileBanner)
+        profileScreenBackground = findViewById(R.id.profileScreenBackground)
+        profileScreenShade = findViewById(R.id.profileScreenShade)
+        profileTitle = findViewById(R.id.profileTitle)
+        profileBackButton = findViewById(R.id.btnBack)
+        profileContentPanel = findViewById(R.id.profileContentPanel)
+        profileNamePlate = findViewById(R.id.profileNamePlate)
+        profileBioBlock = findViewById(R.id.profileBioBlock)
+        emoteLoadoutContainer = findViewById(R.id.emoteLoadoutContainer)
+        profileAccountCard = findViewById(R.id.profileAccountCard)
         favoriteRoleImage = findViewById(R.id.favoriteRoleImage)
         favoriteRoleCard = findViewById(R.id.favoriteRoleCard)
         profileName = findViewById(R.id.profileName)
@@ -228,6 +260,9 @@ class ProfileActivity : BaseActivity() {
         profileBio = findViewById(R.id.profileBio)
         favoriteRoleName = findViewById(R.id.favoriteRoleName)
         editProfileButton = findViewById(R.id.btnEditProfile)
+        profileDecorationRow = findViewById(R.id.profileDecorationRow)
+        profileDecorationLabel = findViewById(R.id.profileDecorationLabel)
+        profileDecorationButton = findViewById(R.id.btnProfileDecoration)
         editPublicIdIcon = findViewById(R.id.editPublicId)
         lastMatchCard = findViewById(R.id.lastMatchCard)
         lastMatchMapRole = findViewById(R.id.lastMatchMapRole)
@@ -260,6 +295,17 @@ class ProfileActivity : BaseActivity() {
             findViewById(R.id.editAchievements),
             findViewById(R.id.editEmotes)
         )
+        cosmeticSurfaceViews = listOf(
+            profileBioBlock,
+            findViewById(R.id.statMatchesCard),
+            findViewById(R.id.statWinsCard),
+            findViewById(R.id.statWinRateCard),
+            favoriteRoleCard,
+            emoteLoadoutContainer,
+            profileAccountCard
+        )
+        cosmeticGoldTextViews = descendantTextViews(profileContentPanel)
+            .filter { it.currentTextColor == getColor(R.color.accent_gold) }
     }
 
     private fun loadProfile(): ProfileDraft {
@@ -636,6 +682,80 @@ class ProfileActivity : BaseActivity() {
             achievement?.let { applyAchievementBadgeStyle(view, it.rarity) }
         }
         renderMatchProgress()
+        applyProfileCosmeticTheme()
+    }
+
+    private fun applyProfileCosmeticTheme() {
+        val spaceEnabled = CosmeticPilot.isSpaceEnabled(this)
+        if (spaceEnabled) {
+            profileScreenBackground.setImageResource(R.drawable.profile_background_space)
+            profileScreenShade.setBackgroundColor(Color.parseColor("#26000000"))
+            profileContentPanel.background = CosmeticPilot.profilePanelOverlay(this)
+            profileAvatarFrame.background = CosmeticPilot.avatarFrame(this)
+            profileNamePlate.background = CosmeticPilot.namePlate(this)
+            profileBanner.foreground = CosmeticPilot.bannerVeil(this)
+            profilePublicId.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+            profileTitle.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+            profileBackButton.background = CosmeticPilot.profileSurface(this)
+            profileBackButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
+            profileDecorationRow.background = CosmeticPilot.profileSurface(this)
+            profileDecorationButton.background = CosmeticPilot.profileSurface(this)
+            profileDecorationButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
+            profileDecorationLabel.setTextColor(Color.parseColor(CosmeticPilot.textCyan))
+            editProfileButton.background = CosmeticPilot.profileSurface(this)
+            editProfileButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
+            cosmeticSurfaceViews.forEach { it.background = CosmeticPilot.profileSurface(this) }
+            cosmeticGoldTextViews.forEach {
+                it.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+            }
+            editIcons.forEach { icon ->
+                icon.background = CosmeticPilot.profileSurface(this)
+                (icon as? ImageButton)?.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
+            }
+        } else {
+            profileScreenBackground.setImageResource(R.drawable.fondo_menu)
+            profileScreenShade.setBackgroundColor(Color.parseColor("#52000000"))
+            profileContentPanel.setBackgroundResource(R.drawable.bg_profile_panel)
+            profileAvatarFrame.setBackgroundResource(R.drawable.bg_profile_avatar_frame)
+            profileNamePlate.background = null
+            profileBanner.foreground = null
+            profilePublicId.setTextColor(getColor(R.color.text_primary))
+            profileTitle.setTextColor(getColor(R.color.accent_gold))
+            profileBackButton.setBackgroundResource(R.drawable.bg_btn_dark)
+            profileBackButton.setColorFilter(getColor(R.color.text_secondary))
+            profileDecorationRow.setBackgroundResource(R.drawable.bg_profile_stat)
+            profileDecorationButton.setBackgroundResource(R.drawable.bg_btn_dark)
+            profileDecorationButton.setColorFilter(getColor(R.color.accent_gold))
+            profileDecorationLabel.setTextColor(getColor(R.color.text_primary))
+            editProfileButton.setBackgroundResource(R.drawable.bg_btn_dark)
+            editProfileButton.setColorFilter(getColor(R.color.accent_gold))
+            cosmeticSurfaceViews.forEach { it.setBackgroundResource(R.drawable.bg_profile_stat) }
+            cosmeticGoldTextViews.forEach { it.setTextColor(getColor(R.color.accent_gold)) }
+            editIcons.forEach { icon ->
+                icon.setBackgroundResource(R.drawable.bg_btn_dark)
+                (icon as? ImageButton)?.setColorFilter(getColor(R.color.accent_gold))
+            }
+        }
+        profileDecorationRow.contentDescription =
+            "Elegir decoración. Actual: " + if (spaceEnabled) "Espacial" else "Clásica"
+        profileDecorationButton.contentDescription = profileDecorationRow.contentDescription
+        profileDecorationLabel.text = if (spaceEnabled) {
+            "ESTILO DEL PERFIL · ESPACIAL"
+        } else {
+            "ESTILO DEL PERFIL · CLÁSICO"
+        }
+    }
+
+    private fun descendantTextViews(root: View): List<TextView> {
+        val result = mutableListOf<TextView>()
+        fun collect(view: View) {
+            if (view is TextView) result += view
+            if (view is ViewGroup) {
+                repeat(view.childCount) { index -> collect(view.getChildAt(index)) }
+            }
+        }
+        collect(root)
+        return result
     }
 
     private fun renderMatchProgress() {
@@ -836,6 +956,11 @@ class ProfileActivity : BaseActivity() {
         emoteViews.forEachIndexed { index, image ->
             val spec = EmoteCatalog.byId(ids[index]) ?: return@forEachIndexed
             image.setEmoteImageResource(spec.imageRes)
+            if (CosmeticPilot.isSpaceEnabled(this)) {
+                image.background = CosmeticPilot.emoteFrame(this)
+            } else {
+                image.setBackgroundResource(R.drawable.bg_emote_slot)
+            }
             image.contentDescription = spec.tooltipText()
             androidx.appcompat.widget.TooltipCompat.setTooltipText(image, spec.tooltipText())
             image.isClickable = isEditing
@@ -891,6 +1016,13 @@ class ProfileActivity : BaseActivity() {
         renderProfile()
     }
 
+    private fun finishEditing() {
+        if (!persistProfileChanges()) return
+        setEditing(false)
+        renderProfile()
+        flushProfileCloudSync()
+    }
+
     private fun setEditing(editing: Boolean) {
         isEditing = editing
         val guest = isGuestAccount
@@ -909,9 +1041,12 @@ class ProfileActivity : BaseActivity() {
             it.isFocusable = editing
         }
         editPublicIdIcon.visibility = View.GONE
-        editProfileButton.text = if (editing) "GUARDAR ✓" else "EDITAR"
+        profileDecorationRow.visibility = if (editing) View.VISIBLE else View.GONE
+        editProfileButton.setImageResource(
+            if (editing) R.drawable.ic_close else R.drawable.ic_edit_pencil
+        )
         editProfileButton.contentDescription = if (editing) {
-            "Guardar cambios del perfil"
+            "Terminar de editar el perfil"
         } else {
             "Entrar al modo edicion del perfil"
         }
@@ -919,19 +1054,19 @@ class ProfileActivity : BaseActivity() {
         updateInteractiveContentDescriptions(favoriteRoleName.text.toString())
     }
 
-    private fun saveChanges() {
+    private fun persistProfileChanges(): Boolean {
         // Un invitado no guarda nada: su alias ya se guardo al elegirlo y el resto del perfil
         // esta bloqueado. Escribir aca ademas seria un error, porque dejaria el nombre
         // derivado ("Aguafiestas 4821") como nombre propio el dia que se registre.
         if (isGuestAccount) {
             LocalProfilePhotoStore.discardPending(this)
-            setEditing(false)
-            renderProfile()
-            return
+            return true
         }
+        val hasPendingPhoto = LocalProfilePhotoStore.hasPendingPhoto(this)
+        if (draftProfile == savedProfile && !hasPendingPhoto) return true
         if (
             draftProfile.localPhotoEnabled &&
-            LocalProfilePhotoStore.hasPendingPhoto(this) &&
+            hasPendingPhoto &&
             !LocalProfilePhotoStore.commitPending(this)
         ) {
             GameNotice.show(
@@ -939,7 +1074,7 @@ class ProfileActivity : BaseActivity() {
                 message = "No pudimos guardar la foto. Probá nuevamente.",
                 duration = GameNotice.Duration.LONG
             )
-            return
+            return false
         }
         draftProfile.emoteLoadout = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
         preferences.edit()
@@ -973,15 +1108,22 @@ class ProfileActivity : BaseActivity() {
         EmoteLoadout.save(this, draftProfile.emoteLoadout)
 
         savedProfile = copyProfile(draftProfile)
+        profileCloudSyncPending = true
+        return true
+    }
+
+    private fun flushProfileCloudSync() {
+        if (!profileCloudSyncPending || isGuestAccount) return
+        profileCloudSyncPending = false
         PlayGamesProgressSync.onProfileSaved(this)
-        setEditing(false)
-        Toast.makeText(this, "Perfil actualizado.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showAutoSavedNotice(message: String = "Cambio guardado.") {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onStop() {
-        if (!isChangingConfigurations && !isGuestAccount) {
-            PlayGamesProgressSync.onProfileSaved(this)
-        }
+        if (!isChangingConfigurations) flushProfileCloudSync()
         super.onStop()
     }
 
@@ -991,19 +1133,10 @@ class ProfileActivity : BaseActivity() {
             return
         }
 
-        GameDialog.confirm(
-            activity = this,
-            title = "Descartar cambios",
-            message = "Los cambios del perfil todavía no fueron guardados.",
-            positiveLabel = "DESCARTAR",
-            negativeLabel = "SEGUIR EDITANDO"
-        ) {
-            LocalProfilePhotoStore.discardPending(this)
-            draftProfile = copyProfile(savedProfile)
-            setEditing(false)
-            renderProfile()
-            finish()
-        }
+        if (!persistProfileChanges()) return
+        setEditing(false)
+        flushProfileCloudSync()
+        finish()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1111,10 +1244,11 @@ class ProfileActivity : BaseActivity() {
             onReady = { uri ->
                 draftProfile.localPhotoEnabled = false
                 draftProfile.playGamesAvatarUri = uri
+                if (!persistProfileChanges()) return@requestCurrent
                 renderProfile()
                 GameNotice.show(
                     activity = this,
-                    message = "Foto de Google seleccionada. Guardá los cambios para aplicarla.",
+                    message = "Foto de Google aplicada.",
                     duration = GameNotice.Duration.LONG
                 )
             },
@@ -1173,7 +1307,10 @@ class ProfileActivity : BaseActivity() {
                 "El nombre no puede quedar vacio."
             } else {
                 draftProfile.name = value
-                renderProfile()
+                if (persistProfileChanges()) {
+                    renderProfile()
+                    showAutoSavedNotice()
+                }
                 null
             }
         }
@@ -1275,7 +1412,10 @@ class ProfileActivity : BaseActivity() {
             hint = "Hasta 40 caracteres"
         ) { value ->
             draftProfile.bio = value
-            renderProfile()
+            if (persistProfileChanges()) {
+                renderProfile()
+                showAutoSavedNotice()
+            }
             null
         }
     }
@@ -1297,8 +1437,45 @@ class ProfileActivity : BaseActivity() {
         )
     }
 
+    private fun showCosmeticSelector() {
+        val currentTheme = CosmeticPilot.selectedTheme(this)
+        val options = listOf(
+            buildString {
+                if (currentTheme == CosmeticPilot.THEME_CLASSIC) append("✓ ")
+                append("CLÁSICO · sin decoración")
+            },
+            buildString {
+                if (currentTheme == CosmeticPilot.THEME_SPACE) append("✓ ")
+                append("ESPACIAL · Órbita violeta")
+            }
+        )
+        GameDialog.choose(
+            activity = this,
+            title = "DECORACIÓN",
+            message = "Elegí el conjunto que querés usar en tu perfil y en tus emotes.",
+            options = options
+        ) { selectedIndex ->
+            val selectedTheme = if (selectedIndex == 1) {
+                CosmeticPilot.THEME_SPACE
+            } else {
+                CosmeticPilot.THEME_CLASSIC
+            }
+            CosmeticPilot.selectTheme(this, selectedTheme)
+            profileCloudSyncPending = true
+            renderProfile()
+            Toast.makeText(
+                this,
+                if (selectedTheme == CosmeticPilot.THEME_SPACE) {
+                    "Conjunto Espacial equipado."
+                } else {
+                    "Estilo Clásico equipado."
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     private fun showEmoteSelector() {
-        if (requireAccountFor("Elegir tus emotes")) return
         val content = layoutInflater.inflate(R.layout.dialog_emote_selector, null)
         val counter: TextView = content.findViewById(R.id.emoteSelectorCounter)
         val themeContainer: LinearLayout = content.findViewById(R.id.emoteThemeContainer)
@@ -1311,7 +1488,7 @@ class ProfileActivity : BaseActivity() {
             EmoteCatalog.all.forEach { spec ->
                 val order = selectedIds.indexOf(spec.id)
                 val selected = order >= 0
-                optionViews[spec.id]?.background = emoteOptionBackground(selected, spec.toneHex)
+                optionViews[spec.id]?.background = emoteOptionBackground(selected, spec)
                 orderBadges[spec.id]?.apply {
                     text = if (selected) (order + 1).toString() else ""
                     visibility = if (selected) View.VISIBLE else View.GONE
@@ -1319,17 +1496,17 @@ class ProfileActivity : BaseActivity() {
             }
         }
 
-        EmoteCatalog.byTheme().values.forEachIndexed { themeIndex, emotes ->
+        EmoteCatalog.byCategory().forEach { (category, emotes) ->
             val title = TextView(this).apply {
-                text = emotes.firstOrNull()?.themeLabel.orEmpty().uppercase()
+                text = category.label.uppercase()
                 setTextColor(getColor(R.color.accent_gold))
-                textSize = 14f
+                textSize = 15f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER_VERTICAL
-                if (themeIndex > 0) {
+                if (themeContainer.childCount > 0) {
                     setPadding(0, dp(12), 0, dp(4))
                 } else {
-                    setPadding(0, 0, 0, dp(4))
+                    setPadding(0, 0, 0, dp(2))
                 }
             }
             themeContainer.addView(
@@ -1339,72 +1516,141 @@ class ProfileActivity : BaseActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
-
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-            emotes.forEachIndexed { index, spec ->
-                val option = FrameLayout(this).apply {
-                    isClickable = true
-                    isFocusable = true
-                    setPadding(dp(4), dp(4), dp(4), dp(4))
-                    contentDescription = spec.tooltipText()
-                    androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
-                    setOnClickListener {
-                        val currentIndex = selectedIds.indexOf(spec.id)
-                        if (currentIndex >= 0) {
-                            selectedIds.removeAt(currentIndex)
-                        } else if (selectedIds.size >= EmoteCatalog.LOADOUT_SIZE) {
-                            Toast.makeText(this@ProfileActivity, "Ya elegiste 4 emotes.", Toast.LENGTH_SHORT).show()
-                        } else {
-                            selectedIds += spec.id
-                        }
-                        refreshSelectionState()
-                    }
-                }
-                val icon = ImageView(this).apply {
-                    setEmoteImageResource(spec.imageRes)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    contentDescription = null
-                }
-                option.addView(
-                    icon,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                )
-                val orderBadge = TextView(this).apply {
-                    background = getDrawable(R.drawable.bg_emote_order_badge)
-                    gravity = Gravity.CENTER
-                    includeFontPadding = false
-                    setTextColor(getColor(R.color.bg_dark))
-                    textSize = 11f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    visibility = View.GONE
-                }
-                option.addView(
-                    orderBadge,
-                    FrameLayout.LayoutParams(dp(20), dp(20), Gravity.TOP or Gravity.END)
-                )
-                optionViews[spec.id] = option
-                orderBadges[spec.id] = orderBadge
-                row.addView(
-                    option,
-                    LinearLayout.LayoutParams(0, dp(72), 1f).apply {
-                        if (index > 0) leftMargin = dp(4)
-                        if (index < emotes.lastIndex) rightMargin = dp(4)
-                    }
-                )
-            }
             themeContainer.addView(
-                row,
+                TextView(this).apply {
+                    text = category.description
+                    setTextColor(getColor(R.color.text_secondary))
+                    textSize = 11f
+                    setPadding(0, 0, 0, dp(7))
+                },
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             )
+
+            emotes.chunked(3).forEachIndexed { rowIndex, rowEmotes ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                    if (rowIndex > 0) setPadding(0, dp(8), 0, 0)
+                }
+                rowEmotes.forEachIndexed { index, spec ->
+                    val option = FrameLayout(this).apply {
+                        isClickable = true
+                        isFocusable = true
+                        setPadding(dp(5), dp(5), dp(5), dp(5))
+                        contentDescription = spec.tooltipText()
+                        androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
+                        setOnClickListener {
+                            val currentIndex = selectedIds.indexOf(spec.id)
+                            if (currentIndex >= 0) {
+                                selectedIds.removeAt(currentIndex)
+                            } else if (selectedIds.size >= EmoteCatalog.LOADOUT_SIZE) {
+                                Toast.makeText(this@ProfileActivity, "Ya elegiste 4 emotes.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                selectedIds += spec.id
+                            }
+                            refreshSelectionState()
+                        }
+                    }
+                    val cardContent = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                    }
+                    cardContent.addView(
+                        ImageView(this).apply {
+                            setEmoteImageResource(spec.imageRes)
+                            scaleType = ImageView.ScaleType.FIT_CENTER
+                            contentDescription = null
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            dp(78)
+                        )
+                    )
+                    cardContent.addView(
+                        TextView(this).apply {
+                            text = spec.label
+                            gravity = Gravity.CENTER
+                            includeFontPadding = false
+                            maxLines = 2
+                            setTextColor(getColor(R.color.text_primary))
+                            textSize = 11f
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        },
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            0,
+                            1f
+                        )
+                    )
+                    option.addView(
+                        cardContent,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                    if (spec.isNew) {
+                        option.addView(
+                            TextView(this).apply {
+                                text = if (spec.isAnimated) "ANIMADO" else "NUEVO"
+                                gravity = Gravity.CENTER
+                                includeFontPadding = false
+                                setPadding(dp(5), dp(2), dp(5), dp(2))
+                                setTextColor(getColor(R.color.bg_dark))
+                                textSize = 8f
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                background = getDrawable(R.drawable.bg_emote_order_badge)
+                            },
+                            FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.WRAP_CONTENT,
+                                dp(18),
+                                Gravity.TOP or Gravity.START
+                            )
+                        )
+                    }
+                    val orderBadge = TextView(this).apply {
+                        background = getDrawable(R.drawable.bg_emote_order_badge)
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        setTextColor(getColor(R.color.bg_dark))
+                        textSize = 11f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        visibility = View.GONE
+                    }
+                    option.addView(
+                        orderBadge,
+                        FrameLayout.LayoutParams(dp(22), dp(22), Gravity.TOP or Gravity.END)
+                    )
+                    optionViews[spec.id] = option
+                    orderBadges[spec.id] = orderBadge
+                    row.addView(
+                        option,
+                        LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                            if (index > 0) leftMargin = dp(4)
+                            if (index < 2) rightMargin = dp(4)
+                        }
+                    )
+                }
+                repeat(3 - rowEmotes.size) { spacerIndex ->
+                    row.addView(
+                        View(this),
+                        LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                            leftMargin = dp(4)
+                            if (spacerIndex < 2 - rowEmotes.size) rightMargin = dp(4)
+                        }
+                    )
+                }
+                themeContainer.addView(
+                    row,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
         }
 
         val dialog = AlertDialog.Builder(this)
@@ -1418,7 +1664,9 @@ class ProfileActivity : BaseActivity() {
                 Toast.makeText(this, "Elegi 4 emotes.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            if (requireAccountFor("Guardar tus emotes")) return@setOnClickListener
             draftProfile.emoteLoadout = selectedIds.toList()
+            persistProfileChanges()
             renderProfile()
             dialog.dismiss()
         }
@@ -1455,7 +1703,10 @@ class ProfileActivity : BaseActivity() {
         // El invitado pudo recorrer el catalogo entero; el corte esta al elegir.
         if (requireAccountFor("Quedarte con lo que elegiste")) return
         applySelection(selectedKey)
-        renderProfile()
+        if (persistProfileChanges()) {
+            renderProfile()
+            showAutoSavedNotice()
+        }
     }
 
     private fun showAchievementsSelector() {
@@ -1626,6 +1877,7 @@ class ProfileActivity : BaseActivity() {
                 return@setOnClickListener
             }
             draftProfile.achievements = selectedNames.take(MAX_FEATURED_ACHIEVEMENTS)
+            persistProfileChanges()
             renderProfile()
             dialog.dismiss()
         }
@@ -1689,13 +1941,28 @@ class ProfileActivity : BaseActivity() {
 
     private fun applyAchievementBadgeStyle(view: TextView, rarity: AchievementRarity) {
         val visualStyle = achievementVisualStyle(rarity)
-        view.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(if (rarity == AchievementRarity.GOLD) 14 else 12).toFloat()
-            setColor(Color.parseColor(visualStyle.backgroundHex))
-            setStroke(dp(if (rarity == AchievementRarity.GOLD) 3 else 2), Color.parseColor(visualStyle.borderHex))
+        view.background = if (CosmeticPilot.isSpaceEnabled(this)) {
+            CosmeticPilot.achievementFrame(
+                context = this,
+                rarityColor = Color.parseColor(visualStyle.borderHex),
+                emphasized = rarity == AchievementRarity.GOLD
+            )
+        } else {
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(if (rarity == AchievementRarity.GOLD) 14 else 12).toFloat()
+                setColor(Color.parseColor(visualStyle.backgroundHex))
+                setStroke(
+                    dp(if (rarity == AchievementRarity.GOLD) 3 else 2),
+                    Color.parseColor(visualStyle.borderHex)
+                )
+            }
         }
-        view.setTextColor(Color.parseColor(visualStyle.textHex))
+        view.setTextColor(
+            Color.parseColor(
+                if (CosmeticPilot.isSpaceEnabled(this)) "#EAFBFF" else visualStyle.textHex
+            )
+        )
         view.typeface = if (rarity == AchievementRarity.GOLD) {
             android.graphics.Typeface.SERIF
         } else {
@@ -1704,8 +1971,15 @@ class ProfileActivity : BaseActivity() {
         view.setPadding(dp(8), dp(7), dp(8), dp(7))
     }
 
-    private fun achievementDetailBackground(rarity: AchievementRarity): GradientDrawable {
+    private fun achievementDetailBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
+        if (CosmeticPilot.isSpaceEnabled(this)) {
+            return CosmeticPilot.achievementFrame(
+                context = this,
+                rarityColor = Color.parseColor(visualStyle.borderHex),
+                emphasized = true
+            )
+        }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(16).toFloat()
@@ -1714,8 +1988,14 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun achievementMedalFrameBackground(rarity: AchievementRarity): GradientDrawable {
+    private fun achievementMedalFrameBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
+        if (CosmeticPilot.isSpaceEnabled(this)) {
+            return CosmeticPilot.achievementMedalFrame(
+                context = this,
+                rarityColor = Color.parseColor(visualStyle.borderHex)
+            )
+        }
         return GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.parseColor("#CC2A2318"))
@@ -1879,14 +2159,32 @@ class ProfileActivity : BaseActivity() {
         }
     }
 
-    private fun emoteOptionBackground(selected: Boolean, toneHex: String): GradientDrawable {
+    private fun emoteOptionBackground(selected: Boolean, spec: EmoteSpec): Drawable {
+        if (CosmeticPilot.isSpaceEnabled(this)) {
+            return CosmeticPilot.emoteFrame(this, selected)
+        }
+        val legendary = spec.category == EmoteCategory.LEGENDARY
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(10).toFloat()
-            setColor(Color.parseColor(if (selected) "#332719" else "#1F1711"))
+            setColor(
+                Color.parseColor(
+                    when {
+                        selected -> "#332719"
+                        legendary -> "#2A2114"
+                        else -> "#1F1711"
+                    }
+                )
+            )
             setStroke(
-                dp(if (selected) 2 else 1),
-                Color.parseColor(if (selected) toneHex else "#6B4F2A")
+                dp(if (selected || legendary) 2 else 1),
+                Color.parseColor(
+                    when {
+                        selected -> spec.toneHex
+                        legendary -> "#D7A63C"
+                        else -> "#6B4F2A"
+                    }
+                )
             )
         }
     }
@@ -1894,8 +2192,15 @@ class ProfileActivity : BaseActivity() {
     private fun achievementSelectionBackground(
         selected: Boolean,
         rarity: AchievementRarity
-    ): GradientDrawable {
+    ): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
+        if (CosmeticPilot.isSpaceEnabled(this)) {
+            return CosmeticPilot.achievementFrame(
+                context = this,
+                rarityColor = Color.parseColor(visualStyle.borderHex),
+                emphasized = selected
+            )
+        }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(10).toFloat()

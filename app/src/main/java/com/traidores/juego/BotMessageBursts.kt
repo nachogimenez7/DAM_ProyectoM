@@ -58,6 +58,7 @@ internal object BotMessageBursts {
         val direct = directAddressee == bot.name
         val target = mentionedPlayerNames(session, humanMessage)
             .firstOrNull { it != bot.name }
+            ?: mentionedPlayerNames(session, primaryMessage).firstOrNull { it != bot.name }
         val read = target?.let { targetName ->
             rankedPublicSuspects(session, bot, setOf(targetName))
                 .firstOrNull { it.player.name == targetName }
@@ -68,14 +69,19 @@ internal object BotMessageBursts {
         val hasRecordedStance = session.claimLedger[bot.name].orEmpty().any { record ->
             record.statementType in setOf(StatementType.ACCUSE, StatementType.VOTE)
         }
+        val primaryStatesSuspicion = target != null && (
+            hasAnySignal(primaryMessage, accusationWords) ||
+                normalizedForParsing(primaryMessage).contains("hace ruido")
+            )
+        val hasExplainedStance = hasRecordedStance || primaryStatesSuspicion
 
         val options = when {
             direct && questionKind == HumanQuestionKind.ASK_ROLE -> listOf(
                 "ahora decime que te hizo preguntarme justo a mi"
             )
             direct && questionKind == HumanQuestionKind.WHY_VOTE && !hasRecordedVote -> emptyList()
-            direct && questionKind == HumanQuestionKind.WHY_ACCUSE && !hasRecordedStance -> emptyList()
-            direct && questionKind == HumanQuestionKind.EXPLAIN_STANCE && !hasRecordedStance -> emptyList()
+            direct && questionKind == HumanQuestionKind.WHY_ACCUSE && !hasExplainedStance -> emptyList()
+            direct && questionKind == HumanQuestionKind.EXPLAIN_STANCE && !hasExplainedStance -> emptyList()
             direct && questionKind in setOf(
                 HumanQuestionKind.WHY_VOTE,
                 HumanQuestionKind.WHY_ACCUSE,
@@ -84,7 +90,7 @@ internal object BotMessageBursts {
                 if (hasGroundedSuspicion(read)) {
                     "no salio de la nada: ${read?.reason().orEmpty()}"
                 } else {
-                    "igual no lo doy por culpable, primero quiero que responda"
+                    "no salio de una pista firme; primero quiero que responda"
                 },
                 if (target != null) "$target puede hacerme cambiar si explica ese punto" else "si aparece algo mejor cambio"
             )
@@ -119,8 +125,7 @@ internal object BotMessageBursts {
                 HumanQuestionKind.WHY_VOTE,
                 HumanQuestionKind.WHY_ACCUSE,
                 HumanQuestionKind.EXPLAIN_STANCE
-            ) &&
-                hasGroundedSuspicion(read) -> 2
+            ) && hasExplainedStance -> 2
             else -> 1
         }
         return styleFollowUps(session, bot, options, "human-burst:$primaryMessage", followUpCount)

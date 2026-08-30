@@ -156,8 +156,8 @@ class BotConversationDirectorTest {
             "Mora, por que votaste a Valen?"
         ).single().second
 
-        assertTrue(reply, reply.contains("Beto"))
-        assertTrue(reply, reply.contains("Valen"))
+        assertTrue(reply, reply.contains("Beto", ignoreCase = true))
+        assertTrue(reply, reply.contains("Valen", ignoreCase = true))
     }
 
     @Test
@@ -181,7 +181,7 @@ class BotConversationDirectorTest {
             "Mora, por que decis eso?"
         ).single().second
 
-        assertTrue(reply, reply.contains("Beto"))
+        assertTrue(reply, reply.contains("Beto", ignoreCase = true))
     }
 
     @Test
@@ -665,7 +665,7 @@ class BotConversationDirectorTest {
 
         assertEquals(1, reactions.size)
         val line = reactions.single().second
-        assertTrue(line, line.contains("Valen"))
+        assertTrue(line, line.contains("Valen", ignoreCase = true))
         assertTrue(
             line,
             line.contains("pista", ignoreCase = true) ||

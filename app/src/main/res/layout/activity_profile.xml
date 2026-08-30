@@ -5,6 +5,7 @@
     android:layout_height="match_parent">
 
     <ImageView
+        android:id="@+id/profileScreenBackground"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="@null"
@@ -12,6 +13,7 @@
         android:src="@drawable/fondo_menu" />
 
     <View
+        android:id="@+id/profileScreenShade"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#52000000" />
@@ -40,25 +42,18 @@
         android:textSize="22sp"
         android:textStyle="bold" />
 
-    <Button
+    <ImageButton
         android:id="@+id/btnEditProfile"
-        style="@style/BtnGold"
-        android:layout_width="108dp"
+        android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_alignTop="@id/btnBack"
         android:layout_alignParentEnd="true"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="0dp"
-        android:maxLines="1"
-        android:minHeight="0dp"
-        android:minWidth="0dp"
-        android:paddingHorizontal="8dp"
-        android:text="EDITAR"
-        android:textSize="11sp"
-        app:autoSizeMaxTextSize="11sp"
-        app:autoSizeMinTextSize="8sp"
-        app:autoSizeStepGranularity="1sp"
-        app:autoSizeTextType="uniform" />
+        android:background="@drawable/bg_btn_dark"
+        android:contentDescription="Editar perfil"
+        android:padding="11dp"
+        android:src="@drawable/ic_edit_pencil"
+        app:tint="@color/accent_gold" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -72,6 +67,7 @@
         android:paddingBottom="28dp">
 
         <LinearLayout
+            android:id="@+id/profileContentPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_profile_panel"
@@ -127,12 +123,15 @@
                         style="@style/ProfileEditIcon"
                         android:layout_gravity="bottom|end" />
                 </FrameLayout>
+
             </FrameLayout>
 
             <FrameLayout
+                android:id="@+id/profileNamePlate"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp">
+                android:layout_marginTop="6dp"
+                android:paddingVertical="4dp">
 
                 <TextView
                     android:id="@+id/profileName"
@@ -188,6 +187,38 @@
             </FrameLayout>
 
             <FrameLayout
+                android:id="@+id/profileDecorationRow"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_profile_stat"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/profileDecorationLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:ellipsize="end"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="48dp"
+                    android:text="ESTILO DEL PERFIL · ESPACIAL"
+                    android:textColor="@color/text_primary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btnProfileDecoration"
+                    style="@style/ProfileEditIcon"
+                    android:layout_gravity="center_vertical|end"
+                    android:layout_marginEnd="8dp"
+                    android:visibility="visible" />
+            </FrameLayout>
+
+            <FrameLayout
                 android:id="@+id/profileBioBlock"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -234,6 +265,7 @@
                 android:orientation="horizontal">
 
                 <LinearLayout
+                    android:id="@+id/statMatchesCard"
                     android:layout_width="0dp"
                     android:layout_height="94dp"
                     android:layout_marginEnd="4dp"
@@ -264,6 +296,7 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/statWinsCard"
                     android:layout_width="0dp"
                     android:layout_height="94dp"
                     android:layout_marginHorizontal="4dp"
@@ -294,6 +327,7 @@
                 </LinearLayout>
 
                 <LinearLayout
+                    android:id="@+id/statWinRateCard"
                     android:layout_width="0dp"
                     android:layout_height="94dp"
                     android:layout_marginStart="4dp"
@@ -428,7 +462,7 @@
                 <ImageView
                     android:id="@+id/emoteOne"
                     android:layout_width="0dp"
-                    android:layout_height="56dp"
+                    android:layout_height="72dp"
                     android:layout_marginEnd="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_emote_slot"
@@ -440,7 +474,7 @@
                 <ImageView
                     android:id="@+id/emoteTwo"
                     android:layout_width="0dp"
-                    android:layout_height="56dp"
+                    android:layout_height="72dp"
                     android:layout_marginHorizontal="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_emote_slot"
@@ -452,7 +486,7 @@
                 <ImageView
                     android:id="@+id/emoteThree"
                     android:layout_width="0dp"
-                    android:layout_height="56dp"
+                    android:layout_height="72dp"
                     android:layout_marginHorizontal="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_emote_slot"
@@ -464,7 +498,7 @@
                 <ImageView
                     android:id="@+id/emoteFour"
                     android:layout_width="0dp"
-                    android:layout_height="56dp"
+                    android:layout_height="72dp"
                     android:layout_marginStart="4dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_emote_slot"
@@ -645,6 +679,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/profileAccountCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"

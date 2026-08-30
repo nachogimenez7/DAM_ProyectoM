@@ -67,6 +67,7 @@ class GameplayChatController(
         fun onRealtimeContentAccessCancelled(error: Exception)
         fun isOnlineActorLocallyMuted(actorId: String): Boolean
         fun isOwnPlayerTableSilenced(): Boolean
+        fun cosmeticThemeForPlayer(playerName: String): String
     }
 
     private data class OnlineChatEntry(
@@ -154,6 +155,11 @@ class GameplayChatController(
     private val pendingBotChatRunnables = mutableListOf<Runnable>()
     private val typingBotSpeakers = linkedSetOf<String>()
     private var quickChatDialog: AlertDialog? = null
+    private var isTypingFocusMode = false
+    private var expandedTopStatusHeight = 0
+    private var expandedTopHeaderHeight = 0
+    private var expandedSubtitleVisibility = View.VISIBLE
+    private var expandedProgressVisibility = View.VISIBLE
 
     private val btnToggleChat: ImageButton = root.findViewById(R.id.btnToggleChat)
     private val btnSendChat: Button = root.findViewById(R.id.btnSendChat)
@@ -181,6 +187,7 @@ class GameplayChatController(
     private val chatFeedTitle: TextView = root.findViewById(R.id.chatFeedTitle)
     private val chatHeader: LinearLayout = root.findViewById(R.id.chatHeader)
     private val chatChannelTabs: LinearLayout = root.findViewById(R.id.chatChannelTabs)
+    private val chatMetaRow: LinearLayout = root.findViewById(R.id.chatMetaRow)
     private val chatInput: EditText = root.findViewById(R.id.chatInput)
     private val chatMessagesContainer: LinearLayout = root.findViewById(R.id.chatMessagesContainer)
     private val chatMessagesScroll: ScrollView = root.findViewById(R.id.chatMessagesScroll)
@@ -197,6 +204,8 @@ class GameplayChatController(
 
     private val centerColumn: FrameLayout = root.findViewById(R.id.centerColumn)
     private val topStatus: LinearLayout = root.findViewById(R.id.topStatus)
+    private val phaseSubtitle: TextView = root.findViewById(R.id.phaseSubtitle)
+    private val phaseProgressTrack: View = root.findViewById(R.id.phaseProgressTrack)
     private val btnReadyToVote: Button = root.findViewById(R.id.btnReadyToVote)
     private val bottomPlayerPanel: LinearLayout = root.findViewById(R.id.bottomPlayerPanel)
     private val roleCard: View = root.findViewById(R.id.roleCard)
@@ -589,6 +598,11 @@ class GameplayChatController(
     ) {
         val shouldAnimate = animate && !VisualEffectsPreferences.isReduced(root.context)
         chatPanel.animate().cancel()
+        applyKeyboardAwarePlayerPanel()
+        root.post {
+            applyChatPanelDimensions()
+            updateAmbientFeedInsets()
+        }
         renderAmbientChatFeed()
         if (isChatOpen) {
             chatAmbientFeed.visibility = View.GONE
@@ -667,6 +681,10 @@ class GameplayChatController(
         renderQuickReplies(channel, canChat)
         renderChatCharacterCount(chatInput.text.length)
         renderNewChatMessageNotice()
+        if (isTypingFocusMode) {
+            chatChannelTabs.visibility = View.GONE
+            chatMetaRow.visibility = View.GONE
+        }
         if (newChatMessagesWhileTyping == 0) {
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
         }
@@ -710,27 +728,77 @@ class GameplayChatController(
     }
 
     private fun setChatKeyboardState(compact: Boolean, bottomInset: Int) {
+        val typingFocus = compact && isChatOpen && chatInput.hasFocus()
         if (
             isChatKeyboardCompact == compact &&
             chatKeyboardBottomInset == bottomInset &&
-            chatPanel.isLaidOut
+            chatPanel.isLaidOut &&
+            isTypingFocusMode == typingFocus
         ) {
             applyKeyboardAwarePlayerPanel()
+            applyChatPanelDimensions()
             return
         }
         isChatKeyboardCompact = compact
         chatKeyboardBottomInset = bottomInset
-        applyChatPanelDimensions()
+        val typingModeChanged = setTypingFocusMode(typingFocus)
         applyKeyboardAwarePlayerPanel()
+        // La altura del chat depende de si la ficha inferior acaba de compactarse. Calcularla
+        // después evita reservar los 146dp de la ficha grande cuando ya quedó en una pastilla.
+        applyChatPanelDimensions()
         if (compact && isChatOpen && !isClosingForInteractivePhase) {
             chatPanel.bringToFront()
             chatPanel.visibility = View.VISIBLE
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
         }
+        if (typingModeChanged) {
+            lastExpandedChatRenderKey = ""
+            renderChatPanel()
+        }
+    }
+
+    /**
+     * Mientras aparece el teclado la conversación pasa a ser la información principal. La
+     * cabecera conserva día y reloj, pero libera el objetivo largo y su barra. Al cerrar el
+     * teclado se restauran las medidas adaptativas que eligió GameplayMockActivity.
+     */
+    private fun setTypingFocusMode(enabled: Boolean): Boolean {
+        if (isTypingFocusMode == enabled) return false
+        val header = topStatus.getChildAt(0)
+        if (enabled) {
+            expandedTopStatusHeight = topStatus.layoutParams.height
+            expandedTopHeaderHeight = header.layoutParams.height
+            expandedSubtitleVisibility = phaseSubtitle.visibility
+            expandedProgressVisibility = phaseProgressTrack.visibility
+            topStatus.layoutParams = topStatus.layoutParams.apply {
+                height = host.dp(TYPING_TOP_STATUS_HEIGHT_DP)
+            }
+            header.layoutParams = header.layoutParams.apply {
+                height = host.dp(TYPING_TOP_STATUS_HEIGHT_DP)
+            }
+            phaseSubtitle.visibility = View.GONE
+            phaseProgressTrack.visibility = View.GONE
+        } else {
+            if (expandedTopStatusHeight > 0) {
+                topStatus.layoutParams = topStatus.layoutParams.apply {
+                    height = expandedTopStatusHeight
+                }
+            }
+            if (expandedTopHeaderHeight > 0) {
+                header.layoutParams = header.layoutParams.apply {
+                    height = expandedTopHeaderHeight
+                }
+            }
+            phaseSubtitle.visibility = expandedSubtitleVisibility
+            phaseProgressTrack.visibility = expandedProgressVisibility
+        }
+        isTypingFocusMode = enabled
+        topStatus.requestLayout()
+        return true
     }
 
     private fun shouldCompactBottomPlayerPanel(): Boolean {
-        return isChatOpen && isChatKeyboardCompact && chatInput.hasFocus()
+        return isChatOpen
     }
 
     private fun applyKeyboardAwarePlayerPanel() {
@@ -747,26 +815,41 @@ class GameplayChatController(
     }
 
     private fun compactBottomPlayerPanelForKeyboard() {
+        val typing = isChatKeyboardCompact && chatInput.hasFocus()
+        if (!typing) {
+            host.renderHumanCardIfVisible()
+            host.renderPersonalStatus()
+        }
         bottomPlayerPanel.layoutParams = bottomPlayerPanel.layoutParams.apply {
-            height = host.dp(BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP)
+            height = host.dp(
+                if (typing) {
+                    BOTTOM_PLAYER_PANEL_KEYBOARD_HEIGHT_DP
+                } else {
+                    BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP
+                }
+            )
         }
         bottomPlayerPanel.gravity = Gravity.CENTER
         bottomPlayerPanel.setPadding(host.dp(8), host.dp(4), host.dp(8), host.dp(4))
-        roleCard.visibility = View.GONE
-        currentPlayerName.visibility = View.GONE
-        currentPlayerStatus.visibility = View.GONE
+        roleCard.layoutParams = (roleCard.layoutParams as LinearLayout.LayoutParams).apply {
+            height = host.dp(BOTTOM_PLAYER_ROLE_CARD_CHAT_HEIGHT_DP)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        roleCard.visibility = if (typing) View.GONE else View.VISIBLE
+        currentPlayerName.visibility = if (typing) View.GONE else View.VISIBLE
+        currentPlayerStatus.visibility = if (typing) View.GONE else currentPlayerStatus.visibility
         currentPlayerHint.visibility = View.GONE
         actionControls.visibility = View.GONE
         eliminatedStatePanel.visibility = View.GONE
         chatRoleChip.text = compactRoleChipText()
-        chatRoleChip.visibility = View.VISIBLE
+        chatRoleChip.visibility = if (typing) View.VISIBLE else View.GONE
         roleName.visibility = View.VISIBLE
         roleName.text = compactRoleChipText()
-        roleName.gravity = Gravity.CENTER
+        roleName.gravity = if (typing) Gravity.CENTER else Gravity.START
         roleName.maxLines = 1
-        roleName.setPadding(host.dp(10), 0, host.dp(10), 0)
-        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        roleName.background = compactRoleChipBackground()
+        roleName.setPadding(if (typing) host.dp(10) else 0, 0, if (typing) host.dp(10) else 0, 0)
+        roleName.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (typing) 13f else 10f)
+        roleName.background = if (typing) compactRoleChipBackground() else null
     }
 
     private fun restoreBottomPlayerPanelFromKeyboard() {
@@ -775,6 +858,10 @@ class GameplayChatController(
         }
         bottomPlayerPanel.gravity = Gravity.CENTER
         bottomPlayerPanel.setPadding(host.dp(8), host.dp(6), host.dp(8), host.dp(6))
+        roleCard.layoutParams = (roleCard.layoutParams as LinearLayout.LayoutParams).apply {
+            height = host.dp(BOTTOM_PLAYER_ROLE_CARD_HEIGHT_DP)
+            gravity = Gravity.CENTER_VERTICAL
+        }
         roleCard.visibility = View.VISIBLE
         currentPlayerName.visibility = View.VISIBLE
         currentPlayerHint.visibility = View.VISIBLE
@@ -804,39 +891,48 @@ class GameplayChatController(
         if (root.width == 0) return
         val params = chatPanel.layoutParams
         val viewport = currentChatViewport()
-        val desiredHeight = host.dp(
-            (root.resources.configuration.screenHeightDp * CHAT_SHEET_HEIGHT_RATIO).toInt()
-        )
         val keyboardGap = if (isChatKeyboardCompact) host.dp(CHAT_SHEET_KEYBOARD_GAP_DP) else 0
-        val topClearance = if (isChatKeyboardCompact) {
-            0
+        val topClearance = (topStatus.layoutParams.height.takeIf { it > 0 }
+            ?: topStatus.height.takeIf { it > 0 }
+            ?: host.dp(CHAT_SHEET_TOP_CLEARANCE_DP)) + host.dp(CHAT_SHEET_TOP_GAP_DP)
+        val bottomFallback = if (isBottomPlayerPanelCompact) {
+            if (isChatKeyboardCompact) {
+                BOTTOM_PLAYER_PANEL_KEYBOARD_HEIGHT_DP
+            } else {
+                BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP
+            }
         } else {
-            (topStatus.height.takeIf { it > 0 }
-                ?: host.dp(CHAT_SHEET_TOP_CLEARANCE_DP)) + host.dp(CHAT_SHEET_TOP_GAP_DP)
+            BOTTOM_PLAYER_PANEL_HEIGHT_DP
         }
-        val bottomClearance = if (isChatKeyboardCompact) {
+        val bottomClearance = if (isTypingFocusMode) {
+            // adjustResize ya deja la ficha propia detrás del teclado. Reservarla otra vez
+            // desperdiciaba casi una línea completa de conversación.
             0
         } else {
-            (bottomPlayerPanel.height.takeIf { it > 0 }
-                ?: host.dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)) + host.dp(CHAT_SHEET_PLAYER_GAP_DP)
+            (bottomPlayerPanel.layoutParams.height.takeIf { it > 0 }
+                ?: bottomPlayerPanel.height.takeIf { it > 0 }
+                ?: host.dp(bottomFallback)) + host.dp(CHAT_SHEET_PLAYER_GAP_DP)
         }
         // El chat abierto vive entre la cabecera y la ficha propia. Antes se centraba usando
         // toda la pantalla y sus 62 % inferiores tapaban nombre, rol y acciones del jugador.
         val maxVisibleHeight = (
             viewport.visibleHeight - keyboardGap * 2 - topClearance - bottomClearance
         ).coerceAtLeast(1)
-        val minVisibleHeight = host.dp(CHAT_SHEET_MIN_HEIGHT_DP).coerceAtMost(maxVisibleHeight)
-        params.width = (centerColumn.width.takeIf { it > 0 } ?: (root.width - host.dp(140)))
-            .coerceAtLeast(host.dp(210))
-        params.height = desiredHeight.coerceIn(
-            minVisibleHeight,
-            host.dp(CHAT_SHEET_MAX_HEIGHT_DP).coerceAtMost(maxVisibleHeight)
-        )
+        val centerWidth = centerColumn.width.takeIf { it > 0 } ?: (root.width - host.dp(140))
+        params.width = if (isTypingFocusMode) {
+            (root.width - host.dp(TYPING_CHAT_HORIZONTAL_MARGIN_DP * 2))
+                .coerceAtLeast(host.dp(210))
+        } else {
+            (centerWidth + host.dp(20))
+                .coerceAtMost((root.width - host.dp(24)).coerceAtLeast(host.dp(210)))
+                .coerceAtLeast(host.dp(210))
+        }
+        params.height = maxVisibleHeight.coerceAtMost(host.dp(CHAT_SHEET_MAX_HEIGHT_DP))
         (params as? ViewGroup.MarginLayoutParams)?.apply {
             marginStart = 0
             marginEnd = 0
             topMargin = if (isChatKeyboardCompact) {
-                viewport.visibleTop + ((viewport.visibleHeight - params.height) / 2)
+                viewport.visibleTop + keyboardGap + topClearance
             } else {
                 0
             }
@@ -863,21 +959,37 @@ class GameplayChatController(
             }
         }
         chatPanel.layoutParams = params
-        chatPanelContent.setPadding(host.dp(12), host.dp(11), host.dp(12), host.dp(11))
+        val horizontalPadding = if (isTypingFocusMode) 8 else 12
+        val verticalPadding = if (isTypingFocusMode) 7 else 11
+        chatPanelContent.setPadding(
+            host.dp(horizontalPadding),
+            host.dp(verticalPadding),
+            host.dp(horizontalPadding),
+            host.dp(verticalPadding)
+        )
         chatHeader.layoutParams = chatHeader.layoutParams.apply {
-            height = host.dp(36)
+            height = host.dp(if (isTypingFocusMode) 32 else 36)
         }
         chatComposer.layoutParams = chatComposer.layoutParams.apply {
-            height = host.dp(44)
+            height = host.dp(if (isTypingFocusMode) 40 else 44)
         }
         chatStatusRow.layoutParams = chatStatusRow.layoutParams.apply {
-            height = host.dp(22)
+            height = host.dp(if (isTypingFocusMode) 16 else 22)
+        }
+        chatQuickRepliesScroll.layoutParams = chatQuickRepliesScroll.layoutParams.apply {
+            height = host.dp(if (isTypingFocusMode) 32 else 38)
         }
         chatInput.layoutParams = chatInput.layoutParams.apply {
-            height = host.dp(44)
+            height = host.dp(if (isTypingFocusMode) 40 else 44)
         }
         btnSendChat.layoutParams = btnSendChat.layoutParams.apply {
-            height = host.dp(44)
+            height = host.dp(if (isTypingFocusMode) 40 else 44)
+        }
+        if (isTypingFocusMode) {
+            chatChannelTabs.visibility = View.GONE
+            chatMetaRow.visibility = View.GONE
+        } else {
+            chatMetaRow.visibility = View.VISIBLE
         }
     }
 
@@ -938,7 +1050,7 @@ class GameplayChatController(
                 messages
             }
         }
-        val entries = ChronicleFeedPresenter.entries(
+        val allEntries = ChronicleFeedPresenter.entries(
             sourceMessages.takeLast(CHAT_AMBIENT_SOURCE_LIMIT)
         )
             .filterNot { it.kind == ChronicleEntryKind.DAY_DIVIDER }
@@ -946,7 +1058,7 @@ class GameplayChatController(
                 entry.kind == ChronicleEntryKind.SYSTEM &&
                     entry.text.startsWith("Dios preparo una partida", ignoreCase = true)
             }
-            .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
+        val entries = compactAmbientEntries(allEntries, host.currentSession)
         val canChat = canHumanChatInChannel(channel)
         updateAmbientFeedInsets()
         val renderKey = listOf(
@@ -1052,6 +1164,68 @@ class GameplayChatController(
             )
             setPadding(host.dp(12), host.dp(12), host.dp(12), host.dp(12))
         }
+    }
+
+    private fun compactAmbientEntries(
+        entries: List<ChronicleEntry>,
+        session: GameSession
+    ): List<ChronicleEntry> {
+        if (entries.isEmpty()) return emptyList()
+        val pinnedSummary = ambientRoundPresentation(session, activeChatChannel()).second.trim()
+        val visible = entries.withIndex().filterNot { indexed ->
+            val entry = indexed.value
+            val normalized = GameplayTextMarkers.normalize(entry.text)
+            val later = entries.drop(indexed.index + 1)
+            val resolvedLater = later.any { next ->
+                next.round == entry.round && when {
+                    entry.kind == ChronicleEntryKind.NIGHT ->
+                        next.kind == ChronicleEntryKind.DAWN || next.kind == ChronicleEntryKind.DEATH
+                    "resolvera" in normalized && entry.kind == ChronicleEntryKind.EXPULSION ->
+                        next.kind == ChronicleEntryKind.EXPULSION &&
+                            "resolvera" !in GameplayTextMarkers.normalize(next.text)
+                    else -> false
+                }
+            }
+            resolvedLater || entry.text.trim() == pinnedSummary
+        }
+        val chosenIndexes = buildSet {
+            visible.filter { it.value.kind != ChronicleEntryKind.PLAYER }
+                .takeLast(CHAT_AMBIENT_EVENT_LIMIT)
+                .forEach { add(it.index) }
+            visible.filter { it.value.kind == ChronicleEntryKind.PLAYER }
+                .takeLast(CHAT_AMBIENT_PLAYER_LIMIT)
+                .forEach { add(it.index) }
+        }
+        return visible
+            .filter { it.index in chosenIndexes }
+            .sortedBy { it.index }
+            .map { conciseAmbientEntry(it.value, session) }
+            .takeLast(CHAT_AMBIENT_MAX_MESSAGES)
+    }
+
+    private fun conciseAmbientEntry(entry: ChronicleEntry, session: GameSession): ChronicleEntry {
+        if (entry.kind == ChronicleEntryKind.PLAYER) return entry
+        val normalized = GameplayTextMarkers.normalize(entry.text)
+        val concise = when {
+            entry.kind == ChronicleEntryKind.NIGHT ->
+                "Noche ${entry.round ?: session.round}: comienza la noche."
+            entry.kind == ChronicleEntryKind.DAWN &&
+                ("nadie murio" in normalized || "no murio" in normalized) ->
+                "Amanecer: no murió nadie."
+            else -> firstAmbientSentence(entry.text)
+        }
+        return entry.copy(text = concise)
+    }
+
+    private fun firstAmbientSentence(text: String): String {
+        val first = text.trim().substringBefore('.').trim()
+        if (first.isBlank()) return text.trim().take(CHAT_AMBIENT_EVENT_MAX_CHARS)
+        val limited = if (first.length > CHAT_AMBIENT_EVENT_MAX_CHARS) {
+            first.take(CHAT_AMBIENT_EVENT_MAX_CHARS - 1).trimEnd() + "…"
+        } else {
+            "$first."
+        }
+        return limited
     }
 
     private fun ambientEntryAnimationKey(
@@ -1827,23 +2001,38 @@ class GameplayChatController(
         val renderKey = listOf(
             channel.name,
             recentMessages,
+            host.currentSession.round,
             showOnlyEvents,
             typingBotSpeakers.toList(),
             host.gameplayTextScale,
             chatPanel.width,
             host.isOnlineGameplay(),
-            unreadMessagesOnOpen
+            unreadMessagesOnOpen,
+            isTypingFocusMode
         ).joinToString("|")
         if (lastExpandedChatRenderKey == renderKey && chatMessagesContainer.childCount > 0) {
             return
         }
         lastExpandedChatRenderKey = renderKey
         chatMessagesContainer.removeAllViews()
-        val entries = ChronicleFeedPresenter.entries(
+        val preparedEntries = ChronicleFeedPresenter.entries(
             recentMessages,
             showOnlyEvents && channel == ChatChannel.PUBLICO
         )
+            // La composición completa sirve como bienvenida el primer día. Repetirla en
+            // cada ronda empuja la conversación fuera de pantalla y hace que el chat parezca
+            // un registro técnico, justo cuando el jugador necesita leer a la mesa.
+            .filterNot { entry ->
+                channel == ChatChannel.PUBLICO &&
+                    host.currentSession.round > 1 &&
+                    entry.kind == ChronicleEntryKind.ROLE_COMPOSITION
+            }
             .takeLast(CHAT_EXPANDED_SOURCE_LIMIT)
+        val entries = if (isTypingFocusMode) {
+            typingFocusEntries(preparedEntries)
+        } else {
+            preparedEntries
+        }
         val typingSpeakers = typingBotSpeakers.filter { speaker ->
             typingSpeakerBelongsToChannel(speaker, channel)
         }
@@ -1949,6 +2138,16 @@ class GameplayChatController(
         val session = host.currentSession
         val composition = ambientCompositionText(session)
         chatAmbientComposition.text = composition
+        val showComposition = session.round == 1 && session.phase in setOf(
+            GamePhase.AMANECER,
+            GamePhase.DIA_DEBATE,
+            GamePhase.CONTRAPUNTO,
+            GamePhase.VOTACION,
+            GamePhase.DESEMPATE_VOTACION,
+            GamePhase.ALCALDE_DESEMPATE,
+            GamePhase.RECUENTO_VOTOS
+        )
+        chatAmbientComposition.visibility = if (showComposition) View.VISIBLE else View.GONE
         val compositionSizeSp = when {
             composition.length > 130 -> 7.0f
             composition.length > 100 -> 7.7f
@@ -2046,6 +2245,23 @@ class GameplayChatController(
         }
     }
 
+    private fun typingFocusEntries(entries: List<ChronicleEntry>): List<ChronicleEntry> {
+        val useful = entries.withIndex().filterNot { (_, entry) ->
+            entry.kind == ChronicleEntryKind.DAY_DIVIDER ||
+                entry.kind == ChronicleEntryKind.ROLE_COMPOSITION
+        }
+        val players = useful
+            .filter { (_, entry) -> entry.kind == ChronicleEntryKind.PLAYER }
+            .takeLast(TYPING_VISIBLE_PLAYER_MESSAGES)
+        val events = useful
+            .filter { (_, entry) -> entry.kind != ChronicleEntryKind.PLAYER }
+            .takeLast(if (players.isEmpty()) 2 else 1)
+        return (events + players)
+            .distinctBy { it.index }
+            .sortedBy { it.index }
+            .map { it.value }
+    }
+
     private fun createUnreadDivider(count: Int): View {
         val accent = when (activeChatChannel()) {
             ChatChannel.PUBLICO -> Color.parseColor("#D7A646")
@@ -2131,13 +2347,27 @@ class GameplayChatController(
     }
 
     private fun morningSummary(session: GameSession): String {
-        return session.publicHistory.asReversed().firstOrNull { line ->
+        val recent = session.publicHistory.takeLast(5)
+        val morning = recent.asReversed().firstOrNull { line ->
             line.contains("Amanecer", ignoreCase = true) ||
                 line.contains("murió", ignoreCase = true) ||
                 line.contains("murio", ignoreCase = true) ||
                 line.contains("sobreviv", ignoreCase = true) ||
                 line.contains("no murió", ignoreCase = true)
         } ?: session.publicAnnouncement.ifBlank { "El pueblo despierta y empieza a debatir." }
+        val normalized = GameplayTextMarkers.normalize(morning)
+        val base = if ("nadie murio" in normalized || "no murio" in normalized) {
+            "Anoche no murió nadie."
+        } else {
+            firstAmbientSentence(morning)
+        }
+        val silence = recent.asReversed().firstOrNull { line ->
+            line != morning && (
+                line.contains("silenci", ignoreCase = true) ||
+                    line.contains("no puede hablar", ignoreCase = true)
+                )
+        }?.let(::firstAmbientSentence)
+        return listOfNotNull(base, silence).joinToString(" ")
     }
 
     private fun ambientInvitation(channel: ChatChannel, canChat: Boolean): String {
@@ -2194,7 +2424,7 @@ class GameplayChatController(
             btnChatFeedFilter.isEnabled = false
             return
         }
-        btnChatFeedFilter.text = if (showOnlyEvents) "SUCESOS" else "TODO"
+        btnChatFeedFilter.text = if (showOnlyEvents) "VER TODO" else "SOLO SUCESOS"
         btnChatFeedFilter.contentDescription = if (showOnlyEvents) {
             "Mostrar todo el feed"
         } else {
@@ -2292,6 +2522,33 @@ class GameplayChatController(
     private fun addGodEventBanner(entry: ChronicleEntry) {
         val event = eventPresentationFor(entry)
         val immersivePrivateStyle = activeChatChannel() != ChatChannel.PUBLICO
+        if (isTypingFocusMode) {
+            chatMessagesContainer.addView(
+                TextView(root.context).apply {
+                    text = "${event.label}: ${firstAmbientSentence(entry.text)}"
+                    gravity = Gravity.CENTER_VERTICAL
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                    setPadding(host.dp(9), host.dp(5), host.dp(9), host.dp(5))
+                    setTextColor(root.context.getColor(R.color.text_primary))
+                    textSize = 9.5f * host.gameplayTextScale
+                    typeface = cronistaTypeface()
+                    background = angularBackground(
+                        fillColor = colorWithAlpha(event.backgroundColor, 226),
+                        strokeColor = colorWithAlpha(event.strokeColor, 205),
+                        cornerRadiusDp = 4
+                    )
+                },
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = host.dp(2)
+                    bottomMargin = host.dp(3)
+                }
+            )
+            return
+        }
         val row = LinearLayout(root.context).apply {
             gravity = Gravity.CENTER
             orientation = LinearLayout.HORIZONTAL
@@ -2378,6 +2635,8 @@ class GameplayChatController(
         muted: Boolean
     ) {
         val channel = activeChatChannel()
+        val spaceOwnMessage = channel == ChatChannel.PUBLICO &&
+            CosmeticPilot.isSpaceTheme(host.cosmeticThemeForPlayer(speaker))
         val row = LinearLayout(root.context).apply {
             gravity = if (ownMessage) Gravity.END else Gravity.START
             orientation = LinearLayout.HORIZONTAL
@@ -2387,9 +2646,17 @@ class GameplayChatController(
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(10), host.dp(7), host.dp(10), host.dp(8))
             when (channel) {
-                ChatChannel.PUBLICO -> setBackgroundResource(
-                    if (ownMessage) R.drawable.bg_chat_bubble_own else R.drawable.bg_chat_bubble_other
-                )
+                ChatChannel.PUBLICO -> background = if (spaceOwnMessage) {
+                    CosmeticPilot.chatMessageBubble(root.context)
+                } else {
+                    root.context.getDrawable(
+                        if (ownMessage) {
+                            R.drawable.bg_chat_bubble_own
+                        } else {
+                            R.drawable.bg_chat_bubble_other
+                        }
+                    )
+                }
                 ChatChannel.TRAIDORES -> background = angularBackground(
                     fillColor = Color.parseColor(if (ownMessage) "#7A26313A" else "#E62A1518"),
                     strokeColor = Color.parseColor(if (ownMessage) "#B86A747E" else "#8A74333C"),
@@ -2406,7 +2673,13 @@ class GameplayChatController(
         bubble.addView(TextView(root.context).apply {
             text = speaker
             maxLines = 1
-            setTextColor(speakerColor)
+            setTextColor(
+                if (spaceOwnMessage) {
+                    Color.parseColor(CosmeticPilot.accentCyan)
+                } else {
+                    speakerColor
+                }
+            )
             textSize = 9f * host.gameplayTextScale
             typeface = Typeface.DEFAULT_BOLD
         })
@@ -2418,7 +2691,13 @@ class GameplayChatController(
                     when (channel) {
                         ChatChannel.TRAIDORES -> R.color.traitor_text
                         ChatChannel.ESPECTADORES -> R.color.espectro_text
-                        ChatChannel.PUBLICO -> if (ownMessage) R.color.bg_dark else R.color.text_primary
+                        ChatChannel.PUBLICO -> if (spaceOwnMessage) {
+                            R.color.text_primary
+                        } else if (ownMessage) {
+                            R.color.bg_dark
+                        } else {
+                            R.color.text_primary
+                        }
                     }
                 )
             )
@@ -4059,16 +4338,22 @@ class GameplayChatController(
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_CHAT_CHANNEL = "chat_channel"
-        private const val CHAT_SHEET_HEIGHT_RATIO = 0.62f
-        private const val CHAT_SHEET_MIN_HEIGHT_DP = 340
         private const val CHAT_SHEET_MAX_HEIGHT_DP = 680
         private const val CHAT_SHEET_KEYBOARD_GAP_DP = 6
         private const val CHAT_SHEET_TOP_CLEARANCE_DP = 82
         private const val CHAT_SHEET_TOP_GAP_DP = 12
-        private const val CHAT_SHEET_PLAYER_GAP_DP = 8
+        private const val TYPING_TOP_STATUS_HEIGHT_DP = 38
+        private const val TYPING_CHAT_HORIZONTAL_MARGIN_DP = 8
+        private const val TYPING_VISIBLE_PLAYER_MESSAGES = 4
+        // Separación visual real: algunos dispositivos agregan el borde/sombra fuera de la
+        // medida del panel y con 8dp parecía que el chat se montaba sobre la ficha compacta.
+        private const val CHAT_SHEET_PLAYER_GAP_DP = 20
         private const val IME_FRAME_TOLERANCE_DP = 8
         private const val IME_RESIZE_TOLERANCE_DP = 48
-        private const val CHAT_AMBIENT_MAX_MESSAGES = 10
+        private const val CHAT_AMBIENT_MAX_MESSAGES = 5
+        private const val CHAT_AMBIENT_EVENT_LIMIT = 2
+        private const val CHAT_AMBIENT_PLAYER_LIMIT = 3
+        private const val CHAT_AMBIENT_EVENT_MAX_CHARS = 88
         private const val HUMAN_MESSAGE_BURST_THRESHOLD = 3
         private const val HUMAN_MESSAGE_BURST_WINDOW_MS = 3_500L
         private const val SPAM_REACTION_DELAY_MS = 2_600L
@@ -4082,7 +4367,10 @@ class GameplayChatController(
         private const val CHAT_AMBIENT_READY_GAP_DP = 6
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
-        private const val BOTTOM_PLAYER_PANEL_COMPACT_HEIGHT_DP = 42
+        private const val BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP = 60
+        private const val BOTTOM_PLAYER_PANEL_KEYBOARD_HEIGHT_DP = 42
+        private const val BOTTOM_PLAYER_ROLE_CARD_HEIGHT_DP = 86
+        private const val BOTTOM_PLAYER_ROLE_CARD_CHAT_HEIGHT_DP = 48
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L

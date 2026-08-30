@@ -23,7 +23,11 @@ internal fun reactionIntent(
     val personality = personalityFor(session, bot)
     val seed = stableNoise("${session.code}:${session.round}:${bot.name}:intent:$index:$humanMessage")
     if (mood == BotMood.DEFENSIVE) return BotSpeechIntent.DEFEND
-    if (memory.unansweredTarget?.let { focusNames.contains(it) || mentionsName(humanMessage, it) } == true) {
+    if (
+        memory.unansweredTarget?.let {
+            focusNames.contains(it) || mentionsName(humanMessage, it) || index == 0
+        } == true
+    ) {
         return BotSpeechIntent.FOLLOW_UP
     }
     if (

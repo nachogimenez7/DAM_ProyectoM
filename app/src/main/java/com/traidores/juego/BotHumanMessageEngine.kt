@@ -68,9 +68,19 @@ internal object BotHumanMessageEngine {
             else -> 1
         }
         val replyCount = limitedReplyCount(session, desiredReplyCount)
+        val collectivelyUnanswered = collectivelyUnansweredTarget(session)
+        val threadKeeper = collectivelyUnanswered?.let { target ->
+            session.players.firstOrNull { player ->
+                !player.isHuman &&
+                    player.name != target &&
+                    GameEngine.canParticipateInChat(session, player) &&
+                    unansweredQuestionFor(session, player) == target
+            }?.name
+        }
         val preferredResponder = understanding.directAddressee
             ?: understanding.claimResponder?.name
             ?: understanding.answeredQuestion?.speaker
+            ?: threadKeeper
         return messageBots(session, replyCount, preferredFirst = preferredResponder)
             .mapIndexed { index, bot ->
                 responseFor(
@@ -79,6 +89,7 @@ internal object BotHumanMessageEngine {
                     humanMessage = humanMessage,
                     understanding = understanding,
                     repeatedOffTopic = repeatedOffTopic,
+                    collectivelyUnanswered = collectivelyUnanswered,
                     index = index
                 )
             }
@@ -153,6 +164,7 @@ internal object BotHumanMessageEngine {
         humanMessage: String,
         understanding: Understanding,
         repeatedOffTopic: Boolean,
+        collectivelyUnanswered: String?,
         index: Int
     ): Pair<String, String> {
         val read = rankedPublicSuspects(session, bot, understanding.focusNames).firstOrNull()
@@ -228,6 +240,15 @@ internal object BotHumanMessageEngine {
         } else {
             null
         }
+        val directAddressedLine = if (
+            bot.name == understanding.directAddressee &&
+            understanding.questionKind == null &&
+            humanMessage.trim().endsWith("?")
+        ) {
+            defensiveLine(session, bot, mood)
+        } else {
+            null
+        }
         val line = when {
             bot.role?.key == RoleCatalog.BUFON && understanding.focusNames.contains(bot.name) ->
                 jesterEmbraceAccusationLine(session, bot, index)
@@ -235,6 +256,18 @@ internal object BotHumanMessageEngine {
             claimLine != null -> claimLine
             directQuestionLine != null -> directQuestionLine
             directSocialLine != null -> directSocialLine
+            directAddressedLine != null -> directAddressedLine
+            collectivelyUnanswered != null &&
+                collectivelyUnanswered != bot.name &&
+                index == 0 -> "$collectivelyUnanswered, sigo esperando que respondas lo de antes"
+            unanswered != null && index == 0 && (
+                intent == BotSpeechIntent.FOLLOW_UP ||
+                    understanding.intent in setOf(
+                        HumanMessageIntent.ACCUSE,
+                        HumanMessageIntent.DOUBT,
+                        HumanMessageIntent.OTHER
+                    )
+                ) -> "$unanswered, sigo esperando que respondas lo de antes"
             understanding.intent == HumanMessageIntent.ANSWER_PENDING ->
                 pendingAnswerReply(session, bot, humanMessage, memory, index)
             understanding.intent == HumanMessageIntent.ACCUSE && understanding.focusNames.contains(bot.name) ->

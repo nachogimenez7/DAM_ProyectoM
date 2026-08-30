@@ -16,7 +16,7 @@
         android:layout_height="wrap_content"
         android:fontFamily="@font/bree_serif"
         android:gravity="center"
-        android:text="ELEGI TUS 4 EMOTES"
+        android:text="ELEGÍ TUS 4 EMOTES"
         android:textColor="@color/accent_gold"
         android:textSize="21sp"
         android:textStyle="bold" />
@@ -33,10 +33,19 @@
         android:textSize="13sp"
         android:textStyle="bold" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:gravity="center"
+        android:text="Mantené pulsado un emote para leer su descripción"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp" />
+
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="360dp"
-        android:layout_marginTop="12dp"
+        android:layout_height="390dp"
+        android:layout_marginTop="9dp"
         android:clipToPadding="false"
         android:fillViewport="false">
 

@@ -1313,10 +1313,11 @@ class LobbyActivity : BaseActivity() {
         }
         EmoteLoadout.selectedSpecs(this).forEachIndexed { index, emote ->
             emoteRow.addView(ImageButton(this).apply {
-                setImageResource(emote.imageRes)
+                setEmoteImageResource(emote.imageRes)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setBackgroundResource(R.drawable.bg_btn_dark_ripple)
-                contentDescription = "Enviar emote ${emote.label}"
+                contentDescription = "Enviar emote ${emote.tooltipText()}"
+                androidx.appcompat.widget.TooltipCompat.setTooltipText(this, emote.tooltipText())
                 setPadding(dp(5), dp(5), dp(5), dp(5))
                 setOnClickListener {
                     if (!lobbyRealtimeAccessReady) {
@@ -1329,7 +1330,7 @@ class LobbyActivity : BaseActivity() {
                     }
                     lobbyChatController?.sendEmote(emote)
                 }
-            }, LinearLayout.LayoutParams(dp(50), dp(50)).apply {
+            }, LinearLayout.LayoutParams(dp(62), dp(62)).apply {
                 if (index > 0) marginStart = dp(9)
             })
         }
@@ -1357,10 +1358,11 @@ class LobbyActivity : BaseActivity() {
             val emote = message.emoteId?.let(EmoteCatalog::byId)
             if (emote != null) {
                 row.addView(ImageView(this).apply {
-                    setImageResource(emote.imageRes)
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    contentDescription = emote.label
-                }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(8) })
+                    setEmoteImageResource(emote.imageRes)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = emote.tooltipText()
+                    androidx.appcompat.widget.TooltipCompat.setTooltipText(this, emote.tooltipText())
+                }, LinearLayout.LayoutParams(dp(58), dp(58)).apply { marginEnd = dp(9) })
             }
             row.addView(TextView(this).apply {
                 text = when {
@@ -2910,7 +2912,10 @@ class LobbyActivity : BaseActivity() {
             favoriteRoleKey = ProfileRoleCatalog.find(favoriteRoleKey).key,
             featuredAchievementIds = emptyList(),
             emoteIds = emptyList(),
-            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false)
+            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false),
+            cosmeticThemeId = CosmeticPilot.normalizeTheme(
+                document.getString(PlayerPublicIdentity.FIELD_PROFILE_COSMETIC_THEME)
+            ) ?: CosmeticPilot.THEME_CLASSIC
         )
     }
 
@@ -5435,45 +5440,22 @@ class LobbyActivity : BaseActivity() {
         val content = dialogColumn()
         content.addView(dialogTitle("OPCIONES AVANZADAS"))
         content.addView(dialogSectionTitle("REGLAS DE LA PARTIDA"))
-        val revealRolesSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Mostrar roles al morir"
-            isChecked = revealRolesOnDeath
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(2), dp(4), dp(8))
-            setOnCheckedChangeListener { _, checked ->
-                revealRolesOnDeath = checked
-            }
+        addAdvancedRuleOption(
+            content = content,
+            title = "Mostrar roles al morir o al expulsar",
+            description = "Si se desactiva, las cartas eliminadas permanecen ocultas.",
+            checked = revealRolesOnDeath
+        ) { checked ->
+            revealRolesOnDeath = checked
         }
-        content.addView(revealRolesSwitch)
-        content.addView(TextView(this).apply {
-            text = "Desactivado por defecto: las cartas eliminadas permanecen ocultas."
-            gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 11f
-            setPadding(dp(4), 0, dp(4), dp(8))
-        })
-        val individualVotesSwitch = SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "MOSTRAR VOTOS INDIVIDUALES"
-            isChecked = showIndividualVotes
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(2), dp(4), dp(4))
-            setOnCheckedChangeListener { _, checked ->
-                showIndividualVotes = checked
-            }
+        addAdvancedRuleOption(
+            content = content,
+            title = "Mostrar votos individuales",
+            description = "Muestra quién votó a cada jugador. Si se desactiva, solo se ve el total.",
+            checked = showIndividualVotes
+        ) { checked ->
+            showIndividualVotes = checked
         }
-        content.addView(individualVotesSwitch)
-        content.addView(TextView(this).apply {
-            text = "Activado por defecto: muestra quien voto a cada jugador. " +
-                "Desactivado: solo muestra los votos recibidos."
-            gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 11f
-            setPadding(dp(4), 0, dp(4), dp(8))
-        })
         content.addView(TextView(this).apply {
             text = "LECTURA INICIAL DEL ROL"
             setTextColor(getColor(R.color.text_primary))
@@ -5630,6 +5612,17 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(4), 0, dp(4), dp(6))
             maxLines = 2
         }
+        val compositionSummary = TextView(this).apply {
+            gravity = Gravity.CENTER
+            setTextColor(getColor(R.color.accent_gold))
+            textSize = 10.5f
+            maxLines = 2
+            setPadding(dp(4), 0, dp(4), dp(5))
+        }
+        val resetRecommendedButton = compactDialogButton("RESTABLECER RECOMENDADO").apply {
+            textSize = 10f
+            isAllCaps = false
+        }
         fun minRoleCount(key: String): Int {
             return when (key) {
                 RoleCatalog.POLICIA, RoleCatalog.MEDICO, RoleCatalog.ASESINO -> 1
@@ -5667,6 +5660,16 @@ class LobbyActivity : BaseActivity() {
             }
             compositionPresetDescription.text = selectedCompositionPreset?.description
                 ?: "Personalizado: ajustaste la cantidad exacta de roles manualmente."
+            compositionSummary.text = buildRoleCompositionSummary(
+                playerTotal = playerTotal,
+                roleKeys = roleKeys,
+                counts = draftCounts
+            )
+            resetRecommendedButton.visibility = if (selectedCompositionPreset == null) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
         }
         fun applyCompositionPreset(preset: RoleCompositionPreset) {
             val presetComposition = LocalGameFactory.roleCompositionPreset(
@@ -5679,6 +5682,9 @@ class LobbyActivity : BaseActivity() {
             }
             selectedCompositionPreset = preset
             refreshRoleComposition()
+        }
+        resetRecommendedButton.setOnClickListener {
+            applyCompositionPreset(RoleCompositionPreset.RECOMMENDED)
         }
         val compositionPresetRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -5708,7 +5714,16 @@ class LobbyActivity : BaseActivity() {
             }
         )
         content.addView(compositionPresetDescription)
-        val scroll = ScrollView(this)
+        content.addView(compositionSummary)
+        content.addView(
+            resetRecommendedButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(34)
+            ).apply {
+                bottomMargin = dp(5)
+            }
+        )
         val roles = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -5790,13 +5805,14 @@ class LobbyActivity : BaseActivity() {
             roles.addView(row)
         }
         refreshRoleComposition()
-        scroll.addView(roles)
         content.addView(
-            scroll,
+            roles,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(210)
-            )
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(8)
+            }
         )
 
         val advancedDialogContent = ScrollView(this).apply {
@@ -5833,6 +5849,62 @@ class LobbyActivity : BaseActivity() {
         )
     }
 
+    /** Regla con el interruptor separado para que el título nunca quede debajo del control. */
+    private fun addAdvancedRuleOption(
+        content: LinearLayout,
+        title: String,
+        description: String,
+        checked: Boolean,
+        enabled: Boolean = true,
+        onChanged: (Boolean) -> Unit
+    ) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(2), dp(4))
+        }
+        val copy = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@LobbyActivity).apply {
+                text = title
+                setTextColor(getColor(R.color.text_primary))
+                textSize = 13.5f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                maxLines = 2
+                includeFontPadding = false
+            })
+            addView(TextView(this@LobbyActivity).apply {
+                text = description
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 10.5f
+                maxLines = 2
+                includeFontPadding = false
+                setPadding(0, dp(3), 0, 0)
+            })
+        }
+        row.addView(copy, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(SwitchCompat(this).apply {
+            applyTraidoresSwitchStyle()
+            showText = false
+            isChecked = checked
+            isEnabled = enabled
+            minWidth = dp(64)
+            contentDescription = title
+            setOnCheckedChangeListener { _, value -> onChanged(value) }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            dp(42)
+        ).apply {
+            marginStart = dp(8)
+        })
+        content.addView(row, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(4)
+        })
+    }
+
     private fun showOnlineAdvancedOptionsDialog() {
         var revealRolesOnDeath = session.revealRolesOnDeath
         var showIndividualVotes = session.showIndividualVotes
@@ -5851,26 +5923,20 @@ class LobbyActivity : BaseActivity() {
             })
         }
         content.addView(dialogSectionTitle("REGLAS"))
-        content.addView(SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Mostrar roles al morir"
-            isChecked = revealRolesOnDeath
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(8), dp(4), dp(8))
-            isEnabled = canEdit
-            setOnCheckedChangeListener { _, checked -> revealRolesOnDeath = checked }
-        })
-        content.addView(SwitchCompat(this).apply {
-            applyTraidoresSwitchStyle()
-            text = "Mostrar votos individuales"
-            isChecked = showIndividualVotes
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 14f
-            setPadding(dp(4), dp(8), dp(4), dp(8))
-            isEnabled = canEdit
-            setOnCheckedChangeListener { _, checked -> showIndividualVotes = checked }
-        })
+        addAdvancedRuleOption(
+            content = content,
+            title = "Mostrar roles al morir o al expulsar",
+            description = "Si se desactiva, las cartas eliminadas permanecen ocultas.",
+            checked = revealRolesOnDeath,
+            enabled = canEdit
+        ) { checked -> revealRolesOnDeath = checked }
+        addAdvancedRuleOption(
+            content = content,
+            title = "Mostrar votos individuales",
+            description = "Muestra quién votó a cada jugador. Si se desactiva, solo se ve el total.",
+            checked = showIndividualVotes,
+            enabled = canEdit
+        ) { checked -> showIndividualVotes = checked }
         content.addView(dialogSectionTitle("TIEMPOS"))
         val timingEditor = buildTimingEditor(session.timingConfig)
         content.addView(timingEditor.view)
@@ -6440,6 +6506,18 @@ class LobbyActivity : BaseActivity() {
         } else {
             ""
         }
+    }
+
+    private fun buildRoleCompositionSummary(
+        playerTotal: Int,
+        roleKeys: List<String>,
+        counts: Map<String, Int>
+    ): String {
+        val selectedRoles = roleKeys.mapNotNull { key ->
+            val count = counts[key] ?: 0
+            if (count > 0) "$count ${roleLabel(key)}" else null
+        }
+        return "$playerTotal jugadores · ${selectedRoles.joinToString(" · ")}".trimEnd('·', ' ')
     }
 
     private fun roleMeta(roleKey: String, minimumPlayers: Int): String {

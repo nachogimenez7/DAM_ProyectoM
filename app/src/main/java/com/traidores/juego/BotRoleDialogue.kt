@@ -37,8 +37,10 @@ internal fun roleDrivenLine(
         pressure -> true
         // El Bufon habla un poco mas seguido que un rol normal (pero no siempre) para hacerse notar.
         roleKey == RoleCatalog.BUFON -> seed % 3 == 0
-        session.botDifficulty == BotDifficulty.HARD -> seed % 4 == 0
-        else -> seed % 7 == 0
+        // En Normal compartir rol/accion es una conducta cotidiana. En Dificil los
+        // bots guardan esa informacion para cuando realmente les conviene.
+        session.botDifficulty == BotDifficulty.HARD -> seed % 5 == 0
+        else -> seed % 2 == 0
     }
     if (!shouldSpeak) return null
     return chooseFreshLine(options, session, bot, "role-line:$roleKey:$index:$seed")
@@ -119,6 +121,11 @@ internal fun medicRoleLines(
             "me quemo porque me estan por votar: cuide a $protected",
             "si dudan de mi ok, pero mi jugada fue cubrir a $protected"
         )
+        protected != null && session.botDifficulty == BotDifficulty.NORMAL -> listOf(
+            "soy medico, anoche cuide a $protected. lo digo para ordenar la ronda",
+            "anoche protegi a $protected; si quieren les cuento por que elegi esa jugada",
+            "mi rol es medico y mi accion fue cuidar a $protected"
+        )
         protected != null -> listOf(
             "yo tengo una jugada de noche anotada con $protected, no la ignoren",
             "no quiero regalar todo, pero $protected entra en mi lectura de anoche",
@@ -154,6 +161,11 @@ internal fun policeRoleLines(
             "soy detective, mire a $checked. no voy a tirar todo a lo bruto",
             "me estan obligando a quemarme: revise a $checked",
             "soy detective, y mi hilo de anoche pasa por $checked"
+        )
+        checked != null && session.botDifficulty == BotDifficulty.NORMAL -> listOf(
+            "soy detective, anoche mire a $checked. primero quiero escuchar su version",
+            "anoche investigue a $checked; el resultado me lo guardo hasta que hable",
+            "mi rol es detective y mi hilo de esta ronda empieza con $checked"
         )
         checked != null -> listOf(
             "$checked necesito que hables, tengo una lectura de anoche ahi",

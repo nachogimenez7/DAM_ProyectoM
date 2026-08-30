@@ -2,7 +2,17 @@ package com.traidores.juego
 
 import android.content.Context
 import android.graphics.drawable.Animatable
+import android.graphics.drawable.AnimationDrawable
 import android.widget.ImageView
+
+enum class EmoteCategory(
+    val label: String,
+    val description: String
+) {
+    CLASSIC("Clásicos", "Las reacciones originales de Traidores."),
+    MEME("Memes", "Momentos absurdos para responder sin escribir."),
+    LEGENDARY("Legendarios", "Los emotes más especiales del juego.")
+}
 
 data class EmoteSpec(
     val id: String,
@@ -13,7 +23,10 @@ data class EmoteSpec(
     val themeKey: String,
     val themeLabel: String,
     val isPremium: Boolean = false,
-    val description: String = ""
+    val description: String = "",
+    val category: EmoteCategory = EmoteCategory.CLASSIC,
+    val isNew: Boolean = false,
+    val isAnimated: Boolean = false
 ) {
     fun tooltipText(): String {
         return if (description.isBlank()) label else "$label\n$description"
@@ -35,7 +48,8 @@ object EmoteCatalog {
             label = "Enojado",
             toneHex = "#C7442E",
             themeKey = THEME_GREEK,
-            themeLabel = "Aldeano griego"
+            themeLabel = "Aldeano griego",
+            description = "Cuando la mesa te saca de quicio."
         ),
         emote(
             id = "griego_triste",
@@ -44,7 +58,8 @@ object EmoteCatalog {
             label = "Triste",
             toneHex = "#5486B7",
             themeKey = THEME_GREEK,
-            themeLabel = "Aldeano griego"
+            themeLabel = "Aldeano griego",
+            description = "Para una traición que dolió."
         ),
         emote(
             id = "griego_contento",
@@ -53,7 +68,8 @@ object EmoteCatalog {
             label = "Contento",
             toneHex = "#D9A53A",
             themeKey = THEME_GREEK,
-            themeLabel = "Aldeano griego"
+            themeLabel = "Aldeano griego",
+            description = "Todo salió demasiado bien."
         ),
         emote(
             id = "griego_sospechoso",
@@ -62,7 +78,8 @@ object EmoteCatalog {
             label = "Sospechoso",
             toneHex = "#8D6B33",
             themeKey = THEME_GREEK,
-            themeLabel = "Aldeano griego"
+            themeLabel = "Aldeano griego",
+            description = "Algo acá no cierra."
         ),
         emote(
             id = "medieval_enojado",
@@ -71,7 +88,8 @@ object EmoteCatalog {
             label = "Enojado",
             toneHex = "#C7442E",
             themeKey = THEME_MEDIEVAL_ASSASSIN,
-            themeLabel = "Asesino medieval"
+            themeLabel = "Asesino medieval",
+            description = "Cuando la mesa te saca de quicio."
         ),
         emote(
             id = "medieval_triste",
@@ -80,7 +98,8 @@ object EmoteCatalog {
             label = "Triste",
             toneHex = "#5486B7",
             themeKey = THEME_MEDIEVAL_ASSASSIN,
-            themeLabel = "Asesino medieval"
+            themeLabel = "Asesino medieval",
+            description = "Para una traición que dolió."
         ),
         emote(
             id = "medieval_contento",
@@ -89,7 +108,8 @@ object EmoteCatalog {
             label = "Contento",
             toneHex = "#D9A53A",
             themeKey = THEME_MEDIEVAL_ASSASSIN,
-            themeLabel = "Asesino medieval"
+            themeLabel = "Asesino medieval",
+            description = "Todo salió demasiado bien."
         ),
         emote(
             id = "medieval_sospechoso",
@@ -98,7 +118,8 @@ object EmoteCatalog {
             label = "Sospechoso",
             toneHex = "#8D6B33",
             themeKey = THEME_MEDIEVAL_ASSASSIN,
-            themeLabel = "Asesino medieval"
+            themeLabel = "Asesino medieval",
+            description = "Algo acá no cierra."
         ),
         emote(
             id = "gaucho_enojado",
@@ -107,7 +128,8 @@ object EmoteCatalog {
             label = "Enojado",
             toneHex = "#C7442E",
             themeKey = THEME_GAUCHO_DETECTIVE,
-            themeLabel = "Detective gaucho"
+            themeLabel = "Detective gaucho",
+            description = "Cuando la mesa te saca de quicio."
         ),
         emote(
             id = "gaucho_triste",
@@ -116,7 +138,8 @@ object EmoteCatalog {
             label = "Triste",
             toneHex = "#5486B7",
             themeKey = THEME_GAUCHO_DETECTIVE,
-            themeLabel = "Detective gaucho"
+            themeLabel = "Detective gaucho",
+            description = "Para una traición que dolió."
         ),
         emote(
             id = "gaucho_contento",
@@ -125,7 +148,8 @@ object EmoteCatalog {
             label = "Contento",
             toneHex = "#D9A53A",
             themeKey = THEME_GAUCHO_DETECTIVE,
-            themeLabel = "Detective gaucho"
+            themeLabel = "Detective gaucho",
+            description = "Todo salió demasiado bien."
         ),
         emote(
             id = "gaucho_sospechoso",
@@ -134,7 +158,8 @@ object EmoteCatalog {
             label = "Sospechoso",
             toneHex = "#8D6B33",
             themeKey = THEME_GAUCHO_DETECTIVE,
-            themeLabel = "Detective gaucho"
+            themeLabel = "Detective gaucho",
+            description = "Algo acá no cierra."
         ),
         emote(
             id = "premium_hermosa_manana",
@@ -144,7 +169,9 @@ object EmoteCatalog {
             toneHex = "#E8B84B",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Un amanecer sospechosamente tranquilo.",
+            category = EmoteCategory.MEME
         ),
         emote(
             id = "premium_mate",
@@ -154,7 +181,9 @@ object EmoteCatalog {
             toneHex = "#B87333",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Para mirar el caos con mate en mano.",
+            category = EmoteCategory.MEME
         ),
         emote(
             id = "premium_dormida",
@@ -164,7 +193,9 @@ object EmoteCatalog {
             toneHex = "#8E7CC3",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Cuando el debate no arranca.",
+            category = EmoteCategory.MEME
         ),
         emote(
             id = "premium_genio",
@@ -175,7 +206,9 @@ object EmoteCatalog {
             toneHex = "#D49332",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            category = EmoteCategory.LEGENDARY,
+            isNew = true
         ),
         emote(
             id = "premium_medico_timido",
@@ -185,17 +218,23 @@ object EmoteCatalog {
             toneHex = "#74805C",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Yo no fui… ¿o sí?",
+            category = EmoteCategory.MEME,
+            isNew = true
         ),
         emote(
             id = "premium_desertor_lengua",
             emotionKey = "premium_desertor_lengua",
             imageRes = R.drawable.reaction_premium_desertor_lengua,
-            label = "Desertor desatado",
+            label = "Cualquiera",
             toneHex = "#C46F35",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Cuando la partida ya es cualquier cosa.",
+            category = EmoteCategory.MEME,
+            isNew = true
         ),
         emote(
             id = "premium_oraculo_mmm_nie",
@@ -205,7 +244,10 @@ object EmoteCatalog {
             toneHex = "#D49B37",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Una respuesta sin argumentos, pero contundente.",
+            category = EmoteCategory.MEME,
+            isNew = true
         ),
         emote(
             id = "premium_six_seven",
@@ -215,7 +257,11 @@ object EmoteCatalog {
             toneHex = "#B56A3B",
             themeKey = THEME_PREMIUM,
             themeLabel = "Premium",
-            isPremium = true
+            isPremium = true,
+            description = "Seis, siete. No hace falta entenderlo.",
+            category = EmoteCategory.LEGENDARY,
+            isNew = true,
+            isAnimated = true
         )
     )
 
@@ -231,6 +277,12 @@ object EmoteCatalog {
         return all.groupBy { it.themeKey }
     }
 
+    fun byCategory(): Map<EmoteCategory, List<EmoteSpec>> {
+        return EmoteCategory.entries.associateWith { category ->
+            all.filter { it.category == category }
+        }
+    }
+
     private fun emote(
         id: String,
         emotionKey: String,
@@ -240,7 +292,10 @@ object EmoteCatalog {
         themeKey: String,
         themeLabel: String,
         isPremium: Boolean = false,
-        description: String = ""
+        description: String = "",
+        category: EmoteCategory = EmoteCategory.CLASSIC,
+        isNew: Boolean = false,
+        isAnimated: Boolean = false
     ): EmoteSpec {
         return EmoteSpec(
             id,
@@ -251,13 +306,17 @@ object EmoteCatalog {
             themeKey,
             themeLabel,
             isPremium,
-            description
+            description,
+            category,
+            isNew,
+            isAnimated
         )
     }
 }
 
-fun ImageView.setEmoteImageResource(imageRes: Int) {
+fun ImageView.setEmoteImageResource(imageRes: Int, loop: Boolean = false) {
     setImageResource(imageRes)
+    (drawable as? AnimationDrawable)?.isOneShot = !loop
     (drawable as? Animatable)?.start()
 }
 

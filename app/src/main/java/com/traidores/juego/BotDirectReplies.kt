@@ -48,20 +48,36 @@ internal fun directRoleQuestionReply(session: GameSession, bot: GamePlayer): Str
     val pressure = session.tableMemory.emotionalPressure[bot.name] ?: 0
     val personality = personalityFor(session, bot)
     val revealRole = roleKey == RoleCatalog.ALDEANO ||
+        session.botDifficulty == BotDifficulty.NORMAL ||
         pressure >= 2 ||
-        personality in setOf(BotPersonality.PICANTE, BotPersonality.IMPULSIVO) ||
-        (
-            session.botDifficulty == BotDifficulty.NORMAL &&
-                stableNoise("${session.code}:${bot.name}:direct-role-reveal") % 3 == 0
-            )
+        personality in setOf(BotPersonality.PICANTE, BotPersonality.IMPULSIVO)
     if (revealRole) {
         val label = roleLabel(roleKey)
-        return chooseFreshLine(
+        val action = latestOwnAction(session, bot)
+        val actionTarget = action?.target
+            ?.let { target -> GameEngine.playerByName(session, target)?.let { safeName(it, session) } ?: target }
+        val actionOptions = when {
+            roleKey == RoleCatalog.MEDICO && action?.type == GameActionType.PROTECT && actionTarget != null -> listOf(
+                "soy $label y anoche cuide a $actionTarget. lo digo para que ordenemos la ronda",
+                "te respondo directo: soy $label. mi accion fue proteger a $actionTarget",
+                "soy $label; anoche fui con $actionTarget y puedo explicar por que"
+            )
+            roleKey == RoleCatalog.POLICIA && action?.type == GameActionType.INVESTIGATE && actionTarget != null -> listOf(
+                "soy $label y anoche investigue a $actionTarget. el resultado me lo guardo por ahora",
+                "te respondo directo: soy $label. mi hilo de anoche pasa por $actionTarget",
+                "soy $label; revise a $actionTarget y primero quiero escuchar su version"
+            )
+            else -> emptyList()
+        }
+        val options = actionOptions.ifEmpty {
             listOf(
                 "te respondo a vos: soy $label. ahora decime por que me lo preguntas",
                 "soy $label. no tengo problema en decirlo, pero quiero saber que lectura haces con eso",
                 "soy $label. queda dicho y no lo voy a cambiar despues"
-            ),
+            )
+        }
+        return chooseFreshLine(
+            options,
             session,
             bot,
             "direct-role-town:$roleKey:${socialChatSize(session)}"

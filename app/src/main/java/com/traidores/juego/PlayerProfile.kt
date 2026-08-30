@@ -14,7 +14,8 @@ data class PlayerProfile(
     val featuredAchievementIds: List<String>,
     val emoteIds: List<String>,
     val stats: PlayerStats,
-    val playGamesAvatarUri: String = ""
+    val playGamesAvatarUri: String = "",
+    val cosmeticThemeId: String = CosmeticPilot.THEME_CLASSIC
 ) : Serializable
 
 data class PlayerStats(
@@ -86,7 +87,8 @@ object PlayerProfileStore {
             stats = PlayerStats(matches = 0, wins = 0, hasProgress = false),
             playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
                 preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
-            )
+            ),
+            cosmeticThemeId = CosmeticPilot.selectedTheme(context)
         )
     }
 

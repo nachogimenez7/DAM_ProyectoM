@@ -124,7 +124,11 @@ object PlayerProfileDialog {
     ): View {
         val rootScroll = ScrollView(activity).apply {
             isFillViewport = !compact
-            background = panelBackground(activity)
+            background = if (CosmeticPilot.isSpaceTheme(profile.cosmeticThemeId)) {
+                CosmeticPilot.profilePanelOverlay(activity)
+            } else {
+                panelBackground(activity)
+            }
         }
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -295,6 +299,7 @@ object PlayerProfileDialog {
         val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
         val useLocalPhoto = hasLocalPhotoFor(activity, profile)
         val playGamesAvatarUri = if (useLocalPhoto) "" else profile.playGamesAvatarUri
+        val spaceEnabled = CosmeticPilot.isSpaceTheme(profile.cosmeticThemeId)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -303,10 +308,14 @@ object PlayerProfileDialog {
             val avatarSize = dp(activity, if (compact) 72 else 88)
             val avatarFrame = FrameLayout(activity).apply {
                 setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#E6140F08"))
-                    setStroke(dp(activity, 2), activity.getColor(R.color.accent_gold))
+                background = if (spaceEnabled) {
+                    CosmeticPilot.avatarFrame(activity)
+                } else {
+                    GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#E6140F08"))
+                        setStroke(dp(activity, 2), activity.getColor(R.color.accent_gold))
+                    }
                 }
                 isClickable = true
                 isFocusable = true
@@ -366,11 +375,21 @@ object PlayerProfileDialog {
                     gravity = Gravity.CENTER_VERTICAL
                     addView(TextView(activity).apply {
                         text = profile.name.uppercase()
-                        setTextColor(activity.getColor(R.color.accent_gold))
+                        setTextColor(
+                            if (spaceEnabled) {
+                                Color.parseColor(CosmeticPilot.accentCyan)
+                            } else {
+                                activity.getColor(R.color.accent_gold)
+                            }
+                        )
                         textSize = if (compact) 21f else 25f
                         typeface = Typeface.DEFAULT_BOLD
                         includeFontPadding = false
                         maxLines = 1
+                        if (spaceEnabled) {
+                            background = CosmeticPilot.namePlate(activity)
+                            setPadding(dp(activity, 8), dp(activity, 3), dp(activity, 8), dp(activity, 3))
+                        }
                     })
                     addView(TextView(activity).apply {
                         text = profile.publicId.takeIf { it.isNotBlank() }?.let { "#$it" } ?: "#SIN ID"
