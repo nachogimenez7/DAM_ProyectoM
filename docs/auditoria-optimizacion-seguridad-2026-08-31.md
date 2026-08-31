@@ -5,7 +5,7 @@
 | Artefacto release | Antes | Después | Reducción |
 |---|---:|---:|---:|
 | APK sin firma | 100.013.175 bytes | 76.036.890 bytes | 23.976.285 bytes (23,97%) |
-| Android App Bundle | 92.705.151 bytes | 79.751.052 bytes | 12.954.099 bytes (13,97%) |
+| Android App Bundle | 92.705.151 bytes | 79.751.016 bytes | 12.954.135 bytes (13,97%) |
 
 La reducción no baja resolución ni recomprime audio con pérdida. R8 usa ahora referencias
 estáticas y modo estricto para retirar arte histórico no alcanzable del binario. Además, 39 PNG
