@@ -375,11 +375,9 @@ object PlayerProfileDialog {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
             )
-            val fallbackRes = activity.resources.getIdentifier(
-                avatarEntry.role.imageResName,
-                "drawable",
-                activity.packageName
-            ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+            val fallbackRes = DrawableResourceCatalog.resolveOrPlaceholder(
+                avatarEntry.role.imageResName
+            )
             val showingLocalPhoto = useLocalPhoto &&
                 LocalProfilePhotoStore.render(activity, avatar, false)
             val showingPlayGamesPhoto = !showingLocalPhoto &&
@@ -797,11 +795,9 @@ object PlayerProfileDialog {
         val avatar = content.findViewById<ImageView>(R.id.expandedProfileAvatar)
         val showingLocalPhoto = useLocalPhoto &&
             LocalProfilePhotoStore.render(activity, avatar, false)
-        val fallbackRes = activity.resources.getIdentifier(
-            avatarEntry.role.imageResName,
-            "drawable",
-            activity.packageName
-        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+        val fallbackRes = DrawableResourceCatalog.resolveOrPlaceholder(
+            avatarEntry.role.imageResName
+        )
         val showingPlayGamesPhoto = !showingLocalPhoto &&
             PlayGamesProfileAvatar.render(
                 context = activity,
@@ -917,8 +913,7 @@ object PlayerProfileDialog {
     }
 
     private fun setRoleImage(activity: Activity, image: ImageView, role: Role) {
-        val resId = activity.resources.getIdentifier(role.imageResName, "drawable", activity.packageName)
-        image.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+        image.setImageResource(DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName))
     }
 
     private fun alignAvatarToFocus(image: ImageView, verticalFocus: Float) {

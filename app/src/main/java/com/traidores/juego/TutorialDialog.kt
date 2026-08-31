@@ -71,7 +71,7 @@ object TutorialDialog {
             activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(PREF_TUTORIAL_SEEN, true)
-                .commit()
+                .apply()
         }
         var pageIndex = 0
         var finished = false

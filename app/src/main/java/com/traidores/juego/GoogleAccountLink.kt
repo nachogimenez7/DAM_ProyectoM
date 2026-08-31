@@ -6,6 +6,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.lifecycleScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -245,6 +246,19 @@ object GoogleAccountLink {
                         retryWithAlternativePicker = !useAlternativePicker
                     )
                 )
+            } catch (error: NoCredentialException) {
+                recordFailure(error, "Google no encontró una credencial disponible")
+                onResult(
+                    CredentialResult.Failed(
+                        if (useAlternativePicker) {
+                            "No encontramos una cuenta de Google disponible en este dispositivo."
+                        } else {
+                            "No encontramos una cuenta autorizada. Tocá Reintentar para elegir otra cuenta."
+                        },
+                        error,
+                        retryWithAlternativePicker = !useAlternativePicker
+                    )
+                )
             } catch (error: GetCredentialException) {
                 recordFailure(error, "Credential Manager no pudo abrir Google")
                 onResult(
@@ -325,12 +339,7 @@ object GoogleAccountLink {
     }
 
     private fun serverClientId(activity: AppCompatActivity): String {
-        val resourceId = activity.resources.getIdentifier(
-            "default_web_client_id",
-            "string",
-            activity.packageName
-        )
-        return if (resourceId == 0) "" else activity.getString(resourceId).trim()
+        return activity.getString(R.string.default_web_client_id).trim()
     }
 
     private fun failure(message: String, error: Exception): GoogleAccountResult.Failed {

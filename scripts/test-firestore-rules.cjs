@@ -984,7 +984,8 @@ async function main() {
       });
     }));
 
-    await assertSucceeds(setDoc(doc(guest, "perfiles_publicos", "guest_uid"), {
+    const guestPublicProfile = doc(guest, "perfiles_publicos", "guest_uid");
+    await assertSucceeds(setDoc(guestPublicProfile, {
       uidTemporal: "guest_uid",
       publicId: "2",
       nombrePerfil: "Guest",
@@ -995,6 +996,18 @@ async function main() {
       bannerPerfil: "pampa",
       rolFavoritoPerfil: "pampa_payador",
       actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(guestPublicProfile, {
+      nombrePerfil: "Guest seguro",
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(guestPublicProfile, {
+      publicId: "999",
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(guestPublicProfile, {
+      nombrePerfil: "Marca falsa",
+      actualizadaEn: Timestamp.fromMillis(Date.now() - 60_000),
     }));
     await assertFails(setDoc(doc(guest, "perfiles_publicos", "other_uid"), {
       uidTemporal: "other_uid",
@@ -1020,6 +1033,10 @@ async function main() {
     await assertFails(deleteDoc(doc(intruder, "perfiles_publicos", "guest_uid")));
     await assertSucceeds(deleteDoc(doc(guest, "perfiles_publicos", "guest_uid")));
 
+    await assertFails(setDoc(doc(host, "meta", "public_ids"), {
+      nextId: 999999999999,
+      actualizadaEn: serverTimestamp(),
+    }));
     await assertSucceeds(setDoc(doc(host, "meta", "public_ids"), {
       nextId: 2,
       actualizadaEn: serverTimestamp(),
@@ -1032,7 +1049,6 @@ async function main() {
       nextId: 2,
       actualizadaEn: serverTimestamp(),
     }));
-
     // --- Baneos por sala: solo host/afectado leen y el afectado no puede volver a escribir ---
     await seedRoom(testEnv, "room_bans", "host_uid");
     await assertSucceeds(setDoc(

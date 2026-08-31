@@ -5,9 +5,9 @@ Proyecto Android/Kotlin del juego **Traidores**, un juego mobile de deduccion so
 Tiene dos modos:
 
 - **Local (vs IA):** completo y offline. Jugas contra bots conversacionales (`LocalBotAi`).
-- **Online (experimental):** real, sobre **Firebase Firestore** (crear/buscar sala por codigo, presencia, sincronizacion por fases y recuperacion). Todavia sin Firebase Auth, App Check ni Cloud Functions. Ver [`docs/firebase-online-schema.md`](docs/firebase-online-schema.md).
+- **Online (experimental):** real, sobre **Firebase Firestore + Realtime Database**, con Firebase Auth, App Check, presencia, sincronizacion por fases y recuperacion. La autoridad de partida sigue en el dispositivo anfitrion; ver [`docs/firebase-online-schema.md`](docs/firebase-online-schema.md).
 
-Version actual: `0.1.0-alpha`.
+Version actual: `0.1.16` (versionCode 17).
 
 ## Como abrir el proyecto
 

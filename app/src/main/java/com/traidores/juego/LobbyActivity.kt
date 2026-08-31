@@ -1050,11 +1050,9 @@ class LobbyActivity : BaseActivity() {
                     else -> getDrawable(R.drawable.bg_player_avatar)
                 }
                 addView(CircleProfileImageView(this@LobbyActivity).apply {
-                    val resId = resources.getIdentifier(
-                        avatarEntry.role.imageResName,
-                        "drawable",
-                        packageName
-                    ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+                    val resId = DrawableResourceCatalog.resolveOrPlaceholder(
+                        avatarEntry.role.imageResName
+                    )
                     val showingPlayGamesPhoto = PlayGamesProfileAvatar.render(
                         context = this@LobbyActivity,
                         image = this,
@@ -6352,8 +6350,7 @@ class LobbyActivity : BaseActivity() {
             }
             row.addView(ImageView(this).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
-                setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+                setImageResource(DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName))
                 alpha = if (locked) 0.32f else 1f
                 contentDescription = "Ver ${role.name}"
                 setOnClickListener { RoleDetailDialog.show(this@LobbyActivity, role) }

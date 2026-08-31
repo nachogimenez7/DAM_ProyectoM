@@ -1,5 +1,9 @@
 # Seguridad del online — auditoría y plan
 
+> **Actualización:** la verificación del 31 de agosto de 2026 está en
+> [`auditoria-optimizacion-seguridad-2026-08-31.md`](auditoria-optimizacion-seguridad-2026-08-31.md).
+> Ese documento reemplaza los estados de implementación y validación de esta auditoría histórica.
+
 **Fecha:** 24 de julio de 2026
 **Alcance:** modo online (Firestore + Realtime Database + Auth), cliente Android y distribución.
 **Escenario objetivo:** publicación en Play Store, es decir gente que no conocés y que puede

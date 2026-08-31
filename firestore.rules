@@ -46,6 +46,40 @@ service cloud.firestore {
       return publicId is string && publicId.matches('^[0-9]{1,12}$');
     }
 
+    function validPublicProfile(data, uidTemporal) {
+      return data.keys().hasOnly([
+          'uidTemporal',
+          'publicId',
+          'nombrePerfil',
+          'nombreSala',
+          'bioPerfil',
+          'avatarPerfil',
+          'fotoPlayGames',
+          'bannerPerfil',
+          'rolFavoritoPerfil',
+          'temaCosmeticoPerfil',
+          'actualizadaEn'
+        ])
+        && data.keys().hasAll([
+          'uidTemporal',
+          'publicId',
+          'nombrePerfil',
+          'actualizadaEn'
+        ])
+        && data.uidTemporal == uidTemporal
+        && validPublicId(data.publicId)
+        && isString(data.nombrePerfil, 1, 18)
+        && isOptionalString(data, 'nombreSala', 32)
+        && isOptionalString(data, 'bioPerfil', 40)
+        && isOptionalString(data, 'avatarPerfil', 40)
+        && isOptionalString(data, 'fotoPlayGames', 1000)
+        && isOptionalString(data, 'bannerPerfil', 40)
+        && isOptionalString(data, 'rolFavoritoPerfil', 40)
+        && (!('temaCosmeticoPerfil' in data)
+          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
+        && data.actualizadaEn == request.time;
+    }
+
     function validMapKey(mapKey) {
       return mapKey in ['pampa', 'grecia', 'medieval'];
     }
@@ -1154,9 +1188,12 @@ service cloud.firestore {
           'nextId',
           'actualizadaEn'
         ])
-        && request.resource.data.nextId is int
-        && request.resource.data.nextId >= 2
-        && request.resource.data.nextId <= 999999999999;
+        && request.resource.data.keys().hasAll([
+          'nextId',
+          'actualizadaEn'
+        ])
+        && request.resource.data.nextId == 2
+        && request.resource.data.actualizadaEn == request.time;
       // Exactamente +1: PlayerPublicIdentity.ensurePublicId siempre reserva el siguiente
       // numero. Permitir cualquier salto hacia arriba dejaba que un solo cliente quemara
       // todo el espacio de `#` de una sola escritura.
@@ -1165,39 +1202,24 @@ service cloud.firestore {
           'nextId',
           'actualizadaEn'
         ])
+        && request.resource.data.keys().hasAll([
+          'nextId',
+          'actualizadaEn'
+        ])
         && request.resource.data.nextId is int
         && request.resource.data.nextId == resource.data.nextId + 1
-        && request.resource.data.nextId <= 999999999999;
+        && request.resource.data.nextId <= 999999999999
+        && request.resource.data.actualizadaEn == request.time;
       allow delete: if false;
     }
 
     match /perfiles_publicos/{uidTemporal} {
       allow read: if signedIn();
-      allow create, update: if isSelf(uidTemporal)
-        && request.resource.data.keys().hasOnly([
-          'uidTemporal',
-          'publicId',
-          'nombrePerfil',
-          'nombreSala',
-          'bioPerfil',
-          'avatarPerfil',
-          'fotoPlayGames',
-          'bannerPerfil',
-          'rolFavoritoPerfil',
-          'temaCosmeticoPerfil',
-          'actualizadaEn'
-        ])
-        && request.resource.data.uidTemporal == uidTemporal
-        && validPublicId(request.resource.data.publicId)
-        && isString(request.resource.data.nombrePerfil, 1, 18)
-        && isOptionalString(request.resource.data, 'nombreSala', 32)
-        && isOptionalString(request.resource.data, 'bioPerfil', 40)
-        && isOptionalString(request.resource.data, 'avatarPerfil', 40)
-        && isOptionalString(request.resource.data, 'fotoPlayGames', 1000)
-        && isOptionalString(request.resource.data, 'bannerPerfil', 40)
-        && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40)
-        && (!('temaCosmeticoPerfil' in request.resource.data)
-          || request.resource.data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire']);
+      allow create: if isSelf(uidTemporal)
+        && validPublicProfile(request.resource.data, uidTemporal);
+      allow update: if isSelf(uidTemporal)
+        && request.resource.data.publicId == resource.data.publicId
+        && validPublicProfile(request.resource.data, uidTemporal);
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
       // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
       allow delete: if isSelf(uidTemporal);

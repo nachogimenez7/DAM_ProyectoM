@@ -890,7 +890,7 @@ class ProfileActivity : BaseActivity() {
             ).imageResName
         }.getOrNull()
         val imageRes = roleImage
-            ?.let { resources.getIdentifier(it, "drawable", packageName) }
+            ?.let(DrawableResourceCatalog::resolve)
             ?.takeIf { it != 0 }
         if (imageRes == null) {
             view.visibility = View.GONE
@@ -971,8 +971,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun setRoleImage(image: ImageView, role: Role) {
         image.scaleType = ImageView.ScaleType.MATRIX
-        val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
-        image.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+        image.setImageResource(DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName))
     }
 
     private fun renderAvatar(image: ImageView, allowPendingPhoto: Boolean): Boolean {
@@ -983,11 +982,9 @@ class ProfileActivity : BaseActivity() {
             return true
         }
         val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
-        val fallbackRes = resources.getIdentifier(
-            avatarEntry.role.imageResName,
-            "drawable",
-            packageName
-        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+        val fallbackRes = DrawableResourceCatalog.resolveOrPlaceholder(
+            avatarEntry.role.imageResName
+        )
         // El retrato ilustrado queda preparado y correctamente enfocado mientras llega la
         // foto remota. Si Google devuelve una URL vencida, no mostramos ese retrato con el
         // recorte CENTER_CROP de una fotografía (que era lo que cortaba caras).

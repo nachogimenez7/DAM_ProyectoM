@@ -11837,8 +11837,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun roleImageFor(role: GameRole?): Int {
         if (role == null) return R.drawable.placeholder_local
-        val resId = resources.getIdentifier(role.imageResName, "drawable", packageName)
-        return if (resId != 0) resId else R.drawable.placeholder_local
+        return DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName)
     }
 
     private fun renderThemedBackground(period: GameplayPeriod) {

@@ -73,8 +73,9 @@ class RoleAdapter(
         holder.mapDescription.text = map.description
         holder.mapRole.text = "ROL EXCLUSIVO: ${map.exclusiveRole.uppercase()}"
 
-        val resId = context.resources.getIdentifier(map.imageResName, "drawable", context.packageName)
-        holder.mapImage.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+        holder.mapImage.setImageResource(
+            DrawableResourceCatalog.resolveOrPlaceholder(map.imageResName)
+        )
     }
 
     private fun bindRole(holder: RoleViewHolder, role: Role) {
@@ -93,8 +94,9 @@ class RoleAdapter(
         }
         holder.roleBadge.setTextColor(badgeColor)
 
-        val resId = context.resources.getIdentifier(role.imageResName, "drawable", context.packageName)
-        holder.roleImage.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
+        holder.roleImage.setImageResource(
+            DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName)
+        )
         holder.itemView.setOnClickListener { onRoleClick(role) }
     }
 

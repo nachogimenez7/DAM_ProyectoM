@@ -164,6 +164,12 @@ object MusicManager {
         currentVictoryTrackRes = 0
     }
 
+    /** Conserva la pista elegida, pero devuelve al sistema los decodificadores de audio. */
+    fun releaseForBackground() {
+        handler.removeCallbacks(pauseIfBackground)
+        releasePlayer()
+    }
+
     private fun trackForSession(session: GameSession): Int = when {
         session.phase == GamePhase.REPARTO -> dayTrackForMap(session.mapKey)
         isNightPhase(session.phase) -> R.raw.night_phase_music

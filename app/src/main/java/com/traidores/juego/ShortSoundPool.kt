@@ -76,6 +76,22 @@ object ShortSoundPool {
         target.first.stop(target.second)
     }
 
+    /** Libera los efectos decodificados cuando la interfaz completa queda en segundo plano. */
+    fun release() {
+        val current = synchronized(lock) {
+            val active = pool
+            pool = null
+            soundIdsByRes.clear()
+            resBySoundId.clear()
+            loadedResources.clear()
+            pendingByResource.clear()
+            activeStreamsByChannel.clear()
+            active
+        }
+        mainHandler.removeCallbacksAndMessages(null)
+        current?.release()
+    }
+
     private fun ensurePoolLocked(): SoundPool {
         pool?.let { return it }
         val created = SoundPool.Builder()

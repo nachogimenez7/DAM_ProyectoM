@@ -63,7 +63,7 @@ class GameplayAvatarView @JvmOverloads constructor(
         val profile = player?.let { PlayerProfileStore.profileFor(context, session, it) }
         val avatarEntry = profile?.let { ProfileRoleCatalog.find(it.avatarKey) }
         val fallbackRes = avatarEntry?.role?.imageResName
-            ?.let { resources.getIdentifier(it, "drawable", context.packageName) }
+            ?.let(DrawableResourceCatalog::resolve)
             ?.takeIf { it != 0 }
             ?: R.drawable.placeholder_local
         val showingPhoto = profile != null && (

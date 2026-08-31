@@ -1,6 +1,9 @@
 {
   "name": "traidores-firebase-rules",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test:firestore-rules": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules.cjs\"",
     "test:database-rules": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only database \"node scripts/test-database-rules.cjs\"",
@@ -9,13 +12,18 @@
     "simulate:online-firebase-real": "node scripts/simulate-online-firebase-real.cjs --runs 10 --project traidores"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^3.0.3",
-    "firebase": "^10.14.1",
-    "firebase-tools": "^13.35.1"
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.18.0",
+    "firebase-tools": "15.28.2"
   },
   "overrides": {
-    "universal-analytics": {
-      "uuid": "3.4.0"
-    }
+    "@google-cloud/pubsub": "6.0.1",
+    "body-parser": "1.20.6",
+    "brace-expansion@<=1.1.17": "1.1.18",
+    "brace-expansion@>=2.0.0 <2.1.4": "2.1.4",
+    "fast-uri": "3.1.5",
+    "ip-address": "10.7.0",
+    "universal-analytics": "0.5.4",
+    "uuid": "11.1.1"
   }
 }

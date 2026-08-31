@@ -24,12 +24,9 @@ object RoleDetailDialog {
         val roleGameplay: TextView = dialog.findViewById(R.id.detailRoleGameplay)
         val closeButton: ImageButton = dialog.findViewById(R.id.btnCloseRoleDetail)
 
-        val resId = context.resources.getIdentifier(
-            role.imageResName,
-            "drawable",
-            context.packageName
+        roleImage.setImageResource(
+            DrawableResourceCatalog.resolveOrPlaceholder(role.imageResName)
         )
-        roleImage.setImageResource(if (resId != 0) resId else R.drawable.placeholder_local)
         roleName.text = role.name.uppercase()
         roleTeam.text = role.team.uppercase()
         roleFantasy.text = role.story

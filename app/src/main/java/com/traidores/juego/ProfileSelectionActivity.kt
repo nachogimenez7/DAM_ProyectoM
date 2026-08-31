@@ -93,11 +93,9 @@ class ProfileSelectionActivity : BaseActivity() {
                         key = entry.key,
                         title = entry.role.name,
                         subtitle = entry.role.mapName,
-                        drawableRes = resources.getIdentifier(
-                            entry.role.imageResName,
-                            "drawable",
-                            packageName
-                        ).takeIf { it != 0 } ?: R.drawable.placeholder_local
+                        drawableRes = DrawableResourceCatalog.resolveOrPlaceholder(
+                            entry.role.imageResName
+                        )
                     )
                 }
             ProfileSelectionDisplay.BANNER -> ProfileCustomizationCatalog.banners.map { banner ->

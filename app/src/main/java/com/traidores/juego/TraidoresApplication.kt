@@ -19,9 +19,14 @@ class TraidoresApplication : Application() {
         configurePlayGames()
         configureFirestore()
         TraidoresNotifications.createChannel(this)
-        NotificationPreferences.restoreSubscription(this)
-        GameplaySoundEffects.preload(this)
-        EmoteSoundEffects.preload(this)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_UI_HIDDEN) {
+            ShortSoundPool.release()
+            MusicManager.releaseForBackground()
+        }
     }
 
     private fun configurePlayGames() {
