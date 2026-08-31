@@ -971,6 +971,44 @@ class OnlineModeActivity : BaseActivity() {
         snapshot: DocumentSnapshot,
         privateRoles: List<Map<String, Any?>>
     ) {
+        val initialMatch = snapshot.get(OnlineRoomFirestore.FIELD_INITIAL_MATCH) as? Map<*, *>
+        val matchId = (initialMatch?.get("matchId") as? String).orEmpty()
+        val roomState = snapshot.get("estadoPartida").asStringAnyMap()
+        firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(room.roomId)
+            .collection(OnlineAuthoritativeStateStore.COLLECTION)
+            .document(OnlineAuthoritativeStateStore.DOCUMENT)
+            .get(Source.SERVER)
+            .addOnSuccessListener { checkpoint ->
+                val checkpointState = OnlineAuthoritativeStateStore.checkpointState(
+                    checkpoint = checkpoint.data,
+                    expectedMatchId = matchId
+                )
+                openRecoveredGameplayWithState(
+                    room = room,
+                    snapshot = snapshot,
+                    privateRoles = privateRoles,
+                    matchState = OnlineAuthoritativeStateStore.freshestForRecovery(
+                        roomState,
+                        checkpointState
+                    )
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "recover_checkpoint_failure roomId=${room.roomId} match=$matchId",
+                    error
+                )
+                openRecoveredGameplayWithState(room, snapshot, privateRoles, roomState)
+            }
+    }
+
+    private fun openRecoveredGameplayWithState(
+        room: OnlineRecoveredRoom,
+        snapshot: DocumentSnapshot,
+        privateRoles: List<Map<String, Any?>>,
+        matchState: Map<String, Any?>?
+    ) {
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
         val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uidTemporal ||
             snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uidTemporal ||
@@ -991,7 +1029,7 @@ class OnlineModeActivity : BaseActivity() {
         val defaults = LocalGameFactory.createSession()
         val result = OnlineMatchSessionBuilder.build(
             initialMatchRaw = snapshot.get("partidaInicial"),
-            matchStateRaw = snapshot.get("estadoPartida"),
+            matchStateRaw = matchState,
             uidTemporal = uidTemporal,
             expectedPlayers = expectedPlayers,
             fallbackRoomId = room.roomId,
@@ -1036,6 +1074,15 @@ class OnlineModeActivity : BaseActivity() {
                 Toast.makeText(this, result.reason.userMessage, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private fun Any?.asStringAnyMap(): Map<String, Any?>? {
+        return (this as? Map<*, *>)?.entries
+            ?.mapNotNull { entry ->
+                val key = entry.key as? String ?: return@mapNotNull null
+                key to entry.value
+            }
+            ?.toMap()
     }
 
     private fun showJoinByCodeDialog() {

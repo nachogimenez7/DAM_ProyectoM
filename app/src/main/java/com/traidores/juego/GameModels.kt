@@ -58,6 +58,7 @@ data class GameSession(
     val startedAtEpochMs: Long = System.currentTimeMillis(),
     val onlineMatchId: String = "",
     val onlinePlayerUids: List<String> = emptyList(),
+    val onlineRegisteredPlayerUids: List<String> = emptyList(),
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0,

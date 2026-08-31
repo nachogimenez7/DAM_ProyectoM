@@ -11,7 +11,7 @@ observarse y aplicarse gradualmente desde Firebase Console. No hay Cloud Functio
 - Unirse a una sala por codigo de 6 caracteres.
 - Mantener presencia en RTDB con deteccion de desconexion y reconexion.
 - Iniciar partidas online solo con cantidad esperada completa.
-- Reconstruir partidas desde `partidaInicial` y `estadoPartida` al reingresar.
+- Reconstruir partidas desde `partidaInicial` y el checkpoint `runtime/authoritative` al reingresar.
 - Registrar acciones de gameplay y mensajes de chat.
 - Reservar un ID publico numerico fijo para perfil y futuros amigos.
 - Evitar datos obviamente invalidos desde reglas y desde el cliente.
@@ -22,7 +22,7 @@ El modo confiable para demo sigue siendo `Jugar vs IA` mientras el online madura
 
 - `firebase.json`: apunta a `firestore.rules` y `database.rules.json`.
 - `firestore.rules`: reglas de Firestore para pruebas online.
-- `database.rules.json`: reglas de Realtime Database para chat y presencia.
+- `database.rules.json`: reglas de Realtime Database para estado vivo, chat y presencia.
 - `app/google-services.json`: configuracion local de la app Android.
 
 Para publicar reglas desde una maquina con Firebase CLI:
@@ -87,7 +87,8 @@ Campos base:
 Campos agregados durante la partida:
 
 - `partidaInicial`: snapshot inicial generado una sola vez por el host. Cada jugador queda ligado por `uidTemporal`.
-- `estadoPartida`: estado autoritativo publicado por el host.
+- `estadoPartida`: copia inicial/legacy y resultado final. El estado caliente autoritativo se
+  publica en RTDB para evitar una lectura Firestore por jugador en cada cambio de fase.
 - `estadoClientes`: estado resumido publicado por cada cliente.
 - `entradaLiberadaMatchId`: `matchId` que el host habilito para abandonar el lobby. Se escribe solo despues de que todos los clientes confirmaron haber recibido el reparto, o tras el timeout de seguridad.
 - `ultimaActividadOnline`: timestamp de actividad reciente.
@@ -113,6 +114,14 @@ celulares, incluido un reingreso, reconstruyan la misma partida:
 
 Las salas creadas antes de incorporar `config` siguen siendo compatibles: usan los
 tiempos predeterminados y las reglas locales recibidas como fallback.
+
+### `partidas/{partidaId}/runtime/authoritative`
+
+Checkpoint durable del ultimo estado publicado por el host. No tiene listener durante una
+partida normal: se lee una vez solamente cuando el usuario recupera una partida tras cerrar
+la app. Conserva `matchId`, `phaseIndex`, `estadoPartida`, timestamps y autor. En un empate de
+fase tiene prioridad sobre la copia legacy del documento de sala, sin comparar relojes de
+celulares distintos.
 
 ### `partidas/{partidaId}/repartos/{uidTemporal}`
 
@@ -277,13 +286,17 @@ Reglas importantes:
 - Antes de salir del lobby, cada cliente confirma el `matchId` recibido en `estadoClientes.{uidTemporal}` con `entradaLobbyLista = true`. El host publica ese mismo id en `entradaLiberadaMatchId` cuando todos confirmaron; los clientes ignoran el snapshot local pendiente del host y navegan al recibir la liberacion confirmada. A los 10 segundos el host puede liberar con las confirmaciones disponibles para evitar que una escritura perdida congele la sala.
 - Al crear sala, la app verifica que el `codigoSala` generado no exista ya en Firestore; si colisiona, reintenta con otro codigo.
 - Al unirse por codigo, la app usa solo salas `esperando`; si hubiera mas de una sala activa con el mismo codigo, bloquea el ingreso y pide crear una sala nueva.
-- Si un cliente reingresa, reconstruye desde `partidaInicial` y `estadoPartida`.
+- Si un cliente reingresa, reconstruye desde `partidaInicial` y
+  `runtime/authoritative`; usa `estadoPartida` de la sala sólo como fallback compatible.
 - Si la sala esta `esperando`, el reingreso vuelve al lobby.
 - Si la sala esta `en_juego`, el reingreso abre gameplay directo con la misma carta, fase y estado vivo/muerto.
-- El reingreso nunca debe llamar al reparto local como fallback. Si faltan `partidaInicial`, `estadoPartida`, `fase` o el jugador por `uidTemporal`, se muestra error y se limpia la recuperacion local.
+- El reingreso nunca debe llamar al reparto local como fallback. Si faltan `partidaInicial`,
+  un estado recuperable, `fase` o el jugador por `uidTemporal`, se muestra error y se limpia
+  la recuperacion local.
 - Si un jugador esta desconectado durante noche o votacion, su accion cuenta como ausente.
 - Si el host activo se desconecta o su personaje muere, el primer jugador vivo y conectado segun `orden` puede tomar `hostActivoId`. El cambio es tecnico e invisible; `hostId` sigue identificando al creador de la sala.
-- En gameplay online, los clientes solo registran acciones/votos; el host activo publica el resultado en `estadoPartida`.
+- En gameplay online, los clientes solo registran acciones/votos; el host activo publica el
+  resultado caliente en `estado_partida` de RTDB y guarda un checkpoint Firestore sin listener.
 - Los carteles compartidos de amanecer y votacion no dependen de un boton exclusivo del host. Cada jugador vivo publica `presentacionConfirmada`; el coordinador avanza cuando todos confirmaron despues de 3 segundos o al cumplirse un maximo de 10 segundos.
 - Los eliminados siguen viendo carteles y chat publico en modo solo lectura, pero no cuentan en `LISTOS n/total`.
 - La pantalla ganadora vuelve al lobby al terminar la musica de victoria; 45 segundos quedan como respaldo si el audio esta desactivado o falla.
@@ -318,13 +331,18 @@ Campos actuales dentro de `estadoClientes.{uidTemporal}`:
 Regla de sincronizacion por fase:
 
 - En online, los invitados no avanzan fases localmente.
-- Si el timer de un invitado termina antes de recibir `estadoPartida`, queda sincronizando.
-- El host activo publica `estadoPartida`; los invitados aplican estados nuevos e ignoran estados viejos o duplicados.
+- Si el timer de un invitado termina antes de recibir el estado autoritativo, queda sincronizando.
+- El host activo publica `estado_partida` en RTDB; los invitados aplican estados nuevos e
+  ignoran estados viejos o duplicados. Si RTDB rechaza una escritura, el host usa
+  `estadoPartida` de Firestore como fallback compatible.
 
 Regla de cierre y revancha:
 
 - Al terminar una partida, la sala pasa a `finalizada`.
-- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina `partidaInicial`, `estadoPartida`, `estadoClientes`, los cuatro chats de RTDB y las acciones; tambien pone a todos los jugadores en no listos y limpia `votoMapa`.
+- Cuando el host vuelve al lobby, la misma sala regresa a `esperando`, elimina
+  `partidaInicial`, `estadoPartida`, `estadoClientes`, `runtime/authoritative`, el estado vivo
+  y los cuatro chats de RTDB, y las acciones; tambien pone a todos los jugadores en no listos
+  y limpia `votoMapa`.
 - `ultimoResultado` sobrevive a la revancha. `chat`, `chat_traidores`, `chat_espectadores` y `chat_lobby` se vacian para no conservar basura de partidas anteriores.
 - El navegador oculta salas `esperando` cuya `actualizadaEn` tenga mas de 30 minutos, para no mostrar salas huerfanas tras el cierre abrupto de un emulador o proceso.
 - Una sala llena permite intentar reingreso; la transaccion valida si el UID ya pertenecia a ella antes de rechazar por falta de cupo.
@@ -431,12 +449,18 @@ El chat online y la presencia usan la base `traidores-default-rtdb`:
 
 ```text
 /salas/{roomId}
+    /estado_partida
     /chat/{pushId}
     /chat_traidores/{pushId}
     /chat_espectadores/{pushId}
     /chat_lobby/{pushId}
     /presencia/{uid}
 ```
+
+`estado_partida` contiene el estado publico autoritativo de la partida actual, su `matchId`,
+`phaseIndex`, autor y timestamp de servidor. Lo escribe sólo el host activo de RTDB y lo leen
+únicamente miembros activos. La app conserva el último estado aplicado al rotar la pantalla y
+reintenta la escucha cuando su acceso RTDB queda listo.
 
 Los cuatro chats usan claves generadas por `push()`, timestamp de servidor `ts` y listeners
 limitados a los mensajes recientes. `chat`, `chat_traidores` y `chat_espectadores` conservan

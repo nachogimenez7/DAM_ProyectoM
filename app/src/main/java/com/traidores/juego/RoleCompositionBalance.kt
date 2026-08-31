@@ -37,7 +37,9 @@ internal enum class RoleCompositionBalance(
             return when {
                 traitors >= (total + 2) / 3 || assassins >= 3 -> TRAITORS_FAVORED
                 total >= 8 && traitors <= 1 -> TOWN_FAVORED
-                neutrals >= 2 || specialRoles >= total - 1 -> RISKY
+                // La composición recomendada grande incluye Bufón y Desertor. Dos neutrales
+                // distintos aportan variedad, pero por sí solos no vuelven riesgosa la mesa.
+                neutrals >= 3 || specialRoles >= total - 1 -> RISKY
                 else -> BALANCED
             }
         }

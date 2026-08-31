@@ -93,8 +93,13 @@ object PlayerProfileStore {
     }
 
     fun profileFor(context: Context, session: GameSession, player: GamePlayer): PlayerProfile {
-        return session.playerProfiles[player.name]
+        val profile = session.playerProfiles[player.name]
             ?: if (player.isHuman) loadHumanProfile(context).copy(name = player.name) else BotProfileFactory.profileFor(player.name)
+        return if (player.control == PlayerControl.BOT) {
+            profile.copy(cosmeticThemeId = CosmeticPilot.THEME_CLASSIC)
+        } else {
+            profile
+        }
     }
 
     fun withProfiles(context: Context, session: GameSession): GameSession {
@@ -107,7 +112,11 @@ object PlayerProfileStore {
             } else {
                 BotProfileFactory.profileFor(player.name)
             }
-            profiles[player.name] = profile
+            profiles[player.name] = if (player.control == PlayerControl.BOT) {
+                profile.copy(cosmeticThemeId = CosmeticPilot.THEME_CLASSIC)
+            } else {
+                profile
+            }
         }
         return session.copy(playerProfiles = profiles)
     }
@@ -228,7 +237,8 @@ object BotProfileFactory {
             favoriteRoleKey = favoriteRoles.pick(seed / 7),
             featuredAchievementIds = stableSlice(achievementIds, seed, 3),
             emoteIds = stableSlice(emoteIds, seed / 11, EmoteCatalog.LOADOUT_SIZE),
-            stats = botStatsFor(name)
+            stats = botStatsFor(name),
+            cosmeticThemeId = CosmeticPilot.THEME_CLASSIC
         )
     }
 
@@ -250,7 +260,8 @@ object BotProfileFactory {
             favoriteRoleKey = favoriteRoleKey,
             featuredAchievementIds = achievementIds.distinct().take(3),
             emoteIds = EmoteLoadout.normalizeIds(emoteIds),
-            stats = botStatsFor(name)
+            stats = botStatsFor(name),
+            cosmeticThemeId = CosmeticPilot.THEME_CLASSIC
         )
     }
 

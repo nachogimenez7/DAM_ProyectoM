@@ -129,6 +129,39 @@ async function main() {
     await assertFails(outsider.ref(`salas/${roomId}/presencia`).once("value"));
     await assertSucceeds(bob.ref(`salas/${roomId}/presencia`).once("value"));
 
+    const authoritativeState = {
+      matchId,
+      phaseIndex: 4,
+      actualizadaPor: "alice",
+      actualizadaEn: Date.now(),
+      estadoPartida: {
+        versionEstado: 2,
+        fase: "DIA_DEBATE",
+        ronda: 1,
+        phaseIndex: 4,
+        anuncioPublico: "La mesa debate.",
+      },
+    };
+    await assertSucceeds(
+      alice.ref(`salas/${roomId}/estado_partida`).set(authoritativeState)
+    );
+    await assertSucceeds(bob.ref(`salas/${roomId}/estado_partida`).once("value"));
+    await assertFails(outsider.ref(`salas/${roomId}/estado_partida`).once("value"));
+    await assertFails(
+      bob.ref(`salas/${roomId}/estado_partida`).set({
+        ...authoritativeState,
+        actualizadaPor: "bob",
+        actualizadaEn: Date.now(),
+      })
+    );
+    await assertFails(
+      alice.ref(`salas/${roomId}/estado_partida`).set({
+        ...authoritativeState,
+        matchId: "match-viejo",
+        actualizadaEn: Date.now(),
+      })
+    );
+
     // Confirmaciones y "listo para votar" son efimeros: cada jugador solo publica su
     // nodo, todos los miembros activos pueden leerlos y el matchId evita datos de revancha.
     await assertSucceeds(

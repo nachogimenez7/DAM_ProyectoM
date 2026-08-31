@@ -49,6 +49,18 @@ class OnlineMatchSessionBuilderTest {
     }
 
     @Test
+    fun buildPreservesWhichPlayersHaveRegisteredAccounts() {
+        val players = defaultPlayers().mapIndexed { index, player ->
+            if (index == 0 || index == 3) player + ("publicId" to "PUBLIC-$index") else player
+        }
+
+        val result = buildSession("uid_1", initialMatch(players))
+        val session = (result as OnlineMatchSessionResult.Success).session
+
+        assertEquals(listOf("uid_1", "uid_4"), session.onlineRegisteredPlayerUids)
+    }
+
+    @Test
     fun buildRestoresThreePlayerTestRoom() {
         val result = OnlineMatchSessionBuilder.build(
             initialMatchRaw = initialMatch(players = defaultPlayers().take(3)),

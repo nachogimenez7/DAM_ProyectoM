@@ -55,6 +55,17 @@
             "$other": { ".validate": false }
           }
         },
+        "estado_partida": {
+          ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
+          ".write": "auth != null && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",
+          ".validate": "!newData.exists() || (newData.hasChildren(['matchId', 'phaseIndex', 'actualizadaPor', 'actualizadaEn', 'estadoPartida']) && newData.child('matchId').val() === root.child('salas').child($roomId).child('control').child('matchId').val() && newData.child('actualizadaPor').val() === auth.uid && newData.child('estadoPartida').child('versionEstado').isNumber() && newData.child('estadoPartida').child('fase').isString() && newData.child('estadoPartida').child('ronda').isNumber() && newData.child('estadoPartida').child('phaseIndex').val() === newData.child('phaseIndex').val())",
+          "matchId": { ".validate": "newData.isString() && newData.val().length >= 8 && newData.val().length <= 80" },
+          "phaseIndex": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 500" },
+          "actualizadaPor": { ".validate": "newData.val() === auth.uid" },
+          "actualizadaEn": { ".validate": "newData.isNumber() && newData.val() <= now" },
+          "estadoPartida": { ".validate": "newData.hasChildren(['versionEstado', 'fase', 'ronda', 'phaseIndex'])" },
+          "$other": { ".validate": false }
+        },
         "sincronizacion": {
           ".read": "auth != null && root.child('salas').child($roomId).child('miembros').child(auth.uid).child('activo').val() === true",
           ".write": "auth != null && !newData.exists() && root.child('salas').child($roomId).child('control').child('hostUid').val() === auth.uid",

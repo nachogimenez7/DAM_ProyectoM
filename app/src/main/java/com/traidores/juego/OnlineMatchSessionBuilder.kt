@@ -166,7 +166,12 @@ object OnlineMatchSessionBuilder {
             initialPlayerCount = players.size,
             startedAtEpochMs = System.currentTimeMillis(),
             onlineMatchId = (initialMatch["matchId"] as? String).orEmpty(),
-            onlinePlayerUids = sortedPlayerPayloads.map { (it["uidTemporal"] as? String).orEmpty() }
+            onlinePlayerUids = sortedPlayerPayloads.map { (it["uidTemporal"] as? String).orEmpty() },
+            onlineRegisteredPlayerUids = sortedPlayerPayloads.mapNotNull { player ->
+                val publicId = (player["publicId"] as? String).orEmpty()
+                (player["uidTemporal"] as? String)
+                    ?.takeIf { it.isNotBlank() && publicId.isNotBlank() }
+            }
         )
         val human = players.first { it.isHuman }
         val publicStart = "Dios preparo una partida online con roles ocultos."

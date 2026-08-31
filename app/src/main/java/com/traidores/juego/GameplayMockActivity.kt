@@ -207,6 +207,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var lastPublishedOnlineStateKey = ""
     private var lastPublishedAuthoritativeOnlineStateKey = ""
     private var lastAppliedAuthoritativeOnlineStateKey = ""
+    private var lastAppliedAuthoritativeUpdatedLocalMs = 0L
     private var lastAppliedAuthoritativePhaseLabel = ""
     private var onlineIncompatibleStateHandled = false
     private var onlineAwaitingHostAdvance = false
@@ -225,7 +226,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineVoteResolutionScheduledPhaseIndex = -1
     private var onlineRoomAbandonedHandled = false
     private var onlineStateListener: ListenerRegistration? = null
-    private var onlinePlayersListener: ListenerRegistration? = null
     private var onlineActionsListener: ListenerRegistration? = null
     private var onlinePrivateClueListener: ListenerRegistration? = null
     private var lastOnlineInvestigationClueKey = ""
@@ -237,12 +237,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlinePresencePlayers = emptyList<OnlinePresencePlayer>()
     private var realtimePresence: RealtimeRoomPresence? = null
     private var realtimeGameplaySync: RealtimeGameplaySync? = null
+    private var realtimeAuthoritativeState: RealtimeAuthoritativeState? = null
     private var realtimeTableSilence: RealtimeTableSilence? = null
     private var ownPlayerTableSilenced = false
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimeClientHeartbeatAtMs = emptyMap<String, Long>()
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
+    private val firestoreUsage = OnlineFirestoreUsageCounter()
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineNightActionsServerConfirmed = false
     private var onlineMayorRevealSent = false
@@ -688,6 +690,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         onlineIsHost = savedInstanceState?.getBoolean(STATE_ONLINE_IS_HOST)
             ?: intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
+        initializeOnlinePresenceRoster()
         onlineInitialRoleRead = savedInstanceState?.getBoolean(STATE_ONLINE_INITIAL_ROLE_READ)
             ?: (session.phase != GamePhase.REPARTO)
         onlineStartupStartedAtEpochMs = savedInstanceState
@@ -703,6 +706,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onlineWinnerReturnAckKey = savedInstanceState
             ?.getString(STATE_ONLINE_WINNER_RETURN_ACK_KEY)
             .orEmpty()
+        lastAppliedAuthoritativeOnlineStateKey = savedInstanceState
+            ?.getString(STATE_ONLINE_AUTHORITATIVE_STATE_KEY)
+            .orEmpty()
+        lastAppliedAuthoritativeUpdatedLocalMs = savedInstanceState
+            ?.getLong(STATE_ONLINE_AUTHORITATIVE_UPDATED_LOCAL_MS, 0L)
+            ?: 0L
         if (onlinePartidaId.isNotBlank() || onlinePlayerId.isNotBlank()) {
             val recoveredRoom = OnlineRoomRecovery.load(this)
             OnlineStabilityReport.beginRoom(
@@ -1203,10 +1212,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     override fun onStart() {
         super.onStart()
         chatController.onRealtimeAccessUnavailable()
+        startAuthoritativeOnlineStateListener()
+        startRealtimeAuthoritativeState()
         startRealtimeGameplayPresence()
         startRealtimeGameplaySync()
         markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
-        startOnlinePlayersPresenceListener()
         startOnlineActionsListener()
         startOnlinePrivateClueListener()
         startOnlineSyncWatchdog()
@@ -1217,18 +1227,27 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         chatController.onRealtimeAccessUnavailable()
         // La Activity detenida no puede avanzar contadores. Marcar la desconexion permite
         // que otro cliente asuma como anfitrion y evita congelar toda la mesa.
+        val markDisconnected = OnlineLobbyRules.shouldMarkGameplayDisconnected(
+            isOnlineGameplay = isOnlineGameplay(),
+            isChangingConfigurations = isChangingConfigurations,
+            returningToLobby = returningToOnlineLobby
+        )
+        if (markDisconnected) {
+            // `stop(markDisconnected = true)` publica una sola vez el offline en RTDB.
+            // Esta llamada conserva únicamente el espejo Firestore requerido para handoff.
+            markOnlineGameplayPresence(PLAYER_STATE_DISCONNECTED, updateRealtime = false)
+        }
         realtimePresence?.stop(
-            markDisconnected = OnlineLobbyRules.shouldMarkGameplayDisconnected(
-                isOnlineGameplay = isOnlineGameplay(),
-                isChangingConfigurations = isChangingConfigurations,
-                returningToLobby = returningToOnlineLobby
-            )
+            markDisconnected = markDisconnected
         )
         realtimePresence = null
         realtimeGameplaySync?.stop()
         realtimeGameplaySync = null
+        realtimeAuthoritativeState?.stop()
+        realtimeAuthoritativeState = null
         realtimeTableSilence?.stop()
         realtimeTableSilence = null
+        stopOnlineGameplayFirestoreListeners()
         super.onStop()
     }
 
@@ -1277,16 +1296,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
-        onlineStateListener?.remove()
-        onlineStateListener = null
-        onlinePlayersListener?.remove()
-        onlinePlayersListener = null
-        onlineActionsListener?.remove()
-        onlineActionsListener = null
+        stopOnlineGameplayFirestoreListeners()
         chatController.onDestroy()
         GameNotice.dismissAll(this)
         PlayerProfileDialog.dismissAll(this)
         GameDialog.dismissAll(this)
+        if (isOnlineGameplay()) {
+            OnlineDebugLog.i(
+                "firestore_usage gameplay roomId=$onlinePartidaId uid=$onlinePlayerId " +
+                    firestoreUsage.summary()
+            )
+        }
         if (isFinishing) {
             MusicManager.stopVictoryMusic()
         } else {
@@ -1419,6 +1439,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
         outState.putString(STATE_ONLINE_PRESENTATION_ACK_KEY, onlinePresentationAckKey)
         outState.putString(STATE_ONLINE_WINNER_RETURN_ACK_KEY, onlineWinnerReturnAckKey)
+        outState.putString(
+            STATE_ONLINE_AUTHORITATIVE_STATE_KEY,
+            lastAppliedAuthoritativeOnlineStateKey
+        )
+        outState.putLong(
+            STATE_ONLINE_AUTHORITATIVE_UPDATED_LOCAL_MS,
+            lastAppliedAuthoritativeUpdatedLocalMs
+        )
         outState.putBoolean(
             STATE_VOTE_NO_EXPULSION_PRESENTED,
             voteNoExpulsionPresented
@@ -2722,8 +2750,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         lastPublishedAuthoritativeOnlineStateKey = stateKey
         OnlineDiagnostics.recordPhase(this, session, onlineIsHost, event = "host_publish")
 
-        val roomUpdate = mutableMapOf<String, Any>(
-            "estadoPartida" to mapOf(
+        val state = mapOf(
                 "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
                 "fase" to session.phase.name,
                 "ronda" to session.round,
@@ -2792,35 +2819,75 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         }
                     }
                 },
-                "actualizadaEnLocal" to System.currentTimeMillis(),
-                "actualizadaPor" to onlinePlayerId
-            ),
-            OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID to onlinePlayerId,
-            "ultimaActividadOnline" to FieldValue.serverTimestamp()
+            "actualizadaEnLocal" to System.currentTimeMillis(),
+            "actualizadaPor" to onlinePlayerId
         )
-        if (session.winner.isNotBlank()) {
-            if (session.winner != GameRules.CANCELLED_WINNER) {
-                val resultMatchId = session.onlineMatchId
-                    .takeIf { it.length in 8..80 }
-                    ?: onlinePartidaId.take(80)
-                roomUpdate["ultimoResultado"] = mapOf(
-                    "ganador" to session.winner,
-                    "ronda" to session.round,
-                    "mapa" to session.mapKey,
-                    "matchId" to resultMatchId,
-                    "finalizadaEnLocal" to System.currentTimeMillis()
-                )
-            }
-        }
 
-        FirebaseFirestore.getInstance()
-            .collection("partidas")
-            .document(onlinePartidaId)
-            .update(roomUpdate)
+        publishAuthoritativeCheckpoint(state)
+        val publishTask = ensureRealtimeAuthoritativeState()?.publish(state)
+        if (publishTask == null) {
+            publishLegacyAuthoritativeFallback(state, stateKey)
+            return
+        }
+        publishTask
             .addOnSuccessListener {
                 syncRealtimeGameplayAccess()
                 OnlineDebugLog.i(
-                    "phase_host_publish roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
+                    "phase_host_publish_rtdb roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} phaseIndex=${session.phaseIndex} round=${session.round} winner=${session.winner.ifBlank { "-" }}"
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "authoritative_state_rtdb_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round}",
+                    error
+                )
+                publishLegacyAuthoritativeFallback(state, stateKey)
+            }
+        if (session.winner.isNotBlank()) publishWinnerRoomMetadata(state)
+    }
+
+    private fun publishAuthoritativeCheckpoint(state: Map<String, Any?>) {
+        val matchId = session.onlineMatchId.takeIf { it.length in 8..80 } ?: return
+        firestoreUsage.write("authoritative_checkpoint")
+        FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(OnlineAuthoritativeStateStore.COLLECTION)
+            .document(OnlineAuthoritativeStateStore.DOCUMENT)
+            .set(
+                mapOf(
+                    OnlineAuthoritativeStateStore.FIELD_MATCH_ID to matchId,
+                    OnlineAuthoritativeStateStore.FIELD_PHASE_INDEX to session.phaseIndex,
+                    OnlineAuthoritativeStateStore.FIELD_STATE to state,
+                    OnlineAuthoritativeStateStore.FIELD_UPDATED_AT to FieldValue.serverTimestamp(),
+                    OnlineAuthoritativeStateStore.FIELD_UPDATED_LOCAL to
+                        ((state["actualizadaEnLocal"] as? Number)?.toLong()
+                            ?: System.currentTimeMillis()),
+                    OnlineAuthoritativeStateStore.FIELD_AUTHOR to onlinePlayerId
+                )
+            )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "authoritative_checkpoint_failure roomId=$onlinePartidaId uid=$onlinePlayerId phaseIndex=${session.phaseIndex}",
+                    error
+                )
+            }
+    }
+
+    private fun publishLegacyAuthoritativeFallback(
+        state: Map<String, Any?>,
+        stateKey: String
+    ) {
+        val update = authoritativeRoomUpdate(state, includeResult = session.winner.isNotBlank())
+        firestoreUsage.write("authoritative_legacy_fallback")
+        FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(update)
+            .addOnSuccessListener {
+                syncRealtimeGameplayAccess()
+                OnlineDebugLog.w(
+                    "authoritative_state_legacy_fallback_success roomId=$onlinePartidaId uid=$onlinePlayerId phaseIndex=${session.phaseIndex}"
                 )
             }
             .addOnFailureListener { error ->
@@ -2828,15 +2895,58 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     lastPublishedAuthoritativeOnlineStateKey = ""
                 }
                 OnlineDebugLog.e(
-                    "authoritative_state_publish_failure roomId=$onlinePartidaId uid=$onlinePlayerId phase=${session.phase.name} round=${session.round}",
+                    "authoritative_state_legacy_fallback_failure roomId=$onlinePartidaId uid=$onlinePlayerId phaseIndex=${session.phaseIndex}",
                     error
                 )
             }
     }
 
+    private fun publishWinnerRoomMetadata(state: Map<String, Any?>) {
+        firestoreUsage.write("winner_room_metadata")
+        FirebaseFirestore.getInstance()
+            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .update(authoritativeRoomUpdate(state, includeResult = true))
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "winner_room_metadata_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+            }
+    }
+
+    private fun authoritativeRoomUpdate(
+        state: Map<String, Any?>,
+        includeResult: Boolean
+    ): Map<String, Any> {
+        val update = mutableMapOf<String, Any>(
+            "estadoPartida" to state,
+            OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID to onlinePlayerId,
+            "ultimaActividadOnline" to FieldValue.serverTimestamp()
+        )
+        if (
+            includeResult &&
+            session.winner.isNotBlank() &&
+            session.winner != GameRules.CANCELLED_WINNER
+        ) {
+            val resultMatchId = session.onlineMatchId
+                .takeIf { it.length in 8..80 }
+                ?: onlinePartidaId.take(80)
+            update["ultimoResultado"] = mapOf(
+                "ganador" to session.winner,
+                "ronda" to session.round,
+                "mapa" to session.mapKey,
+                "matchId" to resultMatchId,
+                "finalizadaEnLocal" to System.currentTimeMillis()
+            )
+        }
+        return update
+    }
+
     private fun startAuthoritativeOnlineStateListener() {
         if (!isOnlineGameplay() || onlineStateListener != null) return
         OnlineDebugLog.i("authoritative_listener_start roomId=$onlinePartidaId uid=$onlinePlayerId")
+        firestoreUsage.listenerStarted("room_control")
         onlineStateListener = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -2849,6 +2959,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     OnlineDebugLog.w("authoritative_listener_missing roomId=$onlinePartidaId uid=$onlinePlayerId")
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "room_control",
+                    fromCache = snapshot.metadata.isFromCache,
+                    pendingWrites = snapshot.metadata.hasPendingWrites(),
+                    changedDocuments = 1,
+                    resultDocuments = 1,
+                    dependentDocuments = 1
+                )
                 val roomState = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
                 if (roomState == OnlineRoomFirestore.STATE_ABANDONED) {
                     OnlineRoomRecovery.clearIf(this, onlinePartidaId)
@@ -2888,6 +3006,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     return@addSnapshotListener
                 }
                 handleOnlineStartupDeadlineSnapshot(state)
+                val legacyPhaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: -1
+                if (legacyPhaseIndex < session.phaseIndex) {
+                    OnlineDebugLog.w(
+                        "phase_ignore_stale_room_checkpoint roomId=$onlinePartidaId uid=$onlinePlayerId current=${session.phaseIndex} incoming=$legacyPhaseIndex"
+                    )
+                    return@addSnapshotListener
+                }
                 applyAuthoritativeOnlineState(state)
             }
     }
@@ -3046,6 +3171,39 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.i(
             "startup_auto_deadline_publish_requested roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
         )
+        val startupState = mapOf<String, Any?>(
+            "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
+            "fase" to session.phase.name,
+            "ronda" to session.round,
+            "phaseIndex" to session.phaseIndex,
+            "anuncioPublico" to session.publicAnnouncement,
+            FIELD_STARTUP_AUTO_DEADLINE to deadline,
+            "actualizadaEnLocal" to System.currentTimeMillis(),
+            "actualizadaPor" to onlinePlayerId
+        )
+        val publishTask = ensureRealtimeAuthoritativeState()?.publish(startupState)
+        if (publishTask == null) {
+            publishOnlineStartupDeadlineLegacy(deadline)
+            return
+        }
+        publishTask
+            .addOnSuccessListener {
+                onlineStartupDeadlinePublishInProgress = false
+                OnlineDebugLog.i(
+                    "startup_auto_deadline_publish_rtdb_success roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
+                )
+            }
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "startup_auto_deadline_publish_rtdb_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+                publishOnlineStartupDeadlineLegacy(deadline)
+            }
+    }
+
+    private fun publishOnlineStartupDeadlineLegacy(deadline: Long) {
+        firestoreUsage.write("startup_deadline_legacy_fallback")
         FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -3057,8 +3215,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
             .addOnSuccessListener {
                 onlineStartupDeadlinePublishInProgress = false
-                OnlineDebugLog.i(
-                    "startup_auto_deadline_publish_success roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
+                OnlineDebugLog.w(
+                    "startup_auto_deadline_legacy_fallback_success roomId=$onlinePartidaId uid=$onlinePlayerId deadline=$deadline"
                 )
             }
             .addOnFailureListener { error ->
@@ -3189,6 +3347,18 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val phaseName = state["fase"] as? String ?: return
         val phase = runCatching { GamePhase.valueOf(phaseName) }.getOrNull() ?: return
         val phaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: return
+        val incomingUpdatedLocalMs = (state["actualizadaEnLocal"] as? Number)?.toLong() ?: 0L
+        if (
+            lastAppliedAuthoritativeOnlineStateKey.isNotBlank() &&
+            phaseIndex == session.phaseIndex &&
+            incomingUpdatedLocalMs > 0L &&
+            incomingUpdatedLocalMs < lastAppliedAuthoritativeUpdatedLocalMs
+        ) {
+            OnlineDebugLog.w(
+                "phase_ignore_stale_same_index roomId=$onlinePartidaId uid=$onlinePlayerId phase=$phaseName:$phaseIndex incomingAt=$incomingUpdatedLocalMs appliedAt=$lastAppliedAuthoritativeUpdatedLocalMs"
+            )
+            return
+        }
 
         val stateKey = listOf(
             OnlineAuthoritativeStateMapper.schemaVersionFromState(state),
@@ -3239,6 +3409,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             OnlinePhaseDecision.APPLY -> Unit
         }
         lastAppliedAuthoritativeOnlineStateKey = stateKey
+        lastAppliedAuthoritativeUpdatedLocalMs = maxOf(
+            lastAppliedAuthoritativeUpdatedLocalMs,
+            incomingUpdatedLocalMs
+        )
         onlineLobbyReturnEpochMs = OnlineAuthoritativeStateMapper
             .lobbyReturnDeadlineFromState(state)
 
@@ -3562,6 +3736,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "cambiosVoto" to 0
         )
 
+        firestoreUsage.forcedQuery(
+            name = "vote_transaction",
+            resultDocuments = 1,
+            dependentDocuments = 1
+        )
+        firestoreUsage.write("vote_action")
         FirebaseFirestore.getInstance().runTransaction { transaction ->
             val existing = transaction.get(actionReference)
             if (!existing.exists()) {
@@ -3679,6 +3859,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onFailure?.invoke(error)
         }
 
+        firestoreUsage.write("player_action")
         actionReference
             .set(payload)
             .addOnSuccessListener {
@@ -3694,6 +3875,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 ) {
                     // Un reintento idempotente cuenta como éxito solo si el servidor ya tiene
                     // exactamente el mismo voto. Las reglas no permiten reemplazarlo.
+                    firestoreUsage.forcedQuery(
+                        name = "action_idempotency_check",
+                        resultDocuments = 1,
+                        dependentDocuments = 1
+                    )
                     actionReference.get()
                         .addOnSuccessListener { existing ->
                             if (
@@ -3787,6 +3973,41 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         realtimePresence?.refresh()
     }
 
+    private fun ensureRealtimeAuthoritativeState(): RealtimeAuthoritativeState? {
+        if (!isOnlineGameplay() || session.onlineMatchId.isBlank()) return null
+        realtimeAuthoritativeState?.let { return it }
+        val transport = RealtimeAuthoritativeState(
+            database = FirebaseDatabase.getInstance(),
+            roomId = onlinePartidaId,
+            matchId = session.onlineMatchId,
+            uid = onlinePlayerId,
+            onStateChanged = stateChanged@{ state ->
+                if (
+                    OnlineAuthoritativeStateMapper.schemaVersionFromState(state) !=
+                    OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION
+                ) {
+                    handleIncompatibleOnlineState()
+                    return@stateChanged
+                }
+                handleOnlineStartupDeadlineSnapshot(state)
+                applyAuthoritativeOnlineState(state)
+            },
+            onError = { error ->
+                OnlineDebugLog.e(
+                    "rtdb_authoritative_state_failure roomId=$onlinePartidaId uid=$onlinePlayerId",
+                    error
+                )
+                realtimePresence?.refresh()
+            }
+        )
+        realtimeAuthoritativeState = transport
+        return transport
+    }
+
+    private fun startRealtimeAuthoritativeState() {
+        ensureRealtimeAuthoritativeState()?.start()
+    }
+
     private fun startRealtimeGameplayPresence() {
         if (!isOnlineGameplay() || realtimePresence != null) return
         if (onlineIsHost) syncRealtimeGameplayAccess()
@@ -3802,6 +4023,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onOwnPresenceReady = {
                 if (realtimePresence != null && !isFinishing) {
                     chatController.onRealtimeAccessReady()
+                    startRealtimeAuthoritativeState()
                     startRealtimeTableSilence()
                 }
             },
@@ -3947,16 +4169,43 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             ?: (!realtimePresenceBaselineReady && legacyConnected)
     }
 
-    private fun markOnlineGameplayPresence(state: String) {
+    private fun initializeOnlinePresenceRoster() {
+        if (!isOnlineGameplay() || !::session.isInitialized) return
+        val registeredIds = session.onlineRegisteredPlayerUids.toSet()
+        onlinePresencePlayers = session.players.mapIndexedNotNull { index, player ->
+            val uid = session.onlinePlayerUids.getOrNull(index)
+                ?.takeIf { it.isNotBlank() }
+                ?: return@mapIndexedNotNull null
+            OnlinePresencePlayer(
+                id = uid,
+                name = player.name,
+                order = index,
+                // Hasta recibir RTDB se conserva el fallback optimista que aportaba el
+                // documento legacy de Firestore al entrar en gameplay.
+                state = PLAYER_STATE_CONNECTED,
+                activeInMatch = true,
+                lastSeenLocalMs = 0L,
+                registered = uid in registeredIds
+            )
+        }
+    }
+
+    private fun markOnlineGameplayPresence(state: String, updateRealtime: Boolean = true) {
         if (!isOnlineGameplay() || !::session.isInitialized) return
         lastOnlinePresencePulseAtMs = SystemClock.elapsedRealtime()
         onlinePresencePulseIntervalMs = OnlineSyncWatchdog.jitteredPresencePulseMs(
             "$onlinePlayerId:${System.currentTimeMillis()}".hashCode()
         )
-        realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
+        if (updateRealtime) {
+            realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
+        }
+        // RTDB es la fuente de presencia de la mesa. Firestore conserva solo este dato para
+        // el anfitrion porque las reglas actuales de handoff lo usan para proteger la autoridad.
+        if (!OnlineFirestorePolicy.shouldMirrorLegacyPresence(onlineIsHost)) return
         if (lastLegacyPresenceState == state) return
         lastLegacyPresenceState = state
         val human = GameEngine.humanPlayer(session)
+        firestoreUsage.write("host_presence")
         FirebaseFirestore.getInstance()
             .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -4095,59 +4344,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
     }
 
-    private fun startOnlinePlayersPresenceListener() {
-        if (!isOnlineGameplay() || onlinePlayersListener != null) return
-        onlinePlayersListener = FirebaseFirestore.getInstance()
-            .collection(OnlineRoomFirestore.ROOMS_COLLECTION)
-            .document(onlinePartidaId)
-            .collection(OnlineRoomFirestore.PLAYERS_COLLECTION)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    OnlineDebugLog.e("players_presence_listener_failure roomId=$onlinePartidaId uid=$onlinePlayerId", error)
-                    return@addSnapshotListener
-                }
-                val documents = snapshot?.documents.orEmpty()
-                val players = documents
-                    .map { document ->
-                        val legacyConnected = document.getString(
-                            OnlineRoomFirestore.FIELD_PLAYER_STATE
-                        ) == PLAYER_STATE_CONNECTED
-                        val presence = realtimePresenceStates[document.id]
-                        OnlinePresencePlayer(
-                            id = document.id,
-                            name = document.getString(OnlineRoomFirestore.FIELD_NAME).orEmpty(),
-                            order = document.getLong(OnlineRoomFirestore.FIELD_PLAYER_ORDER)?.toInt()
-                                ?: Int.MAX_VALUE,
-                            state = if (isOnlineUidConnected(document.id, legacyConnected)) {
-                                PLAYER_STATE_CONNECTED
-                            } else {
-                                PLAYER_STATE_DISCONNECTED
-                            },
-                            activeInMatch = document.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false,
-                            lastSeenLocalMs = presence?.changedAtMs?.takeIf { it > 0L }
-                                ?: document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL)
-                                ?: 0L,
-                            registered = document
-                                .getString(PlayerPublicIdentity.FIELD_PUBLIC_ID)
-                                .orEmpty()
-                                .isNotBlank()
-                        )
-                    }
-                    .filter { it.activeInMatch }
-                    .sortedWith(compareBy<OnlinePresencePlayer> { it.order }.thenBy { it.id })
-                onlinePresencePlayers = players
-                handleOnlineHostHandoff(players)
-                maybeResolveOnlineNightEarly()
-                refreshOnlinePresentationGate()
-                if (session.winner.isNotBlank()) {
-                    configureWinnerReturnButton()
-                    maybeCoordinateWinnerReturn()
-                }
-                renderReadyToVoteButton()
-                maybeAdvanceOnlineReadyVote()
-            }
-    }
-
     private fun startOnlineActionsListener() {
         if (!isOnlineGameplay() || onlineActionsListener != null) return
         var query: Query = FirebaseFirestore.getInstance()
@@ -4160,6 +4356,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!onlineIsHost) {
             query = query.whereEqualTo("actorId", onlinePlayerId)
         }
+        firestoreUsage.listenerStarted("actions")
         onlineActionsListener = query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
             if (error != null) {
                 onlineNightActionsServerConfirmed = false
@@ -4169,6 +4366,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 )
                 return@addSnapshotListener
             }
+            firestoreUsage.serverSnapshot(
+                name = "actions",
+                fromCache = snapshot?.metadata?.isFromCache == true,
+                pendingWrites = snapshot?.metadata?.hasPendingWrites() == true,
+                changedDocuments = snapshot?.documentChanges?.size ?: 0,
+                resultDocuments = snapshot?.documents?.size ?: 0,
+                dependentDocuments = 1
+            )
             onlineNightActionRecords = onlineActionRecordsFromSnapshot(snapshot?.documents.orEmpty())
             syncOwnOnlineDeferredActionSubmission()
             syncOwnOnlineProvisionalVote()
@@ -4194,6 +4399,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun startOnlinePrivateClueListener() {
         if (!isOnlineGameplay() || onlinePrivateClueListener != null) return
+        if (!OnlineFirestorePolicy.shouldListenForPrivateClue(
+                GameEngine.humanPlayer(session).role?.key
+            )
+        ) {
+            return
+        }
+        firestoreUsage.listenerStarted("private_clue")
         onlinePrivateClueListener = FirebaseFirestore.getInstance()
             .collection("partidas")
             .document(onlinePartidaId)
@@ -4207,6 +4419,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     )
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "private_clue",
+                    fromCache = snapshot?.metadata?.isFromCache == true,
+                    pendingWrites = snapshot?.metadata?.hasPendingWrites() == true,
+                    changedDocuments = if (snapshot?.exists() == true) 1 else 0,
+                    resultDocuments = if (snapshot?.exists() == true) 1 else 0
+                )
                 applyOnlineInvestigationClue(snapshot)
             }
     }
@@ -4264,6 +4483,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onlineNightActionsServerConfirmed = false
         startOnlineActionsListener()
         startOnlinePrivateClueListener()
+    }
+
+    private fun stopOnlineGameplayFirestoreListeners() {
+        onlineStateListener?.remove()
+        onlineStateListener = null
+        onlineActionsListener?.remove()
+        onlineActionsListener = null
+        onlinePrivateClueListener?.remove()
+        onlinePrivateClueListener = null
+        onlineNightActionsServerConfirmed = false
     }
 
     private fun currentOnlinePayadorActions(): List<OnlineActionRecord> {
@@ -4553,7 +4782,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun handleOnlineHostHandoff(players: List<OnlinePresencePlayer>) {
-        if (!isOnlineGameplay() || players.isEmpty() || onlineHostHandoffInProgress) return
+        if (
+            !isOnlineGameplay() ||
+            !realtimePresenceBaselineReady ||
+            players.isEmpty() ||
+            onlineHostHandoffInProgress
+        ) {
+            return
+        }
         val activeHostId = onlineActiveHostId.takeIf { it.isNotBlank() } ?: return
         val participants = players.map { player ->
             OnlineLobbyParticipant(
@@ -4699,6 +4935,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             .collection("repartos")
             .get()
             .addOnSuccessListener { snapshot ->
+                firestoreUsage.forcedQuery(
+                    name = "host_role_recovery",
+                    resultDocuments = snapshot.documents.size
+                )
                 if (onlineActiveHostId != onlinePlayerId) {
                     onlineHostPromotionInProgress = false
                     return@addOnSuccessListener
@@ -4733,6 +4973,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (onlineIsHost || onlineActiveHostId != onlinePlayerId) return
         onlineIsHost = true
         onlineActiveHostId = onlinePlayerId
+        lastLegacyPresenceState = ""
+        markOnlineGameplayPresence(PLAYER_STATE_CONNECTED)
         OnlineDebugLog.w(
             "host_promoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason phase=${session.phase.name} round=${session.round} roles=${session.players.count { it.role != null }}/${session.players.size}"
         )
@@ -4786,6 +5028,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onlineHostPromotionInProgress = false
         autoAdvanceHandler.removeCallbacks(onlineHostPromotionRetryRunnable)
         onlineIsHost = false
+        lastLegacyPresenceState = ""
         setOnlineAwaitingHostAdvance(true)
         lastPublishedAuthoritativeOnlineStateKey = ""
         OnlineDebugLog.w(
@@ -5481,8 +5724,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun reactionOptionBackground(spec: ReactionSpec): Drawable {
-        if (CosmeticPilot.isSpaceEnabled(this)) {
-            return CosmeticPilot.emoteFrame(this)
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+            return CosmeticPilot.emoteFrame(this, theme = cosmeticTheme)
         }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
@@ -5630,7 +5874,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val tailSize = dp(if (isHuman) 12 else 9)
         val bubbleWidth = bubbleSize
         val bubbleHeight = bubbleSize + tailSize / 2
-        val usesSpaceCosmetic = CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(playerName))
+        val cosmeticTheme = cosmeticThemeForPlayer(playerName)
+        val usesDecoratedCosmetic = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
 
         val bubble = FrameLayout(this).apply {
             clipChildren = false
@@ -5643,8 +5888,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val shell = FrameLayout(this).apply {
             setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = if (usesSpaceCosmetic) {
-                CosmeticPilot.bubbleShell(this@GameplayMockActivity)
+            background = if (usesDecoratedCosmetic) {
+                CosmeticPilot.bubbleShell(this@GameplayMockActivity, cosmeticTheme)
             } else {
                 GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -5682,20 +5927,24 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             FrameLayout.LayoutParams(bubbleSize, bubbleSize, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         )
 
-        if (usesSpaceCosmetic) {
+        if (usesDecoratedCosmetic) {
             listOf(Gravity.TOP or Gravity.START, Gravity.TOP or Gravity.END).forEach { starGravity ->
                 bubble.addView(
                     TextView(this).apply {
-                        text = "✦"
+                        text = when (cosmeticTheme) {
+                            CosmeticPilot.THEME_SEA -> "◦"
+                            CosmeticPilot.THEME_FIRE -> "◆"
+                            else -> "✦"
+                        }
                         includeFontPadding = false
                         gravity = Gravity.CENTER
-                        setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+                        setTextColor(CosmeticPilot.accentColor(cosmeticTheme))
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                         setShadowLayer(
                             dp(4).toFloat(),
                             0f,
                             0f,
-                            Color.parseColor(CosmeticPilot.accentViolet)
+                            CosmeticPilot.textColor(cosmeticTheme)
                         )
                         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     },
@@ -5713,8 +5962,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val tail = View(this).apply {
             rotation = 45f
-            background = if (usesSpaceCosmetic) {
-                CosmeticPilot.bubbleTail(this@GameplayMockActivity)
+            background = if (usesDecoratedCosmetic) {
+                CosmeticPilot.bubbleTail(this@GameplayMockActivity, cosmeticTheme)
             } else {
                 GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -8412,9 +8661,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.onlineMatchId.isNotBlank()) {
             query = query.whereEqualTo("matchId", session.onlineMatchId)
         }
+        query = query.whereEqualTo("phaseIndex", session.phaseIndex)
         query
             .get(Source.SERVER)
             .addOnSuccessListener { snapshot ->
+                firestoreUsage.forcedQuery(
+                    name = "night_resolution",
+                    resultDocuments = snapshot.documents.size,
+                    dependentDocuments = 1
+                )
                 val actions = onlineActionRecordsFromSnapshot(snapshot.documents)
                 applyConfirmedOnlineNightActions(actions, countAfkMisses)
             }
@@ -8942,9 +9197,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.onlineMatchId.isNotBlank()) {
             query = query.whereEqualTo("matchId", session.onlineMatchId)
         }
+        query = query.whereEqualTo("phaseIndex", session.phaseIndex)
         query
             .get()
             .addOnSuccessListener { snapshot ->
+                firestoreUsage.forcedQuery(
+                    name = "vote_resolution",
+                    resultDocuments = snapshot.documents.size,
+                    dependentDocuments = 1
+                )
                 val expectedPhase = if (tieVote) {
                     GamePhase.DESEMPATE_VOTACION.name
                 } else {
@@ -9022,9 +9283,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (session.onlineMatchId.isNotBlank()) {
             query = query.whereEqualTo("matchId", session.onlineMatchId)
         }
+        query = query.whereEqualTo("phaseIndex", session.phaseIndex)
         query
             .get()
             .addOnSuccessListener { snapshot ->
+                firestoreUsage.forcedQuery(
+                    name = "mayor_resolution",
+                    resultDocuments = snapshot.documents.size,
+                    dependentDocuments = 1
+                )
                 val decision = snapshot.documents.mapNotNull { document ->
                     if (document.getString("tipo").orEmpty() != "accion_jugador") return@mapNotNull null
                     if (document.getString("matchId").orEmpty() != session.onlineMatchId) return@mapNotNull null
@@ -9242,10 +9509,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             getColor(R.color.accent_gold)
         }
-        roleCard.background = if (
-            CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(GameEngine.humanPlayer(session).name))
-        ) {
-            CosmeticPilot.gameplayRoleFrame(this, borderColor)
+        val cosmeticTheme = cosmeticThemeForPlayer(GameEngine.humanPlayer(session).name)
+        roleCard.background = if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+            CosmeticPilot.gameplayRoleFrame(this, borderColor, cosmeticTheme)
         } else {
             GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
@@ -9570,14 +9836,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun renderHumanCosmeticTheme() {
         val humanName = GameEngine.humanPlayer(session).name
-        val spaceEnabled = CosmeticPilot.isSpaceTheme(cosmeticThemeForPlayer(humanName))
-        if (spaceEnabled) {
-            bottomPlayerPanel.background = CosmeticPilot.gameplayPlayerPanel(this)
+        val cosmeticTheme = cosmeticThemeForPlayer(humanName)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+            bottomPlayerPanel.background = CosmeticPilot.gameplayPlayerPanel(this, cosmeticTheme)
             // El marco general ya identifica el conjunto. Una segunda placa alrededor del
             // nombre lo encerraba entre dos líneas y hacía demasiado ruido en una tarjeta
             // que debe leerse de un vistazo.
             currentPlayerName.background = null
-            currentPlayerName.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+            currentPlayerName.setTextColor(CosmeticPilot.accentColor(cosmeticTheme))
             currentPlayerName.setPadding(0, 0, 0, 0)
         } else {
             bottomPlayerPanel.setBackgroundResource(R.drawable.bg_hud_parchment)
@@ -12276,6 +12542,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_PRESENTATION_ACK_KEY = "online_presentation_ack_key"
         private const val STATE_ONLINE_WINNER_RETURN_ACK_KEY =
             "online_winner_return_ack_key"
+        private const val STATE_ONLINE_AUTHORITATIVE_STATE_KEY =
+            "online_authoritative_state_key"
+        private const val STATE_ONLINE_AUTHORITATIVE_UPDATED_LOCAL_MS =
+            "online_authoritative_updated_local_ms"
         private const val TRAITOR_REVEAL_DURATION_MS = 8000L
         private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L
         private const val JESTER_VICTORY_DURATION_MS = 8000L

@@ -117,6 +117,9 @@ class LobbyActivity : BaseActivity() {
     private var onlineCleanupPending = false
     private var onlineInitialMatch: Map<String, Any?>? = null
     private var onlineMatchState: Map<String, Any?>? = null
+    private var onlineMatchStateMatchId = ""
+    private var onlineCheckpointLoadInProgress = false
+    private var onlineCheckpointLoadedMatchId = ""
     private var onlinePrivateRoleAssignments: List<Map<String, Any?>> = emptyList()
     private var onlinePrivateRolesMatchId = ""
     private var onlinePrivateRolesLoading = false
@@ -178,6 +181,7 @@ class LobbyActivity : BaseActivity() {
     private var lobbyChatKnownMessageIds: Set<String>? = null
     private var lastLobbyEmoteSoundAtMs = 0L
     private var lobbyChatExpandedMessages: LinearLayout? = null
+    private var lobbyChatExpandedScroll: ScrollView? = null
     private var lobbyPlayersBaselineReady = false
     private var lastMapVoteLeaderKey: String? = null
     private var lastOnlineResultKey = ""
@@ -185,21 +189,19 @@ class LobbyActivity : BaseActivity() {
     private var realtimePresence: RealtimeRoomPresence? = null
     private var realtimeGameplaySync: RealtimeGameplaySync? = null
     private var realtimeLobbySyncRestartRunnable: Runnable? = null
+    private var lobbyReconnectGraceRefreshRunnable: Runnable? = null
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
     private var lobbyRealtimeAccessReady = false
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
     private var practiceRoleIndex = 0
+    private val firestoreUsage = OnlineFirestoreUsageCounter()
 
     private val onlineEntryReleaseTimeoutRunnable = Runnable {
         onlineEntryReleaseTimeoutScheduled = false
         maybeReleaseOnlineMatchEntry()
     }
-    private val readyReconcileRunnable = Runnable {
-        refreshOnlinePlayersFromServer("ready_settled")
-    }
-
     private val practiceRoles = listOf(
         "" to "AZAR",
         "asesino" to "ASESINO",
@@ -493,13 +495,13 @@ class LobbyActivity : BaseActivity() {
         lobbyChatController?.stop()
         if (::startButton.isInitialized) {
             startButton.removeCallbacks(onlineEntryReleaseTimeoutRunnable)
-            startButton.removeCallbacks(readyReconcileRunnable)
             onlineEntryAckRunnable?.let(startButton::removeCallbacks)
             onlineMatchEntryRetryRunnable?.let(startButton::removeCallbacks)
             onlinePrivateRoleTimeoutRunnable?.let(startButton::removeCallbacks)
             onlinePrivateRoleRetryRunnable?.let(startButton::removeCallbacks)
             onlineRealtimeAccessRetryRunnable?.let(startButton::removeCallbacks)
             realtimeLobbySyncRestartRunnable?.let(startButton::removeCallbacks)
+            lobbyReconnectGraceRefreshRunnable?.let(startButton::removeCallbacks)
             pendingOnlineRolePresetRunnable?.let(startButton::removeCallbacks)
         }
         onlineEntryAckRunnable = null
@@ -514,6 +516,7 @@ class LobbyActivity : BaseActivity() {
         onlinePrivateRolesLoading = false
         onlinePrivateRoleLoadGeneration += 1
         realtimeLobbySyncRestartRunnable = null
+        lobbyReconnectGraceRefreshRunnable = null
         pendingOnlineRolePresetRunnable = null
         pendingOnlineRolePreset = null
         onlineEntryReleaseTimeoutScheduled = false
@@ -529,18 +532,28 @@ class LobbyActivity : BaseActivity() {
         MusicManager.playMenuMusic(this)
     }
 
+    override fun onDestroy() {
+        if (isFirestoreOnlineLobby()) {
+            OnlineDebugLog.i(
+                "firestore_usage lobby roomId=$onlinePartidaId uid=$onlineTempUid " +
+                    firestoreUsage.summary()
+            )
+        }
+        super.onDestroy()
+    }
+
     private fun renderLobby() {
         updateOnlineControlState()
         val onlineLobby = isFirestoreOnlineLobby()
         playerCount.text = if (onlineLobby) {
-            val connected = activeOnlinePlayers().count(::isOnlinePlayerConnected)
+            val connected = activeOnlinePlayers().count(::isOnlinePlayerAvailableForLobby)
             "$connected/$onlineExpectedPlayers conectados"
         } else {
             "${currentVisiblePlayerCount()}/${currentMaxPlayers()} jugadores"
         }
         if (onlineLobby) {
             val occupied = activeOnlinePlayers().size
-            val connected = activeOnlinePlayers().count(::isOnlinePlayerConnected)
+            val connected = activeOnlinePlayers().count(::isOnlinePlayerAvailableForLobby)
             playerCount.contentDescription =
                 "$connected jugadores conectados de $onlineExpectedPlayers lugares; " +
                     "$occupied lugares ocupados"
@@ -633,18 +646,28 @@ class LobbyActivity : BaseActivity() {
         if (!preserveOnlinePlayerStrip) {
             playersContainer.removeAllViews()
             onlinePlayersContainer.removeAllViews()
-            session.players.forEachIndexed { index, player ->
+            val displayedPlayerIndices = if (onlineLobby) {
+                session.players.indices.sortedWith(
+                    compareBy<Int> { index ->
+                        if (visibleOnlinePlayers.getOrNull(index)?.id == onlineTempUid) 0 else 1
+                    }.thenBy { index -> visibleOnlinePlayers.getOrNull(index)?.order ?: index }
+                )
+            } else {
+                session.players.indices.toList()
+            }
+            displayedPlayerIndices.forEachIndexed { displayIndex, sourceIndex ->
+                val player = session.players[sourceIndex]
                 if (onlineLobby) {
                     onlinePlayersContainer.addView(
-                        createOnlinePlayerChip(player, visibleOnlinePlayers.getOrNull(index)),
+                        createOnlinePlayerChip(player, visibleOnlinePlayers.getOrNull(sourceIndex)),
                         LinearLayout.LayoutParams(onlineChipWidth, LinearLayout.LayoutParams.MATCH_PARENT).apply {
-                            if (index > 0) marginStart = dp(5)
+                            if (displayIndex > 0) marginStart = dp(5)
                         }
                     )
                     return@forEachIndexed
                 }
                 val row = layoutInflater.inflate(R.layout.item_lobby_player, playersContainer, false)
-                val onlinePlayer = visibleOnlinePlayers.getOrNull(index)
+                val onlinePlayer = visibleOnlinePlayers.getOrNull(sourceIndex)
                 row.findViewById<TextView>(R.id.playerAvatar).text = player.initial
                 row.findViewById<TextView>(R.id.playerName).apply {
                     text = player.name
@@ -659,12 +682,12 @@ class LobbyActivity : BaseActivity() {
                         isClickable = true
                         isFocusable = true
                         contentDescription = "Cambiar nombre de ${player.name}"
-                        setOnClickListener { showLocalBotNameEditor(index) }
+                        setOnClickListener { showLocalBotNameEditor(sourceIndex) }
                     }
                 }
                 row.findViewById<TextView>(R.id.playerStatus).text =
                     onlinePlayer?.statusLabel(onlineHostId.ifBlank { onlineActiveHostId })
-                        ?: if (index == 0) "Anfitrion" else "Bot"
+                        ?: if (sourceIndex == 0) "Anfitrion" else "Bot"
                 row.findViewById<ImageButton>(R.id.btnPlayerProfile).setOnClickListener {
                     showPlayerProfile(player, onlinePlayer)
                 }
@@ -677,7 +700,7 @@ class LobbyActivity : BaseActivity() {
                     isEnabled = if (isFirestoreOnlineLobby()) {
                         canRemoveOnlinePlayer
                     } else {
-                        index != 0 && !isOnlineGuest()
+                        sourceIndex != 0 && !isOnlineGuest()
                     }
                     alpha = if (isEnabled) 1f else 0.28f
                     contentDescription = when {
@@ -688,10 +711,10 @@ class LobbyActivity : BaseActivity() {
                         isFirestoreOnlineLobby() && onlinePlayer != null ->
                             "Expulsar a ${onlinePlayer.name} de la sala online"
                         isOnlineGuest() -> "Solo el anfitrion puede expulsar jugadores"
-                        index == 0 -> "El anfitrion no se puede expulsar"
+                        sourceIndex == 0 -> "El anfitrion no se puede expulsar"
                         else -> "Expulsar a ${player.name}"
                     }
-                    setOnClickListener { confirmPlayerRemoval(index, player, onlinePlayer) }
+                    setOnClickListener { confirmPlayerRemoval(sourceIndex, player, onlinePlayer) }
                 }
                 playersContainer.addView(row)
             }
@@ -712,6 +735,7 @@ class LobbyActivity : BaseActivity() {
             }
         }
         renderLobbyChatDock()
+        scheduleLobbyReconnectGraceRefresh()
     }
 
     private fun renderLobbyStructure(onlineLobby: Boolean) {
@@ -1000,10 +1024,17 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun createOnlinePlayerChip(player: GamePlayer, onlinePlayer: OnlineLobbyPlayer?): View {
+        val isCurrentPlayer = onlinePlayer?.id == onlineTempUid
+        val cosmeticTheme = CosmeticPilot.normalizeTheme(onlinePlayer?.profile?.cosmeticThemeId)
+            ?: CosmeticPilot.THEME_CLASSIC
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.bg_btn_dark)
+            setBackgroundResource(
+                if (isCurrentPlayer) R.drawable.bg_lobby_player_self else R.drawable.bg_btn_dark
+            )
+            if (isCurrentPlayer) elevation = dp(4).toFloat()
             setPadding(dp(4), dp(4), dp(4), dp(4))
             isClickable = true
             isFocusable = true
@@ -1012,13 +1043,12 @@ class LobbyActivity : BaseActivity() {
                 onlinePlayer?.profile?.avatarKey.orEmpty().ifBlank { "aldeana" }
             )
             addView(FrameLayout(this@LobbyActivity).apply {
-                setBackgroundResource(
-                    if (onlinePlayer?.id == onlineActiveHostId) {
-                        R.drawable.bg_profile_avatar_frame
-                    } else {
-                        R.drawable.bg_player_avatar
-                    }
-                )
+                background = when {
+                    onlinePlayer?.id == onlineActiveHostId ->
+                        getDrawable(R.drawable.bg_profile_avatar_frame)
+                    decorated -> CosmeticPilot.avatarFrame(this@LobbyActivity, cosmeticTheme)
+                    else -> getDrawable(R.drawable.bg_player_avatar)
+                }
                 addView(CircleProfileImageView(this@LobbyActivity).apply {
                     val resId = resources.getIdentifier(
                         avatarEntry.role.imageResName,
@@ -1036,7 +1066,11 @@ class LobbyActivity : BaseActivity() {
                         setImageResource(resId)
                         alignLobbyAvatarToFocus(this, avatarEntry.verticalFocus)
                     }
-                    alpha = if (onlinePlayer == null || isOnlinePlayerConnected(onlinePlayer)) 1f else 0.4f
+                    alpha = when {
+                        onlinePlayer == null || isOnlinePlayerConnected(onlinePlayer) -> 1f
+                        isOnlinePlayerAvailableForLobby(onlinePlayer) -> 0.72f
+                        else -> 0.4f
+                    }
                     contentDescription = if (showingPlayGamesPhoto) {
                         "Foto de Play Juegos de ${player.name}"
                     } else {
@@ -1055,12 +1089,19 @@ class LobbyActivity : BaseActivity() {
                 }
             }, LinearLayout.LayoutParams(dp(46), dp(46)))
             addView(TextView(this@LobbyActivity).apply {
-                text = if (onlinePlayer?.id == onlineTempUid) "Vos" else player.name
+                text = if (isCurrentPlayer) "VOS" else player.name
                 gravity = Gravity.CENTER
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setTextColor(getColor(R.color.text_secondary))
+                setTextColor(
+                    when {
+                        decorated -> CosmeticPilot.accentColor(cosmeticTheme)
+                        isCurrentPlayer -> getColor(R.color.accent_gold)
+                        else -> getColor(R.color.text_secondary)
+                    }
+                )
                 textSize = 10f
+                if (isCurrentPlayer) typeface = android.graphics.Typeface.DEFAULT_BOLD
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(24)))
             setOnClickListener { showPlayerProfile(player, onlinePlayer) }
             if (onlinePlayer != null && canCurrentHostRemoveOnlinePlayer(onlinePlayer)) {
@@ -1256,6 +1297,7 @@ class LobbyActivity : BaseActivity() {
             setPadding(dp(8), dp(7), dp(8), dp(7))
         }
         lobbyChatExpandedMessages = messageContainer
+        lobbyChatExpandedScroll = messageScroll
         messageScroll.addView(messageContainer)
         val messageAreaHeight = (resources.displayMetrics.heightPixels * 0.36f)
             .toInt()
@@ -1336,10 +1378,12 @@ class LobbyActivity : BaseActivity() {
         }
         content.addView(emoteRow)
         dialog.setContentView(content)
-        dialog.setOnDismissListener { lobbyChatExpandedMessages = null }
+        dialog.setOnDismissListener {
+            lobbyChatExpandedMessages = null
+            lobbyChatExpandedScroll = null
+        }
         dialog.show()
         renderLobbyChatMessages(messageContainer)
-        messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
         input.post {
             input.requestFocus()
             (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
@@ -1384,11 +1428,17 @@ class LobbyActivity : BaseActivity() {
                 setPadding(0, dp(24), 0, dp(24))
             })
         }
+        if (container === lobbyChatExpandedMessages) {
+            lobbyChatExpandedScroll?.post {
+                lobbyChatExpandedScroll?.fullScroll(View.FOCUS_DOWN)
+            }
+        }
     }
 
     private fun listenToOnlineRoom() {
         roomListener?.remove()
         OnlineDebugLog.i("lobby_room_listen_start roomId=$onlinePartidaId uid=$onlineTempUid")
+        firestoreUsage.listenerStarted("room")
         roomListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -1407,6 +1457,16 @@ class LobbyActivity : BaseActivity() {
                     handleDeletedOnlineRoom()
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "room",
+                    fromCache = snapshot.metadata.isFromCache,
+                    pendingWrites = snapshot.metadata.hasPendingWrites(),
+                    changedDocuments = 1,
+                    resultDocuments = 1,
+                    dependentDocuments = if (
+                        snapshot.getString(FIELD_STATE) == ONLINE_ROOM_STATE_WAITING
+                    ) 0 else 1
+                )
                 applyOnlineRoomSnapshot(snapshot)
             }
     }
@@ -1523,6 +1583,7 @@ class LobbyActivity : BaseActivity() {
         if (currentlyReleased) {
             playerData[FIELD_PLAYER_READY] = false
         }
+        firestoreUsage.write("presence")
         firestore
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -1682,7 +1743,7 @@ class LobbyActivity : BaseActivity() {
                     ).show()
                     return@complete
                 }
-                val unavailable = players.count { !isOnlinePlayerConnected(it) || !it.ready }
+                val unavailable = players.count { !isOnlinePlayerAvailableForLobby(it) || !it.ready }
                 if (unavailable > 0) {
                     startButton.isEnabled = true
                     renderStartButtonState()
@@ -2305,6 +2366,7 @@ class LobbyActivity : BaseActivity() {
     private fun listenToOnlinePlayers() {
         playersListener?.remove()
         OnlineDebugLog.i("lobby_players_listen_start roomId=$onlinePartidaId")
+        firestoreUsage.listenerStarted("players")
         playersListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -2315,6 +2377,14 @@ class LobbyActivity : BaseActivity() {
                     verifyOwnMembershipAfterPlayersFailure(error)
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "players",
+                    fromCache = snapshot?.metadata?.isFromCache == true,
+                    pendingWrites = snapshot?.metadata?.hasPendingWrites() == true,
+                    changedDocuments = snapshot?.documentChanges?.size ?: 0,
+                    resultDocuments = snapshot?.documents?.size ?: 0,
+                    dependentDocuments = 1
+                )
                 val updatedPlayers = snapshot?.documents
                     ?.mapNotNull(::parseOnlinePlayer)
                     ?.sortedWith(
@@ -2339,6 +2409,7 @@ class LobbyActivity : BaseActivity() {
     private fun listenToOwnOnlineMembership() {
         ownPlayerListener?.remove()
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        firestoreUsage.listenerStarted("own_membership")
         ownPlayerListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -2357,6 +2428,13 @@ class LobbyActivity : BaseActivity() {
                 if (snapshot == null || snapshot.metadata.isFromCache) {
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "own_membership",
+                    fromCache = false,
+                    pendingWrites = snapshot.metadata.hasPendingWrites(),
+                    changedDocuments = if (snapshot.exists()) 1 else 0,
+                    resultDocuments = if (snapshot.exists()) 1 else 0
+                )
                 applyOwnOnlineMembership(snapshot)
             }
     }
@@ -2401,6 +2479,7 @@ class LobbyActivity : BaseActivity() {
             .document(onlineTempUid)
             .get(Source.SERVER)
             .addOnSuccessListener { snapshot ->
+                firestoreUsage.forcedQuery("own_membership_recovery", resultDocuments = 1)
                 if (!onlineRemovalHandled) {
                     val active = snapshot.takeIf { it.exists() }
                         ?.let { it.getBoolean(FIELD_ACTIVE_IN_MATCH) != false }
@@ -2511,12 +2590,6 @@ class LobbyActivity : BaseActivity() {
         )
     }
 
-    private fun scheduleOnlinePlayersServerReconciliation() {
-        if (!::startButton.isInitialized) return
-        startButton.removeCallbacks(readyReconcileRunnable)
-        startButton.postDelayed(readyReconcileRunnable, READY_RECONCILE_DELAY_MS)
-    }
-
     private fun refreshOnlinePlayersFromServer(
         reason: String,
         onFailure: ((Exception) -> Unit)? = null,
@@ -2543,6 +2616,11 @@ class LobbyActivity : BaseActivity() {
             .get(Source.SERVER)
             .addOnSuccessListener { snapshot ->
                 onlinePlayersServerRefreshInProgress = false
+                firestoreUsage.forcedQuery(
+                    name = "players_$reason",
+                    resultDocuments = snapshot.documents.size,
+                    dependentDocuments = 1
+                )
                 val serverPlayers = snapshot.documents
                     .mapNotNull(::parseOnlinePlayer)
                     .sortedWith(
@@ -2640,6 +2718,7 @@ class LobbyActivity : BaseActivity() {
     private fun listenToOwnRoomBan() {
         ownRoomBanListener?.remove()
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        firestoreUsage.listenerStarted("own_room_ban")
         ownRoomBanListener = FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -2650,6 +2729,13 @@ class LobbyActivity : BaseActivity() {
                     OnlineDebugLog.e("own_room_ban_listener_failure roomId=$onlinePartidaId", error)
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "own_room_ban",
+                    fromCache = snapshot?.metadata?.isFromCache == true,
+                    pendingWrites = snapshot?.metadata?.hasPendingWrites() == true,
+                    changedDocuments = if (snapshot?.exists() == true) 1 else 0,
+                    resultDocuments = if (snapshot?.exists() == true) 1 else 0
+                )
                 if (snapshot?.exists() != true || onlineRemovalHandled) return@addSnapshotListener
                 showOnlineRemovalDialog(
                     snapshot.getString("motivo")
@@ -2710,7 +2796,19 @@ class LobbyActivity : BaseActivity() {
             onlineLobbyConfig
         )
         onlineInitialMatch = snapshot.get(FIELD_INITIAL_MATCH).asStringAnyMap()
-        onlineMatchState = snapshot.get(FIELD_MATCH_STATE).asStringAnyMap()
+        val incomingMatchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
+        val roomMatchState = snapshot.get(FIELD_MATCH_STATE).asStringAnyMap()
+        if (incomingMatchId != onlineMatchStateMatchId) {
+            onlineMatchStateMatchId = incomingMatchId
+            onlineMatchState = roomMatchState
+            onlineCheckpointLoadInProgress = false
+            onlineCheckpointLoadedMatchId = ""
+        } else {
+            onlineMatchState = OnlineAuthoritativeStateStore.freshest(
+                onlineMatchState,
+                roomMatchState
+            )
+        }
         onlineEntryReleasedMatchId = snapshot.getString(FIELD_ENTRY_RELEASED_MATCH_ID).orEmpty()
         onlineRoomSnapshotHasPendingWrites = snapshot.metadata.hasPendingWrites()
         OnlineStabilityReport.beginRoom(
@@ -2939,6 +3037,61 @@ class LobbyActivity : BaseActivity() {
         return isOnlineUidConnected(player.id, player.status == PLAYER_STATE_CONNECTED)
     }
 
+    private fun isOnlinePlayerAvailableForLobby(
+        player: OnlineLobbyPlayer,
+        nowMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        return OnlineLobbyRules.countsAsPresentDuringReconnect(
+            connected = isOnlinePlayerConnected(player),
+            ready = player.ready,
+            activeInMatch = player.activeInMatch,
+            lastSeenMs = onlinePlayerLastSeenMs(player),
+            nowMs = nowMs,
+            graceMs = LOBBY_PLAYER_RECONNECT_GRACE_MS
+        )
+    }
+
+    private fun onlineParticipantsForLobbyStart(
+        nowMs: Long = System.currentTimeMillis()
+    ): List<OnlineLobbyParticipant> {
+        return onlineParticipants().map { participant ->
+            participant.copy(
+                connected = OnlineLobbyRules.countsAsPresentDuringReconnect(
+                    connected = participant.connected,
+                    ready = participant.ready,
+                    activeInMatch = participant.activeInMatch,
+                    lastSeenMs = participant.lastSeenLocalMs,
+                    nowMs = nowMs,
+                    graceMs = LOBBY_PLAYER_RECONNECT_GRACE_MS
+                )
+            )
+        }
+    }
+
+    private fun scheduleLobbyReconnectGraceRefresh(nowMs: Long = System.currentTimeMillis()) {
+        if (!::startButton.isInitialized) return
+        lobbyReconnectGraceRefreshRunnable?.let(startButton::removeCallbacks)
+        lobbyReconnectGraceRefreshRunnable = null
+        if (!isFirestoreOnlineLobby()) return
+
+        val nextExpiryMs = activeOnlinePlayers()
+            .asSequence()
+            .filter { !isOnlinePlayerConnected(it) && it.ready }
+            .map { player ->
+                LOBBY_PLAYER_RECONNECT_GRACE_MS -
+                    (nowMs - onlinePlayerLastSeenMs(player)).coerceAtLeast(0L)
+            }
+            .filter { it > 0L }
+            .minOrNull()
+            ?: return
+        val runnable = Runnable {
+            lobbyReconnectGraceRefreshRunnable = null
+            if (!isFinishing && !isDestroyed) renderLobby()
+        }
+        lobbyReconnectGraceRefreshRunnable = runnable
+        startButton.postDelayed(runnable, nextExpiryMs + 100L)
+    }
+
     private fun isOnlineUidConnected(uid: String, legacyConnected: Boolean): Boolean {
         return realtimePresenceStates[uid]?.connected
             ?: (!realtimePresenceBaselineReady && legacyConnected)
@@ -2955,7 +3108,10 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun releasableDisconnectedOnlinePlayers(): List<OnlineLobbyPlayer> {
-        val protectedIds = setOf(onlineTempUid, onlineHostId, onlineActiveHostId)
+        val reconnectingIds = activeOnlinePlayers()
+            .filter { !isOnlinePlayerConnected(it) && isOnlinePlayerAvailableForLobby(it) }
+            .map { it.id }
+        val protectedIds = (setOf(onlineTempUid, onlineHostId, onlineActiveHostId) + reconnectingIds)
             .filter { it.isNotBlank() }
             .toSet()
         val releasableIds = OnlineLobbyRules.releasableDisconnectedPlayers(
@@ -3028,9 +3184,16 @@ class LobbyActivity : BaseActivity() {
             ONLINE_ROOM_STATE_IN_GAME -> getString(R.string.lobby_hint_online_in_game)
             else -> {
                 val active = activeOnlinePlayers()
-                val disconnected = active.count { !isOnlinePlayerConnected(it) }
+                val reconnecting = active.count {
+                    !isOnlinePlayerConnected(it) && isOnlinePlayerAvailableForLobby(it)
+                }
+                val disconnected = active.count { !isOnlinePlayerAvailableForLobby(it) }
                 val missing = (onlineExpectedPlayers - active.size).coerceAtLeast(0)
                 when {
+                    reconnecting == 1 ->
+                        "1 jugador está reconectando. Conserva su lugar y no frena la sala."
+                    reconnecting > 1 ->
+                        "$reconnecting jugadores están reconectando. Conservan sus lugares."
                     disconnected == 1 ->
                         "1 jugador está desconectado. Su lugar queda reservado para que pueda volver."
                     disconnected > 1 ->
@@ -3416,9 +3579,9 @@ class LobbyActivity : BaseActivity() {
         val canStart = currentUserIsOnlineHost() && onlineRoomCanStart()
         val activePlayers = activeOnlinePlayers()
         val missingPlayers = (onlineExpectedPlayers - activePlayers.size).coerceAtLeast(0)
-        val disconnectedPlayers = activePlayers.count { !isOnlinePlayerConnected(it) }
+        val disconnectedPlayers = activePlayers.count { !isOnlinePlayerAvailableForLobby(it) }
         val missingReady = activePlayers.count {
-            isOnlinePlayerConnected(it) && !it.ready
+            isOnlinePlayerAvailableForLobby(it) && !it.ready
         }
         val canStartWithPresent = currentUserIsOnlineHost() &&
             activePlayers.size >= minimumOnlinePlayerLimit() &&
@@ -3510,7 +3673,7 @@ class LobbyActivity : BaseActivity() {
         val canStartWithPresent = currentUserIsOnlineHost() &&
             activePlayers.size >= minimumOnlinePlayerLimit() &&
             activePlayers.size < onlineExpectedPlayers &&
-            activePlayers.all { isOnlinePlayerConnected(it) && it.ready }
+            activePlayers.all { isOnlinePlayerAvailableForLobby(it) && it.ready }
         val currentPlayerReady = currentOnlinePlayer()?.ready == true
         val hostShouldVerifyServerState = currentUserIsOnlineHost() &&
             currentPlayerReady &&
@@ -3529,6 +3692,7 @@ class LobbyActivity : BaseActivity() {
         val nextReady = !(currentOnlinePlayer()?.ready == true)
         val publicId = PlayerPublicIdentity.currentPublicId(this)
         OnlineDebugLog.i("ready_update_requested roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
+        firestoreUsage.write("ready")
         FirebaseFirestore.getInstance()
             .collection(ONLINE_ROOMS_COLLECTION)
             .document(onlinePartidaId)
@@ -3548,7 +3712,6 @@ class LobbyActivity : BaseActivity() {
             )
             .addOnSuccessListener {
                 OnlineDebugLog.i("ready_update_success roomId=$onlinePartidaId uid=$onlineTempUid ready=$nextReady")
-                scheduleOnlinePlayersServerReconciliation()
             }
             .addOnFailureListener { error ->
                 OnlineDebugLog.e("ready_update_failure roomId=$onlinePartidaId uid=$onlineTempUid", error)
@@ -3596,7 +3759,7 @@ class LobbyActivity : BaseActivity() {
                 val problem = when {
                     activePlayers.size != onlineExpectedPlayers ->
                         "Faltan ${(onlineExpectedPlayers - activePlayers.size).coerceAtLeast(0)} jugadores para iniciar."
-                    activePlayers.any { !isOnlinePlayerConnected(it) } ->
+                    activePlayers.any { !isOnlinePlayerAvailableForLobby(it) } ->
                         "Hay jugadores desconectados o todavia sincronizando."
                     activePlayers.any { !it.ready } ->
                         "Todavia faltan ${activePlayers.count { !it.ready }} jugador(es) listos."
@@ -3651,6 +3814,11 @@ class LobbyActivity : BaseActivity() {
         onlineMatchEntryRetryCount = 0
         onlineMatchEntryRetryMatchId = ""
         onlineMatchEntryRetryRunnable = null
+        onlineInitialMatch = null
+        onlineMatchState = null
+        onlineMatchStateMatchId = ""
+        onlineCheckpointLoadInProgress = false
+        onlineCheckpointLoadedMatchId = ""
         pendingOnlineRolePresetRunnable = null
         pendingOnlineRolePreset = null
         lastOnlineMatchRebuildFailureReason = ""
@@ -3951,6 +4119,10 @@ class LobbyActivity : BaseActivity() {
             return
         }
         val matchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
+        if (recoveringOnlineMatch && onlineCheckpointLoadedMatchId != matchId) {
+            loadOnlineAuthoritativeCheckpoint(matchId)
+            return
+        }
         if (onlinePrivateRolesMatchId != matchId || onlinePrivateRoleAssignments.isEmpty()) {
             ensurePrivateRolesLoaded()
             return
@@ -4007,6 +4179,47 @@ class LobbyActivity : BaseActivity() {
         }
         acknowledgeOnlineMatchEntry(matchId)
         maybeReleaseOnlineMatchEntry()
+    }
+
+    private fun loadOnlineAuthoritativeCheckpoint(matchId: String) {
+        if (
+            matchId.isBlank() ||
+            onlineCheckpointLoadInProgress ||
+            onlineCheckpointLoadedMatchId == matchId ||
+            onlineRoomState != ONLINE_ROOM_STATE_IN_GAME
+        ) {
+            return
+        }
+        onlineCheckpointLoadInProgress = true
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(OnlineAuthoritativeStateStore.COLLECTION)
+            .document(OnlineAuthoritativeStateStore.DOCUMENT)
+            .get(Source.SERVER)
+            .addOnSuccessListener { checkpoint ->
+                onlineCheckpointLoadInProgress = false
+                onlineCheckpointLoadedMatchId = matchId
+                firestoreUsage.forcedQuery("authoritative_checkpoint_recovery", 1, 1)
+                val checkpointState = OnlineAuthoritativeStateStore.checkpointState(
+                    checkpoint = checkpoint.data,
+                    expectedMatchId = matchId
+                )
+                onlineMatchState = OnlineAuthoritativeStateStore.freshestForRecovery(
+                    onlineMatchState,
+                    checkpointState
+                )
+                coordinateOnlineMatchEntry()
+            }
+            .addOnFailureListener { error ->
+                onlineCheckpointLoadInProgress = false
+                onlineCheckpointLoadedMatchId = matchId
+                OnlineDebugLog.e(
+                    "lobby_checkpoint_recovery_failure roomId=$onlinePartidaId match=$matchId",
+                    error
+                )
+                coordinateOnlineMatchEntry()
+            }
     }
 
     private fun scheduleOnlineMatchEntryRetry(reason: String) {
@@ -4341,6 +4554,7 @@ class LobbyActivity : BaseActivity() {
         } else {
             AssigningRolesActivity::class.java
         }
+        stopOnlineFirestoreListenersForMatchTransition()
         startActivity(
             Intent(this, targetActivity)
                 .putExtra(EXTRA_SESSION, sharedSession)
@@ -4380,6 +4594,9 @@ class LobbyActivity : BaseActivity() {
             showIndividualVotes = config.showIndividualVotes,
             onlineTestMode = onlineRoomModePrueba,
             onlinePlayerUids = playersAtStart.map { it.id },
+            onlineRegisteredPlayerUids = playersAtStart
+                .filter { it.publicId.isNotBlank() }
+                .map { it.id },
             roleComposition = config.compositionFor(realPlayers.size, map.key)
         )
     }
@@ -4412,7 +4629,7 @@ class LobbyActivity : BaseActivity() {
         if (activePlayers.size != onlineExpectedPlayers) {
             return "La cantidad de jugadores no coincide con la sala."
         }
-        val disconnected = activePlayers.count { !isOnlinePlayerConnected(it) }
+        val disconnected = activePlayers.count { !isOnlinePlayerAvailableForLobby(it) }
         if (disconnected > 0) {
             return "Hay $disconnected jugador(es) desconectado(s). Libera cupos o espera."
         }
@@ -4483,6 +4700,25 @@ class LobbyActivity : BaseActivity() {
         )
     }
 
+    private fun stopOnlineFirestoreListenersForMatchTransition() {
+        roomListener?.remove()
+        roomListener = null
+        playersListener?.remove()
+        playersListener = null
+        ownPlayerListener?.remove()
+        ownPlayerListener = null
+        ownRoomBanListener?.remove()
+        ownRoomBanListener = null
+        onlinePrivateRoleListener?.remove()
+        onlinePrivateRoleListener = null
+        onlinePrivateRolesLoading = false
+        onlinePrivateRoleLoadGeneration += 1
+        OnlineDebugLog.i(
+            "firestore_usage lobby_transition roomId=$onlinePartidaId uid=$onlineTempUid " +
+                firestoreUsage.summary()
+        )
+    }
+
     private fun ensurePrivateRolesLoaded() {
         val matchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
         if (matchId.isBlank() || onlinePrivateRolesLoading) return
@@ -4511,6 +4747,7 @@ class LobbyActivity : BaseActivity() {
             .document(onlinePartidaId)
             .collection("repartos")
         if (currentUserIsOnlineHost()) {
+            firestoreUsage.listenerStarted("private_roles_host")
             onlinePrivateRoleListener = repartos.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (generation != onlinePrivateRoleLoadGeneration) return@addSnapshotListener
                 if (error != null) {
@@ -4518,6 +4755,14 @@ class LobbyActivity : BaseActivity() {
                     handlePrivateRoleLoadFailure(matchId, error)
                     return@addSnapshotListener
                 }
+                firestoreUsage.serverSnapshot(
+                    name = "private_roles_host",
+                    fromCache = snapshot?.metadata?.isFromCache == true,
+                    pendingWrites = snapshot?.metadata?.hasPendingWrites() == true,
+                    changedDocuments = snapshot?.documentChanges?.size ?: 0,
+                    resultDocuments = snapshot?.documents?.size ?: 0,
+                    dependentDocuments = 1
+                )
                 val documents = snapshot?.documents.orEmpty()
                 val expectedPlayerIds = initialMatchPlayerIds()
                 val currentDocuments = documents.filter {
@@ -4540,6 +4785,7 @@ class LobbyActivity : BaseActivity() {
                 applyPrivateRoleDocuments(matchId, currentDocuments)
             }
         } else {
+            firestoreUsage.listenerStarted("private_role_self")
             onlinePrivateRoleListener = repartos.document(onlineTempUid)
                 .addSnapshotListener(MetadataChanges.INCLUDE) { document, error ->
                     if (generation != onlinePrivateRoleLoadGeneration) return@addSnapshotListener
@@ -4548,6 +4794,13 @@ class LobbyActivity : BaseActivity() {
                         handlePrivateRoleLoadFailure(matchId, error)
                         return@addSnapshotListener
                     }
+                    firestoreUsage.serverSnapshot(
+                        name = "private_role_self",
+                        fromCache = document?.metadata?.isFromCache == true,
+                        pendingWrites = document?.metadata?.hasPendingWrites() == true,
+                        changedDocuments = if (document?.exists() == true) 1 else 0,
+                        resultDocuments = if (document?.exists() == true) 1 else 0
+                    )
                     if (document?.exists() != true || document.getString("matchId") != matchId) {
                         return@addSnapshotListener
                     }
@@ -4811,6 +5064,9 @@ class LobbyActivity : BaseActivity() {
                 onlineInitialMatchCreated = false
                 onlineInitialMatch = null
                 onlineMatchState = null
+                onlineMatchStateMatchId = ""
+                onlineCheckpointLoadInProgress = false
+                onlineCheckpointLoadedMatchId = ""
                 onlineCleanupPending = true
                 onlineStartedNoticeShown = false
                 recoveringOnlineMatch = false
@@ -4896,7 +5152,11 @@ class LobbyActivity : BaseActivity() {
 
     private fun cleanupOnlineActionsThenFinish() {
         cleanupOnlineMatchCollections(
-            collectionNames = listOf("acciones", "repartos"),
+            collectionNames = listOf(
+                "acciones",
+                "repartos",
+                OnlineAuthoritativeStateStore.COLLECTION
+            ),
             index = 0,
             onComplete = { finishOnlineCleanup() },
             onFailure = { error ->
@@ -4942,7 +5202,8 @@ class LobbyActivity : BaseActivity() {
             "emotes" to null,
             "propuesta_silencio" to null,
             "votos_silencio" to null,
-            "silenciados" to null
+            "silenciados" to null,
+            RealtimeAuthoritativeState.NODE to null
         )
         FirebaseDatabase.getInstance()
             .getReference("salas/$onlinePartidaId")
@@ -4992,12 +5253,12 @@ class LobbyActivity : BaseActivity() {
 
     private fun allOnlinePlayersReady(): Boolean {
         return activeOnlinePlayers().isNotEmpty() &&
-            activeOnlinePlayers().all { isOnlinePlayerConnected(it) && it.ready }
+            activeOnlinePlayers().all { isOnlinePlayerAvailableForLobby(it) && it.ready }
     }
 
     private fun onlineRoomCanStart(): Boolean {
         return OnlineLobbyRules.canStart(
-            players = onlineParticipants(),
+            players = onlineParticipantsForLobbyStart(),
             expectedPlayers = onlineExpectedPlayers,
             roomWaiting = onlineRoomState == ONLINE_ROOM_STATE_WAITING,
             initialMatchCreated = onlineInitialMatchCreated || onlineCleanupPending
@@ -6926,6 +7187,7 @@ class LobbyActivity : BaseActivity() {
         private const val DEFAULT_ROLE_READING_SECONDS = 0
         private const val MAX_LOCAL_LOBBY_NOTICES = 12
         private const val LOBBY_HOST_DISCONNECT_GRACE_MS = 60_000L
+        private const val LOBBY_PLAYER_RECONNECT_GRACE_MS = 5 * 60_000L
         private const val CLEANUP_BATCH_SIZE = 400L
         private const val CLEANUP_RETRY_DELAY_MS = 5_000L
         private const val LOBBY_CHAT_PREVIEW_LINES = 3
@@ -6936,7 +7198,6 @@ class LobbyActivity : BaseActivity() {
         private const val ONLINE_PRIVATE_ROLE_LOAD_TIMEOUT_MS = 7_000L
         private const val ONLINE_PRIVATE_ROLE_RETRY_BASE_MS = 750L
         private const val ONLINE_PRIVATE_ROLE_RETRY_JITTER_MS = 750L
-        private const val READY_RECONCILE_DELAY_MS = 1_800L
         private const val PLAYERS_REFRESH_RETRY_MS = 250L
         private const val ROLE_PRESET_SAVE_DELAY_MS = 900L
     }

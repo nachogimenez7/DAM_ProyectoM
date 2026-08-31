@@ -122,10 +122,13 @@ object PlayerProfileDialog {
         canEdit: Boolean,
         actions: List<PlayerProfileAction>
     ): View {
+        val cosmeticTheme = CosmeticPilot.normalizeTheme(profile.cosmeticThemeId)
+            ?: CosmeticPilot.THEME_CLASSIC
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         val rootScroll = ScrollView(activity).apply {
             isFillViewport = !compact
-            background = if (CosmeticPilot.isSpaceTheme(profile.cosmeticThemeId)) {
-                CosmeticPilot.profilePanelOverlay(activity)
+            background = if (decorated) {
+                CosmeticPilot.profilePanelOverlay(activity, cosmeticTheme)
             } else {
                 panelBackground(activity)
             }
@@ -145,41 +148,46 @@ object PlayerProfileDialog {
         // El mini lleva el CERRAR abajo (mas al alcance del pulgar en partida); el completo
         // lo mantiene arriba a la derecha.
         if (!compact) {
-            root.addView(topBar(activity))
+            root.addView(topBar(activity, cosmeticTheme))
         }
         root.addView(bannerView(activity, profile, compact))
         root.addView(identityRow(activity, profile, compact))
-        root.addView(statsRow(activity, profile.stats, compact))
+        root.addView(statsRow(activity, profile.stats, compact, cosmeticTheme))
 
         if (profile.bio.isNotBlank()) {
-            root.addView(sectionTitle(activity, "DESCRIPCIÓN"))
+            root.addView(sectionTitle(activity, "DESCRIPCIÓN", cosmeticTheme))
             root.addView(
                 textBlock(
                     activity = activity,
                     text = "\"${profile.bio}\"",
                     sizeSp = if (compact) 12f else 13f,
-                    color = Color.parseColor("#E8D8B8")
+                    color = if (decorated) {
+                        CosmeticPilot.textColor(cosmeticTheme)
+                    } else {
+                        Color.parseColor("#E8D8B8")
+                    },
+                    cosmeticTheme = cosmeticTheme
                 )
             )
         }
 
         if (compact) {
-            root.addView(compactFavoriteRole(activity, profile.favoriteRoleKey))
-            if (actions.isNotEmpty()) root.addView(moderationButtons(activity, actions))
-            root.addView(miniButtons(activity))
+            root.addView(compactFavoriteRole(activity, profile.favoriteRoleKey, cosmeticTheme))
+            if (actions.isNotEmpty()) root.addView(moderationButtons(activity, actions, cosmeticTheme))
+            root.addView(miniButtons(activity, cosmeticTheme))
         } else {
-            root.addView(sectionTitle(activity, "ROL FAVORITO"))
-            root.addView(roleRow(activity, profile.favoriteRoleKey))
-            root.addView(sectionTitle(activity, "EMOTES"))
-            root.addView(emoteRow(activity, profile.emoteIds))
-            root.addView(sectionTitle(activity, "LOGROS DESTACADOS"))
-            root.addView(achievementRow(activity, profile.featuredAchievementIds))
+            root.addView(sectionTitle(activity, "ROL FAVORITO", cosmeticTheme))
+            root.addView(roleRow(activity, profile.favoriteRoleKey, cosmeticTheme))
+            root.addView(sectionTitle(activity, "EMOTES", cosmeticTheme))
+            root.addView(emoteRow(activity, profile.emoteIds, cosmeticTheme))
+            root.addView(sectionTitle(activity, "LOGROS DESTACADOS", cosmeticTheme))
+            root.addView(achievementRow(activity, profile.featuredAchievementIds, cosmeticTheme))
             if (actions.isNotEmpty()) {
-                root.addView(sectionTitle(activity, "ACCIONES SOBRE ESTE JUGADOR"))
-                root.addView(moderationButtons(activity, actions))
+                root.addView(sectionTitle(activity, "ACCIONES SOBRE ESTE JUGADOR", cosmeticTheme))
+                root.addView(moderationButtons(activity, actions, cosmeticTheme))
             }
             if (canEdit) {
-                root.addView(editButton(activity))
+                root.addView(editButton(activity, cosmeticTheme))
             }
         }
 
@@ -188,8 +196,10 @@ object PlayerProfileDialog {
 
     private fun moderationButtons(
         activity: Activity,
-        actions: List<PlayerProfileAction>
+        actions: List<PlayerProfileAction>,
+        cosmeticTheme: String
     ): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(activity, 10), 0, 0)
@@ -210,12 +220,16 @@ object PlayerProfileDialog {
                                         if (action.dangerous) "#FFB4AB" else "#F3D488"
                                     )
                                 )
-                                background = chipBackground(
-                                    activity,
-                                    if (action.dangerous) "#351616" else "#251A10",
-                                    if (action.dangerous) "#8F2633" else "#6B4F2A",
-                                    9
-                                )
+                                background = if (decorated && !action.dangerous) {
+                                    CosmeticPilot.profileSurface(activity, cosmeticTheme)
+                                } else {
+                                    chipBackground(
+                                        activity,
+                                        if (action.dangerous) "#351616" else "#251A10",
+                                        if (action.dangerous) "#8F2633" else "#6B4F2A",
+                                        9
+                                    )
+                                }
                             },
                             LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -256,7 +270,8 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun topBar(activity: Activity): View {
+    private fun topBar(activity: Activity, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return FrameLayout(activity).apply {
             addView(
                 Button(activity).apply {
@@ -264,8 +279,15 @@ object PlayerProfileDialog {
                     text = "CERRAR"
                     textSize = 10.5f
                     typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(activity.getColor(R.color.accent_gold))
-                    background = chipBackground(activity, "#2A2318", "#6B4F2A", 9)
+                    setTextColor(
+                        if (decorated) CosmeticPilot.accentColor(cosmeticTheme)
+                        else activity.getColor(R.color.accent_gold)
+                    )
+                    background = if (decorated) {
+                        CosmeticPilot.profileSurface(activity, cosmeticTheme)
+                    } else {
+                        chipBackground(activity, "#2A2318", "#6B4F2A", 9)
+                    }
                     minHeight = 0
                     minWidth = 0
                 },
@@ -286,6 +308,13 @@ object PlayerProfileDialog {
             setImageResource(ProfileCustomizationCatalog.banner(profile.bannerKey).drawableRes)
             scaleType = ImageView.ScaleType.CENTER_CROP
             alpha = 0.95f
+            val cosmeticTheme = CosmeticPilot.normalizeTheme(profile.cosmeticThemeId)
+                ?: CosmeticPilot.THEME_CLASSIC
+            foreground = if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+                CosmeticPilot.bannerVeil(activity, cosmeticTheme)
+            } else {
+                null
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(activity, if (compact) 96 else 100)
@@ -299,7 +328,9 @@ object PlayerProfileDialog {
         val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
         val useLocalPhoto = hasLocalPhotoFor(activity, profile)
         val playGamesAvatarUri = if (useLocalPhoto) "" else profile.playGamesAvatarUri
-        val spaceEnabled = CosmeticPilot.isSpaceTheme(profile.cosmeticThemeId)
+        val cosmeticTheme = CosmeticPilot.normalizeTheme(profile.cosmeticThemeId)
+            ?: CosmeticPilot.THEME_CLASSIC
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -308,8 +339,8 @@ object PlayerProfileDialog {
             val avatarSize = dp(activity, if (compact) 72 else 88)
             val avatarFrame = FrameLayout(activity).apply {
                 setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4))
-                background = if (spaceEnabled) {
-                    CosmeticPilot.avatarFrame(activity)
+                background = if (decorated) {
+                    CosmeticPilot.avatarFrame(activity, cosmeticTheme)
                 } else {
                     GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
@@ -376,8 +407,8 @@ object PlayerProfileDialog {
                     addView(TextView(activity).apply {
                         text = profile.name.uppercase()
                         setTextColor(
-                            if (spaceEnabled) {
-                                Color.parseColor(CosmeticPilot.accentCyan)
+                            if (decorated) {
+                                CosmeticPilot.accentColor(cosmeticTheme)
                             } else {
                                 activity.getColor(R.color.accent_gold)
                             }
@@ -386,8 +417,8 @@ object PlayerProfileDialog {
                         typeface = Typeface.DEFAULT_BOLD
                         includeFontPadding = false
                         maxLines = 1
-                        if (spaceEnabled) {
-                            background = CosmeticPilot.namePlate(activity)
+                        if (decorated) {
+                            background = CosmeticPilot.namePlate(activity, cosmeticTheme)
                             setPadding(dp(activity, 8), dp(activity, 3), dp(activity, 8), dp(activity, 3))
                         }
                     })
@@ -403,7 +434,12 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun statsRow(activity: Activity, stats: PlayerStats, compact: Boolean): View {
+    private fun statsRow(
+        activity: Activity,
+        stats: PlayerStats,
+        compact: Boolean,
+        cosmeticTheme: String
+    ): View {
         val values = if (stats.hasProgress) {
             listOf(
                 "PARTIDAS" to stats.matches.toString(),
@@ -424,7 +460,7 @@ object PlayerProfileDialog {
             }
             values.forEachIndexed { index, (label, value) ->
                 addView(
-                    statChip(activity, label, value, compact),
+                    statChip(activity, label, value, compact, cosmeticTheme),
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
                         if (index > 0) leftMargin = dp(activity, 6)
                     }
@@ -433,21 +469,38 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun statChip(activity: Activity, label: String, value: String, compact: Boolean): View {
+    private fun statChip(
+        activity: Activity,
+        label: String,
+        value: String,
+        compact: Boolean,
+        cosmeticTheme: String
+    ): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            background = chipBackground(activity, "#251A10", "#6B4F2A")
+            background = if (decorated) {
+                CosmeticPilot.profileSurface(activity, cosmeticTheme)
+            } else {
+                chipBackground(activity, "#251A10", "#6B4F2A")
+            }
             addView(TextView(activity).apply {
                 text = value
-                setTextColor(activity.getColor(R.color.accent_gold))
+                setTextColor(
+                    if (decorated) CosmeticPilot.accentColor(cosmeticTheme)
+                    else activity.getColor(R.color.accent_gold)
+                )
                 textSize = if (compact) 15f else 17f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
             })
             addView(TextView(activity).apply {
                 text = label
-                setTextColor(Color.parseColor("#B9AD92"))
+                setTextColor(
+                    if (decorated) CosmeticPilot.textColor(cosmeticTheme)
+                    else Color.parseColor("#B9AD92")
+                )
                 textSize = if (compact) 8.5f else 9.5f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
@@ -455,34 +508,59 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun compactFavoriteRole(activity: Activity, favoriteRoleKey: String): View {
+    private fun compactFavoriteRole(
+        activity: Activity,
+        favoriteRoleKey: String,
+        cosmeticTheme: String
+    ): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         val entry = ProfileRoleCatalog.find(favoriteRoleKey)
         return TextView(activity).apply {
             text = "Rol favorito: ${entry.role.name.uppercase()}"
-            setTextColor(Color.parseColor("#F3D488"))
+            setTextColor(
+                if (decorated) CosmeticPilot.textColor(cosmeticTheme)
+                else Color.parseColor("#F3D488")
+            )
             textSize = 11.5f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            background = chipBackground(activity, "#1C140D", "#6B4F2A")
+            background = if (decorated) {
+                CosmeticPilot.profileSurface(activity, cosmeticTheme)
+            } else {
+                chipBackground(activity, "#1C140D", "#6B4F2A")
+            }
             setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8))
             setOnClickListener { RoleDetailDialog.show(activity, entry.role) }
         }
     }
 
-    private fun roleRow(activity: Activity, favoriteRoleKey: String): View {
+    private fun roleRow(
+        activity: Activity,
+        favoriteRoleKey: String,
+        cosmeticTheme: String
+    ): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         val entry = ProfileRoleCatalog.find(favoriteRoleKey)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(activity, 10), dp(activity, 8), dp(activity, 10), dp(activity, 8))
-            background = chipBackground(activity, "#20150D", "#6B4F2A")
+            background = if (decorated) {
+                CosmeticPilot.profileSurface(activity, cosmeticTheme)
+            } else {
+                chipBackground(activity, "#20150D", "#6B4F2A")
+            }
             isClickable = true
             isFocusable = true
             setOnClickListener { RoleDetailDialog.show(activity, entry.role) }
 
             val imageFrame = FrameLayout(activity).apply {
                 setPadding(dp(activity, 2), dp(activity, 2), dp(activity, 2), dp(activity, 2))
-                background = chipBackground(activity, "#0D0906", "#6B4F2A", 7)
+                background = if (decorated) {
+                    CosmeticPilot.gameplayRoleFrame(activity, theme = cosmeticTheme)
+                } else {
+                    chipBackground(activity, "#0D0906", "#6B4F2A", 7)
+                }
             }
             val image = ImageView(activity).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
@@ -498,7 +576,10 @@ object PlayerProfileDialog {
             addView(imageFrame, LinearLayout.LayoutParams(dp(activity, 58), dp(activity, 58)))
             addView(TextView(activity).apply {
                 text = entry.role.name.uppercase()
-                setTextColor(Color.parseColor("#F3D488"))
+                setTextColor(
+                    if (decorated) CosmeticPilot.textColor(cosmeticTheme)
+                    else Color.parseColor("#F3D488")
+                )
                 textSize = 15f
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(dp(activity, 12), 0, 0, 0)
@@ -506,7 +587,8 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun emoteRow(activity: Activity, ids: List<String>): View {
+    private fun emoteRow(activity: Activity, ids: List<String>, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return HorizontalScrollView(activity).apply {
             isHorizontalScrollBarEnabled = false
             addView(LinearLayout(activity).apply {
@@ -516,7 +598,11 @@ object PlayerProfileDialog {
                     addView(
                         ImageView(activity).apply {
                             setEmoteImageResource(spec.imageRes)
-                            background = chipBackground(activity, "#20150D", spec.toneHex, 8)
+                            background = if (decorated) {
+                                CosmeticPilot.emoteFrame(activity, theme = cosmeticTheme)
+                            } else {
+                                chipBackground(activity, "#20150D", spec.toneHex, 8)
+                            }
                             setPadding(dp(activity, 5), dp(activity, 5), dp(activity, 5), dp(activity, 5))
                             contentDescription = spec.tooltipText()
                             androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
@@ -536,12 +622,22 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun achievementRow(activity: Activity, ids: List<String>): View {
+    private fun achievementRow(activity: Activity, ids: List<String>, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         val achievements = ids.mapNotNull(ProfileCustomizationCatalog::achievementById)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             if (achievements.isEmpty()) {
-                addView(textBlock(activity, "Sin logros destacados.", 12f, Color.parseColor("#B9AD92")))
+                addView(
+                    textBlock(
+                        activity,
+                        "Sin logros destacados.",
+                        12f,
+                        if (decorated) CosmeticPilot.textColor(cosmeticTheme)
+                        else Color.parseColor("#B9AD92"),
+                        cosmeticTheme
+                    )
+                )
             } else {
                 achievements.forEachIndexed { index, achievement ->
                     addView(
@@ -551,7 +647,16 @@ object PlayerProfileDialog {
                             textSize = 11.5f
                             typeface = Typeface.DEFAULT_BOLD
                             gravity = Gravity.CENTER
-                            background = chipBackground(activity, "#20150D", achievement.rarity.borderColorHex, 9)
+                            background = if (decorated) {
+                                CosmeticPilot.achievementFrame(
+                                    activity,
+                                    Color.parseColor(achievement.rarity.borderColorHex),
+                                    emphasized = false,
+                                    theme = cosmeticTheme
+                                )
+                            } else {
+                                chipBackground(activity, "#20150D", achievement.rarity.borderColorHex, 9)
+                            }
                             setPadding(dp(activity, 8), dp(activity, 7), dp(activity, 8), dp(activity, 7))
                             setOnClickListener { AchievementDetailDialog.show(activity, achievement) }
                         },
@@ -564,7 +669,8 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun miniButtons(activity: Activity): View {
+    private fun miniButtons(activity: Activity, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -581,10 +687,14 @@ object PlayerProfileDialog {
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Color.parseColor("#211407"))
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = dp(activity, 10).toFloat()
-                        setColor(activity.getColor(R.color.accent_gold))
+                    background = if (decorated) {
+                        CosmeticPilot.primaryButton(activity, cosmeticTheme)
+                    } else {
+                        GradientDrawable().apply {
+                            shape = GradientDrawable.RECTANGLE
+                            cornerRadius = dp(activity, 10).toFloat()
+                            setColor(activity.getColor(R.color.accent_gold))
+                        }
                     }
                     minHeight = 0
                     minWidth = 0
@@ -600,8 +710,15 @@ object PlayerProfileDialog {
                     text = "CERRAR"
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(activity.getColor(R.color.accent_gold))
-                    background = chipBackground(activity, "#2A2318", "#6B4F2A", 10)
+                    setTextColor(
+                        if (decorated) CosmeticPilot.accentColor(cosmeticTheme)
+                        else activity.getColor(R.color.accent_gold)
+                    )
+                    background = if (decorated) {
+                        CosmeticPilot.profileSurface(activity, cosmeticTheme)
+                    } else {
+                        chipBackground(activity, "#2A2318", "#6B4F2A", 10)
+                    }
                     minHeight = 0
                     minWidth = 0
                 },
@@ -610,17 +727,22 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun editButton(activity: Activity): View {
+    private fun editButton(activity: Activity, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return Button(activity).apply {
             tag = "edit"
             text = "EDITAR PERFIL"
             textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.parseColor("#211407"))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(activity, 10).toFloat()
-                setColor(activity.getColor(R.color.accent_gold))
+            background = if (decorated) {
+                CosmeticPilot.primaryButton(activity, cosmeticTheme)
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(activity, 10).toFloat()
+                    setColor(activity.getColor(R.color.accent_gold))
+                }
             }
             layoutParams = LinearLayout.LayoutParams(dp(activity, 190), dp(activity, 42)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -629,24 +751,39 @@ object PlayerProfileDialog {
         }
     }
 
-    private fun sectionTitle(activity: Activity, text: String): View {
+    private fun sectionTitle(activity: Activity, text: String, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return TextView(activity).apply {
             this.text = text
-            setTextColor(Color.parseColor("#C49A52"))
+            setTextColor(
+                if (decorated) CosmeticPilot.accentColor(cosmeticTheme)
+                else Color.parseColor("#C49A52")
+            )
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
             setPadding(0, dp(activity, 13), 0, dp(activity, 6))
         }
     }
 
-    private fun textBlock(activity: Activity, text: String, sizeSp: Float, color: Int): View {
+    private fun textBlock(
+        activity: Activity,
+        text: String,
+        sizeSp: Float,
+        color: Int,
+        cosmeticTheme: String = CosmeticPilot.THEME_CLASSIC
+    ): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return TextView(activity).apply {
             this.text = text
             setTextColor(color)
             textSize = sizeSp
             gravity = Gravity.CENTER
             setPadding(dp(activity, 7), dp(activity, 8), dp(activity, 7), dp(activity, 8))
-            background = chipBackground(activity, "#14100A", "#332719", 8)
+            background = if (decorated) {
+                CosmeticPilot.profileSurface(activity, cosmeticTheme)
+            } else {
+                chipBackground(activity, "#14100A", "#332719", 8)
+            }
         }
     }
 

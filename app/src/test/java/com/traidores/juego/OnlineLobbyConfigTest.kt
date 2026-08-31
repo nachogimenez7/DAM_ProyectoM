@@ -93,6 +93,20 @@ class OnlineLobbyConfigTest {
     }
 
     @Test
+    fun recommendedFourteenPlayerTableIsPresentedAsBalanced() {
+        val recommended = LocalGameFactory.roleCompositionPreset(
+            playerCount = 14,
+            mapKey = "medieval",
+            preset = RoleCompositionPreset.RECOMMENDED
+        )
+
+        assertEquals(
+            RoleCompositionBalance.BALANCED,
+            RoleCompositionBalance.evaluate(14, recommended.counts)
+        )
+    }
+
+    @Test
     fun classicAndChaoticPresetsResolveToDifferentAutomaticCompositions() {
         val classic = OnlineLobbyConfig(rolePreset = RoleCompositionPreset.CLASSIC)
             .compositionFor(10, "pampa")

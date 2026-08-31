@@ -686,31 +686,34 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun applyProfileCosmeticTheme() {
-        val spaceEnabled = CosmeticPilot.isSpaceEnabled(this)
-        if (spaceEnabled) {
-            profileScreenBackground.setImageResource(R.drawable.profile_background_space)
-            profileScreenShade.setBackgroundColor(Color.parseColor("#26000000"))
-            profileContentPanel.background = CosmeticPilot.profilePanelOverlay(this)
-            profileAvatarFrame.background = CosmeticPilot.avatarFrame(this)
-            profileNamePlate.background = CosmeticPilot.namePlate(this)
-            profileBanner.foreground = CosmeticPilot.bannerVeil(this)
-            profilePublicId.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
-            profileTitle.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
-            profileBackButton.background = CosmeticPilot.profileSurface(this)
-            profileBackButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
-            profileDecorationRow.background = CosmeticPilot.profileSurface(this)
-            profileDecorationButton.background = CosmeticPilot.profileSurface(this)
-            profileDecorationButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
-            profileDecorationLabel.setTextColor(Color.parseColor(CosmeticPilot.textCyan))
-            editProfileButton.background = CosmeticPilot.profileSurface(this)
-            editProfileButton.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
-            cosmeticSurfaceViews.forEach { it.background = CosmeticPilot.profileSurface(this) }
+        val theme = CosmeticPilot.selectedTheme(this)
+        val decorated = CosmeticPilot.isDecoratedTheme(theme)
+        if (decorated) {
+            val accent = CosmeticPilot.accentColor(theme)
+            val themedText = CosmeticPilot.textColor(theme)
+            profileScreenBackground.setImageResource(CosmeticPilot.profileBackgroundRes(theme))
+            profileScreenShade.setBackgroundColor(CosmeticPilot.profileShadeColor(theme))
+            profileContentPanel.background = CosmeticPilot.profilePanelOverlay(this, theme)
+            profileAvatarFrame.background = CosmeticPilot.avatarFrame(this, theme)
+            profileNamePlate.background = CosmeticPilot.namePlate(this, theme)
+            profileBanner.foreground = CosmeticPilot.bannerVeil(this, theme)
+            profilePublicId.setTextColor(accent)
+            profileTitle.setTextColor(accent)
+            profileBackButton.background = CosmeticPilot.profileSurface(this, theme)
+            profileBackButton.setColorFilter(accent)
+            profileDecorationRow.background = CosmeticPilot.profileSurface(this, theme)
+            profileDecorationButton.background = CosmeticPilot.profileSurface(this, theme)
+            profileDecorationButton.setColorFilter(accent)
+            profileDecorationLabel.setTextColor(themedText)
+            editProfileButton.background = CosmeticPilot.profileSurface(this, theme)
+            editProfileButton.setColorFilter(accent)
+            cosmeticSurfaceViews.forEach { it.background = CosmeticPilot.profileSurface(this, theme) }
             cosmeticGoldTextViews.forEach {
-                it.setTextColor(Color.parseColor(CosmeticPilot.accentCyan))
+                it.setTextColor(accent)
             }
             editIcons.forEach { icon ->
-                icon.background = CosmeticPilot.profileSurface(this)
-                (icon as? ImageButton)?.setColorFilter(Color.parseColor(CosmeticPilot.accentCyan))
+                icon.background = CosmeticPilot.profileSurface(this, theme)
+                (icon as? ImageButton)?.setColorFilter(accent)
             }
         } else {
             profileScreenBackground.setImageResource(R.drawable.fondo_menu)
@@ -737,13 +740,10 @@ class ProfileActivity : BaseActivity() {
             }
         }
         profileDecorationRow.contentDescription =
-            "Elegir decoración. Actual: " + if (spaceEnabled) "Espacial" else "Clásica"
+            "Elegir decoración. Actual: ${CosmeticPilot.displayName(theme)}"
         profileDecorationButton.contentDescription = profileDecorationRow.contentDescription
-        profileDecorationLabel.text = if (spaceEnabled) {
-            "ESTILO DEL PERFIL · ESPACIAL"
-        } else {
-            "ESTILO DEL PERFIL · CLÁSICO"
-        }
+        profileDecorationLabel.text =
+            "ESTILO DEL PERFIL · ${CosmeticPilot.displayName(theme).uppercase()}"
     }
 
     private fun descendantTextViews(root: View): List<TextView> {
@@ -950,14 +950,15 @@ class ProfileActivity : BaseActivity() {
 
     private fun renderEmoteLoadout() {
         val ids = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
         if (draftProfile.emoteLoadout != ids) {
             draftProfile.emoteLoadout = ids
         }
         emoteViews.forEachIndexed { index, image ->
             val spec = EmoteCatalog.byId(ids[index]) ?: return@forEachIndexed
             image.setEmoteImageResource(spec.imageRes)
-            if (CosmeticPilot.isSpaceEnabled(this)) {
-                image.background = CosmeticPilot.emoteFrame(this)
+            if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+                image.background = CosmeticPilot.emoteFrame(this, theme = cosmeticTheme)
             } else {
                 image.setBackgroundResource(R.drawable.bg_emote_slot)
             }
@@ -1439,37 +1440,29 @@ class ProfileActivity : BaseActivity() {
 
     private fun showCosmeticSelector() {
         val currentTheme = CosmeticPilot.selectedTheme(this)
-        val options = listOf(
-            buildString {
-                if (currentTheme == CosmeticPilot.THEME_CLASSIC) append("✓ ")
-                append("CLÁSICO · sin decoración")
-            },
-            buildString {
-                if (currentTheme == CosmeticPilot.THEME_SPACE) append("✓ ")
-                append("ESPACIAL · Órbita violeta")
-            }
+        val themes = listOf(
+            CosmeticPilot.THEME_CLASSIC to "CLÁSICO · sin decoración",
+            CosmeticPilot.THEME_SPACE to "ESPACIAL · Órbita violeta",
+            CosmeticPilot.THEME_SEA to "MAR · Abismo Real",
+            CosmeticPilot.THEME_FIRE to "FUEGO · Forja Infernal"
         )
+        val options = themes.map { (theme, label) ->
+            if (currentTheme == theme) "✓ $label" else label
+        }
         GameDialog.choose(
             activity = this,
             title = "DECORACIÓN",
-            message = "Elegí el conjunto que querés usar en tu perfil y en tus emotes.",
+            message = "Elegí el conjunto para tu perfil, nombre, emotes y burbuja de chat.",
             options = options
         ) { selectedIndex ->
-            val selectedTheme = if (selectedIndex == 1) {
-                CosmeticPilot.THEME_SPACE
-            } else {
-                CosmeticPilot.THEME_CLASSIC
-            }
+            val selectedTheme = themes.getOrNull(selectedIndex)?.first
+                ?: CosmeticPilot.THEME_CLASSIC
             CosmeticPilot.selectTheme(this, selectedTheme)
             profileCloudSyncPending = true
             renderProfile()
             Toast.makeText(
                 this,
-                if (selectedTheme == CosmeticPilot.THEME_SPACE) {
-                    "Conjunto Espacial equipado."
-                } else {
-                    "Estilo Clásico equipado."
-                },
+                "Conjunto ${CosmeticPilot.displayName(selectedTheme)} equipado.",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -1941,11 +1934,13 @@ class ProfileActivity : BaseActivity() {
 
     private fun applyAchievementBadgeStyle(view: TextView, rarity: AchievementRarity) {
         val visualStyle = achievementVisualStyle(rarity)
-        view.background = if (CosmeticPilot.isSpaceEnabled(this)) {
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        view.background = if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             CosmeticPilot.achievementFrame(
                 context = this,
                 rarityColor = Color.parseColor(visualStyle.borderHex),
-                emphasized = rarity == AchievementRarity.GOLD
+                emphasized = rarity == AchievementRarity.GOLD,
+                theme = cosmeticTheme
             )
         } else {
             GradientDrawable().apply {
@@ -1959,9 +1954,11 @@ class ProfileActivity : BaseActivity() {
             }
         }
         view.setTextColor(
-            Color.parseColor(
-                if (CosmeticPilot.isSpaceEnabled(this)) "#EAFBFF" else visualStyle.textHex
-            )
+            if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+                CosmeticPilot.textColor(cosmeticTheme)
+            } else {
+                Color.parseColor(visualStyle.textHex)
+            }
         )
         view.typeface = if (rarity == AchievementRarity.GOLD) {
             android.graphics.Typeface.SERIF
@@ -1973,11 +1970,13 @@ class ProfileActivity : BaseActivity() {
 
     private fun achievementDetailBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        if (CosmeticPilot.isSpaceEnabled(this)) {
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementFrame(
                 context = this,
                 rarityColor = Color.parseColor(visualStyle.borderHex),
-                emphasized = true
+                emphasized = true,
+                theme = cosmeticTheme
             )
         }
         return GradientDrawable().apply {
@@ -1990,10 +1989,12 @@ class ProfileActivity : BaseActivity() {
 
     private fun achievementMedalFrameBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        if (CosmeticPilot.isSpaceEnabled(this)) {
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementMedalFrame(
                 context = this,
-                rarityColor = Color.parseColor(visualStyle.borderHex)
+                rarityColor = Color.parseColor(visualStyle.borderHex),
+                theme = cosmeticTheme
             )
         }
         return GradientDrawable().apply {
@@ -2160,8 +2161,9 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun emoteOptionBackground(selected: Boolean, spec: EmoteSpec): Drawable {
-        if (CosmeticPilot.isSpaceEnabled(this)) {
-            return CosmeticPilot.emoteFrame(this, selected)
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
+            return CosmeticPilot.emoteFrame(this, selected, cosmeticTheme)
         }
         val legendary = spec.category == EmoteCategory.LEGENDARY
         return GradientDrawable().apply {
@@ -2194,11 +2196,13 @@ class ProfileActivity : BaseActivity() {
         rarity: AchievementRarity
     ): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        if (CosmeticPilot.isSpaceEnabled(this)) {
+        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementFrame(
                 context = this,
                 rarityColor = Color.parseColor(visualStyle.borderHex),
-                emphasized = selected
+                emphasized = selected,
+                theme = cosmeticTheme
             )
         }
         return GradientDrawable().apply {

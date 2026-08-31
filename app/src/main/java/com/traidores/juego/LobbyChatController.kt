@@ -121,7 +121,7 @@ class LobbyChatController(
         if (actor.isBlank() || author.isBlank() || body.isBlank()) return null
         val timestamp = snapshot.child(FIELD_TIMESTAMP).getValue(Long::class.java) ?: 0L
         return LobbyChatMessage(
-            id = "${snapshot.ref.path}:$timestamp",
+            id = "$actor:${snapshot.key.orEmpty()}:$timestamp",
             actorId = actor,
             speaker = author,
             message = body,

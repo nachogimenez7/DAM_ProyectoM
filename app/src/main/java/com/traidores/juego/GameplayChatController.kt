@@ -2635,8 +2635,9 @@ class GameplayChatController(
         muted: Boolean
     ) {
         val channel = activeChatChannel()
-        val spaceOwnMessage = channel == ChatChannel.PUBLICO &&
-            CosmeticPilot.isSpaceTheme(host.cosmeticThemeForPlayer(speaker))
+        val speakerTheme = host.cosmeticThemeForPlayer(speaker)
+        val themedPublicMessage = channel == ChatChannel.PUBLICO &&
+            CosmeticPilot.isDecoratedTheme(speakerTheme)
         val row = LinearLayout(root.context).apply {
             gravity = if (ownMessage) Gravity.END else Gravity.START
             orientation = LinearLayout.HORIZONTAL
@@ -2646,8 +2647,8 @@ class GameplayChatController(
             orientation = LinearLayout.VERTICAL
             setPadding(host.dp(10), host.dp(7), host.dp(10), host.dp(8))
             when (channel) {
-                ChatChannel.PUBLICO -> background = if (spaceOwnMessage) {
-                    CosmeticPilot.chatMessageBubble(root.context)
+                ChatChannel.PUBLICO -> background = if (themedPublicMessage) {
+                    CosmeticPilot.chatMessageBubble(root.context, speakerTheme)
                 } else {
                     root.context.getDrawable(
                         if (ownMessage) {
@@ -2674,8 +2675,8 @@ class GameplayChatController(
             text = speaker
             maxLines = 1
             setTextColor(
-                if (spaceOwnMessage) {
-                    Color.parseColor(CosmeticPilot.accentCyan)
+                if (themedPublicMessage) {
+                    CosmeticPilot.accentColor(speakerTheme)
                 } else {
                     speakerColor
                 }
@@ -2691,7 +2692,7 @@ class GameplayChatController(
                     when (channel) {
                         ChatChannel.TRAIDORES -> R.color.traitor_text
                         ChatChannel.ESPECTADORES -> R.color.espectro_text
-                        ChatChannel.PUBLICO -> if (spaceOwnMessage) {
+                        ChatChannel.PUBLICO -> if (themedPublicMessage) {
                             R.color.text_primary
                         } else if (ownMessage) {
                             R.color.bg_dark

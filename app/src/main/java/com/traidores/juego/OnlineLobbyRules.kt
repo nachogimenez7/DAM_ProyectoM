@@ -34,6 +34,24 @@ object OnlineLobbyRules {
         return states.count { it == "conectado" }
     }
 
+    /**
+     * Un corte breve de presencia (pantalla bloqueada, cambio de red o Android pausando la
+     * aplicación) no equivale a abandonar la mesa. Solo conservamos como presente a quien ya
+     * había confirmado que estaba listo, y únicamente durante una ventana acotada.
+     */
+    fun countsAsPresentDuringReconnect(
+        connected: Boolean,
+        ready: Boolean,
+        activeInMatch: Boolean,
+        lastSeenMs: Long,
+        nowMs: Long,
+        graceMs: Long
+    ): Boolean {
+        if (connected) return true
+        if (!ready || !activeInMatch || lastSeenMs <= 0L || graceMs <= 0L) return false
+        return (nowMs - lastSeenMs).coerceAtLeast(0L) <= graceMs
+    }
+
     fun activePlayers(players: List<OnlineLobbyParticipant>): List<OnlineLobbyParticipant> {
         return players.filter { it.activeInMatch }
     }

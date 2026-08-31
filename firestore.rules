@@ -340,6 +340,38 @@ service cloud.firestore {
         && clue.actualizadaEn == request.time;
     }
 
+    function validAuthoritativeCheckpoint(partidaId, data) {
+      return data is map
+        && hasOnly(data, [
+          'matchId',
+          'phaseIndex',
+          'estadoPartida',
+          'actualizadaEn',
+          'actualizadaEnLocal',
+          'actualizadaPor'
+        ])
+        && hasAll(data, [
+          'matchId',
+          'phaseIndex',
+          'estadoPartida',
+          'actualizadaEn',
+          'actualizadaEnLocal',
+          'actualizadaPor'
+        ])
+        && validCurrentMatchId(partidaId, data.matchId)
+        && data.phaseIndex is int
+        && data.phaseIndex >= 0
+        && data.phaseIndex <= 500
+        && data.estadoPartida is map
+        && data.estadoPartida.versionEstado is int
+        && data.estadoPartida.fase is string
+        && data.estadoPartida.ronda is int
+        && data.estadoPartida.phaseIndex == data.phaseIndex
+        && data.actualizadaEn == request.time
+        && data.actualizadaEnLocal is int
+        && data.actualizadaPor == request.auth.uid;
+    }
+
     function stableHostRematchReset() {
       return signedIn()
         && request.auth.uid == resource.data.hostId
@@ -521,7 +553,7 @@ service cloud.firestore {
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && (!('temaCosmeticoPerfil' in data)
-          || data.temaCosmeticoPerfil in ['classic', 'space'])
+          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
         && validPlayerState(data.estado)
@@ -856,6 +888,30 @@ service cloud.firestore {
           || staleCreatorCleanupAllowed(partidaId);
       }
 
+      // Checkpoint durable sin listeners. El estado caliente se distribuye por RTDB; esta
+      // copia existe solo para recuperar una partida luego de cerrar la app.
+      match /runtime/{runtimeId} {
+        allow get: if runtimeId == 'authoritative'
+          && (
+            isActiveRoomMember(partidaId)
+            || isRoomHostAny(partidaId)
+            || staleCreatorCleanupAllowed(partidaId)
+          );
+        allow list: if isRoomHostAny(partidaId)
+          || staleCreatorCleanupAllowed(partidaId);
+        allow create: if runtimeId == 'authoritative'
+          && isRoomActiveHost(partidaId)
+          && validAuthoritativeCheckpoint(partidaId, request.resource.data);
+        allow update: if runtimeId == 'authoritative'
+          && isRoomActiveHost(partidaId)
+          && validAuthoritativeCheckpoint(partidaId, request.resource.data)
+          && request.resource.data.matchId == resource.data.matchId
+          && request.resource.data.phaseIndex >= resource.data.phaseIndex;
+        allow delete: if cleanupDeleteAllowed(partidaId)
+          || roomTeardownAllowed(partidaId)
+          || staleCreatorCleanupAllowed(partidaId);
+      }
+
       match /acciones/{accionId} {
         // Cada participante confirma solo sus propias acciones. El anfitrión necesita el
         // conjunto completo para resolver la fase.
@@ -1141,7 +1197,7 @@ service cloud.firestore {
         && isOptionalString(request.resource.data, 'bannerPerfil', 40)
         && isOptionalString(request.resource.data, 'rolFavoritoPerfil', 40)
         && (!('temaCosmeticoPerfil' in request.resource.data)
-          || request.resource.data.temaCosmeticoPerfil in ['classic', 'space']);
+          || request.resource.data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire']);
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
       // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
       allow delete: if isSelf(uidTemporal);

@@ -472,6 +472,56 @@ async function main() {
       }
     ));
 
+    const checkpointRef = doc(host, "partidas", "room_auth", "runtime", "authoritative");
+    const checkpoint = {
+      matchId: "match_rules_1",
+      phaseIndex: 3,
+      estadoPartida: {
+        versionEstado: 2,
+        fase: "NOCHE_POLICIA",
+        ronda: 1,
+        phaseIndex: 3,
+        actualizadaEnLocal: Date.now(),
+      },
+      actualizadaEn: serverTimestamp(),
+      actualizadaEnLocal: Date.now(),
+      actualizadaPor: "host_uid",
+    };
+    await assertSucceeds(setDoc(checkpointRef, checkpoint));
+    await assertSucceeds(getDoc(doc(
+      guest,
+      "partidas",
+      "room_auth",
+      "runtime",
+      "authoritative"
+    )));
+    await assertFails(getDoc(doc(
+      intruder,
+      "partidas",
+      "room_auth",
+      "runtime",
+      "authoritative"
+    )));
+    await assertFails(setDoc(doc(
+      guest,
+      "partidas",
+      "room_auth",
+      "runtime",
+      "authoritative"
+    ), { ...checkpoint, actualizadaPor: "guest_uid" }));
+    await assertFails(setDoc(checkpointRef, {
+      ...checkpoint,
+      phaseIndex: 2,
+      estadoPartida: { ...checkpoint.estadoPartida, phaseIndex: 2 },
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(setDoc(checkpointRef, {
+      ...checkpoint,
+      phaseIndex: 4,
+      estadoPartida: { ...checkpoint.estadoPartida, phaseIndex: 4 },
+      actualizadaEn: serverTimestamp(),
+    }));
+
     const guestAction = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
       matchId: "match_rules_1",
       tipo: "accion_jugador",
@@ -962,6 +1012,7 @@ async function main() {
       fotoPlayGames: `https://${"a".repeat(1001)}`,
       bannerPerfil: "pampa",
       rolFavoritoPerfil: "pampa_payador",
+      temaCosmeticoPerfil: "sea",
       actualizadaEn: serverTimestamp(),
     }));
     await assertFails(deleteDoc(doc(guest, "codigosSala", "ABC234")));

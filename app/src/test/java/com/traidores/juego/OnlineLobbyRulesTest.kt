@@ -56,6 +56,48 @@ class OnlineLobbyRulesTest {
     }
 
     @Test
+    fun readyPlayerWithRecentPresenceLossKeepsItsLobbyPlace() {
+        val now = 1_000_000L
+
+        assertTrue(
+            OnlineLobbyRules.countsAsPresentDuringReconnect(
+                connected = false,
+                ready = true,
+                activeInMatch = true,
+                lastSeenMs = now - 30_000L,
+                nowMs = now,
+                graceMs = 300_000L
+            )
+        )
+    }
+
+    @Test
+    fun reconnectGraceDoesNotHideARealOrUnreadyDisconnect() {
+        val now = 1_000_000L
+
+        assertFalse(
+            OnlineLobbyRules.countsAsPresentDuringReconnect(
+                connected = false,
+                ready = true,
+                activeInMatch = true,
+                lastSeenMs = now - 300_001L,
+                nowMs = now,
+                graceMs = 300_000L
+            )
+        )
+        assertFalse(
+            OnlineLobbyRules.countsAsPresentDuringReconnect(
+                connected = false,
+                ready = false,
+                activeInMatch = true,
+                lastSeenMs = now - 1_000L,
+                nowMs = now,
+                graceMs = 300_000L
+            )
+        )
+    }
+
+    @Test
     fun activePlayersExcludeReleasedDisconnectedSlots() {
         val players = listOf(
             participant("host", connected = true, ready = true, active = true, order = 0),

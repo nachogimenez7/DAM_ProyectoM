@@ -16,6 +16,8 @@ import android.graphics.drawable.LayerDrawable
 object CosmeticPilot {
     const val THEME_CLASSIC = "classic"
     const val THEME_SPACE = "space"
+    const val THEME_SEA = "sea"
+    const val THEME_FIRE = "fire"
 
     const val accentCyan = "#62E9FF"
     const val accentViolet = "#965CFF"
@@ -43,8 +45,14 @@ object CosmeticPilot {
 
     fun isSpaceTheme(theme: String?): Boolean = normalizeTheme(theme) == THEME_SPACE
 
+    fun isDecoratedTheme(theme: String?): Boolean {
+        return normalizeTheme(theme)?.let { it != THEME_CLASSIC } == true
+    }
+
     fun normalizeTheme(theme: String?): String? {
-        return theme?.takeIf { it == THEME_CLASSIC || it == THEME_SPACE }
+        return theme?.takeIf {
+            it == THEME_CLASSIC || it == THEME_SPACE || it == THEME_SEA || it == THEME_FIRE
+        }
     }
 
     fun selectTheme(context: Context, theme: String) {
@@ -55,69 +63,83 @@ object CosmeticPilot {
             .apply()
     }
 
-    fun bubbleShell(context: Context): Drawable = layeredFrame(
-        context = context,
-        radiusDp = 14,
-        outerColors = intArrayOf(
-            Color.parseColor(accentCyan),
-            Color.parseColor(accentViolet),
-            Color.parseColor(accentCyan)
-        ),
-        innerColors = intArrayOf(
-            Color.parseColor("#2B174C"),
-            Color.parseColor("#111A35"),
-            Color.parseColor("#090B18")
-        ),
-        insetDp = 3
+    fun displayName(theme: String?): String = when (normalizeTheme(theme)) {
+        THEME_SPACE -> "Espacial"
+        THEME_SEA -> "Abismo Real"
+        THEME_FIRE -> "Forja Infernal"
+        else -> "Clásico"
+    }
+
+    fun accentColor(theme: String?): Int = palette(theme).primary
+
+    fun textColor(theme: String?): Int = palette(theme).text
+
+    fun profileBackgroundRes(theme: String?): Int = when (normalizeTheme(theme)) {
+        THEME_SPACE -> R.drawable.profile_background_space
+        THEME_SEA -> R.drawable.profile_background_sea
+        THEME_FIRE -> R.drawable.profile_background_fire
+        else -> R.drawable.fondo_menu
+    }
+
+    fun profileShadeColor(theme: String?): Int = Color.parseColor(
+        when (normalizeTheme(theme)) {
+            THEME_SEA -> "#34000000"
+            THEME_FIRE -> "#26000000"
+            THEME_SPACE -> "#26000000"
+            else -> "#52000000"
+        }
     )
 
-    fun bubbleTail(context: Context): Drawable = GradientDrawable(
+    fun bubbleShell(context: Context, theme: String = THEME_SPACE): Drawable = layeredFrame(
+        context = context,
+        radiusDp = 14,
+        outerColors = palette(theme).outer,
+        innerColors = palette(theme).bubble,
+        insetDp = 3,
+        innerStrokeColor = palette(theme).primary
+    )
+
+    fun bubbleTail(context: Context, theme: String = THEME_SPACE): Drawable = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        intArrayOf(Color.parseColor("#2A1A4C"), Color.parseColor("#102B45"))
+        palette(theme).bubble
     ).apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = context.dpForCosmetic(2).toFloat()
-        setStroke(context.dpForCosmetic(1), Color.parseColor(accentCyan))
+        setStroke(context.dpForCosmetic(1), palette(theme).primary)
     }
 
-    fun emoteFrame(context: Context, selected: Boolean = false): Drawable = layeredFrame(
+    fun emoteFrame(
+        context: Context,
+        selected: Boolean = false,
+        theme: String = THEME_SPACE
+    ): Drawable = layeredFrame(
         context = context,
         radiusDp = 11,
         outerColors = if (selected) {
             intArrayOf(
-                Color.parseColor(accentCyan),
-                Color.parseColor("#E4FAFF"),
-                Color.parseColor(accentViolet)
+                palette(theme).primary,
+                palette(theme).text,
+                palette(theme).secondary
             )
         } else {
-            intArrayOf(
-                Color.parseColor("#6F4CC4"),
-                Color.parseColor(accentCyan),
-                Color.parseColor("#6F4CC4")
-            )
+            palette(theme).outer
         },
-        innerColors = intArrayOf(
-            Color.parseColor("#25183B"),
-            Color.parseColor("#101427"),
-            Color.parseColor("#090B14")
-        ),
-        insetDp = if (selected) 3 else 2
+        innerColors = palette(theme).surface,
+        insetDp = if (selected) 3 else 2,
+        innerStrokeColor = palette(theme).primary
     )
 
-    fun avatarFrame(context: Context): Drawable {
+    fun avatarFrame(context: Context, theme: String = THEME_SPACE): Drawable {
+        val colors = palette(theme)
         val outer = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            colors = intArrayOf(
-                Color.parseColor(accentCyan),
-                Color.parseColor(accentViolet),
-                Color.parseColor(accentCyan)
-            )
+            this.colors = colors.outer
             orientation = GradientDrawable.Orientation.TL_BR
         }
         val darkRing = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.parseColor("#111326"))
-            setStroke(context.dpForCosmetic(2), Color.parseColor("#B28AFF"))
+            setColor(colors.avatarInner)
+            setStroke(context.dpForCosmetic(2), colors.secondary)
         }
         return LayerDrawable(arrayOf(outer, darkRing)).apply {
             val inset = context.dpForCosmetic(4)
@@ -125,151 +147,118 @@ object CosmeticPilot {
         }
     }
 
-    fun namePlate(context: Context): Drawable = layeredFrame(
+    fun namePlate(context: Context, theme: String = THEME_SPACE): Drawable = layeredFrame(
         context = context,
         radiusDp = 11,
-        outerColors = intArrayOf(
-            Color.parseColor(accentViolet),
-            Color.parseColor(accentCyan),
-            Color.parseColor(accentViolet)
-        ),
-        innerColors = intArrayOf(
-            Color.parseColor("#25163E"),
-            Color.parseColor("#101528"),
-            Color.parseColor("#171025")
-        ),
-        insetDp = 2
+        outerColors = palette(theme).outer,
+        innerColors = palette(theme).surface,
+        insetDp = 2,
+        innerStrokeColor = palette(theme).primary
     )
 
-    fun profileSurface(context: Context): Drawable = GradientDrawable(
+    fun profileSurface(context: Context, theme: String = THEME_SPACE): Drawable = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        intArrayOf(
-            Color.parseColor("#E51B2343"),
-            Color.parseColor("#EB0C132B"),
-            Color.parseColor("#E526153E")
-        )
+        palette(theme).surface
     ).apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = context.dpForCosmetic(10).toFloat()
-        setStroke(context.dpForCosmetic(1), Color.parseColor("#875CCFEA"))
+        setStroke(context.dpForCosmetic(1), palette(theme).softStroke)
     }
 
-    fun profilePanelOverlay(context: Context): Drawable = GradientDrawable(
+    fun profilePanelOverlay(context: Context, theme: String = THEME_SPACE): Drawable = GradientDrawable(
         GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(
-            Color.parseColor("#B90B1530"),
-            Color.parseColor("#D7070B1C"),
-            Color.parseColor("#C5110923")
-        )
+        palette(theme).panel
     ).apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = context.dpForCosmetic(12).toFloat()
-        setStroke(context.dpForCosmetic(1), Color.parseColor("#7559DCF3"))
+        setStroke(context.dpForCosmetic(1), palette(theme).softStroke)
     }
 
-    fun primaryButton(context: Context): Drawable = GradientDrawable(
+    fun primaryButton(context: Context, theme: String = THEME_SPACE): Drawable = GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(
-            Color.parseColor("#7447D8"),
-            Color.parseColor("#257FCF"),
-            Color.parseColor("#42DDF3")
-        )
+        palette(theme).outer
     ).apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = context.dpForCosmetic(10).toFloat()
-        setStroke(context.dpForCosmetic(1), Color.parseColor("#C9F9FF"))
+        setStroke(context.dpForCosmetic(1), palette(theme).text)
     }
 
-    fun bannerVeil(context: Context): Drawable = GradientDrawable(
+    fun bannerVeil(context: Context, theme: String = THEME_SPACE): Drawable = GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(
-            Color.parseColor("#9A251154"),
-            Color.parseColor("#65101738"),
-            Color.parseColor("#8A063C61")
-        )
+        palette(theme).veil
     ).apply {
         shape = GradientDrawable.RECTANGLE
-        setStroke(context.dpForCosmetic(1), Color.parseColor("#8B62E9FF"))
+        setStroke(context.dpForCosmetic(1), palette(theme).softStroke)
     }
 
-    fun chatMessageBubble(context: Context): Drawable = layeredFrame(
+    fun chatMessageBubble(context: Context, theme: String = THEME_SPACE): Drawable = layeredFrame(
         context = context,
         radiusDp = 12,
-        outerColors = intArrayOf(
-            Color.parseColor(accentCyan),
-            Color.parseColor(accentViolet),
-            Color.parseColor(accentCyan)
-        ),
-        innerColors = intArrayOf(
-            Color.parseColor("#EE2B174B"),
-            Color.parseColor("#F0141C39"),
-            Color.parseColor("#EE091321")
-        ),
-        insetDp = 2
+        outerColors = palette(theme).outer,
+        innerColors = palette(theme).bubble,
+        insetDp = 2,
+        innerStrokeColor = palette(theme).primary
     )
 
-    fun gameplayPlayerPanel(context: Context): Drawable = layeredFrame(
+    fun gameplayPlayerPanel(context: Context, theme: String = THEME_SPACE): Drawable = layeredFrame(
         context = context,
         radiusDp = 15,
-        outerColors = intArrayOf(
-            Color.parseColor(accentViolet),
-            Color.parseColor(accentCyan),
-            Color.parseColor(accentViolet)
-        ),
-        innerColors = intArrayOf(
-            Color.parseColor("#EE241747"),
-            Color.parseColor("#F00A1730"),
-            Color.parseColor("#ED150B2A")
-        ),
-        insetDp = 2
+        outerColors = palette(theme).outer,
+        innerColors = palette(theme).panel,
+        insetDp = 2,
+        innerStrokeColor = palette(theme).primary
     )
 
-    fun gameplayRoleFrame(context: Context, stateColor: Int? = null): Drawable = layeredFrame(
+    fun gameplayRoleFrame(
+        context: Context,
+        stateColor: Int? = null,
+        theme: String = THEME_SPACE
+    ): Drawable = layeredFrame(
         context = context,
         radiusDp = 9,
         outerColors = intArrayOf(
-            Color.parseColor(accentCyan),
-            stateColor ?: Color.parseColor(accentViolet),
-            Color.parseColor(accentCyan)
+            palette(theme).primary,
+            stateColor ?: palette(theme).secondary,
+            palette(theme).primary
         ),
-        innerColors = intArrayOf(
-            Color.parseColor("#28183E"),
-            Color.parseColor("#0B1429"),
-            Color.parseColor("#171027")
-        ),
-        insetDp = 2
+        innerColors = palette(theme).surface,
+        insetDp = 2,
+        innerStrokeColor = palette(theme).primary
     )
 
     fun achievementFrame(
         context: Context,
         rarityColor: Int,
-        emphasized: Boolean
+        emphasized: Boolean,
+        theme: String = THEME_SPACE
     ): Drawable = layeredFrame(
         context = context,
         radiusDp = if (emphasized) 14 else 12,
         outerColors = intArrayOf(
-            Color.parseColor(accentCyan),
+            palette(theme).primary,
             rarityColor,
-            Color.parseColor(accentViolet)
+            palette(theme).secondary
         ),
-        innerColors = intArrayOf(
-            Color.parseColor("#F0201744"),
-            Color.parseColor("#F00D1630"),
-            Color.parseColor("#F0150C2A")
-        ),
-        insetDp = if (emphasized) 3 else 2
+        innerColors = palette(theme).surface,
+        insetDp = if (emphasized) 3 else 2,
+        innerStrokeColor = palette(theme).primary
     )
 
-    fun achievementMedalFrame(context: Context, rarityColor: Int): Drawable {
+    fun achievementMedalFrame(
+        context: Context,
+        rarityColor: Int,
+        theme: String = THEME_SPACE
+    ): Drawable {
+        val colors = palette(theme)
         val outer = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            colors = intArrayOf(Color.parseColor(accentCyan), rarityColor, Color.parseColor(accentViolet))
+            this.colors = intArrayOf(colors.primary, rarityColor, colors.secondary)
             orientation = GradientDrawable.Orientation.TL_BR
         }
         val inner = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.parseColor("#EE10162D"))
-            setStroke(context.dpForCosmetic(1), Color.parseColor(accentCyan))
+            setColor(colors.avatarInner)
+            setStroke(context.dpForCosmetic(1), colors.primary)
         }
         return LayerDrawable(arrayOf(outer, inner)).apply {
             val inset = context.dpForCosmetic(3)
@@ -282,7 +271,8 @@ object CosmeticPilot {
         radiusDp: Int,
         outerColors: IntArray,
         innerColors: IntArray,
-        insetDp: Int
+        insetDp: Int,
+        innerStrokeColor: Int
     ): Drawable {
         val outer = GradientDrawable(GradientDrawable.Orientation.TL_BR, outerColors).apply {
             shape = GradientDrawable.RECTANGLE
@@ -291,13 +281,67 @@ object CosmeticPilot {
         val inner = GradientDrawable(GradientDrawable.Orientation.TL_BR, innerColors).apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = context.dpForCosmetic((radiusDp - 2).coerceAtLeast(1)).toFloat()
-            setStroke(context.dpForCosmetic(1), Color.parseColor("#6FE9FF"))
+            setStroke(context.dpForCosmetic(1), innerStrokeColor)
         }
         return LayerDrawable(arrayOf(outer, inner)).apply {
             val inset = context.dpForCosmetic(insetDp)
             setLayerInset(1, inset, inset, inset, inset)
         }
     }
+
+    private fun palette(theme: String?): CosmeticPalette = when (normalizeTheme(theme)) {
+        THEME_SEA -> CosmeticPalette(
+            primary = Color.parseColor("#3DE6E0"),
+            secondary = Color.parseColor("#D6BD76"),
+            text = Color.parseColor("#C9FBF5"),
+            outer = colors("#3DE6E0", "#D6BD76", "#58AFC0"),
+            surface = colors("#ED0B3440", "#F0071A24", "#ED092A35"),
+            panel = colors("#D00A2D37", "#EA05141D", "#DE08242E"),
+            bubble = colors("#F00A3A46", "#F006202B", "#F004151D"),
+            veil = colors("#8A063E4C", "#58051722", "#7A0C5560"),
+            avatarInner = Color.parseColor("#071C25"),
+            softStroke = Color.parseColor("#A03DE6E0")
+        )
+        THEME_FIRE -> CosmeticPalette(
+            primary = Color.parseColor("#FF6A32"),
+            secondary = Color.parseColor("#F2C15D"),
+            text = Color.parseColor("#FFE0B2"),
+            outer = colors("#B92A1D", "#F2C15D", "#FF6A32"),
+            surface = colors("#F035110D", "#F00E0B0A", "#ED250906"),
+            panel = colors("#DF2C0D09", "#F0080707", "#E21B0806"),
+            bubble = colors("#F23B130D", "#F0120B08", "#F0060505"),
+            veil = colors("#872D0905", "#4F0A0504", "#7A501308"),
+            avatarInner = Color.parseColor("#170806"),
+            softStroke = Color.parseColor("#A0FF6A32")
+        )
+        else -> CosmeticPalette(
+            primary = Color.parseColor(accentCyan),
+            secondary = Color.parseColor(accentViolet),
+            text = Color.parseColor(textCyan),
+            outer = colors(accentViolet, accentCyan, accentViolet),
+            surface = colors("#E51B2343", "#EB0C132B", "#E526153E"),
+            panel = colors("#B90B1530", "#D7070B1C", "#C5110923"),
+            bubble = colors("#EE2B174B", "#F0141C39", "#EE091321"),
+            veil = colors("#9A251154", "#65101738", "#8A063C61"),
+            avatarInner = Color.parseColor("#111326"),
+            softStroke = Color.parseColor("#875CCFEA")
+        )
+    }
+
+    private fun colors(vararg hex: String): IntArray = hex.map { Color.parseColor(it) }.toIntArray()
+
+    private data class CosmeticPalette(
+        val primary: Int,
+        val secondary: Int,
+        val text: Int,
+        val outer: IntArray,
+        val surface: IntArray,
+        val panel: IntArray,
+        val bubble: IntArray,
+        val veil: IntArray,
+        val avatarInner: Int,
+        val softStroke: Int
+    )
 
     private fun Context.dpForCosmetic(value: Int): Int =
         (value * resources.displayMetrics.density).toInt().coerceAtLeast(1)
