@@ -16,6 +16,7 @@ class TraidoresApplication : Application() {
             (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         )
         configureAppCheck()
+        FirebaseEmulatorConfig.configureIfEnabled()
         configurePlayGames()
         configureFirestore()
         TraidoresNotifications.createChannel(this)

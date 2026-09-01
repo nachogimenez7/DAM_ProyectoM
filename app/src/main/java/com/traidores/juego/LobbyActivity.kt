@@ -43,6 +43,8 @@ import kotlin.random.Random
 
 class LobbyActivity : BaseActivity() {
 
+    private val onlineStartCallableClient by lazy { OnlineStartCallableClient() }
+
     private lateinit var session: GameSession
     private lateinit var btnAddPlayer: Button
     private lateinit var btnRemovePlayer: Button
@@ -3735,6 +3737,10 @@ class LobbyActivity : BaseActivity() {
             coordinateOnlineMatchEntry()
             return
         }
+        if (FirebaseEmulatorConfig.usesAuthoritativeOnlineStart) {
+            startOnlineRoomWithCallable(hostTieBreakChoice)
+            return
+        }
         startButton.isEnabled = false
         startButton.text = "VERIFICANDO..."
         refreshOnlinePlayersFromServer(
@@ -3775,6 +3781,94 @@ class LobbyActivity : BaseActivity() {
                 startOnlineRoomTransaction(hostTieBreakChoice, activePlayers)
             }
         )
+    }
+
+    private fun startOnlineRoomWithCallable(hostTieBreakChoice: String?) {
+        if (onlineStartTransactionInProgress) {
+            OnlineDebugLog.w(
+                "online_callable_start_duplicate_blocked roomId=$onlinePartidaId hostId=$onlineTempUid"
+            )
+            return
+        }
+        onlineStartTransactionInProgress = true
+        startButton.isEnabled = false
+        startButton.text = "INICIANDO..."
+        val startedAtMs = SystemClock.elapsedRealtime()
+        OnlineStabilityReport.recordEvent(this, "inicio_callable_solicitado")
+        OnlineDebugLog.i(
+            "online_callable_start_requested roomId=$onlinePartidaId " +
+                "hostId=$onlineTempUid tieBreak=${hostTieBreakChoice ?: "-"}"
+        )
+        onlineStartCallableClient
+            .start(onlinePartidaId, hostTieBreakChoice)
+            .addOnSuccessListener { result ->
+                onlineStartTransactionInProgress = false
+                if (isFinishing || isDestroyed) return@addOnSuccessListener
+                val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+                when (result) {
+                    is OnlineStartCallableResult.MapTieBreakRequired -> {
+                        OnlineStabilityReport.recordEvent(this, "inicio_callable_desempate")
+                        OnlineDebugLog.i(
+                            "online_callable_start_tie roomId=$onlinePartidaId " +
+                                "hostId=$onlineTempUid elapsedMs=$elapsedMs"
+                        )
+                        startButton.isEnabled = true
+                        renderStartButtonState()
+                        showMapTieBreakDialog(result.mapKeys)
+                    }
+                    is OnlineStartCallableResult.Accepted -> {
+                        OnlineStabilityReport.updateMatch(
+                            this,
+                            result.matchId,
+                            true,
+                            onlineExpectedPlayers
+                        )
+                        OnlineStabilityReport.recordEvent(
+                            this,
+                            if (result.alreadyStarted) {
+                                "inicio_callable_ya_existente"
+                            } else {
+                                "inicio_callable_confirmado"
+                            }
+                        )
+                        OnlineDebugLog.i(
+                            "online_callable_start_success roomId=$onlinePartidaId " +
+                                "hostId=$onlineTempUid match=${result.matchId} " +
+                                "map=${result.mapKey} already=${result.alreadyStarted} " +
+                                "elapsedMs=$elapsedMs"
+                        )
+                        if (result.alreadyStarted) {
+                            Toast.makeText(
+                                this,
+                                "La partida ya fue iniciada. Sincronizando...",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        coordinateOnlineMatchEntry()
+                    }
+                }
+            }
+            .addOnFailureListener { error ->
+                onlineStartTransactionInProgress = false
+                if (isFinishing || isDestroyed) return@addOnFailureListener
+                OnlineStabilityReport.recordEvent(
+                    this,
+                    "inicio_callable_fallo",
+                    error.javaClass.simpleName
+                )
+                OnlineDebugLog.e(
+                    "online_callable_start_failure roomId=$onlinePartidaId " +
+                        "hostId=$onlineTempUid elapsedMs=${SystemClock.elapsedRealtime() - startedAtMs}",
+                    error
+                )
+                startButton.isEnabled = true
+                renderStartButtonState()
+                Toast.makeText(
+                    this,
+                    OnlineErrorMessages.forAction("No se pudo iniciar la partida", error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private fun resetOnlineMatchEntryForWaitingLobby() {

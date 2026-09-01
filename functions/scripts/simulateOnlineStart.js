@@ -11,7 +11,7 @@ const {startOnlineMatch} = require("../src/onlineStartService");
 const args = process.argv.slice(2);
 const runsValue = args[args.indexOf("--runs") + 1] || "5";
 const runs = Number.parseInt(runsValue, 10);
-const projectId = "traidores-local";
+const projectId = process.env.GCLOUD_PROJECT || "traidores-local";
 const sizes = [3, 5, 10, 15];
 
 if (!Number.isInteger(runs) || runs < 1 || runs > 20) {

@@ -5,8 +5,24 @@ plugins {
     id 'com.google.firebase.crashlytics'
 }
 
+def onlineAuthorityEmulatorEnabled = providers
+    .gradleProperty('traidoresOnlineAuthorityEmulator')
+    .orElse('false')
+    .get()
+    .toBoolean()
+def firebaseEmulatorHost = providers
+    .gradleProperty('firebaseEmulatorHost')
+    .orElse('10.0.2.2')
+    .get()
+if (!(firebaseEmulatorHost ==~ /[A-Za-z0-9.:-]+/)) {
+    throw new GradleException('firebaseEmulatorHost contiene caracteres no validos')
+}
+
 android {
     namespace = 'com.traidores.juego'
+    buildFeatures {
+        buildConfig = true
+    }
     compileSdk {
         version = release(36) {
             it.minorApiLevel = 1
@@ -22,7 +38,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR',
+                onlineAuthorityEmulatorEnabled.toString()
+            buildConfigField 'String', 'FIREBASE_EMULATOR_HOST',
+                "\"${firebaseEmulatorHost}\""
+        }
         release {
+            buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR', 'false'
+            buildConfigField 'String', 'FIREBASE_EMULATOR_HOST', '""'
             minifyEnabled = true
             shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
@@ -57,6 +81,7 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-database'
+    implementation 'com.google.firebase:firebase-functions'
     implementation 'com.google.firebase:firebase-appcheck-playintegrity'
     implementation 'com.google.firebase:firebase-crashlytics'
     implementation 'com.google.firebase:firebase-messaging'

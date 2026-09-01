@@ -9,6 +9,8 @@
     "test:database-rules": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only database \"node scripts/test-database-rules.cjs\"",
     "test:functions": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database,functions \"npm --prefix functions run test:integration\"",
     "test:functions-unit": "npm --prefix functions run test:unit",
+    "build:android-emulator": "node scripts/with-jdk.cjs C:\\Windows\\System32\\cmd.exe /d /c gradlew.bat assembleDebug -PtraidoresOnlineAuthorityEmulator=true",
+    "emulators:android": "node scripts/with-jdk.cjs firebase emulators:start --project traidores --only firestore,database,functions",
     "simulate:functions-local": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database,functions \"npm --prefix functions run simulate:start\"",
     "test:firestore-rules-invitados": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules-invitados.cjs\"",
     "simulate:online-firebase-local": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database \"node scripts/simulate-online-firebase.cjs --local --runs 10\"",
