@@ -3860,68 +3860,67 @@ class LobbyActivity : BaseActivity() {
             if (!room.exists()) {
                 throw IllegalStateException("La sala ya no existe.")
             }
-            if (room.getBoolean(FIELD_INITIAL_MATCH_CREATED) == true || room.get(FIELD_INITIAL_MATCH) != null) {
-                return@runTransaction OnlineStartTransactionResult.AlreadyStarted
-            }
-            if (room.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
-                throw IllegalStateException("La sala ya no esta esperando jugadores.")
-            }
-            if (room.getBoolean(FIELD_CLEANUP_PENDING) == true) {
-                throw IllegalStateException("La sala todavia esta limpiando la partida anterior.")
-            }
-            val activeHostId = room.getString(FIELD_ACTIVE_HOST_ID).orEmpty()
-            val hostId = room.getString(FIELD_HOST_ID).orEmpty()
-            if (activeHostId != onlineTempUid && hostId != onlineTempUid) {
-                throw IllegalStateException("Solo el anfitrion puede iniciar.")
-            }
             val expectedPlayers = room.getLong(FIELD_EXPECTED_PLAYERS)?.toInt() ?: onlineExpectedPlayers
-            val activePlayersAtStart = playerReferences
+            val playersAtStart = playerReferences
                 .map { reference -> transaction.get(reference) }
                 .mapNotNull(::parseOnlinePlayer)
-                .filter { it.activeInMatch }
-                .sortedWith(
-                    compareBy<OnlineLobbyPlayer> { it.order }
-                        .thenBy { it.name.lowercase() }
-                        .thenBy { it.id }
-                )
-            if (activePlayersAtStart.size != expectedPlayers) {
-                throw IllegalStateException("Faltan jugadores para iniciar.")
-            }
-            if (activePlayersAtStart.any { !it.ready }) {
-                throw IllegalStateException("Todavia faltan jugadores listos.")
-            }
-            val currentVotes = activePlayersAtStart.map { player ->
-                OnlineMapVote(
-                    playerId = player.id,
-                    playerInitial = player.initial,
-                    mapKey = player.mapVote
-                )
-            }
-            val selectedMapKey = when (
-                val resolution = OnlineMapVoteResolver.resolveAtStart(
-                    votes = currentVotes,
-                    currentMapKey = room.getString(FIELD_MAP_KEY).orEmpty(),
-                    hostTieBreakChoice = hostTieBreakChoice
-                )
-            ) {
-                is OnlineMapResolution.Selected -> resolution.mapKey
-                is OnlineMapResolution.HostTieBreakRequired -> {
-                    return@runTransaction OnlineStartTransactionResult.MapTieBreakRequired(
-                        resolution.mapKeys
+                .map { player ->
+                    OnlineMatchStartPlayer(
+                        id = player.id,
+                        name = player.name,
+                        initial = player.initial,
+                        ready = player.ready,
+                        order = player.order,
+                        activeInMatch = player.activeInMatch,
+                        mapVote = player.mapVote,
+                        publicId = player.publicId
                     )
                 }
+            val startDecision = OnlineMatchStartPolicy.evaluate(
+                requesterId = onlineTempUid,
+                room = OnlineMatchStartRoomState(
+                    state = room.getString(FIELD_STATE).orEmpty(),
+                    cleanupPending = room.getBoolean(FIELD_CLEANUP_PENDING) == true,
+                    hostId = room.getString(FIELD_HOST_ID).orEmpty(),
+                    activeHostId = room.getString(FIELD_ACTIVE_HOST_ID).orEmpty(),
+                    initialMatchCreated = room.getBoolean(FIELD_INITIAL_MATCH_CREATED) == true,
+                    hasInitialMatch = room.get(FIELD_INITIAL_MATCH) != null,
+                    expectedPlayers = expectedPlayers,
+                    currentMapKey = room.getString(FIELD_MAP_KEY).orEmpty()
+                ),
+                players = playersAtStart,
+                hostTieBreakChoice = hostTieBreakChoice
+            )
+            val readyStart = when (startDecision) {
+                OnlineMatchStartDecision.AlreadyStarted -> {
+                    return@runTransaction OnlineStartTransactionResult.AlreadyStarted
+                }
+                is OnlineMatchStartDecision.Rejected -> {
+                    throw IllegalStateException(startDecision.error.userMessage)
+                }
+                is OnlineMatchStartDecision.MapTieBreakRequired -> {
+                    return@runTransaction OnlineStartTransactionResult.MapTieBreakRequired(
+                        startDecision.mapKeys
+                    )
+                }
+                is OnlineMatchStartDecision.Ready -> startDecision
             }
-            val selectedMap = LocalGameFactory.maps.first { it.key == selectedMapKey }
+            val activePlayersAtStart = readyStart.orderedPlayers
+            val selectedMap = LocalGameFactory.maps.first { it.key == readyStart.mapKey }
             val roomConfig = OnlineLobbyConfig.fromFirestore(
                 room.get(OnlineLobbyConfig.FIELD_ROOM_CONFIG),
                 onlineLobbyConfig
             )
             val assignedSession = LocalGameFactory.assignRoles(
-                buildOnlineBaseSession(selectedMapKey, roomConfig, activePlayersAtStart)
+                buildOnlineBaseSession(selectedMap.key, roomConfig, activePlayersAtStart)
                     .copy(onlineMatchId = onlineMatchId)
             )
-            val initialMatch = initialMatchPayload(assignedSession, activePlayersAtStart)
-            val matchState = matchStatePayload(assignedSession)
+            val payloads = OnlineMatchStartPayloadFactory.build(
+                assignedSession = assignedSession,
+                playersAtStart = activePlayersAtStart,
+                updatedBy = onlineTempUid,
+                createdAtLocalMs = System.currentTimeMillis()
+            )
             activePlayersAtStart.forEachIndexed { playerIndex, onlinePlayer ->
                 // Una salida puede dejar huecos (0, 2, 3, 4) y el siguiente ingreso no
                 // conoce todos los documentos para reservar ese hueco. Al iniciar, esta es
@@ -3932,24 +3931,13 @@ class LobbyActivity : BaseActivity() {
                     FIELD_PLAYER_ORDER,
                     playerIndex
                 )
-                val ownRole = assignedSession.players[playerIndex].role
-                    ?: throw IllegalStateException("El reparto quedó incompleto.")
-                val visibleRoles = assignedSession.players.mapIndexedNotNull { index, candidate ->
-                    val role = candidate.role ?: return@mapIndexedNotNull null
-                    val visible = index == playerIndex ||
-                        (
-                            ownRole.team == GameRules.TRAITOR_WINNER &&
-                                role.team == GameRules.TRAITOR_WINNER
-                            )
-                    if (!visible) return@mapIndexedNotNull null
-                    roleAssignmentPayload(index, role)
-                }
+                val privateRole = payloads.privateRolesByPlayer.getValue(onlinePlayer.id)
                 transaction.set(
                     roomReference.collection("repartos").document(onlinePlayer.id),
                     mapOf(
-                        "matchId" to onlineMatchId,
-                        "uidTemporal" to onlinePlayer.id,
-                        "rolesVisibles" to visibleRoles,
+                        "matchId" to privateRole.matchId,
+                        "uidTemporal" to privateRole.playerId,
+                        "rolesVisibles" to privateRole.visibleRoles,
                         "creadaEn" to FieldValue.serverTimestamp()
                     )
                 )
@@ -3960,8 +3948,8 @@ class LobbyActivity : BaseActivity() {
                     FIELD_STATE to ONLINE_ROOM_STATE_IN_GAME,
                     FIELD_MAP_KEY to selectedMap.key,
                     OnlineRoomFirestore.FIELD_MAP_NAME to selectedMap.name,
-                    FIELD_INITIAL_MATCH to initialMatch,
-                    FIELD_MATCH_STATE to matchState,
+                    FIELD_INITIAL_MATCH to payloads.initialMatch,
+                    FIELD_MATCH_STATE to payloads.matchState,
                     FIELD_INITIAL_MATCH_CREATED to true,
                     FIELD_CLEANUP_PENDING to false,
                     FIELD_CLIENT_STATES to FieldValue.delete(),
@@ -3972,20 +3960,11 @@ class LobbyActivity : BaseActivity() {
                     OnlineRoomFirestore.FIELD_UPDATED_AT to FieldValue.serverTimestamp()
                 )
             )
-            val realtimeAccess = activePlayersAtStart.mapIndexed { index, onlinePlayer ->
-                val player = assignedSession.players[index]
-                onlinePlayer.id to RealtimeRoomMemberAccess(
-                    name = player.name,
-                    inLobby = false,
-                    alive = player.alive,
-                    traitor = player.role?.team == GameRules.TRAITOR_WINNER
-                )
-            }.toMap()
             OnlineStartTransactionResult.Started(
                 mapKey = selectedMap.key,
-                roleSummary = onlineRoleSummary(assignedSession),
+                roleSummary = payloads.roleSummary,
                 matchId = onlineMatchId,
-                realtimeAccess = realtimeAccess
+                realtimeAccess = payloads.realtimeAccess
             )
         }.addOnSuccessListener { result ->
             onlineStartTransactionInProgress = false
@@ -4567,7 +4546,7 @@ class LobbyActivity : BaseActivity() {
     private fun buildOnlineBaseSession(
         mapKey: String,
         config: OnlineLobbyConfig,
-        playersAtStart: List<OnlineLobbyPlayer>
+        playersAtStart: List<OnlineMatchStartPlayer>
     ): GameSession {
         val realPlayers = playersAtStart.map { player ->
             GamePlayer(
@@ -4653,49 +4632,6 @@ class LobbyActivity : BaseActivity() {
             return "El anfitrion todavía está recibiendo el reparto completo."
         }
         return null
-    }
-
-    private fun initialMatchPayload(
-        assignedSession: GameSession,
-        playersAtStart: List<OnlineLobbyPlayer>
-    ): Map<String, Any?> {
-        require(assignedSession.players.size == playersAtStart.size) {
-            "El reparto cambio la cantidad de jugadores capturados."
-        }
-        require(
-            assignedSession.players.map { it.name } == playersAtStart.map { it.name }
-        ) {
-            "El reparto cambio el orden de jugadores capturados."
-        }
-        return mapOf(
-            "matchId" to assignedSession.onlineMatchId,
-            "codigoSala" to assignedSession.code,
-            "mapa" to assignedSession.mapKey,
-            "mapaNombre" to assignedSession.mapName,
-            "fase" to assignedSession.phase.name,
-            "ronda" to assignedSession.round,
-            "creadaEnLocal" to System.currentTimeMillis(),
-            "config" to mapOf(
-                "transicionSeg" to assignedSession.timingConfig.transitionSeconds,
-                "nocheSeg" to assignedSession.timingConfig.nightSeconds,
-                "discusionSeg" to assignedSession.timingConfig.discussionSeconds,
-                "votacionSeg" to assignedSession.timingConfig.votingSeconds,
-                "revelarRolesAlMorir" to assignedSession.revealRolesOnDeath,
-                "votosIndividuales" to assignedSession.showIndividualVotes,
-                "roles" to assignedSession.roleComposition.counts
-            ),
-            "jugadores" to assignedSession.players.mapIndexed { index, player ->
-                val onlinePlayer = playersAtStart[index]
-                mapOf(
-                    "orden" to index,
-                    "uidTemporal" to onlinePlayer.id,
-                    "publicId" to onlinePlayer.publicId,
-                    "simulado" to false,
-                    "nombre" to player.name,
-                    "inicial" to player.initial
-                )
-            }
-        )
     }
 
     private fun stopOnlineFirestoreListenersForMatchTransition() {
@@ -4903,33 +4839,12 @@ class LobbyActivity : BaseActivity() {
         schedulePrivateRoleLoadRetry(matchId)
     }
 
-    private fun roleAssignmentPayload(order: Int, role: GameRole): Map<String, Any?> =
-        mapOf(
-            "orden" to order,
-            "rolKey" to role.key,
-            "rolNombre" to role.name,
-            "rolEquipo" to role.team,
-            "rolImagen" to role.imageResName
-        )
-
     private fun initialMatchPlayerIds(): LinkedHashSet<String> {
         val players = onlineInitialMatch?.get("jugadores") as? List<*> ?: return linkedSetOf()
         return players.mapNotNull { rawPlayer ->
             val player = rawPlayer as? Map<*, *> ?: return@mapNotNull null
             (player["uidTemporal"] as? String)?.takeIf(String::isNotBlank)
         }.toCollection(linkedSetOf())
-    }
-
-    private fun matchStatePayload(assignedSession: GameSession): Map<String, Any?> {
-        return mapOf(
-            "versionEstado" to OnlineAuthoritativeStateMapper.CURRENT_SCHEMA_VERSION,
-            "fase" to assignedSession.phase.name,
-            "ronda" to assignedSession.round,
-            "phaseIndex" to assignedSession.phaseIndex,
-            "anuncioPublico" to assignedSession.publicAnnouncement,
-            "actualizadaEnLocal" to System.currentTimeMillis(),
-            "actualizadaPor" to onlineTempUid
-        )
     }
 
     private fun sessionFromInitialMatch(payload: Map<String, Any?>): GameSession? {

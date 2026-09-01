@@ -2,7 +2,7 @@
 
 Índice maestro de la documentación del proyecto. La **fuente de verdad es el código**; estos documentos lo describen y se actualizan cuando el código cambia.
 
-> Estado del proyecto: `0.1.16` (versionCode 17). Juego móvil Android de deducción social con modo **local vs IA** y modo **online experimental** sobre Firebase.
+> Estado del proyecto: `0.1.17` (versionCode 18). Juego móvil Android de deducción social con modo **local vs IA** y modo **online experimental** sobre Firebase.
 
 ## Cómo está organizada
 
@@ -24,6 +24,8 @@ docs/
 │   └── decisiones-arquitectura.md
 └── (documentación técnica previa, ya existente)
     ├── firebase-online-schema.md   Contrato Firestore del online (vigente y fiel al código)
+    ├── arquitectura-autoridad-online.md
+    │                                Límite de confianza actual y migración hacia backend
     ├── auditoria-optimizacion-seguridad-2026-08-31.md
     │                                Medidas, cambios y riesgos residuales de la revisión actual
     ├── seguridad-online.md         Auditoría de seguridad del online y plan gratuito
@@ -38,6 +40,7 @@ docs/
 ## Documentos de referencia ya existentes y vigentes
 
 - [`firebase-online-schema.md`](firebase-online-schema.md) — Contrato completo de Firestore para el modo online. **Vigente y fiel al código** (revisado contra `OnlineRoomFirestore.kt` y `firestore.rules`). Es la fuente para el DER/Modelo Relacional de la facultad.
+- [`arquitectura-autoridad-online.md`](arquitectura-autoridad-online.md) — Frontera extraída para inicio/reparto, límite actual del anfitrión y migración compatible hacia autoridad de servidor.
 - [`../ESTADO_ACTUAL.md`](../ESTADO_ACTUAL.md) — Auditoría técnica de solo lectura basada en el código, subsistema por subsistema, con referencias a archivo:línea. Es la base de la sección "estado" del backlog.
 - [`seguridad-online.md`](seguridad-online.md) — Auditoría de seguridad del online (jul 2026): hallazgos priorizados, qué se cerró en `firestore.rules`, qué límites tiene el plan gratuito y qué exige Play Store. La implementación pendiente está en [`desarrollo/specs/SPEC-seguridad-y-moderacion-online.md`](desarrollo/specs/SPEC-seguridad-y-moderacion-online.md).
 - [`auditoria-optimizacion-seguridad-2026-08-31.md`](auditoria-optimizacion-seguridad-2026-08-31.md) — Revisión actual: tamaño antes/después, rendimiento de arranque, dependencias, reglas y acciones externas pendientes.
