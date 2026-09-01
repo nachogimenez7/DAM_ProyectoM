@@ -7,7 +7,17 @@ const {HttpsError, onCall} = require("firebase-functions/v2/https");
 const {OnlineStartError} = require("./onlineStartCore");
 const {startOnlineMatch} = require("./onlineStartService");
 
-if (getApps().length === 0) initializeApp();
+function adminAppOptions() {
+  if (process.env.FUNCTIONS_EMULATOR !== "true") return undefined;
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+  if (!projectId) return undefined;
+  return {
+    projectId,
+    databaseURL: `https://${projectId}-default-rtdb.firebaseio.com`,
+  };
+}
+
+if (getApps().length === 0) initializeApp(adminAppOptions());
 
 function callableError(error) {
   if (!(error instanceof OnlineStartError)) {

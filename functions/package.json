@@ -9,7 +9,8 @@
     "test": "npm run test:unit",
     "test:unit": "node --test test/onlineStartCore.unit.test.js test/onlineStartCallable.unit.test.js",
     "test:integration": "node --test test/onlineStartService.integration.test.js",
-    "check": "node --check src/onlineStartCore.js && node --check src/onlineStartService.js && node --check src/index.js"
+    "simulate:start": "node scripts/simulateOnlineStart.js --runs 5",
+    "check": "node --check src/onlineStartCore.js && node --check src/onlineStartService.js && node --check src/index.js && node --check scripts/simulateOnlineStart.js"
   },
   "dependencies": {
     "firebase-admin": "13.10.0",

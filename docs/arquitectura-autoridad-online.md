@@ -71,11 +71,15 @@ npm install
 npm --prefix functions install
 npm run test:functions-unit
 npm run test:functions
+npm run simulate:functions-local
 ```
 
 `test:functions-unit` cubre politica, composicion, privacidad, autenticacion e idempotencia.
 `test:functions` levanta Functions, Firestore y RTDB Emulator y verifica las escrituras completas,
 el rechazo de intrusos, el desempate sin efectos y la reparacion de RTDB tras un fallo parcial.
+`simulate:functions-local` mide inicio, reintentos, llamada callable y concurrencia despues de un
+calentamiento. Los valores son comparativos: no incluyen Internet y el emulador no representa el
+escalado de Google Cloud.
 
 No ejecutar `firebase deploy --only functions` en esta etapa. El proyecto sigue en Spark y el
 despliegue de Cloud Functions requiere una decision explicita sobre Blaze.
