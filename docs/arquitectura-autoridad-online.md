@@ -7,7 +7,7 @@ embargo, el anfitrion activo todavia ejecuta `GameEngine`, reparte roles y publi
 los demas clientes aceptan. Un APK de anfitrion modificado sigue pudiendo fabricar un resultado
 valido para las reglas.
 
-La primera frontera extraida vive en `OnlineMatchStartContract.kt`:
+La primera frontera extraida en Android vive en `OnlineMatchStartContract.kt`:
 
 - `OnlineMatchStartPolicy` decide si una sala puede empezar, normaliza jugadores y resuelve el
   mapa sin depender de Android ni del SDK de Firebase.
@@ -16,8 +16,23 @@ La primera frontera extraida vive en `OnlineMatchStartContract.kt`:
 - `LobbyActivity` conserva por ahora la transaccion y la interaccion visual, pero ya no contiene
   las reglas ni el formato sensible del reparto.
 
-Esta extraccion no vuelve confiable al anfitrion. Su objetivo es fijar un contrato probado antes
-de mover la autoridad y evitar que esa migracion cambie la jugabilidad por accidente.
+El siguiente paso ya existe como backend local en `functions/`:
+
+- `iniciarPartidaV2` es una callable de segunda generacion, ubicada en
+  `southamerica-west1`, que exige Firebase Auth y tiene enforcement de App Check preparado.
+- La funcion vuelve a leer la sala y toda la coleccion de jugadores; no acepta jugadores,
+  conteos, roles ni resultados calculados por el telefono.
+- Una transaccion de Firestore valida al anfitrion, estado, limpieza, cantidad, listos y votos;
+  despues asigna roles con aleatoriedad criptografica y separa el payload publico de los
+  repartos privados.
+- La sincronizacion posterior con RTDB configura membresia y permisos de canales. Si esa segunda
+  escritura falla, un reintento autorizado reconstruye RTDB desde el reparto ya confirmado en
+  Firestore, sin crear otra partida.
+
+La funcion se ejecuta y prueba solo con Firebase Emulator. No esta desplegada, no cambia las
+reglas de produccion y Android todavia usa el flujo compatible del anfitrion. Por lo tanto, esta
+etapa mejora la base y permite probar la migracion, pero por si sola todavia no elimina la trampa
+en la version publicada.
 
 ## Limite de datos
 
@@ -47,6 +62,24 @@ El flujo objetivo es:
 Luego se aplica el mismo patron, por orden de riesgo, a resolucion de acciones nocturnas,
 votacion, eliminaciones, victoria y traspaso de autoridad.
 
+## Pruebas locales
+
+Requisitos: Node 20 y Java disponible para los emuladores. Desde la raiz del repositorio:
+
+```powershell
+npm install
+npm --prefix functions install
+npm run test:functions-unit
+npm run test:functions
+```
+
+`test:functions-unit` cubre politica, composicion, privacidad, autenticacion e idempotencia.
+`test:functions` levanta Functions, Firestore y RTDB Emulator y verifica las escrituras completas,
+el rechazo de intrusos, el desempate sin efectos y la reparacion de RTDB tras un fallo parcial.
+
+No ejecutar `firebase deploy --only functions` en esta etapa. El proyecto sigue en Spark y el
+despliegue de Cloud Functions requiere una decision explicita sobre Blaze.
+
 ## Migracion compatible
 
 - No endurecer reglas mientras una version publicada todavia necesite autoridad de cliente.
@@ -57,6 +90,7 @@ votacion, eliminaciones, victoria y traspaso de autoridad.
 
 ## Proximo cambio
 
-Definir el contrato remoto de `iniciarPartida`, su respuesta y errores, y preparar una
-implementacion de servidor separada. Asociar facturacion o desplegar infraestructura queda fuera
-de esta extraccion y requiere una decision explicita antes de generar costos o cambiar reglas.
+Conectar Android a `iniciarPartidaV2` mediante una version de protocolo y una ruta de prueba que
+apunte al emulador. Mientras no haya backend desplegado, produccion debe conservar el flujo actual.
+Cuando se decida habilitar Blaze, el orden seguro es: desplegar la funcion, publicar un AAB que la
+use, observar errores y adopcion, y solo despues cerrar las escrituras autoritativas antiguas.

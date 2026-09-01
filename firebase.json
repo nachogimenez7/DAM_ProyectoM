@@ -6,12 +6,19 @@
   "database": {
     "rules": "database.rules.json"
   },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
   "emulators": {
     "firestore": {
       "port": 8081
     },
     "database": {
       "port": 9000
+    },
+    "functions": {
+      "port": 5001
     },
     "ui": {
       "enabled": true,
