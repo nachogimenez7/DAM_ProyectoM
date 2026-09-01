@@ -183,7 +183,7 @@ object GoogleAccountLink {
             val error = IllegalStateException("Falta default_web_client_id")
             onResult(
                 CredentialResult.Failed(
-                    "Google todavia no esta configurado en Firebase. Podes usar correo mientras tanto.",
+                    "Google todavia no esta disponible. Podes usar correo mientras tanto.",
                     error
                 )
             )

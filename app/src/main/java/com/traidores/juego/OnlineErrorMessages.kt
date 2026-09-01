@@ -31,10 +31,10 @@ object OnlineErrorMessages {
     private fun firestoreDetail(error: Throwable): String {
         return when ((error as? FirebaseFirestoreException)?.code) {
             FirebaseFirestoreException.Code.PERMISSION_DENIED ->
-                "Firebase rechazo la accion. Revisa que firestore.rules este publicado."
+                "El servidor rechazo la accion. Proba otra vez."
             FirebaseFirestoreException.Code.UNAVAILABLE,
             FirebaseFirestoreException.Code.DEADLINE_EXCEEDED ->
-                "No hay conexion estable con Firebase. Proba otra vez."
+                "No hay conexion estable con el servidor. Proba otra vez."
             FirebaseFirestoreException.Code.NOT_FOUND ->
                 "La sala ya no existe o fue borrada."
             FirebaseFirestoreException.Code.ABORTED,
@@ -61,14 +61,14 @@ object OnlineErrorMessages {
             .orEmpty()
         return when {
             message.contains("PERMISSION_DENIED", ignoreCase = true) ->
-                "Firebase rechazo la accion. Revisa que firestore.rules este publicado."
+                "El servidor rechazo la accion. Proba otra vez."
             message.contains("Missing or insufficient permissions", ignoreCase = true) ->
-                "Firebase rechazo la accion. Revisa que firestore.rules este publicado."
+                "El servidor rechazo la accion. Proba otra vez."
             message.contains("network", ignoreCase = true) ||
-                message.contains("unavailable", ignoreCase = true) ->
-                "No hay conexion estable con Firebase. Proba otra vez."
-            message.isNotBlank() -> message
-            else -> "Error tecnico: ${error.javaClass.simpleName}."
+                message.contains("unavailable", ignoreCase = true) ||
+                message.contains("offline", ignoreCase = true) ->
+                "No hay conexion estable con el servidor. Proba otra vez."
+            else -> "El servidor devolvio un error inesperado. Proba otra vez."
         }
     }
 }

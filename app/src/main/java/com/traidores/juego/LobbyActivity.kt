@@ -2036,7 +2036,7 @@ class LobbyActivity : BaseActivity() {
         OnlineStabilityReport.recordEvent(this, "salida_verificacion_fallo", error.javaClass.simpleName)
         GameDialog.confirm(
             activity = this,
-            title = "Firebase no respondió",
+            title = "Servidor no disponible",
             message = "No pudimos confirmar el estado de la sala. Podés salir igualmente; " +
                 "la app marcará tu presencia como desconectada y el resto podrá continuar.",
             positiveLabel = "SALIR IGUAL",

@@ -78,7 +78,7 @@ object AccountDeletion {
                                     if (error is FirebaseAuthRecentLoginRequiredException) {
                                         "Por seguridad necesitás volver a verificar tu cuenta."
                                     } else {
-                                        "El respaldo y el perfil se borraron, pero Firebase no " +
+                                        "El respaldo y el perfil se borraron, pero el servidor no " +
                                             "pudo cerrar la cuenta. Contactá a Bandido Games."
                                     },
                                     error

@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -30,8 +31,14 @@ class OnlineModeActivity : BaseActivity() {
     private lateinit var btnCreate: Button
     private lateinit var btnJoinCode: Button
     private lateinit var btnRecoverRoom: Button
+    private lateinit var onlineAccessStatus: TextView
     private var pendingRecoveredRoom: OnlineRecoveredRoom? = null
     private var accessCheckInProgress = false
+    private var accessCheckGeneration = 0
+    private var accessFailureCount = 0
+    private val onlineAccessRetry = Runnable {
+        if (!isFinishing && !isDestroyed) verifyOnlineAccess()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +49,7 @@ class OnlineModeActivity : BaseActivity() {
         btnRecoverRoom = findViewById(R.id.btnRecoverRoom)
         btnJoinCode = findViewById(R.id.btnJoinCode)
         btnCreate = findViewById(R.id.btnCreate)
+        onlineAccessStatus = findViewById(R.id.onlineAccessStatus)
 
         btnBack.setOnClickListener { finish() }
 
@@ -94,23 +102,42 @@ class OnlineModeActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        accessFailureCount = 0
         verifyOnlineAccess()
+    }
+
+    override fun onStop() {
+        accessCheckGeneration += 1
+        accessCheckInProgress = false
+        if (::btnCreate.isInitialized) btnCreate.removeCallbacks(onlineAccessRetry)
+        super.onStop()
     }
 
     private fun verifyOnlineAccess() {
         if (accessCheckInProgress) return
+        val generation = ++accessCheckGeneration
+        fun isCurrentAttempt(): Boolean {
+            return generation == accessCheckGeneration && !isFinishing && !isDestroyed
+        }
         accessCheckInProgress = true
         setOnlineActionsEnabled(false)
         OnlineAccessGate.verify(
             context = this,
-            onAllowed = {
+            onAllowed = allowed@{
+                if (!isCurrentAttempt()) return@allowed
                 accessCheckInProgress = false
+                accessFailureCount = 0
+                clearOnlineAccessRetry()
+                showOnlineAccessStatus(null)
                 setOnlineActionsEnabled(true)
                 refreshRecoveredRoomButton()
                 OnlineRoomJanitor.sweepOwnedStaleRooms(this)
             },
-            onBlocked = { ban ->
+            onBlocked = blocked@{ ban ->
+                if (!isCurrentAttempt()) return@blocked
                 accessCheckInProgress = false
+                clearOnlineAccessRetry()
+                showOnlineAccessStatus(null)
                 GameDialog.confirm(
                     activity = this,
                     title = "Acceso online suspendido",
@@ -119,26 +146,34 @@ class OnlineModeActivity : BaseActivity() {
                     negativeLabel = ""
                 ) { finish() }.setCancelable(false)
             },
-            onFailure = { error ->
+            onFailure = failure@{ error ->
+                if (!isCurrentAttempt()) return@failure
                 accessCheckInProgress = false
-                OnlineDebugLog.e("online_access_gate_failure", error)
-                GameNotice.show(
-                    this,
-                    OnlineErrorMessages.forAction(
-                        "No pudimos verificar tu acceso online. Reintentando",
-                        error
-                    ),
-                    GameNotice.Duration.LONG
-                )
-                setOnlineActionsEnabled(false)
-                if (::btnCreate.isInitialized) {
-                    btnCreate.postDelayed(
-                        { if (!isFinishing && !isDestroyed) verifyOnlineAccess() },
-                        ONLINE_ACCESS_RETRY_MS
+                accessFailureCount += 1
+                if (accessFailureCount == 1) {
+                    OnlineDebugLog.e("online_access_gate_failure", error)
+                } else {
+                    OnlineDebugLog.w(
+                        "online_access_gate_retry_failure attempt=$accessFailureCount " +
+                            "cause=${error.javaClass.simpleName}"
                     )
                 }
+                showOnlineAccessStatus("El servidor no responde. Reintentando...")
+                setOnlineActionsEnabled(false)
+                clearOnlineAccessRetry()
+                btnCreate.postDelayed(onlineAccessRetry, ONLINE_ACCESS_RETRY_MS)
             }
         )
+    }
+
+    private fun clearOnlineAccessRetry() {
+        if (::btnCreate.isInitialized) btnCreate.removeCallbacks(onlineAccessRetry)
+    }
+
+    private fun showOnlineAccessStatus(message: String?) {
+        if (!::onlineAccessStatus.isInitialized) return
+        onlineAccessStatus.text = message.orEmpty()
+        onlineAccessStatus.visibility = if (message.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
     private fun setOnlineActionsEnabled(enabled: Boolean) {
