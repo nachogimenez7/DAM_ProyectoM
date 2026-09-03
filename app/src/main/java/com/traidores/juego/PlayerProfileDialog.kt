@@ -152,6 +152,11 @@ object PlayerProfileDialog {
         }
         root.addView(bannerView(activity, profile, compact))
         root.addView(identityRow(activity, profile, compact))
+        if (compact) {
+            root.addView(sectionTitle(activity, "ESTADÍSTICAS", cosmeticTheme).apply {
+                setPadding(0, dp(activity, 2), 0, dp(activity, 6))
+            })
+        }
         root.addView(statsRow(activity, profile.stats, compact, cosmeticTheme))
 
         if (profile.bio.isNotBlank()) {
@@ -452,7 +457,7 @@ object PlayerProfileDialog {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(activity, if (compact) 48 else 54)
+                dp(activity, if (compact) 58 else 54)
             ).apply {
                 bottomMargin = dp(activity, 8)
             }
@@ -478,6 +483,7 @@ object PlayerProfileDialog {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            setPadding(dp(activity, 4), dp(activity, 3), dp(activity, 4), dp(activity, 3))
             background = if (decorated) {
                 CosmeticPilot.profileSurface(activity, cosmeticTheme)
             } else {
@@ -679,11 +685,14 @@ object PlayerProfileDialog {
                 topMargin = dp(activity, 12)
             }
             addView(
-                Button(activity).apply {
+                TextView(activity).apply {
                     tag = "expand"
                     text = "PERFIL COMPLETO"
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    isFocusable = true
                     setTextColor(Color.parseColor("#211407"))
                     background = if (decorated) {
                         CosmeticPilot.primaryButton(activity, cosmeticTheme)
@@ -694,20 +703,21 @@ object PlayerProfileDialog {
                             setColor(activity.getColor(R.color.accent_gold))
                         }
                     }
-                    minHeight = 0
-                    minWidth = 0
                     setPadding(dp(activity, 6), 0, dp(activity, 6), 0)
                 },
-                LinearLayout.LayoutParams(0, dp(activity, 42), 1.3f).apply {
+                LinearLayout.LayoutParams(0, dp(activity, 44), 1f).apply {
                     rightMargin = dp(activity, 8)
                 }
             )
             addView(
-                Button(activity).apply {
+                TextView(activity).apply {
                     tag = "close"
                     text = "CERRAR"
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    isFocusable = true
                     setTextColor(
                         if (decorated) CosmeticPilot.accentColor(cosmeticTheme)
                         else activity.getColor(R.color.accent_gold)
@@ -717,10 +727,8 @@ object PlayerProfileDialog {
                     } else {
                         chipBackground(activity, "#2A2318", "#6B4F2A", 10)
                     }
-                    minHeight = 0
-                    minWidth = 0
                 },
-                LinearLayout.LayoutParams(0, dp(activity, 42), 1f)
+                LinearLayout.LayoutParams(0, dp(activity, 44), 1f)
             )
         }
     }

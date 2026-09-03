@@ -18,6 +18,7 @@ object CosmeticPilot {
     const val THEME_SPACE = "space"
     const val THEME_SEA = "sea"
     const val THEME_FIRE = "fire"
+    const val DEFAULT_THEME = THEME_CLASSIC
 
     const val accentCyan = "#62E9FF"
     const val accentViolet = "#965CFF"
@@ -25,20 +26,34 @@ object CosmeticPilot {
 
     private const val PREFERENCES = "TraidoresPrefs"
     private const val KEY_THEME = "profile_cosmetic_theme"
+    private const val KEY_THEME_EXPLICIT = "profile_cosmetic_theme_explicit"
     private const val LEGACY_PREFERENCES = "cosmetic_loadout"
     private const val LEGACY_KEY_THEME = "equipped_theme"
 
     fun selectedTheme(context: Context): String {
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        preferences.getString(KEY_THEME, null)?.let(::normalizeTheme)?.let { stored ->
-            return stored
+        val stored = preferences.getString(KEY_THEME, null)
+        resolveStoredTheme(
+            stored,
+            preferences.getBoolean(KEY_THEME_EXPLICIT, false)
+        )?.let { resolved ->
+            if (resolved != normalizeTheme(stored)) {
+                // Las versiones iniciales guardaban Espacial automáticamente aunque el
+                // usuario nunca lo hubiera elegido. Esta migración lo devuelve a Clásico
+                // una sola vez; una elección hecha desde el selector queda marcada abajo.
+                preferences.edit().putString(KEY_THEME, resolved).apply()
+            }
+            return resolved
         }
         val legacy = context.getSharedPreferences(LEGACY_PREFERENCES, Context.MODE_PRIVATE)
             .getString(LEGACY_KEY_THEME, null)
             ?.let(::normalizeTheme)
-            ?: THEME_SPACE
-        preferences.edit().putString(KEY_THEME, legacy).apply()
-        return legacy
+        val resolved = legacy ?: DEFAULT_THEME
+        preferences.edit()
+            .putString(KEY_THEME, resolved)
+            .putBoolean(KEY_THEME_EXPLICIT, legacy != null)
+            .apply()
+        return resolved
     }
 
     fun isSpaceEnabled(context: Context): Boolean = selectedTheme(context) == THEME_SPACE
@@ -56,11 +71,17 @@ object CosmeticPilot {
     }
 
     fun selectTheme(context: Context, theme: String) {
-        val validTheme = normalizeTheme(theme) ?: THEME_CLASSIC
+        val validTheme = normalizeTheme(theme) ?: DEFAULT_THEME
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_THEME, validTheme)
+            .putBoolean(KEY_THEME_EXPLICIT, true)
             .apply()
+    }
+
+    internal fun resolveStoredTheme(theme: String?, explicitlySelected: Boolean): String? {
+        val normalized = normalizeTheme(theme) ?: return null
+        return if (normalized == THEME_SPACE && !explicitlySelected) DEFAULT_THEME else normalized
     }
 
     fun displayName(theme: String?): String = when (normalizeTheme(theme)) {

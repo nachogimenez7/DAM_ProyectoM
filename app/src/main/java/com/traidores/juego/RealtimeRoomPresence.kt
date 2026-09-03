@@ -39,6 +39,7 @@ class RealtimeRoomPresence(
     private var socketConnected = false
     private var membershipGranted = false
     private var membershipAccessKey = ""
+    private var presenceListenerAttached = false
     private var publishGeneration = 0
 
     private val membershipListener = object : ValueEventListener {
@@ -50,8 +51,12 @@ class RealtimeRoomPresence(
             membershipGranted = granted
             membershipAccessKey = nextAccessKey
             if (!granted) {
+                detachPresenceListener()
                 markOwnPresenceUnavailable()
-            } else if (accessChanged && socketConnected && desiredConnected) {
+            } else {
+                attachPresenceListener()
+            }
+            if (granted && accessChanged && socketConnected && desiredConnected) {
                 // Los permisos de chat dependen de vivo/traidor/invitadoOraculo. Si alguno
                 // cambia (por ejemplo, justo al morir), hay que volver a habilitar los
                 // listeners de contenido aunque el jugador ya figurara como miembro activo.
@@ -81,6 +86,7 @@ class RealtimeRoomPresence(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            presenceListenerAttached = false
             markOwnPresenceUnavailable()
             onError(error.toException())
         }
@@ -110,7 +116,6 @@ class RealtimeRoomPresence(
         desiredConnected = true
         markOwnPresenceUnavailable()
         ownMembership.addValueEventListener(membershipListener)
-        presenceRoot.addValueEventListener(presenceListener)
         connectionState.addValueEventListener(connectionListener)
     }
 
@@ -144,7 +149,7 @@ class RealtimeRoomPresence(
         membershipAccessKey = ""
         markOwnPresenceUnavailable()
         ownMembership.removeEventListener(membershipListener)
-        presenceRoot.removeEventListener(presenceListener)
+        detachPresenceListener()
         connectionState.removeEventListener(connectionListener)
         started = false
         if (markDisconnected) publishOffline()
@@ -168,6 +173,18 @@ class RealtimeRoomPresence(
                     onError(failure)
                 }
         }
+    }
+
+    private fun attachPresenceListener() {
+        if (presenceListenerAttached || !started || !membershipGranted) return
+        presenceListenerAttached = true
+        presenceRoot.addValueEventListener(presenceListener)
+    }
+
+    private fun detachPresenceListener() {
+        if (!presenceListenerAttached) return
+        presenceRoot.removeEventListener(presenceListener)
+        presenceListenerAttached = false
     }
 
     private fun publishOffline() {

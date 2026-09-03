@@ -26,4 +26,33 @@ class CosmeticPilotTest {
         assertTrue(CosmeticPilot.isDecoratedTheme(CosmeticPilot.THEME_SEA))
         assertTrue(CosmeticPilot.isDecoratedTheme(CosmeticPilot.THEME_FIRE))
     }
+
+    @Test
+    fun newProfilesStartWithTheClassicTheme() {
+        assertEquals(CosmeticPilot.THEME_CLASSIC, CosmeticPilot.DEFAULT_THEME)
+    }
+
+    @Test
+    fun automaticLegacySpaceThemeMigratesToClassicButExplicitSpaceIsPreserved() {
+        assertEquals(
+            CosmeticPilot.THEME_CLASSIC,
+            CosmeticPilot.resolveStoredTheme(CosmeticPilot.THEME_SPACE, explicitlySelected = false)
+        )
+        assertEquals(
+            CosmeticPilot.THEME_SPACE,
+            CosmeticPilot.resolveStoredTheme(CosmeticPilot.THEME_SPACE, explicitlySelected = true)
+        )
+    }
+
+    @Test
+    fun botsAlwaysUseTheClassicTheme() {
+        assertEquals(
+            CosmeticPilot.THEME_CLASSIC,
+            BotProfileFactory.profileFor("Thiago").cosmeticThemeId
+        )
+        assertEquals(
+            CosmeticPilot.THEME_CLASSIC,
+            BotProfileFactory.profileFor("Bot de prueba").cosmeticThemeId
+        )
+    }
 }

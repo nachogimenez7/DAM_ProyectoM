@@ -1069,7 +1069,10 @@ class GameplayChatController(
             host.currentSession.round,
             host.currentSession.publicAnnouncement,
             host.currentSession.players.mapNotNull { it.role?.key },
-            host.gameplayTextScale
+            host.gameplayTextScale,
+            host.currentSession.players.joinToString { player ->
+                "${player.name}:${host.cosmeticThemeForPlayer(player.name)}"
+            }
         ).joinToString("|")
 
         if (lastAmbientFeedRenderKey == renderKey && chatAmbientMessages.childCount > 0) {
@@ -1272,13 +1275,20 @@ class GameplayChatController(
             setPadding(0, host.dp(2), 0, host.dp(2))
         }
         val speakerName = entry.speaker.orEmpty()
+        val speakerTheme = host.cosmeticThemeForPlayer(speakerName)
+        val themedPublicMessage = channel == ChatChannel.PUBLICO &&
+            CosmeticPilot.isDecoratedTheme(speakerTheme)
         val speaker = TextView(root.context).apply {
             text = "$speakerName:"
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTextColor(
                 when (channel) {
-                    ChatChannel.PUBLICO -> PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    ChatChannel.PUBLICO -> if (themedPublicMessage) {
+                        CosmeticPilot.accentColor(speakerTheme)
+                    } else {
+                        PlayerChatColor.colorFor(speakerName, host.currentSession)
+                    }
                     ChatChannel.TRAIDORES -> Color.parseColor("#C15A65")
                     ChatChannel.ESPECTADORES -> Color.parseColor("#8FB3DF")
                 }
@@ -1290,13 +1300,17 @@ class GameplayChatController(
             text = entry.text
             maxLines = CHAT_AMBIENT_MESSAGE_MAX_LINES
             setTextColor(
-                root.context.getColor(
-                    when (channel) {
-                        ChatChannel.PUBLICO -> R.color.text_primary
-                        ChatChannel.TRAIDORES -> R.color.traitor_text
-                        ChatChannel.ESPECTADORES -> R.color.espectro_text
-                    }
-                )
+                if (themedPublicMessage) {
+                    CosmeticPilot.textColor(speakerTheme)
+                } else {
+                    root.context.getColor(
+                        when (channel) {
+                            ChatChannel.PUBLICO -> R.color.text_primary
+                            ChatChannel.TRAIDORES -> R.color.traitor_text
+                            ChatChannel.ESPECTADORES -> R.color.espectro_text
+                        }
+                    )
+                }
             )
             textSize = 12f * host.gameplayTextScale
         }
@@ -1414,8 +1428,14 @@ class GameplayChatController(
         chatFeedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
         chatFeedTitle.typeface = Typeface.DEFAULT_BOLD
         chatAmbientTitle.typeface = Typeface.DEFAULT_BOLD
-        chatAmbientTitle.setTextColor(root.context.getColor(R.color.accent_gold))
-        chatFeedTitle.setTextColor(root.context.getColor(R.color.accent_gold))
+        val humanTheme = humanCosmeticTheme()
+        val titleColor = if (CosmeticPilot.isDecoratedTheme(humanTheme)) {
+            CosmeticPilot.accentColor(humanTheme)
+        } else {
+            root.context.getColor(R.color.accent_gold)
+        }
+        chatAmbientTitle.setTextColor(titleColor)
+        chatFeedTitle.setTextColor(titleColor)
         if (!shouldCompactBottomPlayerPanel()) {
             chatRoleChip.visibility = View.GONE
         }
@@ -2008,7 +2028,10 @@ class GameplayChatController(
             chatPanel.width,
             host.isOnlineGameplay(),
             unreadMessagesOnOpen,
-            isTypingFocusMode
+            isTypingFocusMode,
+            host.currentSession.players.joinToString { player ->
+                "${player.name}:${host.cosmeticThemeForPlayer(player.name)}"
+            }
         ).joinToString("|")
         if (lastExpandedChatRenderKey == renderKey && chatMessagesContainer.childCount > 0) {
             return
@@ -2083,6 +2106,7 @@ class GameplayChatController(
             val ownMessage = speakerName == humanName
             addChatBubble(
                 speaker = if (ownMessage) "VOS" else speakerName.uppercase(),
+                themePlayerName = speakerName,
                 body = entry.text,
                 speakerColor = if (ownMessage) {
                     root.context.getColor(
@@ -2107,6 +2131,7 @@ class GameplayChatController(
         typingSpeakers.forEach { speaker ->
             addChatBubble(
                 speaker = speaker.uppercase(),
+                themePlayerName = speaker,
                 body = "esta escribiendo...",
                 speakerColor = PlayerChatColor.colorFor(speaker, host.currentSession),
                 ownMessage = false,
@@ -2433,8 +2458,14 @@ class GameplayChatController(
         btnChatFeedFilter.visibility = View.VISIBLE
         btnChatFeedFilter.isEnabled = true
         btnChatFeedFilter.alpha = if (showOnlyEvents) 1f else 0.82f
-        btnChatFeedFilter.setBackgroundResource(R.drawable.bg_btn_dark)
-        btnChatFeedFilter.setTextColor(root.context.getColor(R.color.text_primary))
+        val humanTheme = humanCosmeticTheme()
+        if (CosmeticPilot.isDecoratedTheme(humanTheme)) {
+            btnChatFeedFilter.background = CosmeticPilot.profileSurface(root.context, humanTheme)
+            btnChatFeedFilter.setTextColor(CosmeticPilot.textColor(humanTheme))
+        } else {
+            btnChatFeedFilter.setBackgroundResource(R.drawable.bg_btn_dark)
+            btnChatFeedFilter.setTextColor(root.context.getColor(R.color.text_primary))
+        }
     }
 
     private fun renderChannelTabs(channel: ChatChannel) {
@@ -2485,6 +2516,19 @@ class GameplayChatController(
             },
             immersivePrivateStyle = immersivePrivateStyle
         )
+        val humanTheme = humanCosmeticTheme()
+        if (CosmeticPilot.isDecoratedTheme(humanTheme)) {
+            val publicSelected = channel == ChatChannel.PUBLICO
+            btnChatPublicTab.background = if (publicSelected) {
+                CosmeticPilot.primaryButton(root.context, humanTheme)
+            } else {
+                CosmeticPilot.profileSurface(root.context, humanTheme)
+            }
+            btnChatPublicTab.setTextColor(
+                if (publicSelected) Color.parseColor("#160D08")
+                else CosmeticPilot.textColor(humanTheme)
+            )
+        }
     }
 
     private fun styleChannelTab(
@@ -2628,6 +2672,7 @@ class GameplayChatController(
 
     private fun addChatBubble(
         speaker: String,
+        themePlayerName: String,
         body: String,
         speakerColor: Int,
         ownMessage: Boolean,
@@ -2635,7 +2680,9 @@ class GameplayChatController(
         muted: Boolean
     ) {
         val channel = activeChatChannel()
-        val speakerTheme = host.cosmeticThemeForPlayer(speaker)
+        // El rótulo visible puede ser "VOS" o estar en mayúsculas. Para resolver el
+        // cosmético siempre usamos el nombre real almacenado en la sesión.
+        val speakerTheme = host.cosmeticThemeForPlayer(themePlayerName)
         val themedPublicMessage = channel == ChatChannel.PUBLICO &&
             CosmeticPilot.isDecoratedTheme(speakerTheme)
         val row = LinearLayout(root.context).apply {
@@ -2688,19 +2735,17 @@ class GameplayChatController(
             text = body
             maxWidth = bubbleMaxWidth
             setTextColor(
-                root.context.getColor(
-                    when (channel) {
-                        ChatChannel.TRAIDORES -> R.color.traitor_text
-                        ChatChannel.ESPECTADORES -> R.color.espectro_text
-                        ChatChannel.PUBLICO -> if (themedPublicMessage) {
-                            R.color.text_primary
-                        } else if (ownMessage) {
-                            R.color.bg_dark
-                        } else {
-                            R.color.text_primary
+                if (themedPublicMessage) {
+                    CosmeticPilot.textColor(speakerTheme)
+                } else {
+                    root.context.getColor(
+                        when (channel) {
+                            ChatChannel.TRAIDORES -> R.color.traitor_text
+                            ChatChannel.ESPECTADORES -> R.color.espectro_text
+                            ChatChannel.PUBLICO -> if (ownMessage) R.color.bg_dark else R.color.text_primary
                         }
-                    }
-                )
+                    )
+                }
             )
             textSize = 12f * host.gameplayTextScale
             if (muted) typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
@@ -4053,11 +4098,13 @@ class GameplayChatController(
 
     private fun renderChatBackgrounds() {
         val channel = activeChatChannel()
+        val humanTheme = humanCosmeticTheme()
         val renderKey = listOf(
             host.currentSession.mapKey,
             channel.name,
             canHumanChatInChannel(channel),
-            host.isOnlineGameplay()
+            host.isOnlineGameplay(),
+            humanTheme
         ).joinToString("|")
         if (lastChatBackgroundRenderKey == renderKey) return
         lastChatBackgroundRenderKey = renderKey
@@ -4090,15 +4137,28 @@ class GameplayChatController(
         chatHeader.background = null
         chatHeader.setPadding(0, 0, 0, 0)
         chatComposer.background = null
-        btnCloseChat.setBackgroundResource(R.drawable.bg_btn_dark)
-        btnCloseChat.setColorFilter(root.context.getColor(R.color.text_primary))
-        chatInput.setBackgroundResource(R.drawable.bg_chat_input)
-        chatInput.setTextColor(root.context.getColor(R.color.text_primary))
-        chatInput.setHintTextColor(root.context.getColor(R.color.text_muted))
-        btnSendChat.setBackgroundResource(R.drawable.bg_btn_gold)
+        val decorated = CosmeticPilot.isDecoratedTheme(humanTheme)
+        if (decorated) {
+            btnCloseChat.background = CosmeticPilot.profileSurface(root.context, humanTheme)
+            btnCloseChat.setColorFilter(CosmeticPilot.accentColor(humanTheme))
+            chatInput.background = CosmeticPilot.profileSurface(root.context, humanTheme)
+            chatInput.setTextColor(CosmeticPilot.textColor(humanTheme))
+            chatInput.setHintTextColor(colorWithAlpha(CosmeticPilot.textColor(humanTheme), 150))
+            btnSendChat.background = CosmeticPilot.primaryButton(root.context, humanTheme)
+        } else {
+            btnCloseChat.setBackgroundResource(R.drawable.bg_btn_dark)
+            btnCloseChat.setColorFilter(root.context.getColor(R.color.text_primary))
+            chatInput.setBackgroundResource(R.drawable.bg_chat_input)
+            chatInput.setTextColor(root.context.getColor(R.color.text_primary))
+            chatInput.setHintTextColor(root.context.getColor(R.color.text_muted))
+            btnSendChat.setBackgroundResource(R.drawable.bg_btn_gold)
+        }
         btnSendChat.typeface = Typeface.DEFAULT_BOLD
         btnSendChat.setTextColor(root.context.getColor(R.color.bg_dark))
-        chatNewMessages.setTextColor(root.context.getColor(R.color.accent_gold))
+        chatNewMessages.setTextColor(
+            if (decorated) CosmeticPilot.accentColor(humanTheme)
+            else root.context.getColor(R.color.accent_gold)
+        )
         val ambientAlpha = when (host.currentSession.mapKey) {
             "grecia" -> 0.54f
             "medieval" -> 0.64f
@@ -4262,6 +4322,10 @@ class GameplayChatController(
         }
     }
 
+    private fun humanCosmeticTheme(): String {
+        return host.cosmeticThemeForPlayer(GameEngine.humanPlayer(host.currentSession).name)
+    }
+
     private fun canUseTraitorChatUi(session: GameSession): Boolean {
         return GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(session))
     }
@@ -4368,10 +4432,10 @@ class GameplayChatController(
         private const val CHAT_AMBIENT_READY_GAP_DP = 6
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
-        private const val BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP = 60
+        private const val BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP = 72
         private const val BOTTOM_PLAYER_PANEL_KEYBOARD_HEIGHT_DP = 42
         private const val BOTTOM_PLAYER_ROLE_CARD_HEIGHT_DP = 86
-        private const val BOTTOM_PLAYER_ROLE_CARD_CHAT_HEIGHT_DP = 48
+        private const val BOTTOM_PLAYER_ROLE_CARD_CHAT_HEIGHT_DP = 58
         private const val CHAT_MESSAGE_MAX_LENGTH = 140
         private const val CHAT_MESSAGE_WARNING_LENGTH = 120
         private const val ONLINE_CHAT_COOLDOWN_MS = 1200L

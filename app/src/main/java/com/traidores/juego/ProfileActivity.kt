@@ -1441,27 +1441,310 @@ class ProfileActivity : BaseActivity() {
             CosmeticPilot.THEME_CLASSIC to "CLÁSICO · sin decoración",
             CosmeticPilot.THEME_SPACE to "ESPACIAL · Órbita violeta",
             CosmeticPilot.THEME_SEA to "MAR · Abismo Real",
-            CosmeticPilot.THEME_FIRE to "FUEGO · Forja Infernal"
+            CosmeticPilot.THEME_FIRE to "LAVA · Forja Infernal"
         )
-        val options = themes.map { (theme, label) ->
-            if (currentTheme == theme) "✓ $label" else label
+        var previewTheme = currentTheme
+        val themeButtons = linkedMapOf<String, TextView>()
+
+        val previewBackground = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = null
         }
-        GameDialog.choose(
+        val previewShade = View(this)
+        val previewAvatarFrame = FrameLayout(this).apply {
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        val previewAvatar = CircleProfileImageView(this).apply {
+            contentDescription = null
+        }
+        previewAvatarFrame.addView(
+            previewAvatar,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        renderAvatar(previewAvatar, allowPendingPhoto = isEditing)
+
+        val previewName = TextView(this).apply {
+            text = draftProfile.name.ifBlank { "JUGADOR" }.uppercase()
+            textSize = 16f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(9), dp(4), dp(9), dp(4))
+        }
+        val previewStyleName = TextView(this).apply {
+            textSize = 10f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            maxLines = 1
+            setPadding(dp(9), dp(3), dp(9), 0)
+        }
+        val previewIdentity = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                previewName,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                previewStyleName,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        val previewHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(previewAvatarFrame, LinearLayout.LayoutParams(dp(62), dp(62)).apply {
+                rightMargin = dp(10)
+            })
+            addView(previewIdentity, LinearLayout.LayoutParams(0, dp(62), 1f))
+        }
+        val previewBubble = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(11), dp(7), dp(11), dp(8))
+            addView(TextView(this@ProfileActivity).apply {
+                tag = "cosmetic_preview_speaker"
+                text = "VOS"
+                textSize = 9f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            })
+            addView(TextView(this@ProfileActivity).apply {
+                tag = "cosmetic_preview_message"
+                text = "Este es el aspecto de tus mensajes públicos."
+                textSize = 12f
+            })
+        }
+        val previewContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            addView(previewHeader)
+            addView(
+                previewBubble,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(10)
+                    marginStart = dp(28)
+                }
+            )
+        }
+        val previewCard = FrameLayout(this).apply {
+            clipToOutline = true
+            addView(
+                previewBackground,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                previewShade,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+            addView(
+                previewContent,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+
+        val selectorContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(2), 0, dp(2), dp(4))
+            addView(TextView(this@ProfileActivity).apply {
+                text = "VISTA PREVIA"
+                setTextColor(getColor(R.color.accent_gold))
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(7))
+            })
+            addView(
+                previewCard,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(166)
+                )
+            )
+            addView(TextView(this@ProfileActivity).apply {
+                text = "TOCÁ UN ESTILO PARA PROBARLO"
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 10.5f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setPadding(0, dp(12), 0, dp(7))
+            })
+            themes.forEachIndexed { index, (theme, label) ->
+                val option = TextView(this@ProfileActivity).apply {
+                    text = label
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        previewTheme = theme
+                        refreshCosmeticPreview(
+                            selectedTheme = previewTheme,
+                            equippedTheme = currentTheme,
+                            themes = themes,
+                            buttons = themeButtons,
+                            previewBackground = previewBackground,
+                            previewShade = previewShade,
+                            previewCard = previewCard,
+                            previewAvatarFrame = previewAvatarFrame,
+                            previewName = previewName,
+                            previewStyleName = previewStyleName,
+                            previewBubble = previewBubble
+                        )
+                    }
+                }
+                themeButtons[theme] = option
+                addView(
+                    option,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(42)
+                    ).apply {
+                        if (index > 0) topMargin = dp(6)
+                    }
+                )
+            }
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = false
+            addView(
+                selectorContent,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        refreshCosmeticPreview(
+            selectedTheme = previewTheme,
+            equippedTheme = currentTheme,
+            themes = themes,
+            buttons = themeButtons,
+            previewBackground = previewBackground,
+            previewShade = previewShade,
+            previewCard = previewCard,
+            previewAvatarFrame = previewAvatarFrame,
+            previewName = previewName,
+            previewStyleName = previewStyleName,
+            previewBubble = previewBubble
+        )
+        GameDialog.custom(
             activity = this,
-            title = "DECORACIÓN",
-            message = "Elegí el conjunto para tu perfil, nombre, emotes y burbuja de chat.",
-            options = options
-        ) { selectedIndex ->
-            val selectedTheme = themes.getOrNull(selectedIndex)?.first
-                ?: CosmeticPilot.THEME_CLASSIC
-            CosmeticPilot.selectTheme(this, selectedTheme)
-            profileCloudSyncPending = true
-            renderProfile()
-            Toast.makeText(
-                this,
-                "Conjunto ${CosmeticPilot.displayName(selectedTheme)} equipado.",
-                Toast.LENGTH_SHORT
-            ).show()
+            contentView = scroll,
+            widthDp = 460,
+            negativeLabel = "CANCELAR",
+            positiveLabel = "EQUIPAR",
+            onPositive = {
+                CosmeticPilot.selectTheme(this, previewTheme)
+                profileCloudSyncPending = true
+                renderProfile()
+                Toast.makeText(
+                    this,
+                    "Conjunto ${CosmeticPilot.displayName(previewTheme)} equipado.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+
+    private fun refreshCosmeticPreview(
+        selectedTheme: String,
+        equippedTheme: String,
+        themes: List<Pair<String, String>>,
+        buttons: Map<String, TextView>,
+        previewBackground: ImageView,
+        previewShade: View,
+        previewCard: View,
+        previewAvatarFrame: View,
+        previewName: TextView,
+        previewStyleName: TextView,
+        previewBubble: LinearLayout
+    ) {
+        val decorated = CosmeticPilot.isDecoratedTheme(selectedTheme)
+        val accent = if (decorated) {
+            CosmeticPilot.accentColor(selectedTheme)
+        } else {
+            getColor(R.color.accent_gold)
+        }
+        val textColor = if (decorated) {
+            CosmeticPilot.textColor(selectedTheme)
+        } else {
+            getColor(R.color.text_primary)
+        }
+        previewBackground.setImageResource(CosmeticPilot.profileBackgroundRes(selectedTheme))
+        previewShade.setBackgroundColor(CosmeticPilot.profileShadeColor(selectedTheme))
+        previewCard.background = if (decorated) {
+            CosmeticPilot.profilePanelOverlay(this, selectedTheme)
+        } else {
+            getDrawable(R.drawable.bg_profile_panel)
+        }
+        previewAvatarFrame.background = if (decorated) {
+            CosmeticPilot.avatarFrame(this, selectedTheme)
+        } else {
+            getDrawable(R.drawable.bg_profile_avatar_frame)
+        }
+        previewName.background = if (decorated) {
+            CosmeticPilot.namePlate(this, selectedTheme)
+        } else {
+            getDrawable(R.drawable.bg_profile_stat)
+        }
+        previewName.setTextColor(accent)
+        previewStyleName.text = CosmeticPilot.displayName(selectedTheme).uppercase()
+        previewStyleName.setTextColor(textColor)
+        previewBubble.background = if (decorated) {
+            CosmeticPilot.chatMessageBubble(this, selectedTheme)
+        } else {
+            getDrawable(R.drawable.bg_chat_bubble_own)
+        }
+        previewBubble.findViewWithTag<TextView>("cosmetic_preview_speaker")?.setTextColor(
+            if (decorated) accent else getColor(R.color.bg_dark)
+        )
+        previewBubble.findViewWithTag<TextView>("cosmetic_preview_message")?.setTextColor(
+            if (decorated) textColor else getColor(R.color.bg_dark)
+        )
+        themes.forEach { (theme, label) ->
+            val button = buttons[theme] ?: return@forEach
+            val selected = theme == selectedTheme
+            val equipped = theme == equippedTheme
+            button.text = buildString {
+                if (selected) append("● ")
+                append(label)
+                if (equipped) append(" · EQUIPADO")
+            }
+            val optionDecorated = CosmeticPilot.isDecoratedTheme(theme)
+            button.background = when {
+                selected && optionDecorated -> CosmeticPilot.primaryButton(this, theme)
+                optionDecorated -> CosmeticPilot.profileSurface(this, theme)
+                selected -> getDrawable(R.drawable.bg_btn_gold)
+                else -> getDrawable(R.drawable.bg_btn_dark)
+            }
+            button.setTextColor(
+                when {
+                    selected -> getColor(R.color.bg_dark)
+                    optionDecorated -> CosmeticPilot.textColor(theme)
+                    else -> getColor(R.color.text_primary)
+                }
+            )
+            button.alpha = if (selected) 1f else 0.88f
         }
     }
 

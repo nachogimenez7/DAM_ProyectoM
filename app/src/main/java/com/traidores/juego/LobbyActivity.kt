@@ -191,6 +191,8 @@ class LobbyActivity : BaseActivity() {
     private var realtimePresence: RealtimeRoomPresence? = null
     private var realtimeGameplaySync: RealtimeGameplaySync? = null
     private var realtimeLobbySyncRestartRunnable: Runnable? = null
+    private var realtimeLobbyAccessSyncInProgress = false
+    private var pendingRealtimeLobbyMembers: Map<String, RealtimeRoomMemberAccess>? = null
     private var lobbyReconnectGraceRefreshRunnable: Runnable? = null
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
@@ -466,7 +468,6 @@ class LobbyActivity : BaseActivity() {
             enteringOnlineMatch = false
             lobbyRealtimeAccessReady = false
             startRealtimePresence()
-            startRealtimeLobbySync()
             markOnlinePresence(PLAYER_STATE_CONNECTED)
             listenToOnlineRoom()
             listenToOnlinePlayers()
@@ -1488,6 +1489,7 @@ class LobbyActivity : BaseActivity() {
             onOwnPresenceReady = {
                 if (realtimePresence != null && !isFinishing) {
                     lobbyRealtimeAccessReady = true
+                    startRealtimeLobbySync()
                     startLobbyChat()
                 }
             },
@@ -2575,17 +2577,40 @@ class LobbyActivity : BaseActivity() {
                 )
             }
         if (members.isEmpty()) return
+        pendingRealtimeLobbyMembers = members
+        drainRealtimeLobbyAccessSync()
+    }
+
+    private fun drainRealtimeLobbyAccessSync() {
+        if (realtimeLobbyAccessSyncInProgress) return
+        val members = pendingRealtimeLobbyMembers ?: return
+        pendingRealtimeLobbyMembers = null
+        realtimeLobbyAccessSyncInProgress = true
+        OnlineDebugLog.i(
+            "rtdb_lobby_access_sync_requested roomId=$onlinePartidaId " +
+                "host=$onlineTempUid members=${members.size}"
+        )
         RealtimeRoomAccess.syncMembers(
             database = FirebaseDatabase.getInstance(),
             roomId = onlinePartidaId,
             hostUid = onlineTempUid,
             matchId = "",
             members = members,
+            onComplete = {
+                realtimeLobbyAccessSyncInProgress = false
+                OnlineDebugLog.i(
+                    "rtdb_lobby_access_sync_success roomId=$onlinePartidaId " +
+                        "host=$onlineTempUid members=${members.size}"
+                )
+                if (!isFinishing && !isDestroyed) drainRealtimeLobbyAccessSync()
+            },
             onFailure = { error ->
+                realtimeLobbyAccessSyncInProgress = false
                 OnlineDebugLog.e(
                     "rtdb_lobby_access_sync_failure roomId=$onlinePartidaId host=$onlineTempUid",
                     error
                 )
+                if (!isFinishing && !isDestroyed) drainRealtimeLobbyAccessSync()
             }
         )
     }
