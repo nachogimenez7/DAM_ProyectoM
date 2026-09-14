@@ -2,9 +2,17 @@ package com.traidores.juego
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.LruCache
 import android.widget.ImageView
 import com.google.android.gms.common.images.ImageManager
 import com.google.android.gms.games.PlayGames
@@ -19,6 +27,11 @@ import java.net.URI
  */
 object PlayGamesProfileAvatar {
     const val MAX_URI_LENGTH = 1000
+    private const val THUMBNAIL_PX = 96
+    private val thumbnails = object : LruCache<String, Bitmap>(2 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            (value.byteCount / 1024).coerceAtLeast(1)
+    }
 
     fun requestCurrent(
         activity: Activity,
@@ -125,18 +138,29 @@ object PlayGamesProfileAvatar {
     ): Boolean {
         val normalized = normalize(uriValue)
         if (normalized.isBlank()) return false
-        image.scaleType = ImageView.ScaleType.FIT_CENTER
-        image.setImageResource(fallbackDrawableRes)
+        val cachedThumbnail = synchronized(thumbnails) { thumbnails.get(normalized) }
+        if (cachedThumbnail != null) {
+            image.scaleType = ImageView.ScaleType.CENTER_CROP
+            image.setImageBitmap(cachedThumbnail)
+        } else {
+            image.scaleType = ImageView.ScaleType.FIT_CENTER
+            image.setImageResource(fallbackDrawableRes)
+        }
         return runCatching {
             ImageManager.create(context.applicationContext).loadImage(
                 ImageManager.OnImageLoadedListener { _, drawable, isRequestedDrawable ->
+                    if (isRequestedDrawable && drawable != null) {
+                        rememberThumbnail(normalized, drawable)
+                    }
                     image.post {
                         if (isRequestedDrawable && drawable != null) {
                             image.scaleType = ImageView.ScaleType.CENTER_CROP
                             image.setImageDrawable(drawable)
                         } else {
-                            image.scaleType = ImageView.ScaleType.FIT_CENTER
-                            image.setImageResource(fallbackDrawableRes)
+                            if (cachedThumbnail == null) {
+                                image.scaleType = ImageView.ScaleType.FIT_CENTER
+                                image.setImageResource(fallbackDrawableRes)
+                            }
                             onUnavailable?.invoke()
                         }
                     }
@@ -148,6 +172,37 @@ object PlayGamesProfileAvatar {
             OnlineDebugLog.e("play_games_avatar_render_failure", error)
             false
         }
+    }
+
+    private fun rememberThumbnail(uri: String, drawable: Drawable) {
+        synchronized(thumbnails) {
+            if (thumbnails.get(uri) != null) return
+        }
+        val thumbnail = runCatching {
+            val bitmap = Bitmap.createBitmap(
+                THUMBNAIL_PX, THUMBNAIL_PX, Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+            if (drawable is BitmapDrawable && drawable.bitmap.width > 0 && drawable.bitmap.height > 0) {
+                val source = drawable.bitmap
+                val side = minOf(source.width, source.height)
+                val left = (source.width - side) / 2
+                val top = (source.height - side) / 2
+                canvas.drawBitmap(
+                    source,
+                    Rect(left, top, left + side, top + side),
+                    RectF(0f, 0f, THUMBNAIL_PX.toFloat(), THUMBNAIL_PX.toFloat()),
+                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                )
+            } else {
+                val oldBounds = drawable.copyBounds()
+                drawable.setBounds(0, 0, THUMBNAIL_PX, THUMBNAIL_PX)
+                drawable.draw(canvas)
+                drawable.setBounds(oldBounds)
+            }
+            bitmap
+        }.getOrNull() ?: return
+        synchronized(thumbnails) { thumbnails.put(uri, thumbnail) }
     }
 
     private fun loadCurrent(

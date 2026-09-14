@@ -2,8 +2,8 @@
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.ImageButton
-import android.widget.LinearLayout
 
 class JugarActivity : BaseActivity() {
 
@@ -16,8 +16,8 @@ class JugarActivity : BaseActivity() {
             finish()
         }
 
-        val cardLocal: LinearLayout = findViewById(R.id.cardLocal)
-        val cardOnline: LinearLayout = findViewById(R.id.cardOnline)
+        val cardLocal: View = findViewById(R.id.cardLocal)
+        val cardOnline: View = findViewById(R.id.cardOnline)
         cardLocal.contentDescription = "Jugar contra la IA"
         cardOnline.contentDescription = "Jugar una partida en linea"
 

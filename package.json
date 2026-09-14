@@ -14,7 +14,12 @@
     "simulate:functions-local": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database,functions \"npm --prefix functions run simulate:start\"",
     "test:firestore-rules-invitados": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-rules-invitados.cjs\"",
     "simulate:online-firebase-local": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database \"node scripts/simulate-online-firebase.cjs --local --runs 10\"",
-    "simulate:online-firebase-real": "node scripts/simulate-online-firebase-real.cjs --runs 10 --project traidores"
+    "simulate:online-firebase-real": "node scripts/simulate-online-firebase-real.cjs --runs 10 --project traidores",
+    "test:online-audit": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore,database,functions \"node scripts/run-online-audit.cjs\"",
+    "test:firestore-votes": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-votes.cjs\"",
+    "test:android-audit": "node scripts/with-jdk.cjs C:\\Windows\\System32\\cmd.exe /d /c gradlew.bat testDebugUnitTest assembleDebug assembleRelease lintDebug -x :app:uploadCrashlyticsMappingFileRelease --console=plain",
+    "cleanup:online-stale:preview": "node scripts/cleanup-stale-online-rooms.cjs",
+    "cleanup:online-stale": "node scripts/cleanup-stale-online-rooms.cjs --apply"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

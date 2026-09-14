@@ -66,7 +66,7 @@ class OnlineProtocolSimulationTest {
         states[expectedIds.last()] = clientState("old-$matchId", ready = true)
         assertFalse(OnlineLobbyEntryGate.canRelease(expectedIds, matchId, states))
 
-        for (elapsed in 0L..3_000L step 100L) {
+        for (elapsed in 0L..4_000L step 100L) {
             expectedIds.forEach { id ->
                 if (id != hostId && arrivalMs.getValue(id) <= elapsed) {
                     states[id] = clientState(matchId, ready = true)
@@ -79,23 +79,14 @@ class OnlineProtocolSimulationTest {
                 localPlayerId = hostId,
                 localPlayerReady = true
             )
-            val safeFallback = OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expectedIds,
-                matchId = matchId,
-                clientStates = states,
-                localPlayerId = hostId,
-                localPlayerReady = true,
-                connectedPlayerIds = expectedIds,
-                elapsedMs = elapsed
-            )
-            if (allReady || safeFallback) {
+            if (allReady) {
                 releasedAt = elapsed
                 break
             }
         }
 
-        assertNotNull("La entrada no puede quedar esperando indefinidamente", releasedAt)
-        assertTrue(releasedAt!! <= OnlineLobbyEntryGate.FULLY_CONNECTED_RELEASE_AFTER_MS)
+        assertNotNull("La entrada debe liberarse cuando llegaron todos los ACK", releasedAt)
+        assertTrue(releasedAt!! >= arrivalMs.filterKeys { it != hostId }.values.maxOrNull()!!)
     }
 
     /** Devuelve true cuando fue necesario usar el watchdog de quorum. */

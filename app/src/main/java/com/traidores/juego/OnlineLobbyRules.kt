@@ -17,6 +17,30 @@ object OnlineLobbyRules {
     const val ROOM_STATE_IN_GAME = "en_juego"
     const val ROOM_STATE_FINISHED = "finalizada"
 
+    /**
+     * UI and RTDB writes must follow the host committed by the room document. A locally sorted
+     * player list is useful to propose a handoff candidate, but it must never grant authority
+     * before the handoff transaction succeeds.
+     */
+    fun isAuthoritativeLobbyHost(
+        playerId: String,
+        activeHostId: String,
+        creatorHostId: String,
+        creatingRoomBeforeFirstSnapshot: Boolean
+    ): Boolean {
+        if (playerId.isBlank()) return false
+        return when {
+            activeHostId.isNotBlank() -> activeHostId == playerId
+            creatorHostId.isNotBlank() -> creatorHostId == playerId
+            else -> creatingRoomBeforeFirstSnapshot
+        }
+    }
+
+    fun isAuthoritativePlayerSnapshot(
+        isFromCache: Boolean,
+        hasPendingWrites: Boolean
+    ): Boolean = !isFromCache && !hasPendingWrites
+
     fun displayedPlayerLimit(
         expectedPlayers: Int?,
         maximumPlayers: Int?,
@@ -33,6 +57,16 @@ object OnlineLobbyRules {
     fun connectedPresenceCount(states: Iterable<String?>): Int {
         return states.count { it == "conectado" }
     }
+
+    /**
+     * El documento de Firestore llega antes que el primer registro RTDB cuando alguien acaba de
+     * entrar. La ausencia de ese registro significa "presencia todavía desconocida", no una
+     * desconexión. Un estado RTDB explícito siempre tiene prioridad sobre el valor transitorio.
+     */
+    fun effectivePresenceConnected(
+        realtimeConnected: Boolean?,
+        firestoreConnected: Boolean
+    ): Boolean = realtimeConnected ?: firestoreConnected
 
     /**
      * Un corte breve de presencia (pantalla bloqueada, cambio de red o Android pausando la

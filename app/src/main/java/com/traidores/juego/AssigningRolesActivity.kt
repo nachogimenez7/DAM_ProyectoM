@@ -28,10 +28,14 @@ class AssigningRolesActivity : BaseActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var dealingAnimator: AnimatorSet? = null
     private var ambientAnimator: AnimatorSet? = null
+    private val scaleIndependentRunnables = mutableListOf<Runnable>()
     private var leavingScreen = false
     private var exitConfirmationDialog: AlertDialog? = null
 
     private val openGameRunnable = Runnable { openGame() }
+    private val startDealingRunnable = Runnable {
+        if (!leavingScreen && !isFinishing && !isDestroyed) startDealingAnimation()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,10 +68,13 @@ class AssigningRolesActivity : BaseActivity() {
             setOnClickListener { handleAssigningBack() }
         }
 
+        val presentationStartDelayMs = intent
+            .getLongExtra(EXTRA_PRESENTATION_START_DELAY_MS, 0L)
+            .coerceIn(0L, OnlineLobbyEntryGate.MAX_PRESENTATION_WAIT_MS)
         findViewById<FrameLayout>(R.id.assigningRoot).post {
-            startDealingAnimation()
+            handler.postDelayed(startDealingRunnable, presentationStartDelayMs)
         }
-        handler.postDelayed(openGameRunnable, ANIMATION_FALLBACK_MS)
+        handler.postDelayed(openGameRunnable, ANIMATION_FALLBACK_MS + presentationStartDelayMs)
     }
 
     private fun startDealingAnimation() {
@@ -196,6 +203,31 @@ class AssigningRolesActivity : BaseActivity() {
         cardShadow.translationX = dp(7).toFloat()
         cardShadow.rotation = -3f
         stage.alpha = 1f
+
+        if (EssentialViewAnimation.requiresFallback(root)) {
+            OnlineDebugLog.i(
+                "essential_presentation_start type=role_dealing engine=frame_clock online=" +
+                    intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()
+            )
+            startScaleIndependentDealing(
+                stage = stage,
+                table = table,
+                candleGlow = candleGlow,
+                vignette = vignette,
+                openHands = openHands,
+                cardGripHands = cardGripHands,
+                finalCard = finalCard,
+                cardAura = cardAura,
+                cardShadow = cardShadow,
+                status = status,
+                backButton = backButton
+            )
+            return
+        }
+        OnlineDebugLog.i(
+            "essential_presentation_start type=role_dealing engine=platform online=" +
+                intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()
+        )
 
         val tableReveal = AnimatorSet().apply {
             duration = 420L
@@ -419,6 +451,100 @@ class AssigningRolesActivity : BaseActivity() {
         }
     }
 
+    private fun startScaleIndependentDealing(
+        stage: View,
+        table: View,
+        candleGlow: View,
+        vignette: View,
+        openHands: View,
+        cardGripHands: View,
+        finalCard: View,
+        cardAura: View,
+        cardShadow: View,
+        status: View,
+        backButton: View
+    ) {
+        handler.removeCallbacks(openGameRunnable)
+        backButton.isEnabled = false
+        EssentialViewAnimation.reveal(stage, durationMs = 420L, fromScale = 1f)
+        EssentialViewAnimation.reveal(table, durationMs = 420L, fromScale = 1.025f)
+        EssentialViewAnimation.reveal(
+            vignette,
+            durationMs = 420L,
+            finalAlpha = 0.78f,
+            fromScale = 1f
+        )
+        EssentialViewAnimation.reveal(
+            candleGlow,
+            durationMs = 420L,
+            finalAlpha = 0.16f,
+            fromScale = 1f
+        )
+        EssentialViewAnimation.slideIn(
+            openHands,
+            fromX = -dp(28).toFloat(),
+            fromY = dp(58).toFloat(),
+            durationMs = 480L,
+            delayMs = 420L
+        )
+        EssentialViewAnimation.slideIn(
+            cardGripHands,
+            fromX = dp(28).toFloat(),
+            fromY = dp(58).toFloat(),
+            durationMs = 480L,
+            delayMs = 420L
+        )
+        EssentialViewAnimation.slideIn(
+            finalCard,
+            fromY = -dp(112).toFloat(),
+            durationMs = 620L,
+            delayMs = 980L
+        )
+        EssentialViewAnimation.reveal(
+            cardAura,
+            durationMs = 620L,
+            delayMs = 980L,
+            fromScale = 0.74f,
+            finalAlpha = 0.58f
+        )
+        EssentialViewAnimation.reveal(
+            cardShadow,
+            durationMs = 620L,
+            delayMs = 980L,
+            fromScale = 0.88f,
+            finalAlpha = 0.48f
+        )
+        EssentialViewAnimation.reveal(
+            status,
+            durationMs = 420L,
+            delayMs = 1_850L,
+            fromScale = 0.96f
+        )
+        scheduleScaleIndependent(420L) {
+            playSoftCardBeat(volume = 0.28f, playbackRate = 0.94f)
+        }
+        scheduleScaleIndependent(980L) { playFinalCardBeat() }
+        scheduleScaleIndependent(2_750L) {
+            EssentialViewAnimation.fadeOut(openHands, 620L) {}
+            EssentialViewAnimation.fadeOut(cardGripHands, 620L) {}
+        }
+        scheduleScaleIndependent(3_650L) {
+            EssentialViewAnimation.fadeOut(stage, 480L) {
+                OnlineDebugLog.i("essential_presentation_finish type=role_dealing engine=frame_clock")
+                openGame()
+            }
+        }
+        handler.postDelayed(openGameRunnable, SCALE_INDEPENDENT_FALLBACK_MS)
+    }
+
+    private fun scheduleScaleIndependent(delayMs: Long, action: () -> Unit) {
+        val runnable = Runnable {
+            if (!leavingScreen && !isFinishing && !isDestroyed) action()
+        }
+        scaleIndependentRunnables += runnable
+        handler.postDelayed(runnable, delayMs)
+    }
+
     private fun shuffleBeat(
         leftCard: ImageView,
         rightCard: ImageView,
@@ -506,6 +632,7 @@ class AssigningRolesActivity : BaseActivity() {
         }
         leavingScreen = true
         handler.removeCallbacks(openGameRunnable)
+        handler.removeCallbacks(startDealingRunnable)
         ambientAnimator?.cancel()
         val session = readSession()
         if (session == null && intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty().isNotBlank()) {
@@ -545,6 +672,9 @@ class AssigningRolesActivity : BaseActivity() {
         if (leavingScreen) return
         leavingScreen = true
         handler.removeCallbacks(openGameRunnable)
+        handler.removeCallbacks(startDealingRunnable)
+        scaleIndependentRunnables.forEach(handler::removeCallbacks)
+        scaleIndependentRunnables.clear()
         dealingAnimator?.removeAllListeners()
         dealingAnimator?.cancel()
         ambientAnimator?.cancel()
@@ -607,6 +737,9 @@ class AssigningRolesActivity : BaseActivity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(openGameRunnable)
+        handler.removeCallbacks(startDealingRunnable)
+        scaleIndependentRunnables.forEach(handler::removeCallbacks)
+        scaleIndependentRunnables.clear()
         dealingAnimator?.removeAllListeners()
         dealingAnimator?.cancel()
         dealingAnimator = null
@@ -627,10 +760,12 @@ class AssigningRolesActivity : BaseActivity() {
     companion object {
         private const val PREFS_NAME = "TraidoresPrefs"
         private const val ANIMATION_FALLBACK_MS = 6_000L
+        private const val SCALE_INDEPENDENT_FALLBACK_MS = 5_000L
         private const val EXIT_CONFIRMATION_RETRY_MS = 250L
         private const val DEALING_STATUS_MESSAGE = "¡Buena suerte con tu rol!"
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
         const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"
         const val EXTRA_ONLINE_IS_HOST = "extra_online_is_host"
+        const val EXTRA_PRESENTATION_START_DELAY_MS = "extra_presentation_start_delay_ms"
     }
 }

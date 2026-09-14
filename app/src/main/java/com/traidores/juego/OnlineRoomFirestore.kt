@@ -42,6 +42,7 @@ object OnlineRoomFirestore {
     const val FIELD_INITIAL_MATCH_CREATED = "partidaInicialCreada"
     const val FIELD_INITIAL_MATCH = "partidaInicial"
     const val FIELD_ENTRY_RELEASED_MATCH_ID = "entradaLiberadaMatchId"
+    const val FIELD_ENTRY_RELEASED_AT = "entradaLiberadaEn"
     const val FIELD_CLEANUP_PENDING = "limpiezaPendiente"
     const val FIELD_ROOM_CODE = "codigoSala"
     const val FIELD_MAP_KEY = "mapa"

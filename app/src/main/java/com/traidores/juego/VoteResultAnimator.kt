@@ -42,6 +42,9 @@ class VoteResultAnimator(
     private val onImpact: (() -> Unit)? = null,
     private val onContinueReady: (() -> Unit)? = null
 ) {
+    var presentationReady = false
+        private set
+
     private companion object {
         const val RECOUNT_INITIAL_DELAY_MS = 420L
         const val RECOUNT_TOKEN_STEP_MS = 420L
@@ -87,6 +90,7 @@ class VoteResultAnimator(
     private var flyingCard: View? = null
 
     fun show(session: GameSession) {
+        presentationReady = false
         cancelAnimations()
         // Vaciar la grilla ANTES de tocar columnCount (evita estados invalidos del GridLayout).
         cardHolders.clear()
@@ -169,12 +173,16 @@ class VoteResultAnimator(
             }
         }
 
-        panel.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(220L)
-            .start()
+        if (EssentialViewAnimation.requiresFallback(panel)) {
+            EssentialViewAnimation.reveal(panel, 300L, fromScale = 0.92f)
+        } else {
+            panel.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(220L)
+                .start()
+        }
 
         val tokens = voteTokens(session).shuffled(
             Random(session.round * 1009 + session.voteRound * 97 + session.votes.size)
@@ -202,6 +210,7 @@ class VoteResultAnimator(
     }
 
     fun playExpulsion(session: GameSession, onFinished: () -> Unit) {
+        presentationReady = false
         cancelScheduled()
         // Vaciar la grilla ANTES de cambiar columnCount (evita estados invalidos del GridLayout).
         cards.removeAllViews()
@@ -254,13 +263,7 @@ class VoteResultAnimator(
         holder.root.alpha = 0f
         holder.root.scaleX = 0.86f
         holder.root.scaleY = 0.86f
-        holder.root.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setInterpolator(OvershootInterpolator(2.0f))
-            .setDuration(320L)
-            .withEndAction {
+        val afterCardEntrance = Runnable {
                 if (session.revealRolesOnDeath) {
                     revealExpelledRoleBeforeKick(session, holder) {
                         schedule(REVEALED_CARD_READ_MS) {
@@ -276,8 +279,24 @@ class VoteResultAnimator(
                         }
                     }
                 }
-            }
-            .start()
+        }
+        if (EssentialViewAnimation.requiresFallback(holder.root)) {
+            EssentialViewAnimation.reveal(
+                holder.root,
+                durationMs = 380L,
+                fromScale = 0.82f,
+                onFinished = afterCardEntrance::run
+            )
+        } else {
+            holder.root.animate()
+                .alpha(1f)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setInterpolator(OvershootInterpolator(2.0f))
+                .setDuration(320L)
+                .withEndAction(afterCardEntrance)
+                .start()
+        }
     }
 
     fun hide() {
@@ -306,6 +325,7 @@ class VoteResultAnimator(
         dust.visibility = View.INVISIBLE
         dust.alpha = 0f
         cardHolders.values.forEach { holder ->
+            EssentialViewAnimation.clear(holder.root, holder.avatar, holder.roleImage, holder.total, holder.voterTokens)
             holder.root.animate().cancel()
             holder.root.alpha = 1f
             holder.root.translationX = 0f
@@ -339,6 +359,20 @@ class VoteResultAnimator(
         holder.roleImage.scaleX = 0.82f
         holder.roleImage.scaleY = 0.82f
         holder.roleImage.visibility = View.VISIBLE
+        if (EssentialViewAnimation.requiresFallback(holder.root)) {
+            holder.avatar.visibility = View.GONE
+            holder.avatar.alpha = 0f
+            holder.roleImage.alpha = 1f
+            holder.roleImage.scaleX = 1f
+            holder.roleImage.scaleY = 1f
+            EssentialViewAnimation.reveal(
+                holder.roleImage,
+                durationMs = 420L,
+                fromScale = 0.72f,
+                onFinished = onRevealed
+            )
+            return
+        }
         holder.avatar.animate()
             .alpha(0f)
             .setDuration(160L)
@@ -357,6 +391,12 @@ class VoteResultAnimator(
     }
 
     private fun applyPanelMode(expulsion: Boolean) {
+        title.setSingleLine(false)
+        title.maxLines = 2
+        title.includeFontPadding = true
+        subtitle.includeFontPadding = true
+        notice.includeFontPadding = true
+        title.setLineSpacing(dp(2).toFloat(), 1f)
         panel.layoutParams = (panel.layoutParams as FrameLayout.LayoutParams).apply {
             width = FrameLayout.LayoutParams.MATCH_PARENT
             height = FrameLayout.LayoutParams.WRAP_CONTENT
@@ -381,11 +421,12 @@ class VoteResultAnimator(
     }
 
     private fun recountCardSize(candidateCount: Int): Pair<Int, Int> {
-        // Las cartas deben entrar en el centro util del marco ornamental, sin scroll.
+        // Reserva aire alrededor de las columnas ornamentales. En pantallas angostas dos
+        // tarjetas de 96 dp rozaban el borde derecho del marco aun cuando la grilla entraba.
         return when {
-            candidateCount <= 2 -> 96 to 136
-            candidateCount <= 4 -> 92 to 128
-            else -> 64 to 108
+            candidateCount <= 2 -> 88 to 132
+            candidateCount <= 4 -> 82 to 122
+            else -> 60 to 104
         }
     }
 
@@ -407,6 +448,11 @@ class VoteResultAnimator(
         }
         setNotice("La sentencia esta por cumplirse.")
         stampSeal(holder)
+
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            playScaleIndependentKick(session, holder, targetName, onFinished)
+            return
+        }
 
         // La bota espera fuera de cuadro, "cargada" (echada atras y girada).
         boot.setImageResource(R.drawable.boot_windup)
@@ -461,6 +507,54 @@ class VoteResultAnimator(
                     }
                 }
                 .start()
+        }
+    }
+
+    private fun playScaleIndependentKick(
+        session: GameSession,
+        holder: VoteCardHolder,
+        targetName: String,
+        onFinished: () -> Unit
+    ) {
+        boot.setImageResource(R.drawable.boot_windup)
+        boot.visibility = View.VISIBLE
+        boot.alpha = 1f
+        boot.translationX = -dp(34).toFloat()
+        boot.rotation = -18f
+        schedule(EXPULSION_SENTENCE_READ_MS) {
+            EssentialViewAnimation.reveal(
+                boot,
+                durationMs = BOOT_ENTER_MS,
+                fromScale = 0.7f
+            ) {
+                schedule(BOOT_WINDUP_MS) {
+                    if (overlay.visibility != View.VISIBLE) return@schedule
+                    boot.setImageResource(R.drawable.ic_kicking_boot)
+                    onImpact?.invoke()
+                    playImpactFlash()
+                    playImpactDust(holder)
+                    EssentialViewAnimation.flyOut(
+                        holder.root,
+                        toX = -overlay.width * 0.9f,
+                        toY = -overlay.height * 0.18f,
+                        durationMs = EXPULSION_LAUNCH_MS
+                    ) {
+                        holder.root.visibility = View.INVISIBLE
+                        boot.visibility = View.INVISIBLE
+                        title.text = "$targetName FUE EXPULSADO"
+                        subtitle.text = if (session.revealRolesOnDeath) {
+                            "Su identidad quedo expuesta ante el pueblo."
+                        } else {
+                            "Su carta permanecio oculta."
+                        }
+                        setNotice("El pueblo dicto su sentencia.")
+                        schedule(EXPULSION_AFTER_KICK_READ_MS) {
+                            setContinueReady("CONTINUAR")
+                            onFinished()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -646,7 +740,7 @@ class VoteResultAnimator(
         setNotice(if (session.alcaldeCorruption) {
             "El poder deja su marca en la jornada."
         } else {
-            "El pueblo continua con la partida."
+            "El pueblo continúa con la partida."
         })
         schedule(EXPULSION_AFTER_KICK_READ_MS) {
             setContinueReady("CONTINUAR")
@@ -742,10 +836,17 @@ class VoteResultAnimator(
         continueButton.text = label
         continueButton.visibility = View.VISIBLE
         continueButton.isEnabled = true
+        if (EssentialViewAnimation.requiresFallback(continueButton)) {
+            EssentialViewAnimation.reveal(continueButton, 180L, fromScale = 0.94f)
+            presentationReady = true
+            onContinueReady?.invoke()
+            return
+        }
         continueButton.animate()
             .alpha(1f)
             .setDuration(180L)
             .start()
+        presentationReady = true
         onContinueReady?.invoke()
     }
 
@@ -811,6 +912,11 @@ class VoteResultAnimator(
             setMargins(dp(1), dp(1), dp(1), dp(1))
         }
         holder.voterTokens.addView(tokenView, params)
+        if (EssentialViewAnimation.requiresFallback(tokenView)) {
+            EssentialViewAnimation.reveal(tokenView, 240L, fromScale = 0.35f)
+            EssentialViewAnimation.reveal(holder.root, 180L, fromScale = 0.97f)
+            return
+        }
         tokenView.animate()
             .alpha(1f)
             .scaleX(1f)

@@ -457,7 +457,7 @@ object PlayerProfileDialog {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(activity, if (compact) 58 else 54)
+                dp(activity, 62)
             ).apply {
                 bottomMargin = dp(activity, 8)
             }
@@ -483,7 +483,7 @@ object PlayerProfileDialog {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(activity, 4), dp(activity, 3), dp(activity, 4), dp(activity, 3))
+            setPadding(dp(activity, 6), dp(activity, 5), dp(activity, 6), dp(activity, 5))
             background = if (decorated) {
                 CosmeticPilot.profileSurface(activity, cosmeticTheme)
             } else {
@@ -498,6 +498,8 @@ object PlayerProfileDialog {
                 textSize = if (compact) 15f else 17f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
+                gravity = Gravity.CENTER
+                maxLines = 1
             })
             addView(TextView(activity).apply {
                 text = label
@@ -508,6 +510,8 @@ object PlayerProfileDialog {
                 textSize = if (compact) 8.5f else 9.5f
                 typeface = Typeface.DEFAULT_BOLD
                 includeFontPadding = false
+                gravity = Gravity.CENTER
+                maxLines = 1
             })
         }
     }
@@ -593,11 +597,24 @@ object PlayerProfileDialog {
 
     private fun emoteRow(activity: Activity, ids: List<String>, cosmeticTheme: String): View {
         val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
+        val visibleIds = ids.filter { EmoteCatalog.byId(it) != null }
+            .distinct()
+            .take(EmoteCatalog.LOADOUT_SIZE)
+        if (visibleIds.isEmpty()) {
+            return textBlock(
+                activity = activity,
+                text = "Emotes no compartidos todavía.",
+                sizeSp = 12f,
+                color = if (decorated) CosmeticPilot.textColor(cosmeticTheme)
+                    else Color.parseColor("#B9AD92"),
+                cosmeticTheme = cosmeticTheme
+            )
+        }
         return HorizontalScrollView(activity).apply {
             isHorizontalScrollBarEnabled = false
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                EmoteLoadout.normalizeIds(ids).forEach { id ->
+                visibleIds.forEach { id ->
                     val spec = EmoteCatalog.byId(id) ?: return@forEach
                     addView(
                         ImageView(activity).apply {

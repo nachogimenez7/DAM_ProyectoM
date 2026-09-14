@@ -17,13 +17,12 @@ data class OnlinePresentationProgress(
 
 object OnlinePresentationGate {
     const val MINIMUM_DISPLAY_MS = 3_000L
-    const val MAXIMUM_DISPLAY_MS = 6_000L
 
     fun progress(
         presentationKey: String,
         participants: List<OnlinePresentationParticipant>
     ): OnlinePresentationProgress {
-        val eligible = participants.filter { it.connected && it.alive }
+        val eligible = participants.filter { it.connected }
         return OnlinePresentationProgress(
             ready = eligible.count { it.acknowledgedKey == presentationKey },
             total = eligible.size
@@ -41,10 +40,10 @@ object OnlinePresentationGate {
         coordinatorPresentationReady: Boolean = true
     ): Boolean {
         if (!isCoordinator) return false
-        // El timeout destraba esperas de red o jugadores que no confirman; nunca debe cortar
-        // una animacion obligatoria que todavia esta ejecutandose en el coordinador.
         if (!coordinatorPresentationReady) return false
-        if (elapsedMs >= MAXIMUM_DISPLAY_MS) return true
+        // Un timeout no puede saltar una presentación pública en un cliente conectado. Si un
+        // participante se desconecta deja de formar parte de progress; si sigue conectado debe
+        // confirmar la misma clave antes de que el coordinador publique la fase siguiente.
         return canAcknowledge(elapsedMs) && progress.allReady
     }
 }

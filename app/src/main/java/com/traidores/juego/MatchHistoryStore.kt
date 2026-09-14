@@ -24,6 +24,7 @@ data class LocalMatchStats(
 
 internal object MatchOutcome {
     fun matchKey(session: GameSession): String {
+        if (session.onlineMatchId.isNotBlank()) return "online:${session.onlineMatchId}"
         return listOf(
             session.code,
             session.startedAtEpochMs.toString(),

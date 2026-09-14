@@ -165,6 +165,9 @@ object OnlineMatchSessionBuilder {
             afkExpulsionEnabled = true,
             initialPlayerCount = players.size,
             startedAtEpochMs = System.currentTimeMillis(),
+            onlineVoteProtocol = (matchState["protocoloVoto"] as? Number)?.toInt() ?: 1,
+            onlineClosedVotePhaseIndex = if (matchState["votacionCerrada"] == true)
+                (matchState["phaseIndex"] as? Number)?.toInt() ?: -1 else -1,
             onlineMatchId = (initialMatch["matchId"] as? String).orEmpty(),
             onlinePlayerUids = sortedPlayerPayloads.map { (it["uidTemporal"] as? String).orEmpty() },
             onlineRegisteredPlayerUids = sortedPlayerPayloads.mapNotNull { player ->

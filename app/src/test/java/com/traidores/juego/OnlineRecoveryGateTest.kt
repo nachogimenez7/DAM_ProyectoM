@@ -6,6 +6,22 @@ import org.junit.Test
 class OnlineRecoveryGateTest {
 
     @Test
+    fun initialRecoveryReplaysTheRequiredPresentation() {
+        assertEquals(
+            true,
+            OnlineRecoveryGate.shouldShowInitialPresentation(GamePhase.REPARTO, 0)
+        )
+        assertEquals(
+            false,
+            OnlineRecoveryGate.shouldShowInitialPresentation(GamePhase.NOCHE_ASESINO, 1)
+        )
+        assertEquals(
+            false,
+            OnlineRecoveryGate.shouldShowInitialPresentation(GamePhase.REPARTO, 2)
+        )
+    }
+
+    @Test
     fun waitingRoomRecoversToLobby() {
         assertEquals(
             OnlineRecoveryTarget.LOBBY,

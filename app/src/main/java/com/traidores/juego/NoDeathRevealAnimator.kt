@@ -23,12 +23,46 @@ internal class NoDeathRevealAnimator(
         private set
 
     private var animator: AnimatorSet? = null
+    private var startedAtMs = 0L
+    private var pendingFinish: Runnable? = null
+    private val fallbackRunnables = mutableListOf<Runnable>()
+    private var usingScaleIndependentAnimation = false
 
     fun start() {
         cancel()
         running = true
+        startedAtMs = android.os.SystemClock.uptimeMillis()
         resetViews()
         overlay.visibility = View.VISIBLE
+        usingScaleIndependentAnimation = EssentialViewAnimation.requiresFallback(overlay)
+        if (usingScaleIndependentAnimation) {
+            overlay.alpha = 1f
+            content.alpha = 1f
+            content.translationY = 0f
+            sunCore.alpha = 1f
+            EssentialViewAnimation.reveal(
+                overlay,
+                durationMs = 360L,
+                delayMs = REVEAL_GAP_MS,
+                fromScale = 1f
+            )
+            EssentialViewAnimation.reveal(
+                content,
+                durationMs = 520L,
+                delayMs = REVEAL_GAP_MS,
+                fromScale = 0.9f
+            )
+            EssentialViewAnimation.reveal(
+                sunCore,
+                durationMs = 720L,
+                delayMs = REVEAL_GAP_MS,
+                fromScale = 0.38f
+            )
+            scheduleFallback(SCALE_INDEPENDENT_EXIT_AT_MS) {
+                EssentialViewAnimation.fadeOut(overlay, 300L) { finish() }
+            }
+            return
+        }
 
         val entrance = AnimatorSet().apply {
             startDelay = REVEAL_GAP_MS
@@ -81,10 +115,16 @@ internal class NoDeathRevealAnimator(
     }
 
     fun cancel() {
+        pendingFinish?.let(overlay::removeCallbacks)
+        pendingFinish = null
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         running = false
+        usingScaleIndependentAnimation = false
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(overlay, content, sunCore)
         overlay.visibility = View.GONE
         overlay.alpha = 1f
     }
@@ -101,7 +141,22 @@ internal class NoDeathRevealAnimator(
 
     private fun finish() {
         if (!running) return
+        val remaining = GameplayPresentationTiming.remainingMs(
+            startedAtMs, android.os.SystemClock.uptimeMillis(), 3_720L
+        )
+        if (remaining > 0L) {
+            overlay.alpha = 1f
+            content.alpha = 1f
+            sunCore.alpha = 1f
+            pendingFinish?.let(overlay::removeCallbacks)
+            pendingFinish = Runnable { finish() }.also { overlay.postDelayed(it, remaining) }
+            return
+        }
+        pendingFinish = null
         running = false
+        usingScaleIndependentAnimation = false
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f
@@ -110,5 +165,12 @@ internal class NoDeathRevealAnimator(
 
     private companion object {
         const val REVEAL_GAP_MS = 300L
+        const val SCALE_INDEPENDENT_EXIT_AT_MS = 3_420L
+    }
+
+    private fun scheduleFallback(delayMs: Long, action: () -> Unit) {
+        val runnable = Runnable(action)
+        fallbackRunnables += runnable
+        overlay.postDelayed(runnable, delayMs)
     }
 }

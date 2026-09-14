@@ -49,34 +49,26 @@ async function loadExistingRealtimeAccess(firestore, roomId, initialMatch) {
   return access;
 }
 
-async function syncRealtimeAccess({database, roomId, hostUid, creatorUid, matchId, members}) {
+async function syncRealtimeAccess({database, roomId, hostUid, creatorUid, matchId, members, allowInitialize = true}) {
   const roomReference = database.ref(`salas/${roomId}`);
-  const currentMembers = await roomReference.child("miembros").get();
-  const updates = {};
-  currentMembers.forEach((snapshot) => {
-    const uid = snapshot.key || "";
-    if (uid && !(uid in members)) {
-      updates[`miembros/${uid}`] = null;
-      updates[`presencia/${uid}`] = null;
-    }
-  });
-  for (const [uid, member] of Object.entries(members)) {
-    updates[`miembros/${uid}`] = {
-      nombre: member.name.trim().slice(0, 18) || "Jugador",
-      activo: true,
-      enLobby: false,
-      vivo: member.alive,
-      traidor: member.traitor === true,
-      invitadoOraculo: false,
+  await roomReference.transaction((current) => {
+    if (current?.control?.cleanupState === "deleting") return;
+    // A callable retry must not resurrect players or revoke current permissions.
+    if (current?.control?.matchId === matchId) return current;
+    if (!allowInitialize) return;
+    const nextMembers = Object.fromEntries(Object.entries(members).map(([uid, member]) => [uid, {
+      nombre: member.name.trim().slice(0, 18) || "Jugador", activo: true, enLobby: false,
+      vivo: member.alive, traidor: member.traitor === true, invitadoOraculo: false,
       actualizadaEn: ServerValue.TIMESTAMP,
-    };
-  }
-  updates["control/hostUid"] = hostUid;
-  updates["control/creatorUid"] = creatorUid;
-  updates["control/matchId"] = matchId;
-  updates["control/jugadoresVivos"] = Object.values(members).filter((member) => member.alive).length;
-  updates["control/actualizadaEn"] = ServerValue.TIMESTAMP;
-  await roomReference.update(updates);
+    }]));
+    return {...(current || {}), miembros: nextMembers, control: {
+      ...(current?.control || {}), hostUid, creatorUid, matchId,
+      jugadoresVivos: Object.values(members).filter((member) => member.alive).length,
+      actualizadaEn: ServerValue.TIMESTAMP,
+    }};
+  }, undefined, false).then((result) => {
+    if (!result.committed) throw new OnlineStartError("room-cleaning", "La sala ya no está disponible.");
+  });
 }
 
 async function startOnlineMatch({
@@ -99,8 +91,11 @@ async function startOnlineMatch({
       throw new OnlineStartError("room-not-found", "La sala ya no existe.");
     }
     const room = roomSnapshot.data();
+    if (room.cleanupState === "deleting") {
+      throw new OnlineStartError("room-cleaning", "La sala ya no está disponible.");
+    }
     if (room.partidaInicialCreada === true || room.partidaInicial) {
-      if (!requesterId || (requesterId !== room.hostActivoId && requesterId !== room.hostId)) {
+      if (!requesterId || requesterId !== (room.hostActivoId || room.hostId)) {
         throw new OnlineStartError(
           "host-required",
           "Solo el anfitrion puede reintentar el inicio.",
@@ -160,6 +155,7 @@ async function startOnlineMatch({
       limpiezaPendiente: false,
       estadoClientes: FieldValue.delete(),
       entradaLiberadaMatchId: FieldValue.delete(),
+      entradaLiberadaEn: FieldValue.delete(),
       hostActivoId: requesterId,
       hostVersion: FieldValue.increment(1),
       jugadoresActuales: prepared.assignedPlayers.length,
@@ -178,6 +174,18 @@ async function startOnlineMatch({
   });
 
   if (transactionResult.status === "tie_break_required") return transactionResult;
+  const currentRealtime = (await database.ref(`salas/${roomId}/control`).get()).val();
+  if (currentRealtime?.cleanupState === "deleting") {
+    throw new OnlineStartError("room-cleaning", "La sala ya no está disponible.");
+  }
+  let allowInitialize = true;
+  if (transactionResult.status === "already_started") {
+    const checkpoint = await roomReference.collection("runtime").doc("authoritative").get();
+    allowInitialize = (checkpoint.data()?.phaseIndex || 0) === 0;
+    if (!allowInitialize && currentRealtime?.matchId !== transactionResult.matchId) {
+      throw new OnlineStartError("requires-match-recovery", "La partida necesita recuperar su estado actual.");
+    }
+  }
   const realtimeAccess = transactionResult.realtimeAccess || await loadExistingRealtimeAccess(
     firestore,
     roomId,
@@ -190,6 +198,7 @@ async function startOnlineMatch({
     creatorUid: transactionResult.creatorUid,
     matchId: transactionResult.matchId,
     members: realtimeAccess,
+    allowInitialize,
   });
   return {
     status: transactionResult.status,

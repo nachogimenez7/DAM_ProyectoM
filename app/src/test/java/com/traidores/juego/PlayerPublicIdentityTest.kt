@@ -23,7 +23,7 @@ class PlayerPublicIdentityTest {
             bannerKey = "medieval",
             favoriteRoleKey = "pampa_payador",
             featuredAchievementIds = emptyList(),
-            emoteIds = emptyList(),
+            emoteIds = listOf("premium_mate", "premium_genio", "griego_triste", "gaucho_contento"),
             stats = PlayerStats(matches = 0, wins = 0, hasProgress = false)
         )
 
@@ -44,5 +44,27 @@ class PlayerPublicIdentityTest {
         )
         assertEquals("medieval", fields[PlayerPublicIdentity.FIELD_PROFILE_BANNER])
         assertEquals("pampa_payador", fields[PlayerPublicIdentity.FIELD_PROFILE_FAVORITE_ROLE])
+        assertEquals(
+            profile.emoteIds,
+            fields[PlayerPublicIdentity.FIELD_PROFILE_EMOTES]
+        )
+    }
+
+    @Test
+    fun recordedMatchesDoNotChangeCriticalProfileWriteSchemaForGuestsOrAccounts() {
+        val profile = PlayerProfile(
+            name = "Jugador", publicId = "7", bio = "", avatarKey = "aldeana",
+            bannerKey = "pampa", favoriteRoleKey = "detective",
+            featuredAchievementIds = emptyList(), emoteIds = emptyList(),
+            stats = PlayerStats(0, 0, false)
+        )
+        listOf("", "7").forEach { publicId ->
+            val legacy = PlayerPublicIdentity.publicProfileFields(profile, publicId)
+            listOf(PlayerStats(0, 0, true), PlayerStats(5, 3, true)).forEach { stats ->
+                val current = PlayerPublicIdentity.publicProfileFields(profile.copy(stats = stats), publicId)
+                assertEquals(legacy, current)
+                assertEquals(false, current.containsKey(PlayerPublicIdentity.FIELD_PROFILE_STATS))
+            }
+        }
     }
 }

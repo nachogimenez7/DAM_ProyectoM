@@ -5,6 +5,7 @@ enum class OnlineLobbyStartCopy {
     START_ONLINE,
     PLAY_WITH_PRESENT,
     WAITING,
+    WAITING_HOST,
     SYNCING,
     VERIFY_READY,
     NOT_READY,
@@ -55,6 +56,22 @@ object OnlineLobbyPresentation {
         @Suppress("UNUSED_PARAMETER") playerSlots: Int
     ): Boolean = false
 
+    fun shouldLockGuestReadyToggle(
+        activePlayers: Int,
+        expectedPlayers: Int,
+        disconnectedPlayers: Int,
+        missingReady: Int,
+        isHost: Boolean,
+        currentReady: Boolean
+    ): Boolean {
+        val total = expectedPlayers.coerceAtLeast(1)
+        return !isHost &&
+            currentReady &&
+            activePlayers == total &&
+            disconnectedPlayers == 0 &&
+            missingReady == 0
+    }
+
     fun startState(
         activePlayers: Int,
         expectedPlayers: Int,
@@ -71,6 +88,14 @@ object OnlineLobbyPresentation {
         val active = activePlayers.coerceIn(0, total)
         val missingPlayers = (total - active).coerceAtLeast(0)
         val safeMissingReady = missingReady.coerceIn(0, active)
+        val guestReadyLocked = shouldLockGuestReadyToggle(
+            activePlayers = active,
+            expectedPlayers = total,
+            disconnectedPlayers = disconnectedPlayers,
+            missingReady = safeMissingReady,
+            isHost = isHost,
+            currentReady = currentReady
+        )
         val buttonCopy = when {
             cleanupPending -> OnlineLobbyStartCopy.CLEANING
             canStart -> OnlineLobbyStartCopy.START_ONLINE
@@ -81,6 +106,7 @@ object OnlineLobbyPresentation {
                 OnlineLobbyStartCopy.VERIFY_READY
             isHost && safeMissingReady > 0 -> OnlineLobbyStartCopy.HOST_READY
             isHost && initialMatchCreated -> OnlineLobbyStartCopy.SYNCING
+            guestReadyLocked -> OnlineLobbyStartCopy.WAITING_HOST
             currentReady -> OnlineLobbyStartCopy.NOT_READY
             isHost -> OnlineLobbyStartCopy.HOST_READY
             else -> OnlineLobbyStartCopy.READY
@@ -131,13 +157,13 @@ object OnlineLobbyPresentation {
 
     fun structure(onlineLobby: Boolean): LobbyStructurePresentation {
         return LobbyStructurePresentation(
-            selectedMapVisible = !onlineLobby,
-            onlineMapVoteVisible = onlineLobby,
-            mapDescriptionVisible = !onlineLobby,
+            selectedMapVisible = true,
+            onlineMapVoteVisible = false,
+            mapDescriptionVisible = true,
             onlinePlayersVisible = onlineLobby,
             localPlayersVisible = !onlineLobby,
             onlineSectionLabelsVisible = onlineLobby,
-            mapVoteCardsHeightDp = if (onlineLobby) 112 else 54
+            mapVoteCardsHeightDp = 54
         )
     }
 }

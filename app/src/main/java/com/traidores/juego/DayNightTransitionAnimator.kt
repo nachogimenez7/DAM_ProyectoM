@@ -6,11 +6,13 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.graphics.Path
 import android.os.Handler
+import android.os.SystemClock
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.view.doOnPreDraw
 
 internal class DayNightTransitionAnimator(
     private val handler: Handler,
@@ -31,6 +33,11 @@ internal class DayNightTransitionAnimator(
 
     private var animator: AnimatorSet? = null
     private var durationScale = 1f
+    private var generation = 0
+    private var presentationStartedAtMs = 0L
+    private var presentationDurationMs = 0L
+    private var pendingFinish: Runnable? = null
+    private var fallbackReveal: Runnable? = null
     private val musicCue = Runnable {
         if (running) onMusicCue()
     }
@@ -41,6 +48,8 @@ internal class DayNightTransitionAnimator(
         durationMs: Long
     ) {
         cancel()
+        val token = generation
+        presentationDurationMs = durationMs.coerceAtLeast(MIN_DURATION_MS)
         durationScale = durationMs.coerceAtLeast(MIN_DURATION_MS).toFloat() / BASE_DURATION_MS
         running = true
         fromBackground.setImageResource(backgroundFor(fromPeriod))
@@ -54,18 +63,23 @@ internal class DayNightTransitionAnimator(
         overlay.alpha = 1f
         overlay.visibility = View.VISIBLE
 
-        handler.postDelayed(musicCue, scaled(MUSIC_DELAY_MS))
-        overlay.post {
-            if (running) animate(spec, fromPeriod)
+        overlay.doOnPreDraw {
+            if (running && generation == token) animate(spec, fromPeriod)
         }
     }
 
     fun cancel() {
+        generation += 1
+        pendingFinish?.let(handler::removeCallbacks)
+        pendingFinish = null
+        fallbackReveal?.let(handler::removeCallbacks)
+        fallbackReveal = null
         running = false
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
         handler.removeCallbacks(musicCue)
+        EssentialViewAnimation.clear(overlay, sun, moon, title)
         overlay.visibility = View.GONE
         overlay.alpha = 1f
     }
@@ -74,9 +88,18 @@ internal class DayNightTransitionAnimator(
         val width = overlay.width.toFloat()
         val height = overlay.height.toFloat()
         if (width <= 0f || height <= 0f) {
-            finish(spec)
+            val token = generation
+            overlay.doOnPreDraw {
+                if (running && generation == token) animate(spec, fromPeriod)
+            }
             return
         }
+        presentationStartedAtMs = SystemClock.uptimeMillis()
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            animateScaleIndependent(spec, fromPeriod, width, height)
+            return
+        }
+        handler.postDelayed(musicCue, scaled(MUSIC_DELAY_MS))
 
         val sunTopX = width * 0.70f - sun.width / 2f
         val moonTopX = width * 0.20f - moon.width / 2f
@@ -177,8 +200,69 @@ internal class DayNightTransitionAnimator(
         }
     }
 
+    private fun animateScaleIndependent(
+        spec: GameplayTransitionSpec,
+        fromPeriod: GameplayPeriod,
+        width: Float,
+        height: Float
+    ) {
+        val entering = if (spec.period == GameplayPeriod.NIGHT) moon else sun
+        val leaving = if (spec.period == GameplayPeriod.NIGHT) sun else moon
+        val endX = if (spec.period == GameplayPeriod.NIGHT) {
+            width * 0.20f - entering.width / 2f
+        } else {
+            width * 0.70f - entering.width / 2f
+        }
+        val endY = height * 0.10f
+        entering.x = endX
+        entering.y = endY
+        entering.alpha = 1f
+        leaving.alpha = if (fromPeriod == spec.period) 0f else 0.22f
+        toBackground.alpha = 1f
+        title.alpha = 1f
+        title.scaleX = 1f
+        title.scaleY = 1f
+        EssentialViewAnimation.reveal(overlay, durationMs = 420L, fromScale = 1f)
+        EssentialViewAnimation.slideIn(
+            view = entering,
+            fromX = if (spec.period == GameplayPeriod.NIGHT) -width * 0.34f else width * 0.34f,
+            fromY = height * 0.48f,
+            durationMs = (presentationDurationMs * 0.58f).toLong().coerceAtLeast(650L),
+            finalAlpha = 1f
+        )
+        EssentialViewAnimation.reveal(
+            view = title,
+            durationMs = 480L,
+            delayMs = 260L,
+            fromScale = 0.82f
+        )
+        handler.postDelayed(musicCue, scaled(MUSIC_DELAY_MS))
+        val fadeDuration = minOf(420L, presentationDurationMs / 4).coerceAtLeast(220L)
+        val revealDelay = (presentationDurationMs - fadeDuration).coerceAtLeast(700L)
+        fallbackReveal = Runnable {
+            fallbackReveal = null
+            if (!running) return@Runnable
+            onRevealBackground(spec)
+            EssentialViewAnimation.fadeOut(overlay, fadeDuration) { finish(spec) }
+        }.also { handler.postDelayed(it, revealDelay) }
+    }
+
     private fun finish(spec: GameplayTransitionSpec) {
         if (!running) return
+        val remaining = GameplayPresentationTiming.remainingMs(
+            presentationStartedAtMs, SystemClock.uptimeMillis(), presentationDurationMs
+        )
+        if (remaining > 0L) {
+            // Animator duration scale must not remove the gameplay announcement.
+            overlay.alpha = 1f
+            title.alpha = 1f
+            title.scaleX = 1f
+            title.scaleY = 1f
+            pendingFinish?.let(handler::removeCallbacks)
+            pendingFinish = Runnable { finish(spec) }.also { handler.postDelayed(it, remaining) }
+            return
+        }
+        pendingFinish = null
         running = false
         animator = null
         handler.removeCallbacks(musicCue)

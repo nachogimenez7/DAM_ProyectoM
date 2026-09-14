@@ -226,28 +226,13 @@ function lobbyConfigFromRoom(raw, playerCount, mapKey, testMode) {
   };
 }
 
-function resolveMap(votes, currentMapKey, hostTieBreakChoice) {
-  const mapKeys = Object.keys(MAPS);
-  const validVotes = votes.filter((vote) => mapKeys.includes(vote.mapKey));
-  const counts = Object.fromEntries(mapKeys.map((mapKey) => [
-    mapKey,
-    validVotes.filter((vote) => vote.mapKey === mapKey).length,
-  ]));
-  const totalVotes = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  if (totalVotes === 0) {
-    return {status: "selected", mapKey: MAPS[currentMapKey] ? currentMapKey : "pampa"};
-  }
-  const highest = Math.max(...Object.values(counts));
-  const leaders = mapKeys.filter((mapKey) => counts[mapKey] === highest);
-  if (leaders.length === 1) return {status: "selected", mapKey: leaders[0]};
-  if (hostTieBreakChoice && leaders.includes(hostTieBreakChoice)) {
-    return {status: "selected", mapKey: hostTieBreakChoice};
-  }
-  return {status: "tie_break_required", mapKeys: leaders};
+function resolveMap(_votes, currentMapKey, _hostTieBreakChoice) {
+  // La selección del anfitrión es fija también cuando inicia el backend.
+  return {status: "selected", mapKey: MAPS[currentMapKey] ? currentMapKey : "pampa"};
 }
 
 function evaluateStart({requesterId, room, players, hostTieBreakChoice}) {
-  if (!requesterId || (requesterId !== room.hostActivoId && requesterId !== room.hostId)) {
+  if (!requesterId || requesterId !== (room.hostActivoId || room.hostId)) {
     throw new OnlineStartError("host-required", "Solo el anfitrion puede iniciar.");
   }
   if (room.partidaInicialCreada === true || room.partidaInicial) {

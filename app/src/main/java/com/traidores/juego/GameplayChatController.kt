@@ -53,6 +53,7 @@ class GameplayChatController(
         val onlinePlayerUid: String
 
         fun isOnlineGameplay(): Boolean
+        fun isPresentationPending(): Boolean = false
         fun canOpenExpandedChat(): Boolean
         fun dp(value: Int): Int
         fun isTransitionLocked(phaseIndex: Int): Boolean
@@ -96,6 +97,69 @@ class GameplayChatController(
     )
 
     private val handler = Handler(Looper.getMainLooper())
+    private var invitationForeground = false
+    private var invitationText = ""
+    private var invitationCanBlink = false
+    private var invitationCursorVisible = true
+    private var invitationCursorScheduled = false
+    private val invitationCursorTick = object : Runnable {
+        override fun run() {
+            invitationCursorScheduled = false
+            if (!invitationForeground || !invitationCanBlink || isChatOpen ||
+                !chatAmbientHint.isShown || chatInput.text.isNotBlank()
+            ) return
+            invitationCursorVisible = !invitationCursorVisible
+            drawInvitationCursor()
+            scheduleInvitationCursor()
+        }
+    }
+
+    private fun scheduleInvitationCursor() {
+        if (invitationCursorScheduled || !invitationForeground || !invitationCanBlink) return
+        invitationCursorScheduled = true
+        handler.postDelayed(invitationCursorTick, 650L)
+    }
+
+    private fun cancelInvitationCursor() {
+        handler.removeCallbacks(invitationCursorTick)
+        invitationCursorScheduled = false
+    }
+
+    fun setInvitationForeground(foreground: Boolean) {
+        invitationForeground = foreground
+        cancelInvitationCursor()
+        if (foreground && invitationCanBlink && invitationText.isNotBlank()) {
+            scheduleInvitationCursor()
+        }
+    }
+
+    private fun drawInvitationCursor() {
+        if (invitationText.isBlank()) return
+        val text = android.text.SpannableString("$invitationText ▏")
+        text.setSpan(
+            android.text.style.ForegroundColorSpan(
+                if (invitationCursorVisible) chatAmbientHint.currentTextColor else Color.TRANSPARENT
+            ), text.length - 1, text.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        chatAmbientHint.text = text
+    }
+
+    private fun updateAmbientInvitation(channel: ChatChannel, canChat: Boolean) {
+        val label = ambientInvitation(channel, canChat)
+        val canBlink = canChat && chatInput.text.isBlank() &&
+            !VisualEffectsPreferences.isReduced(root.context)
+        if (invitationText == label && invitationCanBlink == canBlink) {
+            scheduleInvitationCursor()
+            return
+        }
+        cancelInvitationCursor()
+        invitationText = label
+        invitationCanBlink = canBlink
+        invitationCursorVisible = true
+        chatAmbientHint.contentDescription = label
+        if (canChat) drawInvitationCursor() else chatAmbientHint.text = label
+        scheduleInvitationCursor()
+    }
     private var isChatOpen = false
     private var isClosingForInteractivePhase = false
     private var isChatKeyboardCompact = false
@@ -239,6 +303,8 @@ class GameplayChatController(
         lastSeenChatCount = host.currentSession.chatHistory.size
 
         btnToggleChat.setOnClickListener { openExpandedOrClose() }
+        root.findViewById<View>(R.id.chatAmbientTitle)
+            .setOnClickListener { openExpanded(focusInput = false) }
         chatAmbientHint.setOnClickListener { openExpanded(focusInput = true) }
         btnCloseChat.setOnClickListener { closeChatPanel() }
         btnChatFeedFilter.setOnClickListener { toggleFeedFilter() }
@@ -658,6 +724,7 @@ class GameplayChatController(
     }
 
     private fun renderChatPanel() {
+        if (host.isPresentationPending()) return
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.9f
         renderChatBackgrounds()
         renderFeedFilterButton()
@@ -927,7 +994,15 @@ class GameplayChatController(
                 .coerceAtMost((root.width - host.dp(24)).coerceAtLeast(host.dp(210)))
                 .coerceAtLeast(host.dp(210))
         }
-        params.height = maxVisibleHeight.coerceAtMost(host.dp(CHAT_SHEET_MAX_HEIGHT_DP))
+        val playerCount = host.currentSession.players.size
+        params.height = maxVisibleHeight.coerceAtMost(
+            host.dp(
+                GameplayChatLayout.expandedMaxHeightDp(
+                    playerCount = playerCount,
+                    keyboardVisible = isChatKeyboardCompact
+                )
+            )
+        )
         (params as? ViewGroup.MarginLayoutParams)?.apply {
             marginStart = 0
             marginEnd = 0
@@ -1060,6 +1135,7 @@ class GameplayChatController(
             }
         val entries = compactAmbientEntries(allEntries, host.currentSession)
         val canChat = canHumanChatInChannel(channel)
+        updateAmbientInvitation(channel, canChat)
         updateAmbientFeedInsets()
         val renderKey = listOf(
             channel.name,
@@ -1108,7 +1184,6 @@ class GameplayChatController(
         if (wasFollowingLatest) {
             chatAmbientScroll.post { chatAmbientScroll.fullScroll(View.FOCUS_DOWN) }
         }
-        chatAmbientHint.text = ambientInvitation(channel, canChat)
         chatAmbientHint.visibility = View.VISIBLE
 
         if (chatAmbientFeed.visibility != View.VISIBLE) {
@@ -2398,7 +2473,7 @@ class GameplayChatController(
     private fun ambientInvitation(channel: ChatChannel, canChat: Boolean): String {
         if (!canChat) return chatInputHint(canChat, channel)
         return when (channel) {
-            ChatChannel.PUBLICO -> "Rompé el silencio. ¿Quién te parece sospechoso?"
+            ChatChannel.PUBLICO -> "Escribí tu primera sospecha…"
             ChatChannel.TRAIDORES -> "Hablen bajo. El pueblo no debe oírlos."
             ChatChannel.ESPECTADORES -> "¿Qué viste que los vivos todavía no?"
         }
@@ -3677,6 +3752,7 @@ class GameplayChatController(
 
     private fun updateAmbientFeedInsets() {
         val params = chatAmbientFeed.layoutParams as? FrameLayout.LayoutParams ?: return
+        val containerHeight = centerColumn.height.takeIf { it > 0 } ?: return
         val topHeight = topStatus.layoutParams.height.takeIf { it > 0 }
             ?: topStatus.height.takeIf { it > 0 }
             ?: host.dp(CHAT_AMBIENT_FALLBACK_TOP_HEIGHT_DP)
@@ -3699,8 +3775,20 @@ class GameplayChatController(
             )
         }
 
-        if (params.topMargin == topMargin && params.bottomMargin == bottomMargin) return
-        params.topMargin = topMargin
+        val availableHeight = (containerHeight - topMargin - bottomMargin).coerceAtLeast(1)
+        val targetHeight = minOf(
+            availableHeight,
+            host.dp(GameplayChatLayout.ambientMaxHeightDp(host.currentSession.players.size))
+        )
+        if (
+            params.height == targetHeight &&
+            params.topMargin == 0 &&
+            params.bottomMargin == bottomMargin &&
+            params.gravity == (Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+        ) return
+        params.height = targetHeight
+        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        params.topMargin = 0
         params.bottomMargin = bottomMargin
         chatAmbientFeed.layoutParams = params
     }
@@ -4403,10 +4491,9 @@ class GameplayChatController(
     companion object {
         private const val STATE_CHAT_OPEN = "chat_open"
         private const val STATE_CHAT_CHANNEL = "chat_channel"
-        private const val CHAT_SHEET_MAX_HEIGHT_DP = 680
         private const val CHAT_SHEET_KEYBOARD_GAP_DP = 6
         private const val CHAT_SHEET_TOP_CLEARANCE_DP = 82
-        private const val CHAT_SHEET_TOP_GAP_DP = 12
+        private const val CHAT_SHEET_TOP_GAP_DP = 8
         private const val TYPING_TOP_STATUS_HEIGHT_DP = 38
         private const val TYPING_CHAT_HORIZONTAL_MARGIN_DP = 8
         private const val TYPING_VISIBLE_PLAYER_MESSAGES = 4

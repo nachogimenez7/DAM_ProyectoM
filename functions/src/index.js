@@ -4,6 +4,10 @@ const {getApps, initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {getDatabase} = require("firebase-admin/database");
 const {HttpsError, onCall} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onDocumentDeleted, onDocumentWritten} = require("firebase-functions/v2/firestore");
+const logger = require("firebase-functions/logger");
+const {sweepRooms, observeDeletedRoom, enqueueRoomCleanup} = require("./onlineRoomCleanupService");
 const {OnlineStartError} = require("./onlineStartCore");
 const {startOnlineMatch} = require("./onlineStartService");
 
@@ -63,3 +67,34 @@ exports.iniciarPartidaV2 = onCall(
     }
   },
 );
+
+exports.limpiarSalasAbandonadasV1 = onSchedule({
+  region: "southamerica-west1",
+  schedule: "every 15 minutes",
+  timeZone: "Etc/UTC",
+  timeoutSeconds: 540,
+  memory: "256MiB",
+  maxInstances: 1,
+  retryCount: 3,
+}, () => sweepRooms({firestore: getFirestore(), database: getDatabase(), logger}));
+
+exports.registrarSalaHuerfanaV1 = onDocumentDeleted({
+  document: "partidas/{roomId}",
+  region: "southamerica-west1",
+  retry: true,
+}, (event) => observeDeletedRoom({
+  firestore: getFirestore(),
+  roomId: event.params.roomId,
+  room: event.data?.data(),
+  observedAtMs: Date.parse(event.time),
+}));
+
+exports.programarLimpiezaSalaV2 = onDocumentWritten({
+  document: "partidas/{roomId}",
+  region: "southamerica-west1",
+  retry: true,
+  maxInstances: 2,
+}, (event) => {
+  if (!event.data?.after.exists) return;
+  return enqueueRoomCleanup({firestore: getFirestore(), roomId: event.params.roomId});
+});

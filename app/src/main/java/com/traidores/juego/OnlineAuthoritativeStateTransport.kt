@@ -24,6 +24,7 @@ class RealtimeAuthoritativeState(
 
     private val listener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
+            if (!started) return
             val payload = snapshot.value.asStringAnyMap() ?: return
             if ((payload[FIELD_MATCH_ID] as? String).orEmpty() != matchId) return
             val rawState = payload[FIELD_STATE].asStringAnyMap() ?: return
@@ -32,6 +33,7 @@ class RealtimeAuthoritativeState(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            if (!started) return
             started = false
             onError(error.toException())
         }
@@ -133,14 +135,7 @@ object OnlineAuthoritativeStateStore {
     ): Map<String, Any?>? {
         if (candidate == null) return current
         if (current == null) return candidate
-        val currentPhase = (current[FIELD_PHASE_INDEX] as? Number)?.toInt() ?: -1
-        val candidatePhase = (candidate[FIELD_PHASE_INDEX] as? Number)?.toInt() ?: -1
-        if (candidatePhase != currentPhase) {
-            return if (candidatePhase > currentPhase) candidate else current
-        }
-        val currentUpdated = (current[FIELD_UPDATED_LOCAL] as? Number)?.toLong() ?: 0L
-        val candidateUpdated = (candidate[FIELD_UPDATED_LOCAL] as? Number)?.toLong() ?: 0L
-        return if (candidateUpdated >= currentUpdated) candidate else current
+        return if (OnlineStateOrder.isNewer(candidate, current)) candidate else current
     }
 
     /** El checkpoint del servidor gana un empate de fase aunque los celulares difieran de reloj. */

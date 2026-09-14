@@ -76,7 +76,7 @@ class OnlineStartupGateTest {
         )
 
         assertFalse(result.canStart)
-        assertTrue(result.canArmAutoStart)
+        assertFalse(result.canArmAutoStart)
         assertEquals(5, result.loadedPlayers)
         assertEquals(4, result.readyPlayers)
         assertEquals("Esperando lectura de roles...", result.waitingMessage)
@@ -86,6 +86,7 @@ class OnlineStartupGateTest {
     fun sharedDeadlineExpiresAfterFifteenSeconds() {
         val deadline = 30_000L
 
+        assertEquals(20_000L, OnlineStartupGate.AUTO_ROLE_CONFIRM_AFTER_MS)
         assertEquals(15_000L, OnlineStartupGate.AUTO_START_AFTER_MS)
         assertEquals(1_000L, OnlineStartupGate.remainingAutoStartMillis(deadline, 29_000L))
         assertFalse(OnlineStartupGate.shouldAutoStart(deadline, 29_999L))
@@ -130,7 +131,7 @@ class OnlineStartupGateTest {
             )
         )
 
-        // At or after 25 seconds with at least minimum players: fires and starts night
+        // El watchdog sólo confirma un conjunto que ya está completo.
         assertTrue(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = startedAt,
@@ -154,7 +155,7 @@ class OnlineStartupGateTest {
             )
         )
 
-        // No salta si ni siquiera tres cuartos terminaron de leer su rol.
+        // No salta si falta una sola confirmación de lectura.
         assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = startedAt,
@@ -168,7 +169,7 @@ class OnlineStartupGateTest {
     }
 
     @Test
-    fun hardTimeoutCanRecoverVisibleRosterMismatchOnlyWhenEveryoneReportedReady() {
+    fun hardTimeoutWaitsForCompleteVisibleRosterEvenWhenEveryoneReportedReady() {
         val states = (0 until 5).map { state("p$it", visiblePlayers = 6, roleRead = true) } +
             state("slow", visiblePlayers = 5, roleRead = true)
         val result = OnlineStartupGate.evaluate(expectedPlayers = 6, clientStates = states)
@@ -177,21 +178,22 @@ class OnlineStartupGateTest {
         assertEquals(6, result.roleReadPlayers)
         assertEquals(5, result.loadedPlayers)
         assertEquals(1, result.mismatchedPlayers)
-        assertTrue(
+        assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = 10_000L,
                 nowEpochMs = 35_000L,
                 reportedPlayers = result.reportedPlayers,
                 roleReadPlayers = result.roleReadPlayers,
                 expectedPlayers = result.expectedPlayers,
-                connectedPlayers = 6
+                connectedPlayers = 6,
+                loadedPlayers = result.loadedPlayers
             )
         )
     }
 
     @Test
-    fun fourteenPlayerRoomStartsWithElevenReadyButNotTen() {
-        assertTrue(
+    fun fourteenPlayerRoomDoesNotLeaveThreeOrFourUnloadedPlayersBehind() {
+        assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = 10_000L,
                 nowEpochMs = 35_000L,
@@ -214,7 +216,7 @@ class OnlineStartupGateTest {
     }
 
     @Test
-    fun threePlayerStartupRecoversWithTwoRoleReadersAfterHardTimeout() {
+    fun threePlayerStartupNeverLeavesOneRoleReaderBehind() {
         assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = 10_000L,
@@ -225,11 +227,11 @@ class OnlineStartupGateTest {
                 connectedPlayers = 3
             )
         )
-        assertTrue(
+        assertFalse(
             OnlineStartupGate.shouldHardTimeoutStart(
                 startedAtEpochMs = 10_000L,
                 nowEpochMs = 35_000L,
-                reportedPlayers = 2,
+                reportedPlayers = 3,
                 roleReadPlayers = 2,
                 expectedPlayers = 3,
                 connectedPlayers = 3

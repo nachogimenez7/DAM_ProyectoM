@@ -84,7 +84,9 @@ object PlayerProfileStore {
                     .take(MAX_FEATURED_ACHIEVEMENTS)
             },
             emoteIds = EmoteLoadout.selectedIds(context),
-            stats = PlayerStats(matches = 0, wins = 0, hasProgress = false),
+            stats = MatchHistoryStore.stats(context).let {
+                PlayerStats(matches = it.matches, wins = it.wins, hasProgress = true)
+            },
             playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
                 preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
             ),
@@ -93,6 +95,7 @@ object PlayerProfileStore {
     }
 
     fun profileFor(context: Context, session: GameSession, player: GamePlayer): PlayerProfile {
+        if (player.isHuman) return loadHumanProfile(context).copy(name = player.name)
         val profile = session.playerProfiles[player.name]
             ?: if (player.isHuman) loadHumanProfile(context).copy(name = player.name) else BotProfileFactory.profileFor(player.name)
         return if (player.control == PlayerControl.BOT) {
@@ -142,7 +145,8 @@ object PlayerProfileStore {
         avatarKey: String,
         bannerKey: String,
         favoriteRoleKey: String,
-        playGamesAvatarUri: String? = null
+        playGamesAvatarUri: String? = null,
+        emoteIds: List<String>? = null
     ) {
         val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         name.takeIf { it.isNotBlank() }?.let {
@@ -162,6 +166,7 @@ object PlayerProfileStore {
         }
         favoriteRoleKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_FAVORITE_ROLE, it) }
         editor.apply()
+        emoteIds?.takeIf { it.isNotEmpty() }?.let { EmoteLoadout.save(context, it) }
     }
 }
 

@@ -43,10 +43,15 @@ internal class DeathRevealAnimator(
 
     private var animator: AnimatorSet? = null
     private var readyToContinue: Boolean = false
+    private var startedAtMs = 0L
+    private var pendingReady: Runnable? = null
+    private val fallbackRunnables = mutableListOf<Runnable>()
+    private var usingScaleIndependentAnimation = false
 
     fun start(player: GamePlayer, revealRole: Boolean) {
         cancel()
         running = true
+        startedAtMs = android.os.SystemClock.uptimeMillis()
         readyToContinue = false
         playerName.text = player.name.uppercase()
         roleName.text = if (revealRole) {
@@ -58,6 +63,11 @@ internal class DeathRevealAnimator(
         resetViews()
         if (!revealRole) roleName.alpha = 1f
         overlay.visibility = View.VISIBLE
+        usingScaleIndependentAnimation = EssentialViewAnimation.requiresFallback(overlay)
+        if (usingScaleIndependentAnimation) {
+            startScaleIndependent(revealRole)
+            return
+        }
 
         val entrance = AnimatorSet().apply {
             playTogether(
@@ -100,8 +110,16 @@ internal class DeathRevealAnimator(
                 override fun onAnimationEnd(animation: Animator) {
                     if (running) {
                         animator = null
-                        readyToContinue = true
-                        onReadyToContinue()
+                        val remaining = GameplayPresentationTiming.remainingMs(
+                            startedAtMs, android.os.SystemClock.uptimeMillis(), DEATH_REVEAL_AUDIO_MS
+                        )
+                        pendingReady = Runnable {
+                            pendingReady = null
+                            if (running) {
+                                readyToContinue = true
+                                onReadyToContinue()
+                            }
+                        }.also { overlay.postDelayed(it, remaining) }
                     }
                 }
             })
@@ -112,6 +130,10 @@ internal class DeathRevealAnimator(
     fun continueAndFinish() {
         if (!running || !readyToContinue) return
         readyToContinue = false
+        if (usingScaleIndependentAnimation) {
+            EssentialViewAnimation.fadeOut(overlay, 260L) { finish() }
+            return
+        }
         animator?.removeAllListeners()
         animator?.cancel()
         animator = AnimatorSet().apply {
@@ -132,11 +154,17 @@ internal class DeathRevealAnimator(
     }
 
     fun cancel() {
+        pendingReady?.let(overlay::removeCallbacks)
+        pendingReady = null
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         running = false
         readyToContinue = false
+        usingScaleIndependentAnimation = false
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(overlay, content, card, cardBack, cardFront, bloodLeft, bloodRight, flash, roleName)
         overlay.visibility = View.GONE
         overlay.alpha = 1f
     }
@@ -204,10 +232,59 @@ internal class DeathRevealAnimator(
         }
     }
 
+    private fun startScaleIndependent(revealRole: Boolean) {
+        overlay.alpha = 1f
+        content.alpha = 1f
+        content.scaleX = 1f
+        content.scaleY = 1f
+        EssentialViewAnimation.reveal(overlay, ENTRANCE_MS, fromScale = 1f)
+        EssentialViewAnimation.reveal(content, ENTRANCE_MS, fromScale = 0.9f)
+        scheduleFallback(ENTRANCE_MS) {
+            flash.alpha = 0.56f
+            bloodLeft.alpha = 1f
+            bloodRight.alpha = 1f
+            bloodLeft.scaleX = 1f
+            bloodLeft.scaleY = 1f
+            bloodRight.scaleX = 1f
+            bloodRight.scaleY = 1f
+            EssentialViewAnimation.slideIn(card, fromX = dp(12).toFloat(), durationMs = IMPACT_MS)
+            EssentialViewAnimation.reveal(bloodLeft, IMPACT_MS, fromScale = 0.5f)
+            EssentialViewAnimation.reveal(bloodRight, IMPACT_MS, fromScale = 0.5f)
+        }
+        val revealAt = ENTRANCE_MS + IMPACT_MS
+        scheduleFallback(revealAt) {
+            if (revealRole) {
+                cardBack.visibility = View.INVISIBLE
+                cardFront.visibility = View.VISIBLE
+                roleName.alpha = 1f
+                EssentialViewAnimation.reveal(cardFront, ROLE_FLIP_OUT_MS + ROLE_FLIP_IN_MS, fromScale = 0.76f)
+                EssentialViewAnimation.reveal(roleName, ROLE_FLIP_IN_MS, delayMs = ROLE_FLIP_OUT_MS)
+            } else {
+                roleName.text = "ROL OCULTO"
+                roleName.alpha = 1f
+                EssentialViewAnimation.reveal(card, HIDDEN_ROLE_MS, fromScale = 0.94f)
+            }
+        }
+        scheduleFallback(DEATH_REVEAL_AUDIO_MS) {
+            if (!running) return@scheduleFallback
+            readyToContinue = true
+            onReadyToContinue()
+        }
+    }
+
+    private fun scheduleFallback(delayMs: Long, action: () -> Unit) {
+        val runnable = Runnable(action)
+        fallbackRunnables += runnable
+        overlay.postDelayed(runnable, delayMs)
+    }
+
     private fun finish() {
         if (!running) return
         running = false
         readyToContinue = false
+        usingScaleIndependentAnimation = false
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f

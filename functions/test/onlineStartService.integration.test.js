@@ -121,7 +121,7 @@ test("un intruso no puede iniciar", async () => {
   assert.equal(room.partidaInicialCreada, false);
 });
 
-test("un empate devuelve opciones y no escribe la partida", async () => {
+test("los votos viejos no cambian el mapa fijo ni frenan el inicio", async () => {
   const roomId = await seedRoom({
     playerCount: 3,
     votes: ["pampa", "grecia", "medieval"],
@@ -134,13 +134,10 @@ test("un empate devuelve opciones y no escribe la partida", async () => {
     matchId: "match-tie",
     randomInt: () => 0,
   });
-  assert.deepEqual(result, {
-    status: "tie_break_required",
-    mapKeys: ["pampa", "grecia", "medieval"],
-  });
+  assert.equal(result.status, "started");
   const room = (await firestore.collection("partidas").doc(roomId).get()).data();
-  assert.equal(room.estado, "esperando");
-  assert.equal(room.partidaInicial, undefined);
+  assert.equal(room.estado, "en_juego");
+  assert.equal(room.partidaInicial.mapa, "pampa");
 });
 
 async function seedRoom({playerCount, votes = []}) {
@@ -187,6 +184,34 @@ async function seedRoom({playerCount, votes = []}) {
   await batch.commit();
   return roomId;
 }
+
+test("reintento de inicio no resucita muertos ni revoca permisos del mismo match", async () => {
+  const roomId = await seedRoom({playerCount: 5});
+  await startOnlineMatch({firestore, database, requesterId: "host", roomId, matchId: "retry-preserves-life"});
+  const mirror = database.ref(`salas/${roomId}`);
+  await mirror.update({"miembros/p1/vivo": false, "miembros/p2/invitadoOraculo": true, "control/jugadoresVivos": 4});
+  const before = (await mirror.get()).val();
+  await startOnlineMatch({firestore, database, requesterId: "host", roomId});
+  assert.deepEqual((await mirror.get()).val(), before);
+});
+
+test("creador anterior pierde autoridad tras migración y cleanup bloquea callable", async () => {
+  const roomId = await seedRoom({playerCount: 5});
+  await startOnlineMatch({firestore, database, requesterId: "host", roomId, matchId: "migrated-start-1"});
+  await firestore.doc(`partidas/${roomId}`).update({hostActivoId: "p1"});
+  await assert.rejects(startOnlineMatch({firestore, database, requesterId: "host", roomId}), (e) => e.code === "host-required");
+  await firestore.doc(`partidas/${roomId}`).update({cleanupState: "deleting"});
+  await assert.rejects(startOnlineMatch({firestore, database, requesterId: "p1", roomId}), (e) => e.code === "room-cleaning");
+});
+
+test("partida avanzada sin espejo no se reconstruye con todos vivos", async () => {
+  const roomId = await seedRoom({playerCount: 5});
+  await startOnlineMatch({firestore, database, requesterId: "host", roomId, matchId: "advanced-match-1"});
+  await firestore.doc(`partidas/${roomId}/runtime/authoritative`).set({phaseIndex: 8});
+  await database.ref(`salas/${roomId}`).remove();
+  await assert.rejects(startOnlineMatch({firestore, database, requesterId: "host", roomId}), (e) => e.code === "requires-match-recovery");
+  assert.equal((await database.ref(`salas/${roomId}`).get()).exists(), false);
+});
 
 function collectKeys(value) {
   const keys = new Set();

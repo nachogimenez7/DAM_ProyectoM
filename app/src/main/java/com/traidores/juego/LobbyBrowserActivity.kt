@@ -3,6 +3,8 @@ package com.traidores.juego
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.Button
 import android.widget.ImageButton
@@ -14,12 +16,31 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import java.util.Date
 
 class LobbyBrowserActivity : BaseActivity() {
 
     private val firestore = FirebaseFirestore.getInstance()
     private var lobbyListener: ListenerRegistration? = null
     private var lobbies = emptyList<OnlineLobby>()
+    private var browserStarted = false
+    private var queryGeneration = 0
+    private var roomLimit = OnlineLobbySearchWindow.PAGE_SIZE
+    private var hasMoreRooms = false
+    private val serverClock = OnlineServerClock {
+        if (browserStarted) listenForOnlineRooms()
+    }
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshBrowser = object : Runnable {
+        override fun run() {
+            val nowMs = serverClock.nowMs()
+            lobbies = if (nowMs == null) emptyList() else lobbies.filter {
+                OnlineRoomRetentionPolicy.isDiscoverable(it.updatedAtMs, nowMs, it.players, it.limit, false)
+            }
+            renderLobbyList()
+            refreshHandler.postDelayed(this, 60_000L)
+        }
+    }
 
     private lateinit var lobbyList: LinearLayout
     private lateinit var emptyState: TextView
@@ -37,17 +58,33 @@ class LobbyBrowserActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        browserStarted = true
+        serverClock.start()
         listenForOnlineRooms()
+        refreshHandler.postDelayed(refreshBrowser, 60_000L)
     }
 
     override fun onStop() {
+        browserStarted = false
+        queryGeneration++
+        serverClock.stop()
         lobbyListener?.remove()
         lobbyListener = null
+        refreshHandler.removeCallbacks(refreshBrowser)
         super.onStop()
     }
 
     private fun listenForOnlineRooms() {
         lobbyListener?.remove()
+        val serverNowMs = serverClock.nowMs()
+        if (serverNowMs == null) {
+            lobbies = emptyList()
+            hasMoreRooms = false
+            showBrowserMessage("Sincronizando salas disponibles...")
+            renderLobbyList()
+            return
+        }
+        val generation = ++queryGeneration
         OnlineDebugLog.i("lobby_browser_listen_start")
         lobbyListener = firestore.collection(ONLINE_ROOMS_COLLECTION)
             .whereEqualTo(FIELD_STATE, ONLINE_ROOM_STATE_WAITING)
@@ -55,9 +92,14 @@ class LobbyBrowserActivity : BaseActivity() {
                 OnlineRoomFirestore.FIELD_VISIBILITY,
                 OnlineRoomFirestore.VISIBILITY_PUBLIC
             )
+            .whereGreaterThan(
+                FIELD_UPDATED_AT,
+                Date(serverNowMs - OnlineRoomRetentionPolicy.BROWSER_FRESH_FOR_MS)
+            )
             .orderBy(FIELD_UPDATED_AT, Query.Direction.DESCENDING)
-            .limit(BROWSER_ROOM_LIMIT)
+            .limit(roomLimit)
             .addSnapshotListener { snapshot, error ->
+                if (!browserStarted || generation != queryGeneration) return@addSnapshotListener
                 if (error != null) {
                     OnlineDebugLog.e("lobby_browser_listen_failure", error)
                     lobbies = emptyList()
@@ -76,6 +118,12 @@ class LobbyBrowserActivity : BaseActivity() {
                     ?.sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
                     .orEmpty()
                 lobbies = candidates
+                hasMoreRooms = (snapshot?.size() ?: 0).toLong() >= roomLimit
+                if (OnlineLobbySearchWindow.shouldExpand(roomLimit, snapshot?.size() ?: 0, candidates.size) &&
+                    snapshot?.metadata?.isFromCache == false) {
+                    roomLimit += OnlineLobbySearchWindow.PAGE_SIZE
+                    refreshHandler.post { if (browserStarted && generation == queryGeneration) listenForOnlineRooms() }
+                }
                 OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
                 showBrowserMessage("Todavia no hay partidas online. Crea una sala o intenta mas tarde.")
                 renderLobbyList()
@@ -91,9 +139,6 @@ class LobbyBrowserActivity : BaseActivity() {
             ) != OnlineRoomFirestore.VISIBILITY_PUBLIC
         ) return null
         val updatedAtMs = document.getTimestamp(FIELD_UPDATED_AT)?.toDate()?.time ?: 0L
-        if (!OnlineLobbyRules.isRoomFresh(updatedAtMs, System.currentTimeMillis(), ROOM_VISIBILITY_MS)) {
-            return null
-        }
         val mapKey = document.getString(FIELD_MAP_KEY) ?: DEFAULT_MAP_KEY
         val mapName = document.getString(FIELD_MAP_NAME)
             ?: LocalGameFactory.maps.firstOrNull { it.key == mapKey }?.name
@@ -104,11 +149,20 @@ class LobbyBrowserActivity : BaseActivity() {
             maximumPlayers = document.getLong(FIELD_MAX_PLAYERS)?.toInt(),
             fallback = DEFAULT_MAX_PLAYERS
         )
+        val serverNowMs = serverClock.nowMs() ?: return null
+        if (!OnlineRoomRetentionPolicy.isDiscoverable(
+                updatedAtMs = updatedAtMs,
+                nowMs = serverNowMs,
+                currentPlayers = players,
+                playerLimit = limit,
+                deleting = document.getString("cleanupState") == "deleting"
+            )) return null
         return OnlineLobby(
             id = document.id,
             code = document.getString(FIELD_ROOM_CODE).orEmpty(),
             name = document.getString(FIELD_NAME)?.takeIf { it.isNotBlank() } ?: "Sala online",
             players = players.coerceAtLeast(0),
+            updatedAtMs = updatedAtMs,
             limit = limit,
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
@@ -123,6 +177,14 @@ class LobbyBrowserActivity : BaseActivity() {
         lobbies.forEach { lobby ->
             lobbyList.addView(createLobbyRow(lobby))
         }
+        if (hasMoreRooms) lobbyList.addView(Button(this).apply {
+            text = "BUSCAR MÁS SALAS"
+            setOnClickListener {
+                isEnabled = false
+                roomLimit += OnlineLobbySearchWindow.PAGE_SIZE
+                listenForOnlineRooms()
+            }
+        })
     }
 
     private fun createLobbyRow(lobby: OnlineLobby): View {
@@ -220,7 +282,8 @@ class LobbyBrowserActivity : BaseActivity() {
             if (!roomSnapshot.exists()) {
                 throw IllegalStateException("La sala ya no existe.")
             }
-            if (roomSnapshot.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
+            if (roomSnapshot.getString("cleanupState") == "deleting" ||
+                roomSnapshot.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta disponible.")
             }
             val playerSnapshot = transaction.get(playerReference)
@@ -333,6 +396,7 @@ class LobbyBrowserActivity : BaseActivity() {
         val code: String,
         val name: String,
         val players: Int,
+        val updatedAtMs: Long,
         val limit: Int,
         val mapName: String,
         val status: String,
@@ -355,7 +419,5 @@ class LobbyBrowserActivity : BaseActivity() {
         private const val FIELD_MAX_PLAYERS = "maxJugadores"
         private const val DEFAULT_MAP_KEY = "pampa"
         private const val DEFAULT_MAX_PLAYERS = 10
-        private const val BROWSER_ROOM_LIMIT = 30L
-        private const val ROOM_VISIBILITY_MS = 30L * 60L * 1000L
     }
 }

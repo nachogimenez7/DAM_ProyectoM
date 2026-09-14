@@ -7,6 +7,10 @@ enum class OnlineRecoveryTarget {
 }
 
 object OnlineRecoveryGate {
+    fun shouldShowInitialPresentation(phase: GamePhase, phaseIndex: Int): Boolean {
+        return phase == GamePhase.REPARTO && phaseIndex == 0
+    }
+
     fun targetForRoomState(state: String): OnlineRecoveryTarget {
         return when (state) {
             OnlineRoomFirestore.STATE_WAITING -> OnlineRecoveryTarget.LOBBY

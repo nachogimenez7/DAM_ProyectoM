@@ -260,7 +260,11 @@ async function main() {
       actualizadaEn: serverTimestamp(),
     }));
 
-    await assertSucceeds(setDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), playerData("guest_uid", "Guest", 1)));
+    await assertSucceeds(setDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), {
+      ...playerData("guest_uid", "Guest", 1),
+      temaCosmeticoPerfil: "space",
+      emotesPerfil: ["premium_mate", "premium_genio", "griego_triste", "gaucho_contento"],
+    }));
     await assertFails(setDoc(doc(guest, "partidas", "room_auth", "jugadores", "other_uid"), playerData("other_uid", "Other", 2)));
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), {
       votoMapa: "medieval",
@@ -269,6 +273,71 @@ async function main() {
     }));
     await assertFails(updateDoc(doc(guest, "partidas", "room_auth", "jugadores", "guest_uid"), {
       votoMapa: "atlántida",
+    }));
+
+    // Cambiar el mapa en espera reinicia los LISTO de toda la sala en una transacción.
+    await seedRoom(testEnv, "room_map_change", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_map_change", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "partidas", "room_map_change"), {
+        jugadoresActuales: 2,
+      });
+    });
+    await assertFails(updateDoc(doc(guest, "partidas", "room_map_change"), {
+      mapa: "grecia",
+      mapaNombre: "Grecia",
+    }));
+    await assertSucceeds(runTransaction(host, async (transaction) => {
+      const room = doc(host, "partidas", "room_map_change");
+      const hostPlayer = doc(host, "partidas", "room_map_change", "jugadores", "host_uid");
+      const guestPlayer = doc(host, "partidas", "room_map_change", "jugadores", "guest_uid");
+      await transaction.get(room);
+      await transaction.get(hostPlayer);
+      await transaction.get(guestPlayer);
+      transaction.update(room, {
+        mapa: "grecia",
+        mapaNombre: "Grecia",
+        actualizadaEn: serverTimestamp(),
+      });
+      transaction.update(hostPlayer, { listo: false });
+      transaction.update(guestPlayer, { listo: false });
+    }));
+    const changedRoom = await getDoc(doc(host, "partidas", "room_map_change"));
+    const changedHost = await getDoc(doc(host, "partidas", "room_map_change", "jugadores", "host_uid"));
+    const changedGuest = await getDoc(doc(host, "partidas", "room_map_change", "jugadores", "guest_uid"));
+    if (changedRoom.data().mapa !== "grecia" || changedHost.data().listo || changedGuest.data().listo) {
+      throw new Error("El cambio de mapa debe reiniciar LISTO para ambos jugadores");
+    }
+    await assertSucceeds(runTransaction(guest, async (transaction) => {
+      const room = await transaction.get(doc(guest, "partidas", "room_map_change"));
+      const playerRef = doc(guest, "partidas", "room_map_change", "jugadores", "guest_uid");
+      await transaction.get(playerRef);
+      if (room.data().mapa !== "grecia") throw new Error("El jugador debe ver el mapa nuevo");
+      transaction.update(playerRef, { listo: true });
+    }));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "partidas", "room_map_15"), {
+        ...roomData("host_uid", 15),
+        jugadoresActuales: 15,
+      });
+      for (let index = 0; index < 15; index++) {
+        const uid = index === 0 ? "host_uid" : `player_${index}`;
+        await setDoc(doc(db, "partidas", "room_map_15", "jugadores", uid),
+          playerData(uid, `Player ${index}`, index, index === 0));
+      }
+    });
+    await assertSucceeds(runTransaction(host, async (transaction) => {
+      const room = doc(host, "partidas", "room_map_15");
+      const refs = Array.from({ length: 15 }, (_, index) => doc(host,
+        "partidas", "room_map_15", "jugadores", index === 0 ? "host_uid" : `player_${index}`));
+      await transaction.get(room);
+      for (const reference of refs) await transaction.get(reference);
+      transaction.update(room, { mapa: "grecia", mapaNombre: "Grecia", actualizadaEn: serverTimestamp() });
+      for (const reference of refs) transaction.update(reference, { listo: false });
     }));
 
     // Al volver de Gameplay, un jugador que fue liberado por una presencia obsoleta puede
@@ -522,7 +591,18 @@ async function main() {
       actualizadaEn: serverTimestamp(),
     }));
 
-    const guestAction = await assertSucceeds(addDoc(collection(guest, "partidas", "room_auth", "acciones"), {
+    const guestVoteRef = doc(
+      guest,
+      "partidas",
+      "room_auth",
+      "acciones",
+      "match_rules_1_guest_uid_r1_p7_votar_s1"
+    );
+    // El cliente no puede leer un voto que aún no existe. El primer voto debe crearse sin
+    // transaction.get(); esta es la diferencia entre invitados y el anfitrión, que sí puede
+    // leer todas las acciones para resolver la fase.
+    await assertFails(getDoc(guestVoteRef));
+    await assertSucceeds(setDoc(guestVoteRef, {
       matchId: "match_rules_1",
       tipo: "accion_jugador",
       actorId: "guest_uid",
@@ -539,11 +619,10 @@ async function main() {
       actualizadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
-    const guestVoteRef = doc(guest, guestAction.path);
     await assertSucceeds(updateDoc(guestVoteRef, {
       objetivoNombre: "Bot",
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 2 },
-      cambiosVoto: 1,
+      cambiosVoto: increment(1),
       actualizadaEn: serverTimestamp(),
     }));
     await assertFails(updateDoc(guestVoteRef, {
@@ -558,7 +637,7 @@ async function main() {
       cambiosVoto: 2,
       actualizadaEn: serverTimestamp(),
     }));
-    await assertFails(updateDoc(doc(host, guestAction.path), {
+    await assertFails(updateDoc(doc(host, guestVoteRef.path), {
       objetivoNombre: "Host",
       detalles: { accion: "votar", actorOrden: 1, objetivoOrden: 0 },
       cambiosVoto: 2,
@@ -572,7 +651,7 @@ async function main() {
       actualizadaEn: serverTimestamp(),
     }));
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await updateDoc(doc(context.firestore(), guestAction.path), { cambiosVoto: 24 });
+      await updateDoc(doc(context.firestore(), guestVoteRef.path), { cambiosVoto: 24 });
     });
     await assertFails(updateDoc(guestVoteRef, {
       objetivoNombre: "Host",
@@ -691,10 +770,10 @@ async function main() {
       creadaEn: serverTimestamp(),
       creadaEnLocal: Date.now(),
     }));
-    await assertSucceeds(getDoc(doc(guest, guestAction.path)));
-    await assertSucceeds(getDoc(doc(host, guestAction.path)));
+    await assertSucceeds(getDoc(doc(guest, guestVoteRef.path)));
+    await assertSucceeds(getDoc(doc(host, guestVoteRef.path)));
     await assertFails(getDoc(doc(guest, hostAction.path)));
-    await assertFails(getDoc(doc(intruder, guestAction.path)));
+    await assertFails(getDoc(doc(intruder, guestVoteRef.path)));
     await assertSucceeds(getDocs(query(
       collection(guest, "partidas", "room_auth", "acciones"),
       where("actorId", "==", "guest_uid")
@@ -1001,6 +1080,14 @@ async function main() {
       nombrePerfil: "Guest seguro",
       actualizadaEn: serverTimestamp(),
     }));
+    await assertSucceeds(updateDoc(guestPublicProfile, {
+      emotesPerfil: ["premium_mate", "premium_genio", "griego_triste", "gaucho_contento"],
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(guestPublicProfile, {
+      emotesPerfil: ["emote_inventado"],
+      actualizadaEn: serverTimestamp(),
+    }));
     await assertFails(updateDoc(guestPublicProfile, {
       publicId: "999",
       actualizadaEn: serverTimestamp(),
@@ -1092,7 +1179,7 @@ async function main() {
     };
     const repartoRef = doc(host, "partidas", "room_bans", "repartos", "guest_uid");
     await assertSucceeds(setDoc(repartoRef, reparto));
-    await assertSucceeds(getDoc(doc(guest, repartoRef.path)));
+    await assertFails(getDoc(doc(guest, repartoRef.path))); // banned members lose private-role access
     await assertFails(getDoc(doc(intruder, repartoRef.path)));
     await assertSucceeds(getDocs(collection(host, "partidas", "room_bans", "repartos")));
     await assertFails(getDocs(collection(intruder, "partidas", "room_bans", "repartos")));
@@ -1166,8 +1253,7 @@ async function main() {
     await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame", "jugadores", "host_uid")));
     await assertFails(deleteDoc(doc(host, "partidas", "room_teardown_ingame")));
 
-    // El creador recupera la capacidad de limpiar una sala propia después de 24 horas sin
-    // actividad, incluso si la partida quedó en juego y el host activo había cambiado.
+    // La antigüedad no autoriza al creador a borrar una partida migrada. Limpieza sólo backend.
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const db = context.firestore();
       const staleRoom = roomData("host_uid");
@@ -1205,12 +1291,12 @@ async function main() {
     )));
     await assertFails(getDocs(collection(intruder, "partidas", "room_stale_creator", "jugadores")));
     await assertSucceeds(getDocs(collection(host, "partidas", "room_stale_creator", "jugadores")));
-    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_stale_creator", "jugadores", "host_uid")));
-    await assertSucceeds(deleteDoc(doc(host, "partidas", "room_stale_creator", "acciones", "accion_1")));
+    await assertFails(deleteDoc(doc(host, "partidas", "room_stale_creator", "jugadores", "host_uid")));
+    await assertFails(deleteDoc(doc(host, "partidas", "room_stale_creator", "acciones", "accion_1")));
     const staleCleanupBatch = writeBatch(host);
     staleCleanupBatch.delete(doc(host, "codigosSala", "STALE1"));
     staleCleanupBatch.delete(doc(host, "partidas", "room_stale_creator"));
-    await assertSucceeds(staleCleanupBatch.commit());
+    await assertFails(staleCleanupBatch.commit());
 
     const browserQuery = query(
       collection(guest, "partidas"),
@@ -1262,6 +1348,26 @@ async function main() {
       creadaEn: serverTimestamp(),
     });
     await assertSucceeds(atomicBatch.commit());
+
+    const ownProfile = doc(host, "partidas", "room_atomic_create", "jugadores", "host_uid");
+    await assertSucceeds(updateDoc(ownProfile, {
+      emotesPerfil: ["premium_mate", "premium_genio", "griego_triste", "gaucho_contento"],
+    }));
+    await assertFails(updateDoc(ownProfile, {
+      emotesPerfil: ["premium_mate", "premium_genio", "griego_triste", "gaucho_contento", "griego_enojado"],
+    }));
+    await assertFails(updateDoc(ownProfile, { emotesPerfil: ["emote_inventado"] }));
+    await assertSucceeds(updateDoc(ownProfile, { estadisticasPerfil: { partidas: 5, victorias: 3 } }));
+    for (const stats of [
+      { partidas: 1, victorias: 2 }, { partidas: -1, victorias: 0 },
+      { partidas: 5.5, victorias: 1 }, { partidas: 1000001, victorias: 0 },
+      { partidas: 5, victorias: 1, ranking: 999 }, { partidas: 5 }, "invalid",
+    ]) {
+      await assertFails(updateDoc(ownProfile, { estadisticasPerfil: stats }));
+    }
+    await assertFails(updateDoc(doc(intruder, "partidas", "room_atomic_create", "jugadores", "host_uid"), {
+      estadisticasPerfil: { partidas: 5, victorias: 5 },
+    }));
 
     const rollbackBatch = writeBatch(host);
     rollbackBatch.delete(doc(host, "partidas", "room_atomic_create", "jugadores", "host_uid"));

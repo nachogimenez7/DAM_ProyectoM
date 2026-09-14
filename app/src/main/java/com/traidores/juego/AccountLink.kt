@@ -174,7 +174,9 @@ object AccountLink {
                     bannerKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BANNER).orEmpty(),
                     favoriteRoleKey = document
                         .getString(PlayerPublicIdentity.FIELD_PROFILE_FAVORITE_ROLE)
-                        .orEmpty()
+                        .orEmpty(),
+                    emoteIds = (document.get(PlayerPublicIdentity.FIELD_PROFILE_EMOTES) as? List<*>)
+                        ?.mapNotNull { it as? String }
                 )
                 val stored = document.getString(PlayerPublicIdentity.FIELD_PUBLIC_ID).orEmpty()
                 if (PlayerPublicIdentity.isValidPublicId(stored)) {

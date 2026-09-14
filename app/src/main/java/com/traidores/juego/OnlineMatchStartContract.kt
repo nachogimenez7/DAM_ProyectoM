@@ -54,7 +54,7 @@ object OnlineMatchStartPolicy {
         requesterId: String,
         room: OnlineMatchStartRoomState,
         players: List<OnlineMatchStartPlayer>,
-        hostTieBreakChoice: String?
+        @Suppress("UNUSED_PARAMETER") hostTieBreakChoice: String?
     ): OnlineMatchStartDecision {
         if (room.initialMatchCreated || room.hasInitialMatch) {
             return OnlineMatchStartDecision.AlreadyStarted
@@ -88,27 +88,13 @@ object OnlineMatchStartPolicy {
             return OnlineMatchStartDecision.Rejected(OnlineMatchStartError.PLAYERS_NOT_READY)
         }
 
-        val votes = activePlayers.map { player ->
-            OnlineMapVote(
-                playerId = player.id,
-                playerInitial = player.initial,
-                mapKey = player.mapVote
-            )
-        }
-        return when (
-            val resolution = OnlineMapVoteResolver.resolveAtStart(
-                votes = votes,
-                currentMapKey = room.currentMapKey,
-                hostTieBreakChoice = hostTieBreakChoice
-            )
-        ) {
-            is OnlineMapResolution.Selected -> OnlineMatchStartDecision.Ready(
-                mapKey = resolution.mapKey,
-                orderedPlayers = activePlayers
-            )
-            is OnlineMapResolution.HostTieBreakRequired ->
-                OnlineMatchStartDecision.MapTieBreakRequired(resolution.mapKeys)
-        }
+        // El mapa actual de la sala lo elige el anfitrión y puede cambiar mientras espera.
+        // Ignoramos votos enviados por clientes anteriores.
+        return OnlineMatchStartDecision.Ready(
+            mapKey = room.currentMapKey.takeIf { it in OnlineMapVoteResolver.mapKeys }
+                ?: OnlineMapVoteResolver.mapKeys.first(),
+            orderedPlayers = activePlayers
+        )
     }
 }
 

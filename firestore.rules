@@ -46,6 +46,35 @@ service cloud.firestore {
       return publicId is string && publicId.matches('^[0-9]{1,12}$');
     }
 
+    function validProfileStats(data) {
+      return !('estadisticasPerfil' in data) || (
+        data.estadisticasPerfil is map
+        && data.estadisticasPerfil.keys().hasOnly(['partidas', 'victorias'])
+        && data.estadisticasPerfil.keys().hasAll(['partidas', 'victorias'])
+        && data.estadisticasPerfil.partidas is int
+        && data.estadisticasPerfil.victorias is int
+        && data.estadisticasPerfil.partidas >= 0
+        && data.estadisticasPerfil.partidas <= 1000000
+        && data.estadisticasPerfil.victorias >= 0
+        && data.estadisticasPerfil.victorias <= data.estadisticasPerfil.partidas
+      );
+    }
+
+    function validProfileEmotes(data) {
+      return !('emotesPerfil' in data) || (
+        data.emotesPerfil is list
+        && data.emotesPerfil.size() <= 4
+        && data.emotesPerfil.hasOnly([
+          'griego_enojado', 'griego_triste', 'griego_contento', 'griego_sospechoso',
+          'medieval_enojado', 'medieval_triste', 'medieval_contento', 'medieval_sospechoso',
+          'gaucho_enojado', 'gaucho_triste', 'gaucho_contento', 'gaucho_sospechoso',
+          'premium_hermosa_manana', 'premium_mate', 'premium_dormida', 'premium_genio',
+          'premium_medico_timido', 'premium_desertor_lengua',
+          'premium_oraculo_mmm_nie', 'premium_six_seven'
+        ])
+      );
+    }
+
     function validPublicProfile(data, uidTemporal) {
       return data.keys().hasOnly([
           'uidTemporal',
@@ -57,7 +86,9 @@ service cloud.firestore {
           'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
+          'emotesPerfil',
           'temaCosmeticoPerfil',
+          'estadisticasPerfil',
           'actualizadaEn'
         ])
         && data.keys().hasAll([
@@ -75,8 +106,10 @@ service cloud.firestore {
         && isOptionalString(data, 'fotoPlayGames', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
+        && validProfileEmotes(data)
         && (!('temaCosmeticoPerfil' in data)
           || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
+        && validProfileStats(data)
         && data.actualizadaEn == request.time;
     }
 
@@ -204,22 +237,42 @@ service cloud.firestore {
         && request.auth.uid == room.hostActivoId;
     }
 
-    // Un creador que vuelve a entrar al online puede retirar sus propias salas huérfanas.
-    // Se usa el timestamp del servidor, no el reloj del teléfono, y se espera un día entero
-    // para no interferir con una partida o recuperación legítima todavía en curso.
+    // La limpieza de salas viejas pertenece al backend: el padre puede estar quieto mientras
+    // la presencia y la partida siguen activas en RTDB. Nunca autoriza un borrado cliente.
     function staleCreatorCleanupAllowed(partidaId) {
-      let room = get(/databases/$(database)/documents/partidas/$(partidaId)).data;
-      return signedIn()
-        && room.hostId == request.auth.uid
-        && room.actualizadaEn is timestamp
-        && request.time > room.actualizadaEn + duration.value(24, 'h');
+      return false;
+    }
+
+    function roomClientWriteAllowed(partidaId) {
+      let roomPath = /databases/$(database)/documents/partidas/$(partidaId);
+      return !exists(roomPath) || get(roomPath).data.get('cleanupState', '') != 'deleting';
+    }
+
+    function validPlayerJoin(partidaId) {
+      let room = getAfter(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return room.estado == 'esperando'
+        && room.get('limpiezaPendiente', false) == false
+        && request.resource.data.get('esHost', false) == (request.auth.uid == room.hostId);
+    }
+
+    function validPlayerSelfUpdate(partidaId) {
+      let room = getAfter(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return isSelf(request.resource.data.uidTemporal)
+        && request.resource.data.get('esHost', false) == (request.auth.uid == room.hostId)
+        // Una desconexión mantiene activoEnPartida=true: puede reconectar. Un abandono o
+        // expulsión no puede deshacerse desde el cliente durante la partida.
+        && (room.estado == 'esperando'
+          || resource.data.get('activoEnPartida', true) != false
+          || request.resource.data.get('activoEnPartida', true) == false);
     }
 
     function isActiveRoomMember(partidaId) {
       let playerPath = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(request.auth.uid);
       return signedIn()
         && exists(playerPath)
-        && get(playerPath).data.activoEnPartida != false;
+        && get(playerPath).data.activoEnPartida != false
+        && !isGloballyBanned()
+        && !isBannedFromRoom(partidaId);
     }
 
     // Al unirse, el documento del jugador y el contador de la sala se escriben en la misma
@@ -310,7 +363,6 @@ service cloud.firestore {
       let matchPlayers = room.partidaInicial.jugadores;
       return isActiveRoomMember(partidaId)
         && request.resource.data.actorId == request.auth.uid
-        && request.resource.data.actorEsHost == isRoomActiveHost(partidaId)
         && actorOrder is int
         && matchPlayers is list
         && actorOrder >= 0
@@ -320,6 +372,55 @@ service cloud.firestore {
         // reingreso; usarlo acá rechazaba acciones legítimas o atribuía un rol a otro UID.
         && matchPlayers[actorOrder].uidTemporal == request.auth.uid
         && matchPlayers[actorOrder].nombre == request.resource.data.actorNombre;
+    }
+
+    function isMutableVote(data) {
+      return data.tipo == 'accion_jugador'
+        && data.detalles.get('accion', '') == 'votar'
+        && data.fase in ['VOTACION', 'DESEMPATE_VOTACION'];
+    }
+
+    function validVoteTarget(partidaId, data) {
+      let players = get(/databases/$(database)/documents/partidas/$(partidaId)).data.partidaInicial.jugadores;
+      let target = data.detalles.objetivoOrden;
+      return target is int && target >= 0 && target < players.size()
+        && target != data.detalles.actorOrden
+        && players[target].nombre == data.objetivoNombre;
+    }
+
+    // El protocolo 2 se activa desde el checkpoint que el cliente confirma antes de liberar
+    // la fase en RTDB. APK anteriores mantienen el contrato legado; no se presume que el
+    // documento principal (checkpoint antiguo) sea la fase actual de la partida.
+    function validVoteWindow(partidaId, accionId, data) {
+      let path = /databases/$(database)/documents/partidas/$(partidaId)/runtime/authoritative;
+      return !exists(path)
+        || get(path).data.estadoPartida.get('protocoloVoto', 0) != 2
+        || validProtocolVote(get(path).data, accionId, data);
+    }
+
+    function validProtocolVote(checkpoint, accionId, data) {
+      let state = checkpoint.estadoPartida;
+      let actor = data.detalles.actorOrden;
+      let target = data.detalles.objetivoOrden;
+      return checkpoint.matchId == data.matchId
+        && checkpoint.phaseIndex == data.phaseIndex
+        && state.phaseIndex == data.phaseIndex
+        && state.fase == data.fase
+        && state.ronda == data.ronda
+        && state.get('ganador', '') == ''
+        && state.get('votacionCerrada', false) == false
+        && state.limiteFaseEpochMs is int && state.limiteFaseEpochMs > 0
+        // Conserva la gracia existente de recepción de acciones en vuelo del motor online.
+        && request.time.toMillis() < state.limiteFaseEpochMs + 1500
+        && accionId == data.matchId + '_' + request.auth.uid
+          + '_r' + string(data.ronda) + '_p' + string(data.phaseIndex) + '_votar_s1'
+        && actor < state.jugadores.size() && target < state.jugadores.size()
+        && state.jugadores[actor].vivo == true
+        && state.jugadores[actor].muteado == false
+        && state.jugadores[target].vivo == true
+        && state.jugadores[target].nombre == data.objetivoNombre
+        && (data.fase != 'DESEMPATE_VOTACION'
+          || data.objetivoNombre in state.candidatosDesempate);
     }
 
     function activeHostCanUpdateRoom() {
@@ -562,7 +663,9 @@ service cloud.firestore {
           'fotoPlayGames',
           'bannerPerfil',
           'rolFavoritoPerfil',
+          'emotesPerfil',
           'temaCosmeticoPerfil',
+          'estadisticasPerfil',
           'esHost',
           'estado',
           'uidTemporal',
@@ -586,10 +689,12 @@ service cloud.firestore {
         && isOptionalString(data, 'fotoPlayGames', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
+        && validProfileEmotes(data)
         && (!('temaCosmeticoPerfil' in data)
           || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
+        && validProfileStats(data)
         && validPlayerState(data.estado)
         && (!('esHost' in data) || data.esHost is bool)
         && (!('activoEnPartida' in data) || data.activoEnPartida is bool)
@@ -793,14 +898,18 @@ service cloud.firestore {
       // Crear sala es de cuentas registradas: el creador arranca de anfitrion, y el anfitrion
       // es la autoridad de la partida y quien expulsa y banea. Un invitado puede buscar salas
       // y entrar por codigo, pero no armar la suya.
-      allow create: if isRegistered()
+      allow create: if roomClientWriteAllowed(partidaId)
+          && (isRegistered()
         && !isGloballyBanned()
+        && !('cleanupState' in request.resource.data)
         && validRoomBase(request.resource.data)
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.hostActivoId == request.auth.uid
-        && request.resource.data.get('limpiezaPendiente', false) == false;
+        && request.resource.data.get('limpiezaPendiente', false) == false);
 
-      allow update: if stableHostRematchReset()
+      allow update: if roomClientWriteAllowed(partidaId)
+          && (request.resource.data.get('cleanupState', '') == resource.data.get('cleanupState', '')
+        && (stableHostRematchReset()
         || (
           (
             clientStateSelfPublish(partidaId)
@@ -810,19 +919,20 @@ service cloud.firestore {
           || activeHostCanUpdateRoom()
           )
           && validRoomPostUpdate(request.resource.data)
-        );
+        )));
       // El anfitrion (activo o estable) puede borrar la sala por completo cuando queda
       // vacia: esperando, y ya sin ningun otro jugador conectado (ese chequeo se hace en
       // el cliente antes de dejar el lobby; el ultimo anfitrion en pie es siempre quien
       // desencadena esto).
-      allow delete: if signedIn()
+      allow delete: if roomClientWriteAllowed(partidaId)
+          && (signedIn()
         && (
           (
             resource.data.estado == 'esperando'
             && request.auth.uid == resource.data.hostActivoId
           )
           || staleCreatorCleanupAllowed(partidaId)
-        );
+        ));
 
       match /jugadores/{uidTemporal} {
         allow get: if isSelf(uidTemporal)
@@ -835,20 +945,24 @@ service cloud.firestore {
 
         // Los dos chequeos de baneo miran a `request.auth.uid`, o sea a quien escribe: el
         // anfitrion sigue pudiendo editar el documento del jugador que acaba de banear.
-        allow create: if isSelf(uidTemporal)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (isSelf(uidTemporal)
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
-          && validPlayerDocument(request.resource.data, uidTemporal);
+          && validPlayerJoin(partidaId)
+          && validPlayerDocument(request.resource.data, uidTemporal));
 
-        allow update: if (isSelf(uidTemporal)
+        allow update: if roomClientWriteAllowed(partidaId)
+          && ((validPlayerSelfUpdate(partidaId)
           || isRoomActiveHost(partidaId)
           || isRoomStableHostAfter(partidaId))
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
-          && validPlayerDocument(request.resource.data, uidTemporal);
+          && validPlayerDocument(request.resource.data, uidTemporal));
 
-        allow delete: if roomTeardownAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (roomTeardownAllowed(partidaId)
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       // Lista de expulsados permanentes de esta sala. La escribe el anfitrion (creador o
@@ -862,7 +976,8 @@ service cloud.firestore {
         allow list: if isRoomHostAny(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
 
-        allow create: if isRoomHostAny(partidaId)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (isRoomHostAny(partidaId)
           && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado
             in ['esperando', 'finalizada']
           && uidBaneado != request.auth.uid
@@ -879,23 +994,26 @@ service cloud.firestore {
           && isString(request.resource.data.nombre, 1, 18)
           && isOptionalString(request.resource.data, 'motivo', 60)
           && request.resource.data.baneadoPor == request.auth.uid
-          && request.resource.data.creadaEn == request.time;
+          && request.resource.data.creadaEn == request.time);
 
-        allow update: if false;
-        allow delete: if isRoomHostAny(partidaId)
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (false);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (isRoomHostAny(partidaId)
           || roomTeardownAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       // Reparto privado: cada cliente solo puede leer su documento. El anfitrión activo
       // puede enumerarlos porque es quien ejecuta el motor autoritativo de la partida.
       match /repartos/{uidJugador} {
-        allow get: if isSelf(uidJugador)
+        allow get: if (isSelf(uidJugador) && isActiveRoomMember(partidaId))
           || isRoomHostAny(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
         allow list: if isRoomHostAny(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
-        allow create: if isRoomHostAny(partidaId)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (isRoomHostAny(partidaId)
           && hasOnly(request.resource.data, [
             'matchId', 'uidTemporal', 'rolesVisibles', 'creadaEn'
           ])
@@ -907,19 +1025,21 @@ service cloud.firestore {
           && request.resource.data.rolesVisibles is list
           && request.resource.data.rolesVisibles.size() >= 1
           && request.resource.data.rolesVisibles.size() <= 15
-          && request.resource.data.creadaEn == request.time;
+          && request.resource.data.creadaEn == request.time);
         // El anfitrion entrega al Detective su resultado sin publicar cartas ajenas. No puede
         // modificar el reparto original: solo agregar o reemplazar esta pista privada validada.
-        allow update: if isRoomActiveHost(partidaId)
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (isRoomActiveHost(partidaId)
           && changedOnly(['pistaInvestigacion'])
           && validPrivateInvestigationClue(request.resource.data.pistaInvestigacion)
           && validCurrentMatchId(
             partidaId,
             request.resource.data.pistaInvestigacion.matchId
-          );
-        allow delete: if cleanupDeleteAllowed(partidaId)
+          ));
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (cleanupDeleteAllowed(partidaId)
           || roomTeardownAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       // Checkpoint durable sin listeners. El estado caliente se distribuye por RTDB; esta
@@ -933,17 +1053,23 @@ service cloud.firestore {
           );
         allow list: if isRoomHostAny(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
-        allow create: if runtimeId == 'authoritative'
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (runtimeId == 'authoritative'
           && isRoomActiveHost(partidaId)
-          && validAuthoritativeCheckpoint(partidaId, request.resource.data);
-        allow update: if runtimeId == 'authoritative'
+          && validAuthoritativeCheckpoint(partidaId, request.resource.data));
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (runtimeId == 'authoritative'
           && isRoomActiveHost(partidaId)
           && validAuthoritativeCheckpoint(partidaId, request.resource.data)
           && request.resource.data.matchId == resource.data.matchId
-          && request.resource.data.phaseIndex >= resource.data.phaseIndex;
-        allow delete: if cleanupDeleteAllowed(partidaId)
+          && request.resource.data.phaseIndex >= resource.data.phaseIndex
+          && (request.resource.data.phaseIndex > resource.data.phaseIndex
+            || resource.data.estadoPartida.get('votacionCerrada', false) == false
+            || request.resource.data.estadoPartida.get('votacionCerrada', false) == true));
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (cleanupDeleteAllowed(partidaId)
           || roomTeardownAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       match /acciones/{accionId} {
@@ -956,7 +1082,9 @@ service cloud.firestore {
             && resource.data.actorId == request.auth.uid
           );
 
-        allow create: if validActionActor(partidaId)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (validActionActor(partidaId)
+          && request.resource.data.actorEsHost == isRoomActiveHost(partidaId)
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
           && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado == 'en_juego'
@@ -1026,8 +1154,10 @@ service cloud.firestore {
             request.resource.data.tipo == 'fase_avanzada'
             || isString(request.resource.data.detalles.accion, 1, 40)
           )
-          // Compatibilidad con el APK anterior: aceptaba el contador en la creación.
-          // Nunca se permite actualizar el documento, por lo que no agrega escrituras.
+          && (!isMutableVote(request.resource.data)
+            || (validVoteTarget(partidaId, request.resource.data)
+              && validVoteWindow(partidaId, accionId, request.resource.data)))
+          // El primer voto siempre nace con contador cero; los cambios son atómicos.
           && (
             !('cambiosVoto' in request.resource.data)
             || (
@@ -1045,13 +1175,14 @@ service cloud.firestore {
             )
           )
           && request.resource.data.creadaEnLocal is int
-          && request.resource.data.creadaEn == request.time;
+          && request.resource.data.creadaEn == request.time);
 
         // Un voto ocupa un único slot por jugador y fase. El dueño puede reemplazar solamente
         // su objetivo mientras la partida sigue abierta; identidad, ronda y fase son inmutables.
         // El contador alto no limita una decisión normal, pero evita escrituras ilimitadas desde
         // un cliente modificado.
-        allow update: if validActionActor(partidaId)
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (validActionActor(partidaId)
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
           && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado == 'en_juego'
@@ -1063,6 +1194,8 @@ service cloud.firestore {
           && request.resource.data.fase == resource.data.fase
           && request.resource.data.matchId == resource.data.matchId
           && validCurrentMatchId(partidaId, request.resource.data.matchId)
+          && validVoteTarget(partidaId, request.resource.data)
+          && validVoteWindow(partidaId, accionId, request.resource.data)
           && changedOnly([
             'objetivoNombre',
             'detalles',
@@ -1082,17 +1215,19 @@ service cloud.firestore {
           && request.resource.data.cambiosVoto
             == (('cambiosVoto' in resource.data) ? resource.data.cambiosVoto : 0) + 1
           && request.resource.data.cambiosVoto <= 24
-          && request.resource.data.actualizadaEn == request.time;
-        allow delete: if cleanupDeleteAllowed(partidaId)
+          && request.resource.data.actualizadaEn == request.time);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (cleanupDeleteAllowed(partidaId)
           || roomTeardownAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       match /chat/{mensajeId} {
         allow read: if isActiveRoomMember(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
 
-        allow create: if isActiveRoomMember(partidaId)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (isActiveRoomMember(partidaId)
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
           && hasOnly(request.resource.data, [
@@ -1118,18 +1253,21 @@ service cloud.firestore {
           && request.resource.data.ronda >= 0
           && request.resource.data.ronda <= 30
           && request.resource.data.isGod == false
-          && request.resource.data.creadaEnLocal is int;
+          && request.resource.data.creadaEnLocal is int);
 
-        allow update: if false;
-        allow delete: if cleanupDeleteAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (false);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (cleanupDeleteAllowed(partidaId)
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       match /chat_lobby/{mensajeId} {
         allow read: if isActiveRoomMember(partidaId)
           || staleCreatorCleanupAllowed(partidaId);
 
-        allow create: if isActiveRoomMember(partidaId)
+        allow create: if roomClientWriteAllowed(partidaId)
+          && (isActiveRoomMember(partidaId)
           && get(/databases/$(database)/documents/partidas/$(partidaId)).data.estado
             in ['esperando', 'finalizada']
           && hasOnly(request.resource.data, [
@@ -1164,11 +1302,13 @@ service cloud.firestore {
             )
           )
           && request.resource.data.creadaEn == request.time
-          && request.resource.data.creadaEnLocal is int;
+          && request.resource.data.creadaEnLocal is int);
 
-        allow update: if false;
-        allow delete: if lobbyChatDeleteAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+        allow update: if roomClientWriteAllowed(partidaId)
+          && (false);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (lobbyChatDeleteAllowed(partidaId)
+          || staleCreatorCleanupAllowed(partidaId));
       }
 
       match /chat_traidores/{mensajeId} {
@@ -1176,8 +1316,9 @@ service cloud.firestore {
         // histórica de Firestore queda cerrada para no ofrecer una segunda puerta permisiva.
         allow read: if staleCreatorCleanupAllowed(partidaId);
         allow create, update: if false;
-        allow delete: if cleanupDeleteAllowed(partidaId)
-          || staleCreatorCleanupAllowed(partidaId);
+        allow delete: if roomClientWriteAllowed(partidaId)
+          && (cleanupDeleteAllowed(partidaId)
+          || staleCreatorCleanupAllowed(partidaId));
       }
     }
 

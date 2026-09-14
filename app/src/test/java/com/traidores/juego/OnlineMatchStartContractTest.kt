@@ -98,30 +98,17 @@ class OnlineMatchStartContractTest {
     }
 
     @Test
-    fun tiedVoteRequiresAValidHostChoice() {
+    fun hostMapCannotBeOverriddenByOldClientVotes() {
         val players = readyPlayers().mapIndexed { index, player ->
             player.copy(mapVote = listOf("pampa", "grecia", "medieval")[index])
         }
-        val unresolved = OnlineMatchStartPolicy.evaluate(
+        val decision = OnlineMatchStartPolicy.evaluate(
             requesterId = "host",
-            room = room(),
-            players = players,
-            hostTieBreakChoice = null
-        )
-        assertEquals(
-            OnlineMatchStartDecision.MapTieBreakRequired(
-                listOf("pampa", "grecia", "medieval")
-            ),
-            unresolved
-        )
-
-        val resolved = OnlineMatchStartPolicy.evaluate(
-            requesterId = "host",
-            room = room(),
+            room = room().copy(currentMapKey = "medieval"),
             players = players,
             hostTieBreakChoice = "grecia"
         ) as OnlineMatchStartDecision.Ready
-        assertEquals("grecia", resolved.mapKey)
+        assertEquals("medieval", decision.mapKey)
     }
 
     @Test

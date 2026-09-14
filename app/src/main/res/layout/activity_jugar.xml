@@ -33,77 +33,122 @@
         android:textColor="@color/accent_gold"
         android:textSize="23sp" />
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/titlePlayMode"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="12dp"
         android:layout_alignParentBottom="true"
-        android:orientation="vertical"
-        android:paddingHorizontal="20dp"
         android:paddingBottom="24dp">
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/cardLocal"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/bg_btn_dark"
+            android:layout_marginHorizontal="16dp"
+            android:background="@drawable/bg_mode_card"
             android:clickable="true"
+            android:clipToOutline="true"
             android:focusable="true"
-            android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="2dp"
+            app:layout_constraintDimensionRatio="3:2"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/cardOnline"
+            app:layout_constraintVertical_chainStyle="packed">
 
-            <ImageView
-                android:id="@+id/imgLocalMode"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:contentDescription="Imagen de juego local"
-                android:scaleType="centerCrop"
-                android:src="@drawable/modo_juego_local" />
+                android:layout_height="match_parent">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:fontFamily="sans-serif"
-                android:gravity="center"
-                android:text="@string/btn_local"
-                android:textColor="@color/text_primary"
-                android:textSize="19sp" />
-        </LinearLayout>
+                <ImageView
+                    android:id="@+id/imgLocalMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/modo_juego_local_pampa_v3" />
 
-        <LinearLayout
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="62dp"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/bg_mode_title_scrim" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:layout_marginHorizontal="20dp"
+                    android:layout_marginBottom="12dp"
+                    android:fontFamily="@font/bree_serif"
+                    android:gravity="center"
+                    android:letterSpacing="0.02"
+                    android:shadowColor="#A0000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="3"
+                    android:text="@string/btn_local"
+                    android:textColor="@color/text_primary"
+                    android:textSize="22sp" />
+            </FrameLayout>
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/cardOnline"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_btn_dark"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="40dp"
+            android:background="@drawable/bg_mode_card"
             android:clickable="true"
+            android:clipToOutline="true"
             android:focusable="true"
-            android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="2dp"
+            app:layout_constraintDimensionRatio="3:2"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/cardLocal"
+            app:layout_constraintBottom_toBottomOf="parent">
 
-            <ImageView
-                android:id="@+id/imgOnlineMode"
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:contentDescription="Imagen de juego online"
-                android:scaleType="fitCenter"
-                android:src="@drawable/modo_jugar_online" />
+                android:layout_height="match_parent">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:fontFamily="sans-serif"
-                android:gravity="center"
-                android:text="@string/btn_online"
-                android:textColor="@color/text_primary"
-                android:textSize="21sp" />
-        </LinearLayout>
-    </LinearLayout>
+                <ImageView
+                    android:id="@+id/imgOnlineMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/modo_jugar_online" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="62dp"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/bg_mode_title_scrim" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom"
+                    android:layout_marginHorizontal="20dp"
+                    android:layout_marginBottom="12dp"
+                    android:fontFamily="@font/bree_serif"
+                    android:gravity="center"
+                    android:letterSpacing="0.02"
+                    android:shadowColor="#A0000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="3"
+                    android:text="@string/btn_online"
+                    android:textColor="@color/text_primary"
+                    android:textSize="22sp" />
+            </FrameLayout>
+        </FrameLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </RelativeLayout>
 

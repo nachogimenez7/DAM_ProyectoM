@@ -40,10 +40,25 @@ class RealtimeRoomPresence(
     private var membershipGranted = false
     private var membershipAccessKey = ""
     private var presenceListenerAttached = false
-    private var publishGeneration = 0
+    private val publisher = OnlinePresencePublisher(
+        registerDisconnect = { complete ->
+            ownPresence.onDisconnect().setValue(payload(STATE_DISCONNECTED)) { error, _ ->
+                complete(error?.toException())
+            }
+        },
+        writePresence = { connected, complete ->
+            ownPresence.setValue(payload(if (connected) STATE_CONNECTED else STATE_DISCONNECTED))
+                .addOnSuccessListener { complete(null) }
+                .addOnFailureListener { complete(it) }
+        },
+        onReady = onOwnPresenceReady,
+        onUnavailable = onOwnPresenceUnavailable,
+        onError = onError
+    )
 
     private val membershipListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
+            if (!started) return
             val granted = snapshot.exists() &&
                 snapshot.child("activo").getValue(Boolean::class.java) == true
             val nextAccessKey = if (granted) membershipAccessKey(snapshot) else ""
@@ -65,7 +80,9 @@ class RealtimeRoomPresence(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            if (!started) return
             membershipGranted = false
+            detachPresenceListener()
             markOwnPresenceUnavailable()
             onError(error.toException())
         }
@@ -73,6 +90,7 @@ class RealtimeRoomPresence(
 
     private val presenceListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
+            if (!started || !presenceListenerAttached) return
             val states = snapshot.children.mapNotNull { child ->
                 val playerUid = child.key?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val state = child.child(FIELD_STATE).getValue(String::class.java).orEmpty()
@@ -86,6 +104,7 @@ class RealtimeRoomPresence(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            if (!started || !presenceListenerAttached) return
             presenceListenerAttached = false
             markOwnPresenceUnavailable()
             onError(error.toException())
@@ -94,6 +113,7 @@ class RealtimeRoomPresence(
 
     private val connectionListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
+            if (!started) return
             val connected = snapshot.getValue(Boolean::class.java) == true
             socketConnected = connected
             if (connected && desiredConnected && membershipGranted) {
@@ -104,6 +124,7 @@ class RealtimeRoomPresence(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            if (!started) return
             socketConnected = false
             markOwnPresenceUnavailable()
             onError(error.toException())
@@ -156,23 +177,8 @@ class RealtimeRoomPresence(
     }
 
     private fun armDisconnectThenPublishOnline() {
-        val generation = ++publishGeneration
-        ownPresence.onDisconnect().setValue(payload(STATE_DISCONNECTED)) { error, _ ->
-            if (error != null) {
-                if (isCurrentPublish(generation)) markOwnPresenceUnavailable()
-                onError(error.toException())
-                return@setValue
-            }
-            if (!isCurrentPublish(generation)) return@setValue
-            ownPresence.setValue(payload(STATE_CONNECTED))
-                .addOnSuccessListener {
-                    if (isCurrentPublish(generation)) onOwnPresenceReady()
-                }
-                .addOnFailureListener { failure ->
-                    if (isCurrentPublish(generation)) markOwnPresenceUnavailable()
-                    onError(failure)
-                }
-        }
+        if (!started || !desiredConnected || !socketConnected || !membershipGranted) return
+        publisher.publishOnline()
     }
 
     private fun attachPresenceListener() {
@@ -188,23 +194,11 @@ class RealtimeRoomPresence(
     }
 
     private fun publishOffline() {
-        ownPresence.onDisconnect().cancel().addOnCompleteListener {
-            ownPresence.setValue(payload(STATE_DISCONNECTED))
-                .addOnFailureListener(onError)
-        }
-    }
-
-    private fun isCurrentPublish(generation: Int): Boolean {
-        return started &&
-            desiredConnected &&
-            socketConnected &&
-            membershipGranted &&
-            publishGeneration == generation
+        publisher.publishOffline(reportFailure = started)
     }
 
     private fun markOwnPresenceUnavailable() {
-        publishGeneration += 1
-        onOwnPresenceUnavailable()
+        publisher.invalidate()
     }
 
     private fun membershipAccessKey(snapshot: DataSnapshot): String {

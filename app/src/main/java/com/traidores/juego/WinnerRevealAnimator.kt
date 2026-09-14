@@ -20,6 +20,7 @@ class WinnerRevealAnimator(
 ) {
     private var animator: AnimatorSet? = null
     private var cards = emptyList<View>()
+    private var scaleIndependentFinish: Runnable? = null
 
     fun show(cardViews: List<View>, animate: Boolean, onAnimationFinished: () -> Unit) {
         cancel()
@@ -30,6 +31,38 @@ class WinnerRevealAnimator(
             return
         }
         reset()
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            overlay.alpha = 1f
+            panel.alpha = 1f
+            panel.scaleX = 1f
+            panel.scaleY = 1f
+            title.alpha = 1f
+            title.translationY = 0f
+            personalResult.alpha = 1f
+            shine.alpha = 0f
+            EssentialViewAnimation.reveal(overlay, 420L, fromScale = 1f)
+            EssentialViewAnimation.reveal(panel, 560L, fromScale = 0.72f)
+            EssentialViewAnimation.slideIn(title, fromY = dp(12).toFloat(), durationMs = 360L, delayMs = 420L)
+            EssentialViewAnimation.reveal(personalResult, 360L, delayMs = 460L, fromScale = 1f)
+            cards.forEachIndexed { index, card ->
+                card.alpha = 1f
+                card.scaleX = 1f
+                card.scaleY = 1f
+                EssentialViewAnimation.slideIn(
+                    card,
+                    fromY = dp(18).toFloat(),
+                    durationMs = 320L,
+                    delayMs = 760L + index * CARD_STAGGER_MS
+                )
+            }
+            val totalMs = 1_080L + cards.size * CARD_STAGGER_MS
+            scaleIndependentFinish = Runnable {
+                scaleIndependentFinish = null
+                settle()
+                onAnimationFinished()
+            }.also { overlay.postDelayed(it, totalMs) }
+            return
+        }
 
         val entrance = AnimatorSet().apply {
             playTogether(
@@ -119,9 +152,12 @@ class WinnerRevealAnimator(
     }
 
     private fun cancel(end: Boolean = false) {
+        scaleIndependentFinish?.let(overlay::removeCallbacks)
+        scaleIndependentFinish = null
         animator?.removeAllListeners()
         if (end) animator?.end() else animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(overlay, panel, title, personalResult, shine, *cards.toTypedArray())
     }
 
     private companion object {

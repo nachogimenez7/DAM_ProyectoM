@@ -3,6 +3,10 @@ package com.traidores.juego
 import java.util.UUID
 
 object OnlineActionIdentity {
+    fun voteDocumentId(protocol: Int, matchId: String, actorId: String, round: Int, phaseIndex: Int): String =
+        if (protocol >= 2) "${matchId}_${actorId}_r${round}_p${phaseIndex}_votar_s1"
+        else documentId(matchId, actorId, round, phaseIndex, "votar")
+
     fun documentId(
         matchId: String,
         actorId: String,

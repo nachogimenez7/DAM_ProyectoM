@@ -102,7 +102,7 @@ class ProfileSelectionActivity : BaseActivity() {
                 ProfileSelectionOption(
                     key = banner.key,
                     title = banner.label,
-                    subtitle = "BANNER DE MAPA",
+                    subtitle = "BANNER DE PERFIL",
                     drawableRes = banner.drawableRes
                 )
             }
@@ -124,7 +124,7 @@ class ProfileSelectionActivity : BaseActivity() {
         BANNER(
             MODE_BANNER,
             "BANNER DEL PERFIL",
-            "Elige el paisaje que aparecera detras de tu foto.",
+            "Elige la imagen que aparecera detras de tu foto.",
             ProfileSelectionDisplay.BANNER
         ),
         FAVORITE_ROLE(

@@ -370,13 +370,33 @@ class OnlineMatchSessionBuilderTest {
         assertEquals(GameRules.TOWN_WINNER, GameRules.winnerFor(assassinEliminated))
     }
 
+    @Test
+    fun reconnectPreservesVoteProtocolAndClosedWindow() {
+        val state = initialState() + mapOf(
+            "fase" to "VOTACION", "phaseIndex" to 7, "protocoloVoto" to 2,
+            "votacionCerrada" to true, "limiteFaseEpochMs" to 123456L
+        )
+        val result = buildSession("uid_2", matchState = state)
+        val session = (result as OnlineMatchSessionResult.Success).session
+        assertEquals(2, session.onlineVoteProtocol)
+        assertEquals(7, session.onlineClosedVotePhaseIndex)
+        assertEquals("match-id_uid_2_r1_p7_votar_s1",
+            OnlineActionIdentity.voteDocumentId(session.onlineVoteProtocol, "match-id", "uid_2", 1, session.phaseIndex))
+        // Closure belongs to its exact phase and cannot close the next round.
+        assertEquals(false, session.copy(phaseIndex = 8).let { it.onlineClosedVotePhaseIndex == it.phaseIndex })
+        val legacy = (buildSession("uid_2") as OnlineMatchSessionResult.Success).session
+        assertEquals(1, legacy.onlineVoteProtocol)
+        assertEquals(-1, legacy.onlineClosedVotePhaseIndex)
+    }
+
     private fun buildSession(
         uidTemporal: String,
-        initialMatch: Map<String, Any?> = initialMatch(players = defaultPlayers())
+        initialMatch: Map<String, Any?> = initialMatch(players = defaultPlayers()),
+        matchState: Map<String, Any?> = initialState()
     ): OnlineMatchSessionResult {
         return OnlineMatchSessionBuilder.build(
             initialMatchRaw = initialMatch,
-            matchStateRaw = initialState(),
+            matchStateRaw = matchState,
             uidTemporal = uidTemporal,
             expectedPlayers = 5,
             fallbackRoomId = "room",

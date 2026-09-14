@@ -2,10 +2,17 @@ package com.traidores.juego
 
 object OnlineLobbyEntryGate {
 
-    // Si todos confirman, la entrada se libera antes. Este plazo solo evita que un eco de
-    // presencia demorado congele la sala completa; no retrasa el reparto autoritativo.
-    const val HARD_RELEASE_AFTER_MS = 1_000L
-    const val FULLY_CONNECTED_RELEASE_AFTER_MS = 3_000L
+    // Nunca se libera una partida con un jugador esperado todavía en el lobby. Los reintentos
+    // recuperan el ACK; un timeout parcial dividía la sala entre lobby y gameplay.
+    const val ENTRY_RETRY_AFTER_MS = 1_500L
+    const val PRESENTATION_LEAD_MS = 2_500L
+    const val MAX_PRESENTATION_WAIT_MS = 5_000L
+
+    fun presentationStartDelayMs(releasedAtEpochMs: Long, nowEpochMs: Long): Long {
+        if (releasedAtEpochMs <= 0L) return PRESENTATION_LEAD_MS
+        return (releasedAtEpochMs + PRESENTATION_LEAD_MS - nowEpochMs)
+            .coerceIn(0L, MAX_PRESENTATION_WAIT_MS)
+    }
 
     fun shouldResetForWaitingLobby(previousState: String, currentState: String): Boolean {
         return currentState == OnlineLobbyRules.ROOM_STATE_WAITING &&
@@ -75,36 +82,6 @@ object OnlineLobbyEntryGate {
         return expectedPlayerIds.all(ready::contains)
     }
 
-    fun canReleaseAfterTimeout(
-        expectedPlayerIds: Set<String>,
-        matchId: String,
-        clientStates: Map<String, Any?>,
-        localPlayerId: String,
-        localPlayerReady: Boolean,
-        connectedPlayerIds: Set<String>,
-        elapsedMs: Long
-    ): Boolean {
-        if (elapsedMs < HARD_RELEASE_AFTER_MS) return false
-        val ready = readyPlayerIds(
-            expectedPlayerIds = expectedPlayerIds,
-            matchId = matchId,
-            clientStates = clientStates,
-            localPlayerId = localPlayerId,
-            localPlayerReady = localPlayerReady
-        ).size
-        val connected = connectedPlayerIds.count(expectedPlayerIds::contains)
-        val quorumReached = OnlineStartQuorum.isReached(
-            expectedPlayers = expectedPlayerIds.size,
-            readyPlayers = ready,
-            connectedPlayers = connected
-        )
-        val fullyConnectedFallback =
-            elapsedMs >= FULLY_CONNECTED_RELEASE_AFTER_MS &&
-                localPlayerReady &&
-                connected == expectedPlayerIds.size
-        return quorumReached || fullyConnectedFallback
-    }
-
     /**
      * El estado observado en RTDB es la verdad para una confirmación efímera. Un `setValue`
      * exitoso no puede impedir reenviarla si una limpieza o reconexión la hizo desaparecer.
@@ -117,6 +94,16 @@ object OnlineLobbyEntryGate {
     ): Boolean {
         if (playerId.isBlank() || matchId.isBlank() || publishInProgress) return false
         return playerId !in acknowledgedPlayerIds(matchId, clientStates)
+    }
+
+    /**
+     * The host publishes the RTDB access registry after committing the Firestore match. Guests can
+     * observe that Firestore commit a few milliseconds before their RTDB member entry switches out
+     * of the lobby. Waiting for that exact state prevents an expected permission-denied write and
+     * avoids relying on a retry to enter every match.
+     */
+    fun isRealtimeMatchAccessReady(active: Boolean?, inLobby: Boolean?): Boolean {
+        return active == true && inLobby == false
     }
 
     const val FIELD_MATCH_ID = "matchId"

@@ -553,6 +553,22 @@
                         android:layout_height="match_parent"
                         android:background="#7A000000" />
 
+                    <TextView
+                        android:id="@+id/selectedMapAction"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="top|end"
+                        android:layout_margin="8dp"
+                        android:background="@drawable/bg_btn_dark"
+                        android:fontFamily="sans-serif"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="5dp"
+                        android:text="TOCÁ ESTA IMAGEN PARA CAMBIAR MAPA"
+                        android:textColor="@color/accent_gold"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"

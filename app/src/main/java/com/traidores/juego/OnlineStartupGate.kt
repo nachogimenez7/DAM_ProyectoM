@@ -23,9 +23,7 @@ data class OnlineStartupGateResult(
         get() = (expectedPlayers - loadedPlayers).coerceAtLeast(0)
 
     val canArmAutoStart: Boolean
-        get() = expectedPlayers > 0 &&
-            loadedPlayers >= expectedPlayers &&
-            mismatchedPlayers == 0
+        get() = canStart
 
     val waitingMessage: String
         get() = when {
@@ -38,6 +36,7 @@ data class OnlineStartupGateResult(
 }
 
 object OnlineStartupGate {
+    const val AUTO_ROLE_CONFIRM_AFTER_MS = 20_000L
     const val AUTO_START_AFTER_MS = 15_000L
     const val HARD_STARTUP_TIMEOUT_MS = 25_000L
     const val STARTUP_PHASE_SYNCING = "sincronizando"
@@ -98,15 +97,17 @@ object OnlineStartupGate {
         reportedPlayers: Int,
         roleReadPlayers: Int,
         expectedPlayers: Int,
-        connectedPlayers: Int
+        connectedPlayers: Int,
+        loadedPlayers: Int = reportedPlayers
     ): Boolean {
         if (startedAtEpochMs <= 0L || expectedPlayers <= 0) return false
         val elapsed = nowEpochMs - startedAtEpochMs
+        // El reloj solamente puede recuperar una evaluación retrasada. Nunca sustituye el ACK
+        // individual de carga y lectura: eso dejaba clientes detrás de la primera noche.
         return elapsed >= HARD_STARTUP_TIMEOUT_MS &&
-            OnlineStartQuorum.isReached(
-                expectedPlayers = expectedPlayers,
-                readyPlayers = minOf(reportedPlayers, roleReadPlayers),
-                connectedPlayers = connectedPlayers
-            )
+            loadedPlayers >= expectedPlayers &&
+            reportedPlayers >= expectedPlayers &&
+            connectedPlayers >= expectedPlayers &&
+            roleReadPlayers >= expectedPlayers
     }
 }

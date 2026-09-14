@@ -23,6 +23,7 @@ window.xml
 lobby.xml
 tmp/
 node_modules/
+/output/
 firebase-debug.log
 firestore-debug.log
 database-debug.log

@@ -1,6 +1,7 @@
 package com.traidores.juego
 
 import com.google.android.gms.tasks.Task
+import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
@@ -33,22 +34,43 @@ class RealtimeGameplaySync(
 
     private var started = false
 
-    private val clientStatesListener = object : ValueEventListener {
-        override fun onDataChange(snapshot: DataSnapshot) {
-            val states = snapshot.children.mapNotNull { child ->
-                val childUid = child.key?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                childUid to child.value
-            }.toMap()
-            onClientStatesChanged?.invoke(states)
+    private val clientStateCache = linkedMapOf<String, Any?>()
+
+    private val clientStatesListener = object : ChildEventListener {
+        override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+            updateClientState(snapshot)
         }
 
+        override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+            updateClientState(snapshot)
+        }
+
+        override fun onChildRemoved(snapshot: DataSnapshot) {
+            if (!started) return
+            val childUid = snapshot.key?.takeIf { it.isNotBlank() } ?: return
+            clientStateCache.remove(childUid)
+            onClientStatesChanged?.invoke(clientStateCache.toMap())
+        }
+
+        override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) = Unit
+
         override fun onCancelled(error: DatabaseError) {
+            if (!started) return
+            stop()
             onError(error.toException())
         }
     }
 
+    private fun updateClientState(snapshot: DataSnapshot) {
+        if (!started) return
+        val childUid = snapshot.key?.takeIf { it.isNotBlank() } ?: return
+        clientStateCache[childUid] = snapshot.value
+        onClientStatesChanged?.invoke(clientStateCache.toMap())
+    }
+
     private val voteReadyListener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
+            if (!started) return
             val states = snapshot.children.mapNotNull { child ->
                 val childUid = child.key?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val playerName = child.child(FIELD_PLAYER_NAME)
@@ -72,6 +94,8 @@ class RealtimeGameplaySync(
         }
 
         override fun onCancelled(error: DatabaseError) {
+            if (!started) return
+            stop()
             onError(error.toException())
         }
     }
@@ -80,7 +104,7 @@ class RealtimeGameplaySync(
         if (started) return
         started = true
         if (onClientStatesChanged != null) {
-            clientStatesRoot.addValueEventListener(clientStatesListener)
+            clientStatesRoot.addChildEventListener(clientStatesListener)
         }
         if (onVoteReadyStatesChanged != null) {
             voteReadyRoot.addValueEventListener(voteReadyListener)
@@ -92,6 +116,7 @@ class RealtimeGameplaySync(
         if (onClientStatesChanged != null) {
             clientStatesRoot.removeEventListener(clientStatesListener)
         }
+        clientStateCache.clear()
         if (onVoteReadyStatesChanged != null) {
             voteReadyRoot.removeEventListener(voteReadyListener)
         }
@@ -103,7 +128,14 @@ class RealtimeGameplaySync(
             put(FIELD_MATCH_ID, get(FIELD_MATCH_ID) ?: "")
             put(FIELD_UPDATED_AT, ServerValue.TIMESTAMP)
         }
+        OnlineNetworkMetrics.count("estado_cliente_completo")
         return ownClientState.setValue(payload)
+    }
+
+    /** Patch only liveness fields. Existing rules still validate the complete merged state. */
+    fun publishHeartbeat(matchId: String): Task<Void> {
+        OnlineNetworkMetrics.count("pulso_cliente_parcial")
+        return ownClientState.updateChildren(mapOf(FIELD_MATCH_ID to matchId, FIELD_UPDATED_AT to ServerValue.TIMESTAMP))
     }
 
     fun publishVoteReady(

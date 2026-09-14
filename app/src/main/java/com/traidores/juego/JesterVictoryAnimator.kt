@@ -41,6 +41,18 @@ class JesterVictoryAnimator(
         actionsView.visibility = View.INVISIBLE
         actionsView.isEnabled = false
         actionsView.alpha = 0f
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            panel.alpha = 1f
+            panel.scaleX = 1f
+            panel.scaleY = 1f
+            hornLeft.alpha = 1f
+            hornRight.alpha = 1f
+            EssentialViewAnimation.reveal(panel, 650L, fromScale = 0.72f)
+            EssentialViewAnimation.slideIn(hornLeft, fromX = -dp(42).toFloat(), durationMs = 480L, delayMs = 180L)
+            EssentialViewAnimation.slideIn(hornRight, fromX = dp(42).toFloat(), durationMs = 480L, delayMs = 180L)
+            overlay.postDelayed(finishRunnable, durationMs)
+            return
+        }
 
         entranceAnimator = AnimatorSet().apply {
             playTogether(
@@ -66,6 +78,7 @@ class JesterVictoryAnimator(
         entranceAnimator = null
         runningAnimators.forEach { it.cancel() }
         runningAnimators.clear()
+        EssentialViewAnimation.clear(overlay, panel, hornLeft, hornRight, actionsView)
         confettiLayer.removeAllViews()
         if (overlay.visibility == View.VISIBLE) {
             panel.alpha = 1f
@@ -87,6 +100,7 @@ class JesterVictoryAnimator(
         entranceAnimator = null
         runningAnimators.forEach { it.cancel() }
         runningAnimators.clear()
+        EssentialViewAnimation.clear(overlay, panel, hornLeft, hornRight, actionsView)
         confettiLayer.removeAllViews()
         if (hideOverlay) {
             overlay.visibility = View.GONE
@@ -191,6 +205,10 @@ class JesterVictoryAnimator(
         if (actionsView.visibility == View.VISIBLE && actionsView.isEnabled) return
         actionsView.visibility = View.VISIBLE
         actionsView.isEnabled = true
+        if (EssentialViewAnimation.requiresFallback(actionsView)) {
+            EssentialViewAnimation.reveal(actionsView, 300L, fromScale = 0.94f)
+            return
+        }
         actionsView.animate()
             .alpha(1f)
             .setDuration(300L)

@@ -43,7 +43,10 @@ object ProfileCustomizationCatalog {
     val banners = listOf(
         ProfileBannerOption("pampa", "Pampa", R.drawable.profile_banner_pampa),
         ProfileBannerOption("grecia", "Grecia", R.drawable.profile_banner_grecia),
-        ProfileBannerOption("medieval", "Medieval", R.drawable.profile_banner_medieval)
+        ProfileBannerOption("medieval", "Medieval", R.drawable.profile_banner_medieval),
+        ProfileBannerOption("asesino_medieval", "Asesino medieval", R.drawable.profile_banner_asesino_medieval),
+        ProfileBannerOption("medico_pampeano", "Médica pampeana", R.drawable.profile_banner_medico_pampeano),
+        ProfileBannerOption("oraculo_griego", "Oráculo griego", R.drawable.profile_banner_oraculo_griego)
     )
 
     val achievements = listOf(

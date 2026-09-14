@@ -162,4 +162,57 @@ class OnlineNightReadyGateTest {
             )
         )
     }
+
+    @Test
+    fun expiredAuthoritativeNightCannotRestartItsCountdownWhileResolutionIsPending() {
+        assertTrue(
+            OnlineNightReadyGate.blocksCountdownRestart(
+                isOnline = true,
+                isCoordinator = true,
+                isNightPhase = true,
+                timerExpired = true,
+                resolutionInProgress = false
+            )
+        )
+        assertTrue(
+            OnlineNightReadyGate.blocksCountdownRestart(
+                isOnline = true,
+                isCoordinator = true,
+                isNightPhase = true,
+                timerExpired = false,
+                resolutionInProgress = true
+            )
+        )
+    }
+
+    @Test
+    fun countdownRestartGuardDoesNotFreezeGuestsOrOtherPhases() {
+        assertFalse(
+            OnlineNightReadyGate.blocksCountdownRestart(
+                isOnline = true,
+                isCoordinator = false,
+                isNightPhase = true,
+                timerExpired = true,
+                resolutionInProgress = false
+            )
+        )
+        assertFalse(
+            OnlineNightReadyGate.blocksCountdownRestart(
+                isOnline = true,
+                isCoordinator = true,
+                isNightPhase = false,
+                timerExpired = true,
+                resolutionInProgress = false
+            )
+        )
+        assertFalse(
+            OnlineNightReadyGate.blocksCountdownRestart(
+                isOnline = false,
+                isCoordinator = true,
+                isNightPhase = true,
+                timerExpired = true,
+                resolutionInProgress = true
+            )
+        )
+    }
 }

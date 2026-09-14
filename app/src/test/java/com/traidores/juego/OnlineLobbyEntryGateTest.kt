@@ -1,10 +1,24 @@
 package com.traidores.juego
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnlineLobbyEntryGateTest {
+
+    @Test
+    fun presentationUsesACommonFutureWindow() {
+        val releasedAt = 10_000L
+
+        assertEquals(2_500L, OnlineLobbyEntryGate.presentationStartDelayMs(releasedAt, 10_000L))
+        assertEquals(500L, OnlineLobbyEntryGate.presentationStartDelayMs(releasedAt, 12_000L))
+        assertEquals(0L, OnlineLobbyEntryGate.presentationStartDelayMs(releasedAt, 20_000L))
+        assertEquals(
+            OnlineLobbyEntryGate.PRESENTATION_LEAD_MS,
+            OnlineLobbyEntryGate.presentationStartDelayMs(0L, 20_000L)
+        )
+    }
 
     @Test
     fun returningFromFinishedMatchResetsEntryBarrierForRematch() {
@@ -75,109 +89,48 @@ class OnlineLobbyEntryGateTest {
     }
 
     @Test
-    fun largeRoomCanReleaseAfterTimeoutWithThreeQuarterQuorum() {
+    fun largeRoomCannotReleaseWithThreeQuarterQuorum() {
         val expected = (1..14).mapTo(linkedSetOf()) { "p$it" }
         val elevenReady = (1..11).associate { "p$it" to readyState("match-actual") }
 
         assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
+            OnlineLobbyEntryGate.canReleaseWithLocalReady(
                 expectedPlayerIds = expected,
                 matchId = "match-actual",
                 clientStates = elevenReady,
                 localPlayerId = "p1",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS - 1L
-            )
-        )
-        assertTrue(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = elevenReady,
-                localPlayerId = "p1",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
+                localPlayerReady = true
             )
         )
     }
 
     @Test
-    fun threePlayerRoomRecoversAfterTimeoutWhenOneAckNeverArrives() {
+    fun threePlayerRoomWaitsWhenOneAckNeverArrives() {
         val expected = setOf("host", "guest-1", "guest-2")
         val oneGuestReady = mapOf("guest-1" to readyState("match-actual"))
 
         assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
+            OnlineLobbyEntryGate.canReleaseWithLocalReady(
                 expectedPlayerIds = expected,
                 matchId = "match-actual",
                 clientStates = oneGuestReady,
                 localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS - 1L
-            )
-        )
-        assertTrue(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = oneGuestReady,
-                localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
-            )
-        )
-        assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = oneGuestReady,
-                localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = setOf("host", "guest-1"),
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
-            )
-        )
-        assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = emptyMap(),
-                localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
+                localPlayerReady = true
             )
         )
     }
 
     @Test
-    fun fullyConnectedRoomCannotRemainBlockedIfEphemeralAcksDisappear() {
+    fun fullyConnectedRoomStillRequiresEveryAck() {
         val expected = setOf("host", "guest-1", "guest-2")
 
         assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
+            OnlineLobbyEntryGate.canReleaseWithLocalReady(
                 expectedPlayerIds = expected,
                 matchId = "match-actual",
                 clientStates = emptyMap(),
                 localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.FULLY_CONNECTED_RELEASE_AFTER_MS - 1L
-            )
-        )
-        assertTrue(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = emptyMap(),
-                localPlayerId = "host",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.FULLY_CONNECTED_RELEASE_AFTER_MS
+                localPlayerReady = true
             )
         )
     }
@@ -211,33 +164,11 @@ class OnlineLobbyEntryGateTest {
     }
 
     @Test
-    fun timeoutStillRejectsTenOfFourteenOrTooFewConnected() {
-        val expected = (1..14).mapTo(linkedSetOf()) { "p$it" }
-        val tenReady = (1..10).associate { "p$it" to readyState("match-actual") }
-        val elevenReady = (1..11).associate { "p$it" to readyState("match-actual") }
-
-        assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = tenReady,
-                localPlayerId = "p1",
-                localPlayerReady = true,
-                connectedPlayerIds = expected,
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
-            )
-        )
-        assertFalse(
-            OnlineLobbyEntryGate.canReleaseAfterTimeout(
-                expectedPlayerIds = expected,
-                matchId = "match-actual",
-                clientStates = elevenReady,
-                localPlayerId = "p1",
-                localPlayerReady = true,
-                connectedPlayerIds = (1..10).mapTo(linkedSetOf()) { "p$it" },
-                elapsedMs = OnlineLobbyEntryGate.HARD_RELEASE_AFTER_MS
-            )
-        )
+    fun guestWaitsUntilHostPublishedItsRealtimeMatchAccess() {
+        assertFalse(OnlineLobbyEntryGate.isRealtimeMatchAccessReady(active = null, inLobby = null))
+        assertFalse(OnlineLobbyEntryGate.isRealtimeMatchAccessReady(active = true, inLobby = true))
+        assertFalse(OnlineLobbyEntryGate.isRealtimeMatchAccessReady(active = false, inLobby = false))
+        assertTrue(OnlineLobbyEntryGate.isRealtimeMatchAccessReady(active = true, inLobby = false))
     }
 
     @Test

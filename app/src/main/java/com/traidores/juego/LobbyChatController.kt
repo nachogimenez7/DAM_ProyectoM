@@ -41,6 +41,7 @@ class LobbyChatController(
         val query = chatReference.orderByKey()
         val valueListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                if (this@LobbyChatController.listener !== this) return
                 val messages = snapshot.children
                     .flatMap { playerOrLegacyMessage ->
                         if (playerOrLegacyMessage.hasChild(FIELD_ACTOR_ID)) {

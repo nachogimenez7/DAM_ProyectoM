@@ -1,4 +1,4 @@
-﻿package com.traidores.juego
+package com.traidores.juego
 
 import android.content.Context
 import android.content.Intent
@@ -28,6 +28,9 @@ import com.google.firebase.firestore.Source
 class OnlineModeActivity : BaseActivity() {
 
     private val firestore = FirebaseFirestore.getInstance()
+    private val ownedWaitingRoomCleaner by lazy {
+        OnlineOwnedWaitingRoomCleaner(firestore, FirebaseDatabase.getInstance())
+    }
     private lateinit var btnCreate: Button
     private lateinit var btnJoinCode: Button
     private lateinit var btnRecoverRoom: Button
@@ -131,7 +134,6 @@ class OnlineModeActivity : BaseActivity() {
                 showOnlineAccessStatus(null)
                 setOnlineActionsEnabled(true)
                 refreshRecoveredRoomButton()
-                OnlineRoomJanitor.sweepOwnedStaleRooms(this)
             },
             onBlocked = blocked@{ ban ->
                 if (!isCurrentAttempt()) return@blocked
@@ -201,7 +203,7 @@ class OnlineModeActivity : BaseActivity() {
         content.addView(dialogTitle("CREAR SALA ONLINE"))
 
         val subtitle = TextView(this).apply {
-            text = "Elige cuantos jugadores reales van a entrar. La sala no inicia hasta que esten todos listos."
+            text = "Elige cuántas personas van a jugar. La partida comienza cuando todos estén listos."
             setTextColor(resources.getColor(R.color.text_secondary, theme))
             textSize = 16f
             gravity = Gravity.CENTER
@@ -216,9 +218,9 @@ class OnlineModeActivity : BaseActivity() {
         )
 
         val countLabel = TextView(this).apply {
-            text = "$expectedPlayers JUGADORES"
+            text = "$expectedPlayers\nJUGADORES"
             setTextColor(resources.getColor(R.color.accent_gold, theme))
-            textSize = 22f
+            textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             includeFontPadding = false
@@ -233,7 +235,7 @@ class OnlineModeActivity : BaseActivity() {
         selectorRow.addView(minus, LinearLayout.LayoutParams(dp(56), dp(44)))
         selectorRow.addView(
             countLabel,
-            LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 leftMargin = dp(10)
                 rightMargin = dp(10)
             }
@@ -253,9 +255,11 @@ class OnlineModeActivity : BaseActivity() {
             textSize = 12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(5))
+            setPadding(0, dp(12), 0, dp(5))
         })
         val roomNameInput = EditText(this).apply {
+            hint = "Nombre opcional"
+            setHintTextColor(resources.getColor(R.color.text_secondary, theme))
             setSingleLine(true)
             gravity = Gravity.CENTER
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
@@ -412,7 +416,7 @@ class OnlineModeActivity : BaseActivity() {
         )
 
         fun refreshCount() {
-            countLabel.text = "$expectedPlayers JUGADORES"
+            countLabel.text = "$expectedPlayers\nJUGADORES"
             val minimum = if (modePrueba) {
                 LocalGameFactory.TEST_MIN_PLAYERS
             } else {
@@ -548,15 +552,32 @@ class OnlineModeActivity : BaseActivity() {
         roomVisibility: String,
         publicId: String
     ) {
-        createOnlineRoomWithPublicId(
-            expectedPlayers,
-            selectedMap,
-            modePrueba,
-            requestedRoomName,
-            roomVisibility,
-            publicId,
-            remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
-        )
+        val requesterId = OnlineTempIdentity.getOrCreate(this)
+        btnCreate.isEnabled = false
+        btnCreate.text = "CREANDO..."
+        ownedWaitingRoomCleaner.cleanupBeforeCreate(requesterId)
+            .addOnCompleteListener { cleanup ->
+                if (isFinishing || isDestroyed) return@addOnCompleteListener
+                if (cleanup.isSuccessful) {
+                    OnlineDebugLog.i(
+                        "owned_waiting_rooms_cleanup_success hostId=$requesterId removed=${cleanup.result}"
+                    )
+                } else {
+                    OnlineDebugLog.e(
+                        "owned_waiting_rooms_cleanup_failure hostId=$requesterId",
+                        cleanup.exception ?: IllegalStateException("No se pudo limpiar salas anteriores")
+                    )
+                }
+                createOnlineRoomWithPublicId(
+                    expectedPlayers,
+                    selectedMap,
+                    modePrueba,
+                    requestedRoomName,
+                    roomVisibility,
+                    publicId,
+                    remainingCodeAttempts = ROOM_CODE_CREATE_ATTEMPTS
+                )
+            }
     }
 
     private fun createOnlineRoomWithPublicId(
@@ -762,7 +783,8 @@ class OnlineModeActivity : BaseActivity() {
                     return@addOnSuccessListener
                 }
                 val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
-                if (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
+                if (snapshot.getString("cleanupState") == "deleting" ||
+                    OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
                     OnlineRoomRecovery.clear(this)
                     return@addOnSuccessListener
                 }
@@ -789,6 +811,7 @@ class OnlineModeActivity : BaseActivity() {
                             roomName = snapshot.getString(OnlineRoomFirestore.FIELD_NAME)
                                 ?.takeIf { it.isNotBlank() }
                                 ?: recovered.roomName,
+                            isHost = isCurrentRoomHost(snapshot, uid),
                             mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
                                 ?.takeIf { it.isNotBlank() }
                                 ?: recovered.mapKey
@@ -842,7 +865,8 @@ class OnlineModeActivity : BaseActivity() {
                             return@roomSnapshot
                         }
                         val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
-                        if (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
+                        if (snapshot.getString("cleanupState") == "deleting" ||
+                            OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
                             clearUnavailableRecoveredRoom("La sala ya termino o fue abandonada.")
                             return@roomSnapshot
                         }
@@ -918,6 +942,7 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     private fun openRecoveredLobby(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
+        val isHost = isCurrentRoomHost(snapshot, OnlineTempIdentity.getOrCreate(this))
         val playerName = PlayerPublicIdentity.profileName(this)
         val resolvedMapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
             ?.takeIf { it.isNotBlank() }
@@ -931,7 +956,7 @@ class OnlineModeActivity : BaseActivity() {
         val session = LocalGameFactory.createOnlineLobby(
             humanName = playerName,
             playerCount = 1,
-            humanIsHost = room.isHost
+            humanIsHost = isHost
         ).let { LocalGameFactory.selectMap(it, resolvedMapKey) }
         OnlineDebugLog.i("recover_room_lobby_open roomId=${room.roomId} code=$resolvedRoomCode isHost=${room.isHost}")
         startActivity(
@@ -939,7 +964,7 @@ class OnlineModeActivity : BaseActivity() {
                 .putExtra(LobbyActivity.EXTRA_SESSION, session)
                 .putExtra(
                     LobbyActivity.EXTRA_LOBBY_MODE,
-                    if (room.isHost) LobbyActivity.MODE_ONLINE_CREATE else LobbyActivity.MODE_ONLINE_SEARCH
+                    if (isHost) LobbyActivity.MODE_ONLINE_CREATE else LobbyActivity.MODE_ONLINE_SEARCH
                 )
                 .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, resolvedRoomName)
                 .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, room.roomId)
@@ -956,11 +981,9 @@ class OnlineModeActivity : BaseActivity() {
         val repartos = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .document(room.roomId)
             .collection("repartos")
-        val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uid ||
-            snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uid ||
-            room.isHost
+        val isHost = isCurrentRoomHost(snapshot, uid)
         if (isHost) {
-            repartos.get()
+            repartos.get(Source.SERVER)
                 .addOnSuccessListener { query ->
                     val assignments = query.documents.flatMap(::visibleRolesFromReparto)
                         .distinctBy { (it["orden"] as? Number)?.toInt() }
@@ -968,7 +991,7 @@ class OnlineModeActivity : BaseActivity() {
                 }
                 .addOnFailureListener { error -> showPrivateRoleRecoveryError(room, error) }
         } else {
-            repartos.document(uid).get()
+            repartos.document(uid).get(Source.SERVER)
                 .addOnSuccessListener { reparto ->
                     openRecoveredGameplayWithRoles(
                         room,
@@ -1045,9 +1068,7 @@ class OnlineModeActivity : BaseActivity() {
         matchState: Map<String, Any?>?
     ) {
         val uidTemporal = OnlineTempIdentity.getOrCreate(this)
-        val isHost = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID) == uidTemporal ||
-            snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID) == uidTemporal ||
-            room.isHost
+        val isHost = isCurrentRoomHost(snapshot, uidTemporal)
         val mapKey = snapshot.getString(OnlineRoomFirestore.FIELD_MAP_KEY)
             ?.takeIf { it.isNotBlank() }
             ?: room.mapKey
@@ -1078,6 +1099,28 @@ class OnlineModeActivity : BaseActivity() {
         )
         when (result) {
             is OnlineMatchSessionResult.Success -> {
+                val shouldShowInitialPresentation = OnlineRecoveryGate.shouldShowInitialPresentation(
+                    phase = result.session.phase,
+                    phaseIndex = result.session.phaseIndex
+                )
+                val targetActivity = if (shouldShowInitialPresentation) {
+                    AssigningRolesActivity::class.java
+                } else {
+                    GameplayMockActivity::class.java
+                }
+                val releasedAtMs = snapshot
+                    .getTimestamp(OnlineRoomFirestore.FIELD_ENTRY_RELEASED_AT)
+                    ?.toDate()
+                    ?.time
+                    ?: 0L
+                val presentationStartDelayMs = if (shouldShowInitialPresentation) {
+                    OnlineLobbyEntryGate.presentationStartDelayMs(
+                        releasedAtEpochMs = releasedAtMs,
+                        nowEpochMs = System.currentTimeMillis()
+                    )
+                } else {
+                    0L
+                }
                 OnlineRoomRecovery.save(
                     this,
                     roomId = room.roomId,
@@ -1091,13 +1134,17 @@ class OnlineModeActivity : BaseActivity() {
                 )
                 Toast.makeText(this, "Reingresando a la partida.", Toast.LENGTH_SHORT).show()
                 startActivity(
-                    Intent(this, GameplayMockActivity::class.java)
+                    Intent(this, targetActivity)
                         .putExtra(LobbyActivity.EXTRA_SESSION, result.session)
                         .putExtra(GameplayMockActivity.EXTRA_TEMA, GameplayTableUi.themeForMapKey(result.session.mapKey))
                         .putExtra(GameplayMockActivity.EXTRA_ES_NOCHE, false)
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_PARTIDA_ID, room.roomId)
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_PLAYER_ID, uidTemporal)
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_IS_HOST, isHost)
+                        .putExtra(
+                            AssigningRolesActivity.EXTRA_PRESENTATION_START_DELAY_MS,
+                            presentationStartDelayMs
+                        )
                 )
             }
             is OnlineMatchSessionResult.Failure -> {
@@ -1119,6 +1166,13 @@ class OnlineModeActivity : BaseActivity() {
             }
             ?.toMap()
     }
+
+    private fun isCurrentRoomHost(snapshot: DocumentSnapshot, uid: String): Boolean =
+        OnlineRoomRecovery.isCurrentHost(
+            uid,
+            snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID),
+            snapshot.getString(OnlineRoomFirestore.FIELD_HOST_ID)
+        )
 
     private fun showJoinByCodeDialog() {
         val content = LinearLayout(this).apply {
@@ -1352,7 +1406,8 @@ class OnlineModeActivity : BaseActivity() {
             if (!freshRoom.exists()) {
                 throw IllegalStateException("La sala ya no existe.")
             }
-            if (freshRoom.getString(OnlineRoomFirestore.FIELD_STATE) != OnlineRoomFirestore.STATE_WAITING) {
+            if (freshRoom.getString("cleanupState") == "deleting" ||
+                freshRoom.getString(OnlineRoomFirestore.FIELD_STATE) != OnlineRoomFirestore.STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta disponible.")
             }
             val playerSnapshot = transaction.get(playerReference)

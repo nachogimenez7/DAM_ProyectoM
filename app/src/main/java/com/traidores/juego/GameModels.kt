@@ -57,6 +57,8 @@ data class GameSession(
     val initialPlayerCount: Int = players.size,
     val startedAtEpochMs: Long = System.currentTimeMillis(),
     val onlineMatchId: String = "",
+    val onlineVoteProtocol: Int = 1,
+    val onlineClosedVotePhaseIndex: Int = -1,
     val onlinePlayerUids: List<String> = emptyList(),
     val onlineRegisteredPlayerUids: List<String> = emptyList(),
     val specialVictories: List<GameSpecialVictory> = emptyList(),
@@ -64,7 +66,9 @@ data class GameSession(
     val phaseIndex: Int = 0,
     val onlinePhaseDeadlineEpochMs: Long = 0L,
     val onlinePhaseDeadlinePhaseIndex: Int = -1,
-    val publicDiscussionStartIndex: Int = 0
+    val publicDiscussionStartIndex: Int = 0,
+    val onlineAuthorityEpoch: Long = 0L,
+    val onlineStateSequence: Long = 0L
 ) : Serializable
 
 enum class BotDifficulty : Serializable {
@@ -174,7 +178,7 @@ enum class RoleCompositionPreset(
     ),
     CLASSIC(
         "CLASICO",
-        "Partida simple: Asesino, Detective, Médico y Aldeanos."
+        "Partida simple: Asesino, Detective, MÃ©dico y Aldeanos."
     ),
     CHAOTIC(
         "CAOTICO",

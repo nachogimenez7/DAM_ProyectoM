@@ -117,19 +117,19 @@ test("cantidad y listo se verifican en el backend", () => {
   );
 });
 
-test("el empate solo acepta uno de los mapas lideres", () => {
+test("el mapa elegido por el anfitrion ignora votos de clientes anteriores", () => {
   const votes = [
     {mapKey: "pampa"},
     {mapKey: "grecia"},
     {mapKey: "medieval"},
   ];
   assert.deepEqual(resolveMap(votes, "pampa", null), {
-    status: "tie_break_required",
-    mapKeys: ["pampa", "grecia", "medieval"],
-  });
-  assert.deepEqual(resolveMap(votes, "pampa", "grecia"), {
     status: "selected",
-    mapKey: "grecia",
+    mapKey: "pampa",
+  });
+  assert.deepEqual(resolveMap(votes, "medieval", "grecia"), {
+    status: "selected",
+    mapKey: "medieval",
   });
 });
 

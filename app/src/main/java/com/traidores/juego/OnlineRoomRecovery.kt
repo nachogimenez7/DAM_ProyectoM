@@ -11,6 +11,10 @@ data class OnlineRecoveredRoom(
 )
 
 object OnlineRoomRecovery {
+    // Preferences and the original creator cannot grant authority after host migration.
+    fun isCurrentHost(uid: String, activeHostId: String?, creatorId: String?): Boolean =
+        uid.isNotBlank() && uid == (activeHostId?.takeIf { it.isNotBlank() } ?: creatorId)
+
     private const val PREFS_NAME = "TraidoresPrefs"
     private const val PREF_ROOM_ID = "online_recovery_room_id"
     private const val PREF_ROOM_CODE = "online_recovery_room_code"

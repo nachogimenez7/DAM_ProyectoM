@@ -7,7 +7,7 @@ import org.junit.Test
 
 class OnlinePresentationGateTest {
     @Test
-    fun progressCountsOnlyLivingConnectedPlayers() {
+    fun progressIncludesConnectedSpectators() {
         val progress = OnlinePresentationGate.progress(
             presentationKey = "amanecer-1",
             participants = listOf(
@@ -19,7 +19,7 @@ class OnlinePresentationGateTest {
         )
 
         assertEquals(1, progress.ready)
-        assertEquals(2, progress.total)
+        assertEquals(3, progress.total)
     }
 
     @Test
@@ -43,11 +43,11 @@ class OnlinePresentationGateTest {
     }
 
     @Test
-    fun maximumDelayAdvancesEvenWhenSomeoneDidNotConfirm() {
-        assertTrue(
+    fun elapsedTimeNeverReplacesAConnectedPlayersConfirmation() {
+        assertFalse(
             OnlinePresentationGate.shouldAdvance(
                 isCoordinator = true,
-                elapsedMs = OnlinePresentationGate.MAXIMUM_DISPLAY_MS,
+                elapsedMs = 10L * 60L * 1000L,
                 progress = OnlinePresentationProgress(ready = 2, total = 3)
             )
         )
@@ -58,7 +58,7 @@ class OnlinePresentationGateTest {
         assertFalse(
             OnlinePresentationGate.shouldAdvance(
                 isCoordinator = true,
-                elapsedMs = OnlinePresentationGate.MAXIMUM_DISPLAY_MS * 10,
+                elapsedMs = 10L * 60L * 1000L,
                 progress = OnlinePresentationProgress(ready = 3, total = 3),
                 coordinatorPresentationReady = false
             )
@@ -70,7 +70,7 @@ class OnlinePresentationGateTest {
         assertFalse(
             OnlinePresentationGate.shouldAdvance(
                 isCoordinator = false,
-                elapsedMs = OnlinePresentationGate.MAXIMUM_DISPLAY_MS,
+                elapsedMs = 10L * 60L * 1000L,
                 progress = OnlinePresentationProgress(ready = 3, total = 3)
             )
         )

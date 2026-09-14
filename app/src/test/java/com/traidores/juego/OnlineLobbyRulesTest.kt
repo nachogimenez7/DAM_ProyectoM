@@ -8,6 +8,68 @@ import org.junit.Test
 class OnlineLobbyRulesTest {
 
     @Test
+    fun cachedGuestRosterNeverGrantsHostAuthorityBeforeServerHandoff() {
+        assertFalse(
+            OnlineLobbyRules.isAuthoritativeLobbyHost(
+                playerId = "guest",
+                activeHostId = "host",
+                creatorHostId = "host",
+                creatingRoomBeforeFirstSnapshot = false
+            )
+        )
+        assertTrue(
+            OnlineLobbyRules.isAuthoritativeLobbyHost(
+                playerId = "guest",
+                activeHostId = "guest",
+                creatorHostId = "guest",
+                creatingRoomBeforeFirstSnapshot = false
+            )
+        )
+    }
+
+    @Test
+    fun roomCreatorIsTemporarilyHostOnlyBeforeItsFirstRoomSnapshot() {
+        assertTrue(
+            OnlineLobbyRules.isAuthoritativeLobbyHost(
+                playerId = "creator",
+                activeHostId = "",
+                creatorHostId = "",
+                creatingRoomBeforeFirstSnapshot = true
+            )
+        )
+        assertFalse(
+            OnlineLobbyRules.isAuthoritativeLobbyHost(
+                playerId = "guest",
+                activeHostId = "",
+                creatorHostId = "",
+                creatingRoomBeforeFirstSnapshot = false
+            )
+        )
+    }
+
+    @Test
+    fun cachedOrLocallyPendingPlayersCannotDriveAuthorityOrAccess() {
+        assertFalse(
+            OnlineLobbyRules.isAuthoritativePlayerSnapshot(
+                isFromCache = true,
+                hasPendingWrites = false
+            )
+        )
+        assertFalse(
+            OnlineLobbyRules.isAuthoritativePlayerSnapshot(
+                isFromCache = false,
+                hasPendingWrites = true
+            )
+        )
+        assertTrue(
+            OnlineLobbyRules.isAuthoritativePlayerSnapshot(
+                isFromCache = false,
+                hasPendingWrites = false
+            )
+        )
+    }
+
+    @Test
     fun browserUsesDeclaredTwelvePlayerLimitBeforeDefault() {
         assertEquals(12, OnlineLobbyRules.displayedPlayerLimit(12, 10, 10))
         assertEquals(12, OnlineLobbyRules.displayedPlayerLimit(null, 12, 10))
@@ -52,6 +114,22 @@ class OnlineLobbyRulesTest {
         assertEquals(
             0,
             OnlineLobbyRules.connectedPresenceCount(listOf("desconectado", null))
+        )
+    }
+
+    @Test
+    fun playerIsNotShownDisconnectedWhileFirstRealtimePresenceIsPending() {
+        assertTrue(
+            OnlineLobbyRules.effectivePresenceConnected(
+                realtimeConnected = null,
+                firestoreConnected = true
+            )
+        )
+        assertFalse(
+            OnlineLobbyRules.effectivePresenceConnected(
+                realtimeConnected = false,
+                firestoreConnected = true
+            )
         )
     }
 

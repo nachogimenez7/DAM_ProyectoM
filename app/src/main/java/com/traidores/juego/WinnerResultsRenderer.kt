@@ -173,7 +173,7 @@ class WinnerResultsRenderer(
 
         val cardViews = mutableListOf<View>()
         cards.addView(
-            sectionHeader("BANDO GANADOR", borderColor),
+            sectionHeader("EQUIPO GANADOR", borderColor),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(28)

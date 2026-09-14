@@ -32,6 +32,7 @@ object OnlineStabilityReport {
         isHost: Boolean,
         expectedPlayers: Int
     ) {
+        OnlineNetworkMetrics.beginMatch(matchId)
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val room = maskedRoomCode(roomCode)
         val match = shortToken(matchId)
@@ -127,6 +128,7 @@ object OnlineStabilityReport {
             )
             appendLine("Eventos recientes:")
             if (events.isEmpty()) appendLine("- sin eventos") else events.forEach { appendLine("- $it") }
+            appendLine(OnlineNetworkMetrics.summary())
             append("No incluye nombres, mensajes, correos ni UID completos.")
         }
     }

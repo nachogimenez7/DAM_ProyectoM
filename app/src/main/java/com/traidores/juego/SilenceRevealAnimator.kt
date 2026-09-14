@@ -30,6 +30,8 @@ internal class SilenceRevealAnimator(
         private set
 
     private var animator: AnimatorSet? = null
+    private val fallbackRunnables = mutableListOf<Runnable>()
+    private var usingScaleIndependentAnimation = false
 
     fun start(player: GamePlayer) {
         cancel()
@@ -37,6 +39,11 @@ internal class SilenceRevealAnimator(
         playerName.text = player.name.uppercase()
         resetViews()
         overlay.visibility = View.VISIBLE
+        usingScaleIndependentAnimation = EssentialViewAnimation.requiresFallback(overlay)
+        if (usingScaleIndependentAnimation) {
+            startScaleIndependent()
+            return
+        }
 
         val entrance = AnimatorSet().apply {
             startDelay = REVEAL_GAP_MS
@@ -104,10 +111,14 @@ internal class SilenceRevealAnimator(
     }
 
     fun cancel() {
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         running = false
+        usingScaleIndependentAnimation = false
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(overlay, content, card, cageLeft, cageRight, cageDoor, cageLock)
         overlay.visibility = View.GONE
         overlay.alpha = 1f
     }
@@ -132,9 +143,58 @@ internal class SilenceRevealAnimator(
         cageLock.scaleY = 1.65f
     }
 
+    private fun startScaleIndependent() {
+        overlay.alpha = 1f
+        content.alpha = 1f
+        content.scaleX = 1f
+        content.scaleY = 1f
+        EssentialViewAnimation.reveal(
+            overlay,
+            durationMs = 280L,
+            delayMs = REVEAL_GAP_MS,
+            fromScale = 1f
+        )
+        EssentialViewAnimation.reveal(
+            content,
+            durationMs = 360L,
+            delayMs = REVEAL_GAP_MS,
+            fromScale = 0.9f
+        )
+        scheduleFallback(REVEAL_GAP_MS + 280L) {
+            cageLeft.alpha = 1f
+            cageRight.alpha = 1f
+            EssentialViewAnimation.slideIn(cageLeft, fromX = -dp(62).toFloat(), durationMs = 460L)
+            EssentialViewAnimation.slideIn(cageRight, fromX = dp(62).toFloat(), durationMs = 460L)
+        }
+        scheduleFallback(REVEAL_GAP_MS + 740L) {
+            cageDoor.alpha = 1f
+            cageDoor.rotationY = 0f
+            EssentialViewAnimation.slideIn(cageDoor, fromX = dp(28).toFloat(), durationMs = 420L)
+        }
+        scheduleFallback(REVEAL_GAP_MS + 1_160L) {
+            cageLock.alpha = 1f
+            cageLock.scaleX = 1f
+            cageLock.scaleY = 1f
+            EssentialViewAnimation.reveal(cageLock, 320L, fromScale = 1.65f)
+            EssentialViewAnimation.slideIn(card, fromX = dp(7).toFloat(), durationMs = 320L)
+        }
+        scheduleFallback(SCALE_INDEPENDENT_EXIT_AT_MS) {
+            EssentialViewAnimation.fadeOut(overlay, 300L) { finish() }
+        }
+    }
+
+    private fun scheduleFallback(delayMs: Long, action: () -> Unit) {
+        val runnable = Runnable(action)
+        fallbackRunnables += runnable
+        overlay.postDelayed(runnable, delayMs)
+    }
+
     private fun finish() {
         if (!running) return
         running = false
+        usingScaleIndependentAnimation = false
+        fallbackRunnables.forEach(overlay::removeCallbacks)
+        fallbackRunnables.clear()
         animator = null
         overlay.visibility = View.GONE
         overlay.alpha = 1f
@@ -143,5 +203,6 @@ internal class SilenceRevealAnimator(
 
     private companion object {
         const val REVEAL_GAP_MS = 300L
+        const val SCALE_INDEPENDENT_EXIT_AT_MS = 3_580L
     }
 }

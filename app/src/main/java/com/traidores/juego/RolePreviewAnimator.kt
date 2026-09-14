@@ -47,6 +47,35 @@ class RolePreviewAnimator(
         roleFunction.alpha = 0f
         roleAdvice.alpha = 0f
         overlay.visibility = View.VISIBLE
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            overlay.alpha = 1f
+            content.alpha = 1f
+            content.rotationY = 0f
+            content.scaleX = 1f
+            content.scaleY = 1f
+            mapBackground.alpha = 0.68f
+            roleImage.alpha = 1f
+            roleImage.translationY = 0f
+            roleName.alpha = 1f
+            roleTeam.alpha = 1f
+            roleFunction.alpha = 1f
+            roleAdvice.alpha = 1f
+            if (!initialReveal) {
+                EssentialViewAnimation.reveal(overlay, 180L, fromScale = 1f)
+            }
+            EssentialViewAnimation.reveal(
+                content,
+                durationMs = if (initialReveal) 540L else 420L,
+                delayMs = 80L,
+                fromScale = 0.48f
+            )
+            EssentialViewAnimation.slideIn(roleImage, fromY = dp(18).toFloat(), durationMs = 300L, delayMs = 380L)
+            EssentialViewAnimation.reveal(roleName, 280L, delayMs = 380L, fromScale = 1f)
+            EssentialViewAnimation.reveal(roleTeam, 280L, delayMs = 430L, fromScale = 1f)
+            EssentialViewAnimation.reveal(roleFunction, 280L, delayMs = 480L, fromScale = 1f)
+            EssentialViewAnimation.reveal(roleAdvice, 280L, delayMs = 530L, fromScale = 1f)
+            return
+        }
 
         val overlayEntrance = ObjectAnimator.ofFloat(
             overlay,
@@ -92,6 +121,13 @@ class RolePreviewAnimator(
 
     fun dismiss(onFinished: () -> Unit) {
         cancel()
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            EssentialViewAnimation.fadeOut(overlay, 180L) {
+                resetAndHide()
+                onFinished()
+            }
+            return
+        }
         animator = AnimatorSet().apply {
             duration = 180L
             interpolator = AccelerateInterpolator()
@@ -121,6 +157,16 @@ class RolePreviewAnimator(
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(
+            overlay,
+            content,
+            mapBackground,
+            roleImage,
+            roleName,
+            roleTeam,
+            roleFunction,
+            roleAdvice
+        )
     }
 
     private fun resetAndHide() {

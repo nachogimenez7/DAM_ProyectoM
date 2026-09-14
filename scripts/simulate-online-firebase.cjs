@@ -10,10 +10,15 @@ const {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
   serverTimestamp,
+  increment,
+  query,
+  where,
 } = require("firebase/firestore");
 const {
   get: getDatabaseValue,
+  serverTimestamp: realtimeServerTimestamp,
   ref,
   set,
   update,
@@ -110,7 +115,7 @@ function member(uid, index) {
     enLobby: false,
     vivo: true,
     traidor: index === 0,
-    actualizadaEn: Date.now(),
+    actualizadaEn: realtimeServerTimestamp(),
   };
 }
 
@@ -131,7 +136,7 @@ function clientState(uid, index, size, matchId, phase = "REPARTO", phaseIndex = 
     sincronizando: false,
     entradaLobbyLista: true,
     actualizadaEnLocal: Date.now(),
-    actualizadaEn: Date.now(),
+    actualizadaEn: realtimeServerTimestamp(),
   };
 }
 
@@ -170,7 +175,7 @@ async function runScenario(testEnv, runIndex, size) {
   const roomSetup = {
     "control/matchId": matchId,
     "control/jugadoresVivos": size,
-    "control/actualizadaEn": Date.now(),
+    "control/actualizadaEn": realtimeServerTimestamp(),
   };
   uids.forEach((uid, index) => {
     roomSetup[`miembros/${uid}`] = member(uid, index);
@@ -180,7 +185,7 @@ async function runScenario(testEnv, runIndex, size) {
   await Promise.all(databaseClients.map((db, index) => delay((runIndex * 17 + index * 11) % 45)
     .then(() => assertSucceeds(set(ref(db, `salas/${roomId}/presencia/${uids[index]}`), {
       estado: "conectado",
-      ts: Date.now(),
+      ts: realtimeServerTimestamp(),
     })))
     .then(() => assertSucceeds(set(
       ref(db, `salas/${roomId}/sincronizacion/clientes/${uids[index]}`),
@@ -209,7 +214,7 @@ async function runScenario(testEnv, runIndex, size) {
       listo: true,
       ronda: 1,
       phaseIndex: 4,
-      actualizadaEn: Date.now(),
+      actualizadaEn: realtimeServerTimestamp(),
     }
   ))));
   const voteReady = await assertSucceeds(getDatabaseValue(
@@ -227,7 +232,7 @@ async function runScenario(testEnv, runIndex, size) {
   const disconnectedIndex = size - 1;
   await assertSucceeds(set(
     ref(databaseClients[disconnectedIndex], `salas/${roomId}/presencia/${uids[disconnectedIndex]}`),
-    { estado: "desconectado", ts: Date.now() }
+    { estado: "desconectado", ts: realtimeServerTimestamp() }
   ));
   const disconnectedPresence = await assertSucceeds(getDatabaseValue(
     ref(hostDatabase, `salas/${roomId}/presencia`)
@@ -239,7 +244,7 @@ async function runScenario(testEnv, runIndex, size) {
   }
   await assertSucceeds(set(
     ref(databaseClients[disconnectedIndex], `salas/${roomId}/presencia/${uids[disconnectedIndex]}`),
-    { estado: "conectado", ts: Date.now() }
+    { estado: "conectado", ts: realtimeServerTimestamp() }
   ));
 
   const firestoreReads = await Promise.all(firestoreClients.map(async (db, index) => {
@@ -259,12 +264,95 @@ async function runScenario(testEnv, runIndex, size) {
   ));
   if (roster.size !== size) throw new Error(`Roster incorrecto: ${roster.size}/${size}`);
 
+  // Reproduce la votación real: el anfitrión y todos los invitados crean su primer voto sin
+  // lectura previa, luego cambian de objetivo mediante el contador atómico permitido por reglas.
+  const publicVoteState = {
+    versionEstado: 2, protocoloVoto: 2, fase: "VOTACION", ronda: 1, phaseIndex: 4,
+    ganador: "", votacionCerrada: false, limiteFaseEpochMs: Date.now() + 30_000,
+    jugadores: uids.map((uid, orden) => ({orden, nombre: `Tester ${orden + 1}`, vivo: true, muteado: false})),
+  };
+  const checkpoint = doc(firestoreClients[0], "partidas", roomId, "runtime", "authoritative");
+  await assertSucceeds(setDoc(checkpoint, {
+    matchId, phaseIndex: 4, estadoPartida: publicVoteState, actualizadaEn: serverTimestamp(),
+    actualizadaEnLocal: Date.now(), actualizadaPor: uids[0],
+  }));
+  await assertSucceeds(set(ref(hostDatabase, `salas/${roomId}/estado_partida`), {
+    matchId, phaseIndex: 4, estadoPartida: publicVoteState,
+    actualizadaPor: uids[0], actualizadaEn: realtimeServerTimestamp(),
+  }));
+  const voteRefs = firestoreClients.map((db, index) => doc(
+    db,
+    "partidas",
+    roomId,
+    "acciones",
+    `${matchId}_${uids[index]}_r1_p4_votar_s1`
+  ));
+  await Promise.all(voteRefs.map((voteRef, index) => {
+    const targetIndex = (index + 1) % size;
+    return assertSucceeds(setDoc(voteRef, {
+      matchId,
+      tipo: "accion_jugador",
+      actorId: uids[index],
+      actorNombre: `Tester ${index + 1}`,
+      actorEsHost: index === 0,
+      objetivoNombre: `Tester ${targetIndex + 1}`,
+      fase: "VOTACION",
+      ronda: 1,
+      phaseIndex: 4,
+      modoCliente: "android",
+      detalles: {
+        accion: "votar",
+        faseResultado: "RECUENTO_VOTOS",
+        phaseIndexResultado: 5,
+        actorOrden: index,
+        objetivoOrden: targetIndex,
+      },
+      creadaEn: serverTimestamp(),
+      actualizadaEn: serverTimestamp(),
+      creadaEnLocal: Date.now(),
+      cambiosVoto: 0,
+    }));
+  }));
+  await Promise.all(voteRefs.map((voteRef, index) => {
+    const targetIndex = (index + 2) % size;
+    return assertSucceeds(updateDoc(voteRef, {
+      objetivoNombre: `Tester ${targetIndex + 1}`,
+      detalles: {
+        accion: "votar",
+        faseResultado: "RECUENTO_VOTOS",
+        phaseIndexResultado: 5,
+        actorOrden: index,
+        objetivoOrden: targetIndex,
+      },
+      actualizadaEn: serverTimestamp(),
+      cambiosVoto: increment(1),
+    }));
+  }));
+  // Freeze before reading: a changing vote cannot arrive between query and tally.
+  await assertSucceeds(updateDoc(checkpoint, {
+    "estadoPartida.votacionCerrada": true, actualizadaEn: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(voteRefs[1], {
+    objetivoNombre: "Tester 1", cambiosVoto: increment(1), actualizadaEn: serverTimestamp(),
+  }));
+  const storedVotes = await assertSucceeds(getDocs(query(
+    collection(firestoreClients[0], "partidas", roomId, "acciones"),
+    where("matchId", "==", matchId)
+  )));
+  if (storedVotes.size !== size) {
+    throw new Error(`Votos Firestore incompletos: ${storedVotes.size}/${size}`);
+  }
+  if (size > 1) {
+    await assertFails(getDoc(doc(firestoreClients[1], voteRefs[0].path)));
+  }
+
   return {
     run: runIndex + 1,
     players: size,
     milliseconds: Date.now() - startedAt,
     acknowledgements: startupSnapshots[0].size,
     votesReady: voteReady.size,
+    votesStored: storedVotes.size,
   };
 }
 
@@ -292,7 +380,8 @@ async function main() {
       results.push(result);
       process.stdout.write(
         `SIM ${result.run}/${runCount} OK players=${result.players} ` +
-        `acks=${result.acknowledgements} votes=${result.votesReady} ms=${result.milliseconds}\n`
+        `acks=${result.acknowledgements} ready=${result.votesReady} ` +
+        `votes=${result.votesStored} ms=${result.milliseconds}\n`
       );
     }
   } finally {

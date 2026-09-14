@@ -15,7 +15,9 @@ object PlayerPublicIdentity {
     const val FIELD_PROFILE_PLAY_GAMES_AVATAR = "fotoPlayGames"
     const val FIELD_PROFILE_BANNER = "bannerPerfil"
     const val FIELD_PROFILE_FAVORITE_ROLE = "rolFavoritoPerfil"
+    const val FIELD_PROFILE_EMOTES = "emotesPerfil"
     const val FIELD_PROFILE_COSMETIC_THEME = "temaCosmeticoPerfil"
+    const val FIELD_PROFILE_STATS = "estadisticasPerfil"
 
     private const val PREFS_NAME = "TraidoresPrefs"
     private const val PREF_PUBLIC_ID = "profile_public_id"
@@ -210,6 +212,7 @@ object PlayerPublicIdentity {
             },
             FIELD_PROFILE_BANNER to ProfileCustomizationCatalog.normalizeBannerKey(profile.bannerKey),
             FIELD_PROFILE_FAVORITE_ROLE to ProfileRoleCatalog.find(profile.favoriteRoleKey).key,
+            FIELD_PROFILE_EMOTES to EmoteLoadout.normalizeIds(profile.emoteIds),
             FIELD_PROFILE_COSMETIC_THEME to (
                 CosmeticPilot.normalizeTheme(profile.cosmeticThemeId) ?: CosmeticPilot.THEME_CLASSIC
             )
@@ -219,6 +222,9 @@ object PlayerPublicIdentity {
         if (safePublicId.isNotBlank()) {
             fields[FIELD_PUBLIC_ID] = safePublicId
         }
+        // This payload participates in room creation, joins and presence updates. Keep its
+        // deployed schema: optional stats must not make these critical writes fail. Sharing
+        // stats requires a separately negotiated rollout; local history remains available.
         return fields
     }
 

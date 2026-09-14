@@ -10,8 +10,8 @@ import android.graphics.drawable.LayerDrawable
  * Primer piloto visual de los conjuntos cosméticos.
  *
  * La selección se guarda junto al resto del perfil para que Play Games pueda respaldarla.
- * Firebase solo recibe el identificador corto del tema cuando el perfil ya se publica en una
- * sala; ninguna animación o render genera escrituras adicionales.
+ * Firebase recibe el identificador del tema y los cuatro IDs de emotes con las publicaciones
+ * normales del perfil; ninguna animación o render genera escrituras adicionales.
  */
 object CosmeticPilot {
     const val THEME_CLASSIC = "classic"

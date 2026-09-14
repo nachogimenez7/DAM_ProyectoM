@@ -2,7 +2,7 @@ package com.traidores.juego
 
 internal object OnlineMatchReturnGate {
     const val FALLBACK_MS = 45_000L
-    const val HOST_REQUEST_GRACE_MS = 2_000L
+    const val HOST_REQUEST_GRACE_MS = 3_000L
 
     data class Progress(
         val readyCount: Int,

@@ -33,6 +33,26 @@ class TraitorRevealAnimator(
         content.scaleX = 0.96f
         content.scaleY = 0.96f
         overlay.visibility = View.VISIBLE
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            overlay.alpha = 1f
+            content.scaleX = 1f
+            content.scaleY = 1f
+            EssentialViewAnimation.reveal(overlay, 260L, fromScale = 1f)
+            EssentialViewAnimation.reveal(content, 320L, fromScale = 0.92f)
+            cardViews.forEachIndexed { index, card ->
+                card.alpha = 1f
+                EssentialViewAnimation.slideIn(
+                    card,
+                    fromY = dp(42).toFloat(),
+                    durationMs = 350L,
+                    delayMs = 120L + index * 150L
+                )
+            }
+            dismissRunnable = Runnable(onDismissRequested).also {
+                handler.postDelayed(it, durationMs)
+            }
+            return
+        }
 
         val animators = mutableListOf<Animator>(
             ObjectAnimator.ofFloat(overlay, View.ALPHA, 0f, 1f).apply {
@@ -68,6 +88,13 @@ class TraitorRevealAnimator(
     fun dismiss(onFinished: () -> Unit) {
         removeScheduledDismiss()
         cancelAnimation()
+        if (EssentialViewAnimation.requiresFallback(overlay)) {
+            EssentialViewAnimation.fadeOut(overlay, 220L) {
+                resetAndHide()
+                onFinished()
+            }
+            return
+        }
         animator = AnimatorSet().apply {
             playTogether(
                 ObjectAnimator.ofFloat(overlay, View.ALPHA, overlay.alpha, 0f).apply {
@@ -95,6 +122,8 @@ class TraitorRevealAnimator(
         animator?.removeAllListeners()
         animator?.cancel()
         animator = null
+        EssentialViewAnimation.clear(overlay, content)
+        for (index in 0 until cards.childCount) cards.getChildAt(index).clearAnimation()
     }
 
     private fun removeScheduledDismiss() {

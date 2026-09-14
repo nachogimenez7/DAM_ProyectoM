@@ -112,6 +112,44 @@ class OnlineLobbyPresentationTest {
     }
 
     @Test
+    fun `ready guest waits for host when the complete room is ready`() {
+        val state = startState(
+            activePlayers = 5,
+            expectedPlayers = 5,
+            missingReady = 0,
+            isHost = false,
+            currentReady = true
+        )
+
+        assertEquals(OnlineLobbyStartCopy.WAITING_HOST, state.buttonCopy)
+        assertFalse(state.isGold)
+        assertTrue(
+            OnlineLobbyPresentation.shouldLockGuestReadyToggle(
+                activePlayers = 5,
+                expectedPlayers = 5,
+                disconnectedPlayers = 0,
+                missingReady = 0,
+                isHost = false,
+                currentReady = true
+            )
+        )
+    }
+
+    @Test
+    fun `ready guest can undo while another participant is still pending`() {
+        assertFalse(
+            OnlineLobbyPresentation.shouldLockGuestReadyToggle(
+                activePlayers = 5,
+                expectedPlayers = 5,
+                disconnectedPlayers = 0,
+                missingReady = 1,
+                isHost = false,
+                currentReady = true
+            )
+        )
+    }
+
+    @Test
     fun `disconnected player shows synchronization without misleading progress`() {
         val state = startState(
             activePlayers = 5,
@@ -166,16 +204,16 @@ class OnlineLobbyPresentationTest {
     }
 
     @Test
-    fun `online lobby exposes online sections and larger vote cards`() {
+    fun `online lobby shows the fixed host map without voting`() {
         val structure = OnlineLobbyPresentation.structure(onlineLobby = true)
 
-        assertFalse(structure.selectedMapVisible)
-        assertFalse(structure.mapDescriptionVisible)
+        assertTrue(structure.selectedMapVisible)
+        assertTrue(structure.mapDescriptionVisible)
         assertFalse(structure.localPlayersVisible)
-        assertTrue(structure.onlineMapVoteVisible)
+        assertFalse(structure.onlineMapVoteVisible)
         assertTrue(structure.onlinePlayersVisible)
         assertTrue(structure.onlineSectionLabelsVisible)
-        assertEquals(112, structure.mapVoteCardsHeightDp)
+        assertEquals(54, structure.mapVoteCardsHeightDp)
     }
 
     private fun startState(
