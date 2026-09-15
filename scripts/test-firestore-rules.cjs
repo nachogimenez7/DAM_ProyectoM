@@ -943,6 +943,33 @@ async function main() {
       hostVersion: increment(1),
       actualizadaEn: serverTimestamp(),
     }));
+
+    // Si el proceso del anfitrion muere, RTDB publica la desconexion pero Firestore puede
+    // conservar el texto "conectado". La concesion vencida debe permitir que la partida siga.
+    await seedRoom(testEnv, "room_handoff_expired_lease", "old_host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_handoff_expired_lease", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_handoff_expired_lease"), {
+        estado: "en_juego",
+        partidaInicialCreada: true,
+      });
+      await updateDoc(
+        doc(db, "partidas", "room_handoff_expired_lease", "jugadores", "old_host_uid"),
+        {
+          estado: "conectado",
+          ultimaConexion: Timestamp.fromMillis(Date.now() - 61_000),
+        }
+      );
+    });
+    await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff_expired_lease"), {
+      hostActivoId: "guest_uid",
+      hostVersion: increment(1),
+      actualizadaEn: serverTimestamp(),
+    }));
     // Al terminar, el coordinador temporal no se queda con la sala. Solo el creador estable
     // puede preparar la revancha y recupera la autoridad en el mismo cambio.
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -1079,6 +1106,46 @@ async function main() {
     await assertSucceeds(updateDoc(guestPublicProfile, {
       nombrePerfil: "Guest seguro",
       actualizadaEn: serverTimestamp(),
+    }));
+
+    // El mismo caso en el lobby: el candidato registrado puede recuperar una sala cuyo
+    // creador desaparecio sin alcanzar a escribir "desconectado" en Firestore.
+    await seedRoom(testEnv, "room_stale_lobby_claim", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_stale_lobby_claim", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_stale_lobby_claim"), {
+        jugadoresActuales: 2,
+      });
+      await updateDoc(
+        doc(db, "partidas", "room_stale_lobby_claim", "jugadores", "host_uid"),
+        {
+          estado: "conectado",
+          ultimaConexion: Timestamp.fromMillis(Date.now() - 61_000),
+        }
+      );
+    });
+    await assertSucceeds(runTransaction(guest, async (transaction) => {
+      transaction.update(doc(guest, "partidas", "room_stale_lobby_claim"), {
+        hostId: "guest_uid",
+        hostNombre: "Guest",
+        hostActivoId: "guest_uid",
+        hostVersion: increment(1),
+        jugadoresActuales: 1,
+        actualizadaEn: serverTimestamp(),
+      });
+      transaction.update(doc(guest, "partidas", "room_stale_lobby_claim", "jugadores", "host_uid"), {
+        esHost: false,
+        activoEnPartida: false,
+        listo: false,
+        estado: "desconectado",
+      });
+      transaction.update(doc(guest, "partidas", "room_stale_lobby_claim", "jugadores", "guest_uid"), {
+        esHost: true,
+      });
     }));
     await assertSucceeds(updateDoc(guestPublicProfile, {
       emotesPerfil: ["premium_mate", "premium_genio", "griego_triste", "gaucho_contento"],

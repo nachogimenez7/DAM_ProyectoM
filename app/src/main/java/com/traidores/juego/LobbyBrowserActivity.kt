@@ -35,7 +35,14 @@ class LobbyBrowserActivity : BaseActivity() {
         override fun run() {
             val nowMs = serverClock.nowMs()
             lobbies = if (nowMs == null) emptyList() else lobbies.filter {
-                OnlineRoomRetentionPolicy.isDiscoverable(it.updatedAtMs, nowMs, it.players, it.limit, false)
+                OnlineRoomRetentionPolicy.isDiscoverable(
+                    it.updatedAtMs,
+                    nowMs,
+                    it.players,
+                    it.limit,
+                    false,
+                    allowFullForReturningMember = it.returningMember
+                )
             }
             renderLobbyList()
             refreshHandler.postDelayed(this, 60_000L)
@@ -150,12 +157,14 @@ class LobbyBrowserActivity : BaseActivity() {
             fallback = DEFAULT_MAX_PLAYERS
         )
         val serverNowMs = serverClock.nowMs() ?: return null
+        val returningMember = OnlineRoomRecovery.load(this)?.roomId == document.id
         if (!OnlineRoomRetentionPolicy.isDiscoverable(
                 updatedAtMs = updatedAtMs,
                 nowMs = serverNowMs,
                 currentPlayers = players,
                 playerLimit = limit,
-                deleting = document.getString("cleanupState") == "deleting"
+                deleting = document.getString("cleanupState") == "deleting",
+                allowFullForReturningMember = returningMember
             )) return null
         return OnlineLobby(
             id = document.id,
@@ -167,7 +176,8 @@ class LobbyBrowserActivity : BaseActivity() {
             mapName = "Mapa $mapName",
             status = if (players >= limit) "Llena" else "Esperando",
             mapKey = mapKey,
-            canJoin = true
+            canJoin = players < limit || returningMember,
+            returningMember = returningMember
         )
     }
 
@@ -401,7 +411,8 @@ class LobbyBrowserActivity : BaseActivity() {
         val mapName: String,
         val status: String,
         val mapKey: String,
-        val canJoin: Boolean = true
+        val canJoin: Boolean = true,
+        val returningMember: Boolean = false
     )
 
     companion object {

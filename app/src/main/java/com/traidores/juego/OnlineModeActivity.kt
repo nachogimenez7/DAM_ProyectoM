@@ -1141,6 +1141,7 @@ class OnlineModeActivity : BaseActivity() {
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_PARTIDA_ID, room.roomId)
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_PLAYER_ID, uidTemporal)
                         .putExtra(GameplayMockActivity.EXTRA_ONLINE_IS_HOST, isHost)
+                        .putExtra(GameplayMockActivity.EXTRA_ONLINE_RECOVERED_DIRECTLY, true)
                         .putExtra(
                             AssigningRolesActivity.EXTRA_PRESENTATION_START_DELAY_MS,
                             presentationStartDelayMs

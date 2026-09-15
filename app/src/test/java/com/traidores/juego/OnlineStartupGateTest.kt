@@ -9,6 +9,14 @@ import org.junit.Test
 class OnlineStartupGateTest {
 
     @Test
+    fun onlineRoleButtonIgnoresPerDeviceReadingPreference() {
+        assertTrue(OnlineStartupGate.canConfirmRoleManually(true, 10_000L))
+        assertTrue(OnlineStartupGate.canConfirmRoleManually(true, 0L))
+        assertFalse(OnlineStartupGate.canConfirmRoleManually(false, 10_000L))
+        assertTrue(OnlineStartupGate.canConfirmRoleManually(false, 0L))
+    }
+
+    @Test
     fun allPlayersLoadedAndReadCanStart() {
         val result = OnlineStartupGate.evaluate(
             expectedPlayers = 5,

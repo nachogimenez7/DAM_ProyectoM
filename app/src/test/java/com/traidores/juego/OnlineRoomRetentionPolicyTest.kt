@@ -54,6 +54,30 @@ class OnlineRoomRetentionPolicyTest {
     }
 
     @Test
+    fun fullRoomRemainsVisibleOnlyToItsReturningMember() {
+        assertTrue(
+            OnlineRoomRetentionPolicy.isDiscoverable(
+                updatedAtMs = now,
+                nowMs = now,
+                currentPlayers = 5,
+                playerLimit = 5,
+                deleting = false,
+                allowFullForReturningMember = true
+            )
+        )
+        assertFalse(
+            OnlineRoomRetentionPolicy.isDiscoverable(
+                updatedAtMs = now,
+                nowMs = now,
+                currentPlayers = 6,
+                playerLimit = 5,
+                deleting = false,
+                allowFullForReturningMember = true
+            )
+        )
+    }
+
+    @Test
     fun migratedHostSupersedesCreatorAndCachedPreference() {
         assertFalse(OnlineRoomRecovery.isCurrentHost("creator", "new-host", "creator"))
         assertTrue(OnlineRoomRecovery.isCurrentHost("new-host", "new-host", "creator"))

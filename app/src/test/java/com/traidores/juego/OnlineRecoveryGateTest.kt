@@ -38,14 +38,27 @@ class OnlineRecoveryGateTest {
     }
 
     @Test
-    fun finishedOrUnknownRoomClearsRecovery() {
+    fun finishedRoomRecoversToLobbyButUnknownRoomClearsRecovery() {
         assertEquals(
-            OnlineRecoveryTarget.CLEAR,
+            OnlineRecoveryTarget.LOBBY,
             OnlineRecoveryGate.targetForRoomState(OnlineRoomFirestore.STATE_FINISHED)
         )
         assertEquals(
             OnlineRecoveryTarget.CLEAR,
             OnlineRecoveryGate.targetForRoomState("rota")
+        )
+    }
+
+    @Test
+    fun activeMemberCanRecoverFinishedRoomForRematch() {
+        assertEquals(
+            OnlineRecoveryTarget.LOBBY,
+            OnlineRecoveryGate.targetForRecovery(
+                state = OnlineRoomFirestore.STATE_FINISHED,
+                playerExists = true,
+                activeInMatch = true,
+                inGameEntryReleased = true
+            )
         )
     }
 

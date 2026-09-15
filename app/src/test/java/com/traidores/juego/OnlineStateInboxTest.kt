@@ -63,6 +63,17 @@ class OnlineStateInboxTest {
         assertEquals(4_000L, inbox.poll()!!["volverLobbyEpochMs"])
     }
 
+    @Test fun foregroundCatchUpCanSelectLiveStateAndDiscardIntermediateFrames() {
+        val inbox = OnlineStateInbox()
+        inbox.offer(state(9, 20, presentation = "expulsion|jugador"))
+        inbox.offer(state(10, 21))
+        inbox.offer(state(11, 22))
+
+        assertEquals(11, inbox.newestPhaseIndex())
+        assertEquals(22L, inbox.pollNewestAndDropOlder()!!["stateSequence"])
+        assertEquals(0, inbox.size)
+    }
+
     @Test fun searchContinuesPastThirtyFullRoomsAndStopsAutomaticReadsAtBound() {
         assertTrue(OnlineLobbySearchWindow.shouldExpand(30, 30, 0))
         assertTrue(OnlineLobbySearchWindow.shouldExpand(60, 60, 5))

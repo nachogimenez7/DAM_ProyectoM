@@ -961,7 +961,7 @@
                 android:layout_marginTop="16dp"
                 android:fontFamily="sans-serif"
                 android:includeFontPadding="false"
-                android:text="Toca para continuar"
+                android:text="Toca para continuar · continúa solo en 6 s"
                 android:textColor="@color/text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>

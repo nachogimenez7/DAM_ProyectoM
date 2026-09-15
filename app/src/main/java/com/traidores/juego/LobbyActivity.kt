@@ -7,6 +7,8 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Matrix
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
@@ -210,6 +212,19 @@ class LobbyActivity : BaseActivity() {
     private var onlinePlayerName = ""
     private var practiceRoleIndex = 0
     private val firestoreUsage = OnlineFirestoreUsageCounter()
+    private val onlineHostLeaseHandler = Handler(Looper.getMainLooper())
+
+    private val onlineHostLeaseRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (!onlineLobbyStarted || !isFirestoreOnlineLobby() || isFinishing || isDestroyed) {
+                return
+            }
+            if (currentUserIsOnlineHost()) {
+                refreshOnlineLobbyHostLease()
+            }
+            onlineHostLeaseHandler.postDelayed(this, OnlineFirestorePolicy.HOST_LEASE_REFRESH_MS)
+        }
+    }
 
     private val onlineEntryReleaseTimeoutRunnable = Runnable {
         onlineEntryReleaseTimeoutScheduled = false
@@ -249,6 +264,7 @@ class LobbyActivity : BaseActivity() {
         onlinePartidaId = intent.getStringExtra(EXTRA_PARTIDA_ID).orEmpty()
         onlineRoomCode = intent.getStringExtra(EXTRA_ROOM_CODE).orEmpty()
         recoveringOnlineMatch = intent.getBooleanExtra(EXTRA_RECOVERING_ONLINE, false)
+        returnedFromOnlineMatch = intent.getBooleanExtra(EXTRA_RETURNED_FROM_ONLINE_MATCH, false)
         if (onlinePartidaId.isNotBlank()) {
             onlineTempUid = OnlineTempIdentity.getOrCreate(this)
             // profileName devuelve el alias cuando no hay cuenta; leer la preferencia directo
@@ -485,11 +501,17 @@ class LobbyActivity : BaseActivity() {
             listenToOnlinePlayers()
             listenToOwnOnlineMembership()
             listenToOwnRoomBan()
+            onlineHostLeaseHandler.removeCallbacks(onlineHostLeaseRefreshRunnable)
+            onlineHostLeaseHandler.postDelayed(
+                onlineHostLeaseRefreshRunnable,
+                OnlineFirestorePolicy.HOST_LEASE_REFRESH_MS
+            )
         }
     }
 
     override fun onStop() {
         onlineLobbyStarted = false
+        onlineHostLeaseHandler.removeCallbacks(onlineHostLeaseRefreshRunnable)
         onlineLobbyGeneration++
         lobbyPlayersServerBaselineReady = false
         pendingRealtimeLobbyMembers = null
@@ -554,6 +576,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        onlineHostLeaseHandler.removeCallbacks(onlineHostLeaseRefreshRunnable)
         if (isFirestoreOnlineLobby()) {
             OnlineDebugLog.i(
                 "firestore_usage lobby roomId=$onlinePartidaId uid=$onlineTempUid " +
@@ -1604,6 +1627,36 @@ class LobbyActivity : BaseActivity() {
                 "host_presence_disconnected_without_teardown roomId=$onlinePartidaId hostId=$onlineTempUid"
             )
         }
+    }
+
+    /**
+     * Firestore conserva una pequena concesion temporal del anfitrion. RTDB detecta una
+     * caida abrupta, pero su onDisconnect no puede actualizar este documento de Firestore.
+     * Renovarlo permite que las reglas distingan un anfitrion vivo de un proceso cerrado y
+     * habiliten un relevo seguro despues de sesenta segundos.
+     */
+    private fun refreshOnlineLobbyHostLease() {
+        if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
+        firestoreUsage.write("host_lease")
+        FirebaseFirestore.getInstance()
+            .collection(ONLINE_ROOMS_COLLECTION)
+            .document(onlinePartidaId)
+            .collection(ONLINE_PLAYERS_COLLECTION)
+            .document(onlineTempUid)
+            .set(
+                mapOf(
+                    FIELD_PLAYER_STATE to PLAYER_STATE_CONNECTED,
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
+                    OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
+                ),
+                SetOptions.merge()
+            )
+            .addOnFailureListener { error ->
+                OnlineDebugLog.e(
+                    "host_lease_refresh_failure roomId=$onlinePartidaId uid=$onlineTempUid",
+                    error
+                )
+            }
     }
 
     private fun renderOnlineCodePanel() {
@@ -2885,10 +2938,7 @@ class LobbyActivity : BaseActivity() {
             ?: LocalGameFactory.maps.first()
         session = PlayerProfileStore.withProfiles(this, LocalGameFactory.selectMap(session, selectedMap.key))
 
-        if (
-            onlineRoomState == OnlineRoomFirestore.STATE_FINISHED ||
-            onlineRoomState == ONLINE_ROOM_STATE_ABANDONED
-        ) {
+        if (onlineRoomState == ONLINE_ROOM_STATE_ABANDONED) {
             OnlineRoomRecovery.clearIf(this, onlinePartidaId)
         }
         if (
@@ -5266,15 +5316,17 @@ class LobbyActivity : BaseActivity() {
                 onlineCleanupPending = true
                 onlineStartedNoticeShown = false
                 recoveringOnlineMatch = false
-                OnlineRoomRecovery.clearIf(this, onlinePartidaId)
+                OnlineRoomRecovery.save(
+                    this,
+                    roomId = onlinePartidaId,
+                    roomCode = onlineRoomCode,
+                    roomName = onlineLobbyName.ifBlank { "Sala online" },
+                    mapKey = session.mapKey,
+                    isHost = true
+                )
                 OnlineDebugLog.i(
                     "rematch_reset_success roomId=$onlinePartidaId hostId=$onlineTempUid players=${playersToReset.size}"
                 )
-                Toast.makeText(
-                    this,
-                    "Sala preparada. Estamos borrando las huellas de la partida anterior...",
-                    Toast.LENGTH_LONG
-                ).show()
                 maybeContinuePendingOnlineCleanup()
             }
         }.addOnFailureListener { error ->
@@ -7400,6 +7452,7 @@ class LobbyActivity : BaseActivity() {
         const val EXTRA_PARTIDA_ID = "extra_partida_id"
         const val EXTRA_ROOM_CODE = "extra_room_code"
         const val EXTRA_RECOVERING_ONLINE = "extra_recovering_online"
+        const val EXTRA_RETURNED_FROM_ONLINE_MATCH = "extra_returned_from_online_match"
         const val MODE_LOCAL = "local"
         const val MODE_ONLINE_CREATE = "online_create"
         const val MODE_ONLINE_SEARCH = "online_search"

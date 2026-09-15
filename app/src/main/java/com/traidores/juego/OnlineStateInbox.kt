@@ -27,6 +27,8 @@ internal class OnlineStateInbox {
     private var newest: Map<String, Any?>? = null
     val size: Int get() = pending.size
 
+    fun newestPhaseIndex(): Int? = (newest?.get("phaseIndex") as? Number)?.toInt()
+
     fun offer(state: Map<String, Any?>): Boolean {
         if (!OnlineStateOrder.isNewer(state, newest)) return false
         newest = state.toMap()
@@ -38,6 +40,13 @@ internal class OnlineStateInbox {
     fun poll(): Map<String, Any?>? {
         val key = pending.keys.firstOrNull() ?: return null
         return pending.remove(key)
+    }
+
+    /** Returns live state after a background gap and discards intermediate obsolete frames. */
+    fun pollNewestAndDropOlder(): Map<String, Any?>? {
+        val result = newest?.toMap() ?: return null
+        pending.clear()
+        return result
     }
 
     fun clear() {

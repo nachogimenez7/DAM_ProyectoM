@@ -137,6 +137,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var traitorRevealCompleted = false
     private var winnerRevealPresented = false
     private var returningToOnlineLobby = false
+    private var onlineRecoveredDirectly = false
     private var abandoningOnlineMatch = false
     private var exitConfirmationDialog: AlertDialog? = null
     private var onlineLobbyReturnEpochMs = 0L
@@ -239,6 +240,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val drainOnlinePresentationRunnable = Runnable { drainOnlinePresentationInbox() }
     private var replayInterruptedTransition = false
     private var replayInterruptedVote = false
+    private var awaitingFreshOnlineStateAfterResume = false
+    private var skipHistoricalPresentationOnNextState = false
+    private val resumeInterruptedPresentationRunnable = Runnable {
+        resumeInterruptedPresentationAfterSyncTimeout()
+    }
     private var onlineCheckpointTask: com.google.android.gms.tasks.Task<Void>? = null
     private var onlineClosedVoteWindow: OnlineResolutionReadGate.Window? = null
     private var onlineVoteResolutionScheduledPhaseIndex = -1
@@ -262,6 +268,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var realtimeClientHeartbeatAtMs = emptyMap<String, Long>()
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
+    private var lastLegacyPresenceWriteAtElapsedMs = 0L
     private val firestoreUsage = OnlineFirestoreUsageCounter()
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineNightActionsServerConfirmed = false
@@ -367,7 +374,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 SystemClock.elapsedRealtime()).coerceAtLeast(0L)
             if (onlineStartup && gameplayResumed && isRolePreviewOpen &&
                 onlineRoleAutoConfirmAtElapsedMs > 0L && autoRemainingMs == 0L &&
-                readingRemainingMs == 0L
+                OnlineStartupGate.canConfirmRoleManually(onlineStartup, readingRemainingMs)
             ) {
                 OnlineDebugLog.i("startup_role_auto_confirm roomId=$onlinePartidaId uid=$onlinePlayerId")
                 closeRolePreview()
@@ -378,15 +385,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             } else {
                 null
             }
+            val canConfirmManually = OnlineStartupGate.canConfirmRoleManually(
+                isOnlineStartup = onlineStartup,
+                localReadingRemainingMs = readingRemainingMs
+            )
             btnContinueRolePreview.visibility = View.VISIBLE
-            btnContinueRolePreview.alpha = if (readingRemainingMs > 0L) 0.72f else 1f
-            btnContinueRolePreview.isEnabled = readingRemainingMs <= 0L
+            btnContinueRolePreview.alpha = if (canConfirmManually) 1f else 0.72f
+            btnContinueRolePreview.isEnabled = canConfirmManually
             btnContinueRolePreview.text = when {
                 // Cuando ya existe la cuenta regresiva compartida, todos deben ver esa misma
                 // referencia. Antes se priorizaba el bloqueo local de lectura y un emulador
                 // podia mostrar 9 mientras el resto mostraba 15, aunque la partida estuviera bien.
                 onlineCountdownSeconds != null -> "EMPEZAR ($onlineCountdownSeconds)"
-                readingRemainingMs > 0L ->
+                !onlineStartup && readingRemainingMs > 0L ->
                     "EMPEZAR (${ceil(readingRemainingMs / 1000.0).toInt()})"
                 onlineStartup && onlineRoleAutoConfirmAtElapsedMs > 0L ->
                     "EMPEZAR (${ceil(autoRemainingMs / 1000.0).toInt()})"
@@ -730,6 +741,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         onlineIsHost = savedInstanceState?.getBoolean(STATE_ONLINE_IS_HOST)
             ?: intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
+        onlineRecoveredDirectly = savedInstanceState?.getBoolean(STATE_ONLINE_RECOVERED_DIRECTLY)
+            ?: intent.getBooleanExtra(EXTRA_ONLINE_RECOVERED_DIRECTLY, false)
         initializeOnlinePresenceRoster()
         onlineInitialRoleRead = savedInstanceState?.getBoolean(STATE_ONLINE_INITIAL_ROLE_READ)
             ?: (session.phase != GamePhase.REPARTO)
@@ -1348,6 +1361,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         botReactionScheduled = false
         autoAdvanceHandler.removeCallbacks(onlineStartupTickRunnable)
         autoAdvanceHandler.removeCallbacks(onlineSyncWatchdogRunnable)
+        autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
         autoAdvanceHandler.removeCallbacks(countdownRunnable)
         stopOnlineGameplayFirestoreListeners()
         chatController.onDestroy()
@@ -1422,6 +1436,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         autoAdvanceHandler.removeCallbacks(centralPublicEventDismissRunnable)
         autoAdvanceHandler.removeCallbacks(botReactionRunnable)
         botReactionScheduled = false
+        autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
+        // Al volver desde segundo plano primero se pide el estado vivo. Aunque la pausa haya
+        // ocurrido durante un debate tranquilo, la mesa pudo avanzar varias fases mientras
+        // Android suspendia este proceso.
+        awaitingFreshOnlineStateAfterResume = isOnlineGameplay()
         chatController.cancelPendingBotChat()
         MusicManager.pauseVictoryMusic()
         super.onPause()
@@ -1440,6 +1459,14 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             restoreRolePreviewOnResume = false
             restoreInitialRoleReadingOnResume = false
             gameplayRoot.post { showRolePreview(initialReveal = restoreInitialReading) }
+            return
+        }
+        if (::session.isInitialized && awaitingFreshOnlineStateAfterResume) {
+            autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
+            autoAdvanceHandler.postDelayed(
+                resumeInterruptedPresentationRunnable,
+                FOREGROUND_STATE_REFRESH_WAIT_MS
+            )
             return
         }
         if (::session.isInitialized && replayInterruptedVote && !isAwaitingOnlinePublication()) {
@@ -1513,6 +1540,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         outState.putString(STATE_ONLINE_PARTIDA_ID, onlinePartidaId)
         outState.putString(STATE_ONLINE_PLAYER_ID, onlinePlayerId)
         outState.putBoolean(STATE_ONLINE_IS_HOST, onlineIsHost)
+        outState.putBoolean(STATE_ONLINE_RECOVERED_DIRECTLY, onlineRecoveredDirectly)
         outState.putBoolean(STATE_ONLINE_INITIAL_ROLE_READ, onlineInitialRoleRead)
         outState.putLong(
             STATE_ONLINE_STARTUP_STARTED_AT_EPOCH_MS,
@@ -3175,9 +3203,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     }
                     return@addSnapshotListener
                 }
-                if (roomState == OnlineRoomFirestore.STATE_FINISHED) {
-                    OnlineRoomRecovery.clearIf(this, onlinePartidaId)
-                }
                 onlineActiveHostId = snapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID)
                     ?.takeIf { it.isNotBlank() }
                     ?: onlineActiveHostId
@@ -3540,6 +3565,32 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!onlineScreenStarted || !gameplayResumed || isFinishing || isDestroyed || applyingPresentedState) return
         if (onlineIsHost) { onlineStateInbox.clear(); return }
         if (onlineStateInbox.size == 0) return
+        if (
+            awaitingFreshOnlineStateAfterResume &&
+            (onlineStateInbox.newestPhaseIndex() ?: session.phaseIndex) > session.phaseIndex
+        ) {
+            val livePhaseIndex = onlineStateInbox.newestPhaseIndex()
+            val liveState = onlineStateInbox.pollNewestAndDropOlder()
+            awaitingFreshOnlineStateAfterResume = false
+            autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
+            replayInterruptedTransition = false
+            replayInterruptedVote = false
+            pendingDeathReveals.clear()
+            pendingSilenceReveals.clear()
+            pendingNoDeathReveal = false
+            cancelVoteResult()
+            clearOnlinePresentationGate()
+            skipHistoricalPresentationOnNextState = true
+            OnlineDebugLog.i(
+                "foreground_live_catch_up roomId=$onlinePartidaId uid=$onlinePlayerId " +
+                    "fromPhase=${session.phaseIndex} toPhase=$livePhaseIndex"
+            )
+            liveState?.let { state ->
+                applyingPresentedState = true
+                try { applyPresentedOnlineState(state) } finally { applyingPresentedState = false }
+            }
+            return
+        }
         val essentialPresentation = isDayNightTransitionRunning || isDeathRevealRunning ||
             isSilenceRevealRunning || isNoDeathRevealRunning || isTraitorRevealRunning ||
             initialRoleReadingActive || hasPendingDawnRevealSequence() || replayInterruptedTransition || replayInterruptedVote ||
@@ -3679,6 +3730,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             // del rol se reconstruyen desde el estado local al renderizar la nueva fase.
             privateHint = if (phaseIndex == previousPhaseIndex) previousPrivateHint else ""
         )
+        if (skipHistoricalPresentationOnNextState) {
+            skipHistoricalPresentationOnNextState = false
+            pendingDeathReveals.clear()
+            pendingSilenceReveals.clear()
+            pendingNoDeathReveal = false
+            knownDeadPlayers = session.players.filterNot { it.alive }.map { it.name }.toSet()
+            knownMutedPlayers = session.players.filter { it.muted }.map { it.name }.toSet()
+            lastNoDeathRevealRound = session.round
+            lastAppliedOnlineVotePresentation = incomingVotePresentation
+            val liveTransition = GameplayTableUi.transitionSpec(session)
+            lastPresentedTransitionKey = liveTransition.key
+            presentedPeriod = liveTransition.period
+        }
         OnlineDiagnostics.recordPhase(this, session, onlineIsHost, event = "guest_apply")
         // El pedido ya llego a la mesa: se libera el candado local del dialogo para que la
         // ventana de reconsideracion pueda abrirse mas adelante.
@@ -3711,6 +3775,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         applyOnlineVotePresentation(incomingVotePresentation)
         notifyLocalOnlineAfkChange(previousSession, session)
+    }
+
+    private fun resumeInterruptedPresentationAfterSyncTimeout() {
+        if (!awaitingFreshOnlineStateAfterResume) return
+        awaitingFreshOnlineStateAfterResume = false
+        if (!gameplayResumed || !::session.isInitialized || isFinishing || isDestroyed) return
+        if (replayInterruptedVote && !isAwaitingOnlinePublication()) {
+            replayInterruptedVote = false
+            lastAppliedOnlineVotePresentation = ""
+            onlinePresentationAckKey = ""
+            clearOnlinePresentationGate()
+            if (onlineVotePresentation.isNotBlank()) applyOnlineVotePresentation(onlineVotePresentation)
+            else maybeShowVoteResult()
+            return
+        }
+        if (replayInterruptedTransition) replayInterruptedTransition = false
+        renderGame()
     }
 
     private fun applyOnlineVotePresentation(presentation: String) {
@@ -4474,9 +4555,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         // RTDB es la fuente de presencia de la mesa. Firestore conserva solo este dato para
         // el anfitrion porque las reglas actuales de handoff lo usan para proteger la autoridad.
-        if (!OnlineFirestorePolicy.shouldMirrorLegacyPresence(onlineIsHost)) return
-        if (lastLegacyPresenceState == state) return
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        if (!OnlineFirestorePolicy.shouldWriteLegacyHostPresence(
+                isHost = onlineIsHost,
+                state = state,
+                lastState = lastLegacyPresenceState,
+                nowElapsedMs = nowElapsedMs,
+                lastWriteElapsedMs = lastLegacyPresenceWriteAtElapsedMs
+            )
+        ) {
+            return
+        }
         lastLegacyPresenceState = state
+        lastLegacyPresenceWriteAtElapsedMs = nowElapsedMs
         val human = GameEngine.humanPlayer(session)
         firestoreUsage.write("host_presence")
         FirebaseFirestore.getInstance()
@@ -11960,7 +12051,36 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     )
                 }
         }
+        if (isOnlineGameplay() && onlineRecoveredDirectly) {
+            openLobbyAfterDirectRecovery()
+        }
         finish()
+    }
+
+    private fun openLobbyAfterDirectRecovery() {
+        val recovered = OnlineRoomRecovery.load(this) ?: return
+        if (recovered.roomId != onlinePartidaId) return
+        val lobbySession = LocalGameFactory.createOnlineLobby(
+            humanName = PlayerPublicIdentity.profileName(this),
+            playerCount = 1,
+            humanIsHost = onlineIsHost
+        ).let { LocalGameFactory.selectMap(it, session.mapKey) }
+        OnlineDebugLog.i(
+            "direct_recovery_return_lobby roomId=$onlinePartidaId uid=$onlinePlayerId isHost=$onlineIsHost"
+        )
+        startActivity(
+            Intent(this, LobbyActivity::class.java)
+                .putExtra(LobbyActivity.EXTRA_SESSION, lobbySession)
+                .putExtra(
+                    LobbyActivity.EXTRA_LOBBY_MODE,
+                    if (onlineIsHost) LobbyActivity.MODE_ONLINE_CREATE else LobbyActivity.MODE_ONLINE_SEARCH
+                )
+                .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, recovered.roomName)
+                .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, recovered.roomId)
+                .putExtra(LobbyActivity.EXTRA_ROOM_CODE, recovered.roomCode)
+                .putExtra(LobbyActivity.EXTRA_RECOVERING_ONLINE, false)
+                .putExtra(LobbyActivity.EXTRA_RETURNED_FROM_ONLINE_MATCH, true)
+        )
     }
 
     private fun maybeShowTraitorReveal(): Boolean {
@@ -12896,6 +13016,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val STATE_ONLINE_PARTIDA_ID = "online_partida_id"
         private const val STATE_ONLINE_PLAYER_ID = "online_player_id"
         private const val STATE_ONLINE_IS_HOST = "online_is_host"
+        private const val STATE_ONLINE_RECOVERED_DIRECTLY = "online_recovered_directly"
         private const val STATE_ONLINE_INITIAL_ROLE_READ = "online_initial_role_read"
         private const val STATE_ONLINE_STARTUP_STARTED_AT_EPOCH_MS =
             "online_startup_started_at_epoch_ms"
@@ -12910,12 +13031,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             "online_authoritative_state_key"
         private const val STATE_ONLINE_AUTHORITATIVE_UPDATED_LOCAL_MS =
             "online_authoritative_updated_local_ms"
-        private const val TRAITOR_REVEAL_DURATION_MS = 8000L
+        private const val TRAITOR_REVEAL_DURATION_MS = 6000L
         private const val SPECIAL_ROLE_REVEAL_DURATION_MS = 7000L
         private const val JESTER_VICTORY_DURATION_MS = 8000L
         private const val WINNER_AUTO_RETURN_MS = 45_000L
         private const val WINNER_RETURN_RETRY_MS = 2_000L
         private const val COUNTDOWN_TICK_MS = 200L
+        private const val FOREGROUND_STATE_REFRESH_WAIT_MS = 1_200L
         private const val REVEAL_CONTINUE_TIMEOUT_MS = 9_000L
         private const val ONLINE_DEATH_REVEAL_BEAT_MS = 900L
         private const val PRESENTATION_GATE_TICK_MS = 250L
@@ -12956,6 +13078,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
         const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"
         const val EXTRA_ONLINE_IS_HOST = "extra_online_is_host"
+        const val EXTRA_ONLINE_RECOVERED_DIRECTLY = "extra_online_recovered_directly"
         const val EXTRA_DEBUG_CHAT_PREVIEW = "extra_debug_chat_preview"
     }
 }

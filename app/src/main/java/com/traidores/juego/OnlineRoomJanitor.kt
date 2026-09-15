@@ -15,9 +15,12 @@ object OnlineRoomRetentionPolicy {
         nowMs: Long,
         currentPlayers: Int,
         playerLimit: Int,
-        deleting: Boolean
+        deleting: Boolean,
+        allowFullForReturningMember: Boolean = false
     ): Boolean = !deleting && currentPlayers >= 0 && playerLimit > 0 &&
-        currentPlayers < playerLimit && updatedAtMs > 0L &&
+        (currentPlayers < playerLimit ||
+            (allowFullForReturningMember && currentPlayers == playerLimit)) &&
+        updatedAtMs > 0L &&
         // A server timestamp can be ahead of an emulator's wall clock. It is not a stale room.
         nowMs - updatedAtMs <= BROWSER_FRESH_FOR_MS
 }

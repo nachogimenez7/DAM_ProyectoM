@@ -578,22 +578,26 @@ service cloud.firestore {
         && request.resource.data.partidaInicialCreada == resource.data.partidaInicialCreada
         && request.resource.data.jugadoresActuales == resource.data.jugadoresActuales
         && exists(previousHostPath)
-        && get(previousHostPath).data.estado == 'desconectado'
+        && (
+          get(previousHostPath).data.estado == 'desconectado'
+          || hostLeaseExpired(previousHostPath)
+        )
         && get(previousHostPath).data.activoEnPartida != false
         && exists(candidatePath)
         && get(candidatePath).data.estado == 'conectado'
         && get(candidatePath).data.activoEnPartida != false;
     }
 
+    function hostLeaseExpired(playerPath) {
+      return get(playerPath).data.ultimaConexion is timestamp
+        && get(playerPath).data.ultimaConexion <= request.time - duration.value(60, 's');
+    }
+
     function creatorIsStale(partidaId) {
       let path = /databases/$(database)/documents/partidas/$(partidaId)/jugadores/$(resource.data.hostId);
       return !exists(path)
         || get(path).data.activoEnPartida == false
-        || (
-          get(path).data.estado == 'desconectado'
-          && get(path).data.ultimaConexion is timestamp
-          && get(path).data.ultimaConexion <= request.time - duration.value(60, 's')
-        );
+        || hostLeaseExpired(path);
     }
 
     function stableLobbyHostTransfer(partidaId) {

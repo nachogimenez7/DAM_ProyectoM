@@ -664,6 +664,10 @@ class AssigningRolesActivity : BaseActivity() {
                     GameplayMockActivity.EXTRA_ONLINE_IS_HOST,
                     intent.getBooleanExtra(EXTRA_ONLINE_IS_HOST, false)
                 )
+                .putExtra(
+                    GameplayMockActivity.EXTRA_ONLINE_RECOVERED_DIRECTLY,
+                    intent.getBooleanExtra(GameplayMockActivity.EXTRA_ONLINE_RECOVERED_DIRECTLY, false)
+                )
         )
         finish()
     }

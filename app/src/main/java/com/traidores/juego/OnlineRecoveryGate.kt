@@ -15,6 +15,9 @@ object OnlineRecoveryGate {
         return when (state) {
             OnlineRoomFirestore.STATE_WAITING -> OnlineRecoveryTarget.LOBBY
             OnlineRoomFirestore.STATE_IN_GAME -> OnlineRecoveryTarget.GAMEPLAY
+            // Al finalizar, el lugar sigue reservado para la revancha. Conservar el acceso
+            // evita que una recuperación directa termine en el menú ante una sala llena.
+            OnlineRoomFirestore.STATE_FINISHED -> OnlineRecoveryTarget.LOBBY
             else -> OnlineRecoveryTarget.CLEAR
         }
     }

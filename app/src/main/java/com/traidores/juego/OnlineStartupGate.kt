@@ -44,6 +44,10 @@ object OnlineStartupGate {
     const val STARTUP_PHASE_READY = "rol_leido"
     const val STARTUP_PHASE_IN_MATCH = "en_partida"
 
+    /** Online uses one shared countdown; a private device preference must not disable its button. */
+    fun canConfirmRoleManually(isOnlineStartup: Boolean, localReadingRemainingMs: Long): Boolean =
+        isOnlineStartup || localReadingRemainingMs <= 0L
+
     fun evaluate(
         expectedPlayers: Int,
         clientStates: Collection<OnlineStartupClientState>
