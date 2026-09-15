@@ -1,62 +1,29 @@
-# Documentación — App Traidores
+# Documentación de Traidores
 
-Índice maestro de la documentación del proyecto. La **fuente de verdad es el código**; estos documentos lo describen y se actualizan cuando el código cambia.
+Este directorio conserva documentación que todavía sirve para desarrollar, publicar o ampliar el juego.
 
-> Estado del proyecto: `0.1.17` (versionCode 18). Juego móvil Android de deducción social con modo **local vs IA** y modo **online experimental** sobre Firebase.
+## Online y Firebase
 
-## Cómo está organizada
+- [Arquitectura de autoridad online](arquitectura-autoridad-online.md)
+- [Esquema de Firebase](firebase-online-schema.md)
+- [Medición de consumo](medicion-firebase-2026-09-13.md)
+- [Plantilla de medición](plantilla-medicion-online.csv)
 
-```
-docs/
-├── README.md                  ← este índice
-├── general/                   Documentación general del producto y del sistema
-│   ├── 01-vision-objetivos-alcance.md
-│   ├── 02-mecanicas.md
-│   ├── 03-arquitectura.md
-│   ├── 04-tecnologias.md
-│   ├── 05-estructura-proyecto.md
-│   ├── 06-convenciones-codigo.md
-│   ├── 07-flujo-funcionamiento.md
-│   └── 08-logros-y-progreso.md
-├── desarrollo/                Documentación para desarrolladores
-│   ├── guia-nuevos-desarrolladores.md
-│   ├── backlog.md
-│   └── decisiones-arquitectura.md
-└── (documentación técnica previa, ya existente)
-    ├── firebase-online-schema.md   Contrato Firestore del online (vigente y fiel al código)
-    ├── arquitectura-autoridad-online.md
-    │                                Límite de confianza actual y migración hacia backend
-    ├── auditoria-optimizacion-seguridad-2026-08-31.md
-    │                                Medidas, cambios y riesgos residuales de la revisión actual
-    ├── seguridad-online.md         Auditoría de seguridad del online y plan gratuito
-    ├── project-structure.md        Estructura rápida (parcialmente desactualizada, ver nota)
-    ├── map-exclusive-roles.md      Roles exclusivos por mapa
-    ├── banco-futuro-roles-y-personajes-historicos.md
-    │                                Ideas para una expansión posterior al lanzamiento
-    ├── lan-role-readiness.md       Notas de lectura de roles
-    └── discord/                    Material de comunidad/Discord
-```
+## Producto y contenido
 
-## Documentos de referencia ya existentes y vigentes
+- [Mecánicas](general/02-mecanicas.md)
+- [Logros y progreso](general/08-logros-y-progreso.md)
+- [Estilo de los roles](estilo_roles.md)
+- [Roles exclusivos por mapa](map-exclusive-roles.md)
+- [Personajes históricos](personajes-historicos.md)
+- [Banco de ideas futuras](banco-futuro-roles-y-personajes-historicos.md)
+- [Banners del pack de apoyo](banners-pack-bienvenida-2026-09-13.md)
 
-- [`firebase-online-schema.md`](firebase-online-schema.md) — Contrato completo de Firestore para el modo online. **Vigente y fiel al código** (revisado contra `OnlineRoomFirestore.kt` y `firestore.rules`). Es la fuente para el DER/Modelo Relacional de la facultad.
-- [`arquitectura-autoridad-online.md`](arquitectura-autoridad-online.md) — Frontera extraída para inicio/reparto, límite actual del anfitrión y migración compatible hacia autoridad de servidor.
-- [`../ESTADO_ACTUAL.md`](../ESTADO_ACTUAL.md) — Auditoría técnica de solo lectura basada en el código, subsistema por subsistema, con referencias a archivo:línea. Es la base de la sección "estado" del backlog.
-- [`seguridad-online.md`](seguridad-online.md) — Auditoría de seguridad del online (jul 2026): hallazgos priorizados, qué se cerró en `firestore.rules`, qué límites tiene el plan gratuito y qué exige Play Store. La implementación pendiente está en [`desarrollo/specs/SPEC-seguridad-y-moderacion-online.md`](desarrollo/specs/SPEC-seguridad-y-moderacion-online.md).
-- [`auditoria-optimizacion-seguridad-2026-08-31.md`](auditoria-optimizacion-seguridad-2026-08-31.md) — Revisión actual: tamaño antes/después, rendimiento de arranque, dependencias, reglas y acciones externas pendientes.
-- [`play-games-setup.md`](play-games-setup.md) — Estado de la integración de Play Games, datos del proyecto y orden exacto para terminar Play Console y Firebase.
-- [`achievement-icon-concepts.md`](achievement-icon-concepts.md) — Dirección visual, símbolos y puntos propuestos para los 10 logros de Play Games.
-- [`banco-futuro-roles-y-personajes-historicos.md`](banco-futuro-roles-y-personajes-historicos.md) — Banco de diseño para roles universales, exclusivos, personajes históricos y un posible modo Crónicas. Es material futuro y no modifica el roadmap de estabilización vigente.
+## Publicación y expansión
 
-## Avisos de documentos desactualizados
+- [Configuración de Play Games](play-games-setup.md)
+- [Conceptos de iconos de logros](achievement-icon-concepts.md)
+- [Arquitectura prevista para iOS](arquitectura-ios-kmp.md)
+- [Material de Discord](discord/README.md)
 
-- [`project-structure.md`](project-structure.md) menciona archivos que **no existen** en el código actual (`PlayerProfileStore.kt`, `OnlineLobbyModels.kt`, `OnlineLobbyStore.kt`) y describe el online como "simulado/local". Ver [05-estructura-proyecto.md](general/05-estructura-proyecto.md) para la estructura corregida.
-
-## Por dónde empezar
-
-- ¿Sos nuevo en el código? → [desarrollo/guia-nuevos-desarrolladores.md](desarrollo/guia-nuevos-desarrolladores.md)
-- ¿Querés entender el juego? → [general/02-mecanicas.md](general/02-mecanicas.md)
-- ¿Querés entender los logros? → [general/08-logros-y-progreso.md](general/08-logros-y-progreso.md)
-- ¿Querés saber qué falta? → [desarrollo/backlog.md](desarrollo/backlog.md)
-
-> La documentación para la facultad (Análisis de Sistemas / Bases de Datos: casos de uso, modelo de dominio, DER/relacional, diccionario de datos) se movió fuera del repo a `Facultad/Objetos/App Traidores - Analisis y BD/`.
+El código y las reglas desplegadas son la fuente de verdad cuando un documento técnico queda desactualizado.

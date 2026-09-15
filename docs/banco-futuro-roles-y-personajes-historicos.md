@@ -30,7 +30,7 @@ provisionalmente **Crónicas**.
 - El Oráculo ya permite que un muerto vuelva a hablar durante un debate, pero no
   lo devuelve realmente a la partida.
 - Los seis personajes históricos ya tienen una base en
-  [`../PERSONAJES HISTORICOS.MD`](../PERSONAJES%20HISTORICOS.MD): una pareja por
+  [`personajes-historicos.md`](personajes-historicos.md): una pareja por
   mapa, uno del Pueblo y otro de los Traidores, que reemplazan al Médico y al
   Asesino.
 

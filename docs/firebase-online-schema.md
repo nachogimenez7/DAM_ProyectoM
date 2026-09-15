@@ -487,7 +487,7 @@ membresia, roles y autoridad del host.
 
 ## Limites actuales
 
-> Auditoria completa, con hallazgos priorizados y plan: [`seguridad-online.md`](seguridad-online.md).
+> Las reglas desplegadas en `firestore.rules` y `database.rules.json` son la referencia vigente de permisos.
 
 Barrido de autorizacion de julio de 2026 (ya publicado en `firestore.rules`):
 

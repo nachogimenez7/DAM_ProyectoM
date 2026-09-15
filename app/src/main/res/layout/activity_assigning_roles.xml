@@ -20,7 +20,7 @@
             android:contentDescription="@null"
             android:elevation="1dp"
             android:scaleType="centerCrop"
-            android:src="@drawable/assigning_vertical_table_trailer" />
+            android:src="@drawable/assigning_vertical_table" />
 
         <View
             android:id="@+id/assigningCandleGlow"
