@@ -39,6 +39,9 @@ class OnlineModeActivity : BaseActivity() {
     private var accessCheckInProgress = false
     private var accessCheckGeneration = 0
     private var accessFailureCount = 0
+    private val recoveryServerClock = OnlineServerClock {
+        if (!isFinishing && !isDestroyed) refreshRecoveredRoomButton()
+    }
     private val onlineAccessRetry = Runnable {
         if (!isFinishing && !isDestroyed) verifyOnlineAccess()
     }
@@ -105,6 +108,7 @@ class OnlineModeActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        recoveryServerClock.start()
         accessFailureCount = 0
         verifyOnlineAccess()
     }
@@ -113,6 +117,7 @@ class OnlineModeActivity : BaseActivity() {
         accessCheckGeneration += 1
         accessCheckInProgress = false
         if (::btnCreate.isInitialized) btnCreate.removeCallbacks(onlineAccessRetry)
+        recoveryServerClock.stop()
         super.onStop()
     }
 
@@ -783,8 +788,12 @@ class OnlineModeActivity : BaseActivity() {
                     return@addOnSuccessListener
                 }
                 val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
+                val serverNowMs = recoveryServerClock.nowMs() ?: return@addOnSuccessListener
+                val updatedAtMs = snapshot.getTimestamp(OnlineRoomFirestore.FIELD_UPDATED_AT)
+                    ?.toDate()?.time ?: 0L
                 if (snapshot.getString("cleanupState") == "deleting" ||
-                    OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
+                    OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
+                    !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)) {
                     OnlineRoomRecovery.clear(this)
                     return@addOnSuccessListener
                 }

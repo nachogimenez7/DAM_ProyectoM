@@ -86,4 +86,24 @@ class OnlineRoomRetentionPolicyTest {
         assertFalse(OnlineRoomRecovery.isCurrentHost("", null, ""))
         assertFalse(OnlineRoomRecovery.isCurrentHost("intruder", "new-host", "creator"))
     }
+
+    @Test
+    fun recoveryHidesOldWaitingRoomButKeepsAnActiveMatch() {
+        val old = now - OnlineRoomRetentionPolicy.BROWSER_FRESH_FOR_MS - 1L
+        assertFalse(
+            OnlineRoomRetentionPolicy.isRecoveryAvailable(
+                OnlineRoomFirestore.STATE_WAITING, old, now
+            )
+        )
+        assertTrue(
+            OnlineRoomRetentionPolicy.isRecoveryAvailable(
+                OnlineRoomFirestore.STATE_IN_GAME, old, now
+            )
+        )
+        assertTrue(
+            OnlineRoomRetentionPolicy.isRecoveryAvailable(
+                OnlineRoomFirestore.STATE_WAITING, now + 2_000L, now
+            )
+        )
+    }
 }

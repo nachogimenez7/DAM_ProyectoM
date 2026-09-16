@@ -2,6 +2,19 @@ package com.traidores.juego
 
 /** Orders publications without depending on the new coordinator's wall clock. */
 internal object OnlineStateOrder {
+    fun isSameOrNewer(candidate: Map<String, Any?>, previous: Map<String, Any?>): Boolean {
+        fun number(state: Map<String, Any?>, key: String) = (state[key] as? Number)?.toLong() ?: 0L
+        val phase = number(candidate, "phaseIndex")
+        val oldPhase = number(previous, "phaseIndex")
+        if (phase != oldPhase) return phase > oldPhase
+        val epoch = number(candidate, "authorityEpoch")
+        val oldEpoch = number(previous, "authorityEpoch")
+        if (epoch != oldEpoch) return epoch > oldEpoch
+        val sequence = number(candidate, "stateSequence")
+        val oldSequence = number(previous, "stateSequence")
+        return sequence >= oldSequence
+    }
+
     fun isNewer(candidate: Map<String, Any?>, previous: Map<String, Any?>?): Boolean {
         if (previous == null) return true
         fun number(state: Map<String, Any?>, key: String) = (state[key] as? Number)?.toLong() ?: 0L

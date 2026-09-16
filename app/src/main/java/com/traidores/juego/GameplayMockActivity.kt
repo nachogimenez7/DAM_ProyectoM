@@ -1311,6 +1311,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         realtimeGameplaySync = null
         realtimeAuthoritativeState?.stop()
         realtimeAuthoritativeState = null
+        onlineStateInbox.clear()
         realtimeTableSilence?.stop()
         realtimeTableSilence = null
         stopOnlineGameplayFirestoreListeners()
@@ -1385,6 +1386,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     override fun onPause() {
         gameplayResumed = false
         replayInterruptedVote = isVoteResultVisible
+        // No conservar publicaciones encoladas antes de que Android suspenda la pantalla.
+        // Al volver se reconstruye la mesa desde una lectura nueva de la autoridad.
+        onlineStateInbox.clear()
         chatController.setInvitationForeground(false)
         restoreRolePreviewOnResume = isRolePreviewOpen
         restoreInitialRoleReadingOnResume = initialRoleReadingActive
@@ -3551,11 +3555,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun applyAuthoritativeOnlineState(state: Map<String, Any?>) {
         if (!::session.isInitialized || onlineIsHost) return
         if ((state["phaseIndex"] as? Number)?.toInt()?.let { it < session.phaseIndex } != false) return
-        if (session.onlineStateSequence > 0L && !OnlineStateOrder.isNewer(state, mapOf(
+        val savedStateOrder = mapOf<String, Any?>(
                 "phaseIndex" to session.phaseIndex,
                 "authorityEpoch" to session.onlineAuthorityEpoch,
                 "stateSequence" to session.onlineStateSequence
-            ))) return
+            )
+        val confirmsForegroundState = awaitingFreshOnlineStateAfterResume &&
+            OnlineStateOrder.isSameOrNewer(state, savedStateOrder)
+        if (session.onlineStateSequence > 0L &&
+            !confirmsForegroundState &&
+            !OnlineStateOrder.isNewer(state, savedStateOrder)) return
+        if (confirmsForegroundState) onlineStateInbox.clear()
         if (onlineStateInbox.offer(state)) OnlineNetworkMetrics.count("estados_recibidos")
         drainOnlinePresentationInbox()
     }
@@ -3565,10 +3575,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!onlineScreenStarted || !gameplayResumed || isFinishing || isDestroyed || applyingPresentedState) return
         if (onlineIsHost) { onlineStateInbox.clear(); return }
         if (onlineStateInbox.size == 0) return
-        if (
-            awaitingFreshOnlineStateAfterResume &&
-            (onlineStateInbox.newestPhaseIndex() ?: session.phaseIndex) > session.phaseIndex
-        ) {
+        if (awaitingFreshOnlineStateAfterResume) {
             val livePhaseIndex = onlineStateInbox.newestPhaseIndex()
             val liveState = onlineStateInbox.pollNewestAndDropOlder()
             awaitingFreshOnlineStateAfterResume = false
@@ -3781,16 +3788,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!awaitingFreshOnlineStateAfterResume) return
         awaitingFreshOnlineStateAfterResume = false
         if (!gameplayResumed || !::session.isInitialized || isFinishing || isDestroyed) return
-        if (replayInterruptedVote && !isAwaitingOnlinePublication()) {
-            replayInterruptedVote = false
-            lastAppliedOnlineVotePresentation = ""
-            onlinePresentationAckKey = ""
-            clearOnlinePresentationGate()
-            if (onlineVotePresentation.isNotBlank()) applyOnlineVotePresentation(onlineVotePresentation)
-            else maybeShowVoteResult()
-            return
-        }
-        if (replayInterruptedTransition) replayInterruptedTransition = false
+        // Si la red todavía no respondió, no revivir una expulsión o transición tomada antes
+        // del bloqueo. La siguiente publicación autoritativa reconstruirá la fase vigente.
+        replayInterruptedVote = false
+        replayInterruptedTransition = false
+        pendingDeathReveals.clear()
+        pendingSilenceReveals.clear()
+        pendingNoDeathReveal = false
+        cancelVoteResult()
+        clearOnlinePresentationGate()
         renderGame()
     }
 

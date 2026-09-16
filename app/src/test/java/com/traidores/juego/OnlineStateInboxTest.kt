@@ -74,6 +74,13 @@ class OnlineStateInboxTest {
         assertEquals(0, inbox.size)
     }
 
+    @Test fun foregroundSnapshotWithSamePhaseAndSequenceConfirmsCurrentState() {
+        val saved = state(9, 20, presentation = "expulsion|jugador")
+        assertTrue(OnlineStateOrder.isSameOrNewer(saved, saved))
+        assertTrue(OnlineStateOrder.isSameOrNewer(state(9, 21), saved))
+        assertFalse(OnlineStateOrder.isSameOrNewer(state(9, 19), saved))
+    }
+
     @Test fun searchContinuesPastThirtyFullRoomsAndStopsAutomaticReadsAtBound() {
         assertTrue(OnlineLobbySearchWindow.shouldExpand(30, 30, 0))
         assertTrue(OnlineLobbySearchWindow.shouldExpand(60, 60, 5))
