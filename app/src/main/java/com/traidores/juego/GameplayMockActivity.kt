@@ -3634,7 +3634,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             (state["silenciado"] as? String).orEmpty(),
             (state["expulsadoDia"] as? String).orEmpty(),
             OnlineAuthoritativeStateMapper.nightHadNoVictimFromState(state),
-            OnlineAuthoritativeStateMapper.votePresentationFromState(state),
+            OnlineAuthoritativeStateMapper.activeVotePresentationFromState(state),
             publicHistoryFromAuthoritativeState(state).joinToString("#"),
             (state["rondaVoto"] as? Number)?.toInt() ?: session.voteRound,
             votesFromAuthoritativeState(state).entries.sortedBy { it.key }.joinToString("#") { "${it.key}:${it.value}" },
@@ -3682,7 +3682,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             settleDayNightTransition(resumeMusic = false)
         }
         val incomingVotePresentation =
-            OnlineAuthoritativeStateMapper.votePresentationFromState(state)
+            OnlineAuthoritativeStateMapper.activeVotePresentationFromState(state)
         onlineVotePresentation = incomingVotePresentation
         val updatedPlayers = playersFromAuthoritativeState(state) ?: session.players
         OnlineDebugLog.i(
@@ -9675,17 +9675,21 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             OnlineDebugLog.i(
                 "vote_resolve_votes_loaded roomId=$onlinePartidaId round=${session.round} tie=$tieVote actions=${actionRecords.size} votes=${votes.size}"
             )
-            val afterAfk = GameEngine.applyOnlineAfkOpportunity(
-                session = session,
-                opportunity = AfkOpportunity.VOTE,
-                requiredPlayerIndexes = session.players.indices
-                    .filterTo(mutableSetOf()) { GameEngine.canVote(session.players[it]) },
-                actedPlayerIndexes = actedOnlineVotePlayerIndexes(
-                    source = session,
-                    records = actionRecords,
-                    expectedPhaseName = expectedPhase
+            val afterAfk = if (AfkPolicy.shouldCountVoteWindow(tieVote)) {
+                GameEngine.applyOnlineAfkOpportunity(
+                    session = session,
+                    opportunity = AfkOpportunity.VOTE,
+                    requiredPlayerIndexes = session.players.indices
+                        .filterTo(mutableSetOf()) { GameEngine.canVote(session.players[it]) },
+                    actedPlayerIndexes = actedOnlineVotePlayerIndexes(
+                        source = session,
+                        records = actionRecords,
+                        expectedPhaseName = expectedPhase
+                    )
                 )
-            )
+            } else {
+                session
+            }
             val afkAnnouncement = onlineAfkExpulsionAnnouncement(before, afterAfk)
             val resolved = if (tieVote) {
                 GameEngine.resolveTieVotingWithRecordedVotes(afterAfk, votes)
@@ -11038,6 +11042,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         if (voteNoExpulsionPresented) {
             voteNoExpulsionPresented = false
+            onlineVotePresentation = ""
+            lastAppliedOnlineVotePresentation = ""
             isVoteResultVisible = false
             voteResultAnimator.hide()
             MusicManager.resumeGamePhaseAfterTransition(this, session)
@@ -11107,6 +11113,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             advanced
         }
+        onlineVotePresentation = ""
+        lastAppliedOnlineVotePresentation = ""
         isVoteResultVisible = false
         voteExpulsionComplete = false
         voteExpulsionAnimationKey = ""

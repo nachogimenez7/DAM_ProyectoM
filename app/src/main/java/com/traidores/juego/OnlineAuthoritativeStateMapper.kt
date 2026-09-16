@@ -35,6 +35,15 @@ object OnlineAuthoritativeStateMapper {
         return (state["presentacionVotacion"] as? String).orEmpty()
     }
 
+    fun activeVotePresentationFromState(state: Map<String, Any?>): String {
+        val presentation = votePresentationFromState(state)
+        if (presentation.isBlank()) return ""
+        val presentationPhaseIndex = presentation.split('|').getOrNull(3)?.toIntOrNull()
+            ?: return ""
+        val currentPhaseIndex = (state["phaseIndex"] as? Number)?.toInt() ?: return ""
+        return presentation.takeIf { presentationPhaseIndex == currentPhaseIndex }.orEmpty()
+    }
+
     fun canPublishPlayerRole(
         revealRolesOnDeath: Boolean,
         playerAlive: Boolean,

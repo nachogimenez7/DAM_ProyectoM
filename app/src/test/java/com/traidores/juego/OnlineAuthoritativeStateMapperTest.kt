@@ -73,6 +73,7 @@ class OnlineAuthoritativeStateMapperTest {
     fun publicPresentationFieldsAreReadFromAuthoritativeState() {
         val state = mapOf(
             "nocheSinVictima" to true,
+            "phaseIndex" to 18,
             "presentacionVotacion" to "expulsion|2|1|18|Ana"
         )
 
@@ -81,6 +82,20 @@ class OnlineAuthoritativeStateMapperTest {
             "expulsion|2|1|18|Ana",
             OnlineAuthoritativeStateMapper.votePresentationFromState(state)
         )
+        assertEquals(
+            "expulsion|2|1|18|Ana",
+            OnlineAuthoritativeStateMapper.activeVotePresentationFromState(state)
+        )
+    }
+
+    @Test
+    fun presentationFromCompletedPhaseIsDiscardedDuringRecovery() {
+        val state = mapOf(
+            "phaseIndex" to 19,
+            "presentacionVotacion" to "expulsion|2|1|18|Ana"
+        )
+
+        assertEquals("", OnlineAuthoritativeStateMapper.activeVotePresentationFromState(state))
     }
 
     @Test

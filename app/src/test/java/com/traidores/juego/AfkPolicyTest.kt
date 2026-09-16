@@ -1,10 +1,16 @@
 package com.traidores.juego
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AfkPolicyTest {
+    @Test
+    fun tieBreakDoesNotCountAsASecondAfkOpportunity() {
+        assertTrue(AfkPolicy.shouldCountVoteWindow(tieVote = false))
+        assertFalse(AfkPolicy.shouldCountVoteWindow(tieVote = true))
+    }
     @Test
     fun firstNightMissExplainsTheSecondConsecutiveMissRule() {
         val message = AfkPolicy.warning(AfkOpportunity.NIGHT, expulsionEnabled = true)

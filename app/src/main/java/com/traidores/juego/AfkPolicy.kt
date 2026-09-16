@@ -3,6 +3,9 @@ package com.traidores.juego
 object AfkPolicy {
     const val CONSECUTIVE_MISSES_BEFORE_EXPULSION = 2
 
+    /** Un desempate pertenece a la misma votación y no puede sumar una segunda falta AFK. */
+    fun shouldCountVoteWindow(tieVote: Boolean): Boolean = !tieVote
+
     fun warning(opportunity: AfkOpportunity, expulsionEnabled: Boolean): String {
         val action = if (opportunity == AfkOpportunity.NIGHT) "acción" else "voto"
         if (!expulsionEnabled) return "Perdiste tu $action de esta ronda."
