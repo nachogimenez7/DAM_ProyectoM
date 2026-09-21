@@ -2,32 +2,87 @@ import SwiftUI
 import TraidoresCore
 
 struct PlayModesView: View {
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        MenuPage(title: "Jugar") {
-            NavigationLink {
-                LocalModeView()
-            } label: {
-                modeCard(title: "JUGAR CONTRA IA", image: "modo_juego_local_pampa_v3",
-                         message: "Pampa clásica · De 5 a 15 jugadores, sin conexión.")
+        ZStack {
+            MenuBackground()
+
+            VStack(spacing: 0) {
+                Text("SELECCIONAR MODO")
+                    .font(TraidoresTheme.title(23))
+                    .foregroundStyle(TraidoresTheme.gold)
+                    .padding(.top, 28)
+                    .padding(.bottom, 12)
+
+                Spacer(minLength: 8)
+
+                VStack(spacing: 40) {
+                    NavigationLink {
+                        LocalModeView()
+                    } label: {
+                        modeCard(title: "JUGAR CONTRA IA", image: "modo_juego_local_pampa_v3")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("play.local")
+
+                    modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online", badge: "PRÓXIMAMENTE")
+                        .accessibilityElement(children: .combine)
+                }
+                .frame(maxWidth: 560)
+                .padding(.horizontal, 16)
+
+                Spacer(minLength: 24)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("play.local")
-            modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online",
-                     message: "Próximamente · Compartí la mesa con tus amigos.")
-            Text("El online y los roles especiales llegarán en las próximas etapas.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+
+            Button(action: dismiss.callAsFunction) {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                    .frame(width: 44, height: 44)
+                    .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay { RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border) }
+            }
+            .foregroundStyle(TraidoresTheme.secondary)
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityLabel("Volver")
         }
+        .foregroundStyle(TraidoresTheme.text)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
-    private func modeCard(title: String, image: String, message: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Image(image).resizable().scaledToFit().accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(TraidoresTheme.title(23)).foregroundStyle(TraidoresTheme.gold)
-                Text(message).font(.subheadline)
-            }.padding(18)
+    private func modeCard(title: String, image: String, badge: String? = nil) -> some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(colors: [.clear, .black.opacity(0.88)],
+                           startPoint: .center, endPoint: .bottom)
+                .allowsHitTesting(false)
+            Text(title)
+                .font(TraidoresTheme.title(22))
+                .foregroundStyle(TraidoresTheme.text)
+                .multilineTextAlignment(.center)
+                .shadow(color: .black, radius: 3, y: 2)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+
+            if let badge {
+                Text(badge)
+                    .font(.caption2.bold())
+                    .tracking(1)
+                    .foregroundStyle(TraidoresTheme.gold)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(TraidoresTheme.ink.opacity(0.92), in: Capsule())
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
         }
-        .background(TraidoresTheme.panel)
+        .aspectRatio(3 / 2, contentMode: .fit)
+        .background {
+            Image(image)
+                .resizable()
+                .scaledToFill()
+                .accessibilityHidden(true)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border, lineWidth: 1))
         .accessibilityElement(children: .combine)
