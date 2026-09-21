@@ -124,6 +124,7 @@ struct MenuView: View {
     private func menuLink(_ title: String, route: MenuRoute, prominent: Bool = false) -> some View {
         NavigationLink(title, value: route)
             .buttonStyle(TraidoresButtonStyle(prominent: prominent))
+            .accessibilityIdentifier(title == "JUGAR" ? "menu.play" : "menu.\(title.lowercased())")
     }
 }
 

@@ -42,6 +42,7 @@ struct LocalModeView: View {
             Text(title)
         }
         .buttonStyle(TraidoresButtonStyle(prominent: prominent))
+        .accessibilityIdentifier(difficulty == .normal ? "difficulty.normal" : "difficulty.hard")
     }
 }
 
@@ -50,7 +51,6 @@ struct LocalLobbyView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var store = LocalGameStore()
-    @AppStorage("local.playerName") private var name = ""
     @AppStorage("local.botNames") private var savedBotNames = ""
     @AppStorage("local.timing") private var savedTiming = ""
     @AppStorage("local.advanced") private var savedAdvanced = ""
@@ -141,8 +141,12 @@ struct LocalLobbyView: View {
 
     private var startPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button("INICIAR PARTIDA", action: start)
+            Button(action: start) {
+                Text("INICIAR PARTIDA")
+                    .contentShape(Rectangle())
+            }
             .buttonStyle(TraidoresButtonStyle(prominent: true))
+            .contentShape(Rectangle())
             .accessibilityIdentifier("local.startGame")
 
             Text(difficulty == .hard
@@ -150,19 +154,6 @@ struct LocalLobbyView: View {
                  : "Modo normal: una partida clásica para conocer la mesa.")
                 .font(.subheadline).foregroundStyle(TraidoresTheme.gold)
                 .frame(maxWidth: .infinity, alignment: .center)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("TU NOMBRE (OPCIONAL)").font(.caption.bold()).tracking(1)
-                    .foregroundStyle(TraidoresTheme.secondary)
-                TextField("Escribí tu nombre", text: $name)
-                    .textFieldStyle(.plain).autocorrectionDisabled()
-                    .foregroundStyle(TraidoresTheme.text).tint(TraidoresTheme.gold)
-                    .padding(.horizontal, 12).frame(height: 46)
-                    .background(TraidoresTheme.ink.opacity(0.96), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
-                    .onChange(of: name) { _, value in name = String(value.prefix(18)) }
-                    .accessibilityLabel("Tu nombre en la partida, opcional")
-            }
 
             if let game = store.game, game.winner == nil {
                 Button("CONTINUAR PARTIDA · DÍA \(game.round)") { playing = true }
@@ -177,7 +168,11 @@ struct LocalLobbyView: View {
     private var mapCard: some View {
         ZStack(alignment: .bottomLeading) {
             Image("mapa_pampa_vertical_dia")
-                .resizable().scaledToFill().frame(height: 138).clipped().overlay(.black.opacity(0.42))
+                .resizable()
+                .scaledToFill()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay { Color.black.opacity(0.42).allowsHitTesting(false) }
             VStack(alignment: .leading, spacing: 3) {
                 Text("PAMPA").font(TraidoresTheme.title(26)).foregroundStyle(TraidoresTheme.gold)
                 Text("Partida clásica · 1 Asesino, 1 Comisario, 1 Médico y \(botNames.count - 2) Aldeanos")
@@ -185,8 +180,11 @@ struct LocalLobbyView: View {
             }
             .padding(14)
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 138)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
+        .overlay { RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border) }
     }
 
     private var playerControls: some View {
@@ -257,8 +255,7 @@ struct LocalLobbyView: View {
         VStack(alignment: .leading, spacing: 9) {
             Text("JUGADORES").font(.caption.weight(.bold)).tracking(1.2)
                 .foregroundStyle(TraidoresTheme.secondary)
-            playerRow(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Vos" : name,
-                      human: true)
+            playerRow("Vos", human: true)
             ForEach(Array(botNames.enumerated()), id: \.offset) { index, botName in
                 Button {
                     editingBot = index
@@ -295,7 +292,7 @@ struct LocalLobbyView: View {
     }
 
     private func start() {
-        store.start(name: name, difficulty: difficulty, botNames: botNames,
+        store.start(name: "Vos", difficulty: difficulty, botNames: botNames,
                     timing: timing, advanced: advanced)
         playing = store.game != nil
     }
@@ -612,6 +609,7 @@ private struct LocalRoleAssignmentView: View {
             .foregroundStyle(TraidoresTheme.text).padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .accessibilityIdentifier("assignment.root")
         .task {
             withAnimation(.easeOut(duration: 0.42)) { tableOpacity = 1 }
             try? await Task.sleep(for: .seconds(0.42))

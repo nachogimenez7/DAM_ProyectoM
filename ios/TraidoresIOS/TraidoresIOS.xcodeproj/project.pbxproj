@@ -120,15 +120,34 @@
 			"path" = "TraidoresIOS.app";
 			"sourceTree" = "BUILT_PRODUCTS_DIR";
 		};
+		"A10000000000000000000001" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "LocalLobbyUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A10000000000000000000002" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "wrapper.cfbundle";
+			"includeInIndex" = 0;
+			"path" = "TraidoresIOSUITests.xctest";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
 		"0A3E27B8CA818264D75C8D81" = {
 			"isa" = "PBXGroup";
-			"children" = ("A8792157CB4F27FB949C035F");
+			"children" = ("A8792157CB4F27FB949C035F", "A10000000000000000000002");
 			"name" = "Products";
 			"sourceTree" = "<group>";
 		};
 		"C69913C7EE4DFDD011BE172F" = {
 			"isa" = "PBXGroup";
-			"children" = ("442DB1F1444F09BAAF414F1A", "9DAB7E3CF67A09F6F95707BA", "25147C54B6D929C6A0E6A654", "593568344580B94B17DAC6A1", "0017C33FED8C91069E779AE8", "D9716605BC6FC29A0B64016C", "1170255AB2298098E6A3D006", "7DDC8189A79437802C5643B6", "BE2EF1C7DD1CA6304E8CE050", "AF748645A488766CE23D4974", "0122B6F69EFE7AB10C863A41", "D7ADB10D0BF3D9C6732BE1E6", "6C97B98B6CB0D4C535033602", "94B6E464D2FDE7CEFA1FB0FC", "0755E70DF5DF35ACF60A61F5", "6674C0636BD95B322AC22B59", "07F4971A60C8B8466DA80DFB", "6687C38A46A4E99E0E4159C3", "0A3E27B8CA818264D75C8D81");
+			"children" = ("442DB1F1444F09BAAF414F1A", "9DAB7E3CF67A09F6F95707BA", "25147C54B6D929C6A0E6A654", "593568344580B94B17DAC6A1", "0017C33FED8C91069E779AE8", "D9716605BC6FC29A0B64016C", "1170255AB2298098E6A3D006", "7DDC8189A79437802C5643B6", "BE2EF1C7DD1CA6304E8CE050", "AF748645A488766CE23D4974", "0122B6F69EFE7AB10C863A41", "D7ADB10D0BF3D9C6732BE1E6", "6C97B98B6CB0D4C535033602", "94B6E464D2FDE7CEFA1FB0FC", "0755E70DF5DF35ACF60A61F5", "6674C0636BD95B322AC22B59", "07F4971A60C8B8466DA80DFB", "6687C38A46A4E99E0E4159C3", "A10000000000000000000004", "0A3E27B8CA818264D75C8D81");
+			"sourceTree" = "<group>";
+		};
+		"A10000000000000000000004" = {
+			"isa" = "PBXGroup";
+			"children" = ("A10000000000000000000001");
+			"path" = "TraidoresIOSUITests";
 			"sourceTree" = "<group>";
 		};
 		"085827B649F7606E862BCEEB" = {
@@ -143,6 +162,10 @@
 		"5B2D2E1CD1EA09990CD4EACE" = {
 			"isa" = "PBXBuildFile";
 			"productRef" = "F5AE27228AC34400DE4A3768";
+		};
+		"A10000000000000000000003" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A10000000000000000000001";
 		};
 		"E2AA269EB967A8853A258BFA" = {
 			"isa" = "PBXFrameworksBuildPhase";
@@ -186,6 +209,24 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = 2147483647;
 			"files" = ("30D74E1AAEEE7578E3217581", "FCE026E7687544877E8C5E40", "F52BDC3C9917C9FE51F93E47", "C2CED7538C07F087B8279C5C", "DB65321C347641F7733D41EB", "F1058B90AC83D929DF08F3B0", "1FC11DD01728A1CF504A4C55", "06E9A25290DD3456788567F4");
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"A10000000000000000000005" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ("A10000000000000000000003");
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"A10000000000000000000006" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ();
+			"runOnlyForDeploymentPostprocessing" = 0;
+		};
+		"A10000000000000000000007" = {
+			"isa" = "PBXResourcesBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ();
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
 		"3E617D039791AC7546049EEF" = {
@@ -242,6 +283,66 @@
 			"productReference" = "A8792157CB4F27FB949C035F";
 			"productType" = "com.apple.product-type.application";
 		};
+		"A10000000000000000000008" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "A1000000000000000000000D";
+			"buildPhases" = ("A10000000000000000000005", "A10000000000000000000006", "A10000000000000000000007");
+			"buildRules" = ();
+			"dependencies" = ("A10000000000000000000009");
+			"name" = "TraidoresIOSUITests";
+			"packageProductDependencies" = ();
+			"productName" = "TraidoresIOSUITests";
+			"productReference" = "A10000000000000000000002";
+			"productType" = "com.apple.product-type.bundle.ui-testing";
+		};
+		"A10000000000000000000009" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "C1E9827DB735CA9BAA54A540";
+			"targetProxy" = "A1000000000000000000000A";
+		};
+		"A1000000000000000000000A" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "244210E48437B6556980A702";
+			"proxyType" = 1;
+			"remoteGlobalIDString" = "C1E9827DB735CA9BAA54A540";
+			"remoteInfo" = "TraidoresIOS";
+		};
+		"A1000000000000000000000B" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Debug";
+			"buildSettings" = {
+				"CODE_SIGN_STYLE" = "Automatic";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.traidores.juego.ios.UITests";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"SDKROOT" = "iphoneos";
+				"SWIFT_VERSION" = "5.0";
+				"TARGETED_DEVICE_FAMILY" = "1";
+				"TEST_TARGET_NAME" = "TraidoresIOS";
+			};
+		};
+		"A1000000000000000000000C" = {
+			"isa" = "XCBuildConfiguration";
+			"name" = "Release";
+			"buildSettings" = {
+				"CODE_SIGN_STYLE" = "Automatic";
+				"GENERATE_INFOPLIST_FILE" = "YES";
+				"IPHONEOS_DEPLOYMENT_TARGET" = "17.0";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "com.traidores.juego.ios.UITests";
+				"PRODUCT_NAME" = "$(TARGET_NAME)";
+				"SDKROOT" = "iphoneos";
+				"SWIFT_VERSION" = "5.0";
+				"TARGETED_DEVICE_FAMILY" = "1";
+				"TEST_TARGET_NAME" = "TraidoresIOS";
+			};
+		};
+		"A1000000000000000000000D" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = ("A1000000000000000000000B", "A1000000000000000000000C");
+			"defaultConfigurationIsVisible" = 0;
+			"defaultConfigurationName" = "Release";
+		};
 		"488864B3D19480A82F7F1786" = {
 			"isa" = "XCBuildConfiguration";
 			"name" = "Debug";
@@ -266,6 +367,10 @@
 				"BuildIndependentTargetsInParallel" = "YES";
 				"LastUpgradeCheck" = "1600";
 				"TargetAttributes" = {
+					"A10000000000000000000008" = {
+						"CreatedOnToolsVersion" = "16.0";
+						"TestTargetID" = "C1E9827DB735CA9BAA54A540";
+					};
 					"C1E9827DB735CA9BAA54A540" = {
 						"CreatedOnToolsVersion" = "16.0";
 						"ProvisioningStyle" = "Automatic";
@@ -282,7 +387,7 @@
 			"productRefGroup" = "0A3E27B8CA818264D75C8D81";
 			"projectDirPath" = "";
 			"projectRoot" = "";
-			"targets" = ("C1E9827DB735CA9BAA54A540");
+			"targets" = ("C1E9827DB735CA9BAA54A540", "A10000000000000000000008");
 		};
 	};
 	"rootObject" = "244210E48437B6556980A702";

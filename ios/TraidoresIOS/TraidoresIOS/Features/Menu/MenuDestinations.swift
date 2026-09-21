@@ -9,7 +9,9 @@ struct PlayModesView: View {
             } label: {
                 modeCard(title: "JUGAR CONTRA IA", image: "modo_juego_local_pampa_v3",
                          message: "Pampa clásica · De 5 a 15 jugadores, sin conexión.")
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("play.local")
             modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online",
                      message: "Próximamente · Compartí la mesa con tus amigos.")
             Text("El online y los roles especiales llegarán en las próximas etapas.")
