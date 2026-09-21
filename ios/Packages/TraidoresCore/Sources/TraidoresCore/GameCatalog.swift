@@ -39,6 +39,11 @@ public enum RoleTeam: String, Codable, Sendable {
     case town = "Pueblo", traitors = "Traidores", neutral = "Neutral"
 }
 
+public enum BotDifficulty: String, CaseIterable, Codable, Sendable {
+    case normal = "NORMAL"
+    case hard = "DIFICIL"
+}
+
 public struct RoleDefinition: Identifiable, Sendable {
     public let id: RoleKey
     public let title: String

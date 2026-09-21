@@ -5,7 +5,7 @@ struct PlayModesView: View {
     var body: some View {
         MenuPage(title: "Jugar") {
             NavigationLink {
-                LocalLobbyView()
+                LocalModeView()
             } label: {
                 modeCard(title: "JUGAR CONTRA IA", image: "modo_juego_local_pampa_v3",
                          message: "Pampa clásica · Vos contra cuatro bots, sin conexión.")

@@ -7,7 +7,7 @@ final class LocalGameStore {
     private(set) var game: ClassicGame?
     var errorMessage: String?
     private let defaults: UserDefaults
-    private let saveKey = "local.classic.save.v1"
+    private let saveKey = "local.classic.save.v2"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -16,8 +16,8 @@ final class LocalGameStore {
         catch { errorMessage = "No se pudo recuperar la partida guardada. Podés comenzar una nueva." }
     }
 
-    func start(name: String, trainingRole: RoleKey?) {
-        game = ClassicGame(name: name, trainingRole: trainingRole)
+    func start(name: String, difficulty: BotDifficulty, trainingRole: RoleKey? = nil) {
+        game = ClassicGame(name: name, trainingRole: trainingRole, difficulty: difficulty)
         save()
     }
 

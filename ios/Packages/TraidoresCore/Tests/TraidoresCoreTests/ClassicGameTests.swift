@@ -25,6 +25,13 @@ struct ClassicGameTests {
         }
     }
 
+    @Test func lobbyDifficultyAndAndroidBotNamesReachTheMatch() throws {
+        let game = ClassicGame(name: "Humano", seed: 17, difficulty: .hard)
+        #expect(game.difficulty == .hard)
+        #expect(game.players.map(\.name) == ["Humano", "Thiago", "Mora", "Lautaro", "Valen"])
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).difficulty == .hard)
+    }
+
     // Android GameEngine.resolveDawn: protection cancels death, all night actors act before dawn.
     @Test func protectionAndDawnWinner() {
         var protected = fixed(.dawn)

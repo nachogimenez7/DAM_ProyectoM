@@ -41,6 +41,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var declaredDetectives: [Int] = []
     public internal(set) var humanSpoke = false
     public internal(set) var humanSharedRead = false
+    public let difficulty: BotDifficulty
     internal var random: ClassicRandom
     internal var messageSequence = 0
 
@@ -50,13 +51,19 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public var isNight: Bool { [.assassinNight, .detectiveNight, .medicNight].contains(phase) }
     public func name(_ id: Int) -> String { players.first { $0.id == id }?.name ?? "Jugador" }
 
-    public init(name: String, seed: UInt64 = .random(in: .min ... .max), trainingRole: RoleKey? = nil) {
+    public init(
+        name: String,
+        seed: UInt64 = .random(in: .min ... .max),
+        trainingRole: RoleKey? = nil,
+        difficulty: BotDifficulty = .normal
+    ) {
         var random = ClassicRandom(state: seed)
         var roles = Self.roles.shuffled(using: &random)
         if let trainingRole, let index = roles.firstIndex(of: trainingRole) { roles.swapAt(0, index) }
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
-        let names = [cleanName.isEmpty ? "Vos" : cleanName, "Luna", "Mateo", "Alma", "Santos"]
+        let names = [cleanName.isEmpty ? "Vos" : cleanName, "Thiago", "Mora", "Lautaro", "Valen"]
         players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
+        self.difficulty = difficulty
         self.random = random
         append("Pampa clásica: 1 Asesino, 1 Comisario, 1 Médico y 2 Aldeanos.")
     }
