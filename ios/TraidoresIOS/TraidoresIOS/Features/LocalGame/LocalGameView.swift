@@ -677,6 +677,7 @@ private struct LocalMatchFlow: View {
                     store.advance(target: nil, revision: game.phaseIndex)
                     assignmentFinished = true
                 } onExit: {
+                    store.cancel()
                     onExit()
                 }
             }
@@ -699,6 +700,7 @@ private struct LocalRoleAssignmentView: View {
     @State private var cardOffset = -120.0
     @State private var statusOpacity = 0.0
     @State private var remainingReading = 0
+    @State private var showingExitConfirmation = false
 
     var body: some View {
         ZStack {
@@ -708,14 +710,20 @@ private struct LocalRoleAssignmentView: View {
 
             if stage == .dealing { dealingStage } else if let game = store.game { rolePreview(game.human.role) }
 
-            Button(action: onExit) {
+            Button { showingExitConfirmation = true } label: {
                 Image(systemName: "chevron.left").font(.headline).frame(width: 46, height: 46)
                     .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
             }
             .foregroundStyle(TraidoresTheme.text).padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityIdentifier("assignment.back")
         }
-        .accessibilityIdentifier("assignment.root")
+        .alert("¿Salir de la partida?", isPresented: $showingExitConfirmation) {
+            Button("SALIR", role: .destructive, action: onExit)
+            Button("SEGUIR JUGANDO", role: .cancel) {}
+        } message: {
+            Text("Si salís ahora, se cancelará la partida y perderás su progreso.")
+        }
         .task {
             withAnimation(.easeOut(duration: 0.42)) { tableOpacity = 1 }
             try? await Task.sleep(for: .seconds(0.42))
@@ -753,6 +761,7 @@ private struct LocalRoleAssignmentView: View {
                 .overlay(Capsule().stroke(TraidoresTheme.border))
                 .padding(.bottom, 18).opacity(statusOpacity)
                 .frame(maxHeight: .infinity, alignment: .bottom)
+                .accessibilityIdentifier("assignment.status")
         }
     }
 
@@ -765,21 +774,25 @@ private struct LocalRoleAssignmentView: View {
             Divider().overlay(TraidoresTheme.border)
             HStack(alignment: .top, spacing: 12) {
                 Image(role.classicImage).resizable().scaledToFill()
-                    .frame(width: 112, height: 168).clipped()
+                    .frame(width: 100, height: 150).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.gold))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("QUÉ HACE").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
                     Text(RoleCatalog.all.first { $0.id == role }?.instructions ?? "")
-                        .font(.footnote)
+                        .font(.footnote).fixedSize(horizontal: false, vertical: true)
                     Text("CONSEJO").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
                         .padding(.top, 4)
                     Text(role.classicAdvice).font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
             }
             if remainingReading == 0 {
                 Button("EMPEZAR") { onStart() }
                     .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 190)
+                    .accessibilityIdentifier("role.start")
             } else {
                 Text("EMPEZAR (\(remainingReading))").font(.caption.bold())
                     .foregroundStyle(TraidoresTheme.secondary).frame(height: 48)
@@ -857,6 +870,7 @@ private struct LocalTableView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(game.phase.classicTitle.uppercased())
                     .font(TraidoresTheme.title(20)).foregroundStyle(TraidoresTheme.gold)
+                    .accessibilityIdentifier("table.phaseTitle")
                 Text("Ronda \(game.round) · Pampa").font(.caption).foregroundStyle(TraidoresTheme.secondary)
             }
             Spacer()

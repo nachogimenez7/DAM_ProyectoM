@@ -42,6 +42,12 @@ final class LocalGameStore {
         save()
     }
 
+    func cancel() {
+        game = nil
+        errorMessage = nil
+        defaults.removeObject(forKey: saveKey)
+    }
+
     private func save() {
         guard let game else { return }
         do { defaults.set(try ClassicSave.encode(game), forKey: saveKey); errorMessage = nil }

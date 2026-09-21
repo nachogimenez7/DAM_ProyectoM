@@ -14,9 +14,23 @@ final class LocalLobbyUITests: XCTestCase {
         startButton.tap()
 
         XCTAssertTrue(
-            app.descendants(matching: .any)["assignment.root"].waitForExistence(timeout: 3),
+            app.staticTexts["assignment.status"].waitForExistence(timeout: 3),
             "Al tocar INICIAR PARTIDA debe abrirse el reparto de rol"
         )
+
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        let roleScreenshot = XCTAttachment(screenshot: app.screenshot())
+        roleScreenshot.name = "Lectura inicial del rol"
+        roleScreenshot.lifetime = .keepAlways
+        add(roleScreenshot)
+
+        roleStart.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].waitForExistence(timeout: 3))
+        let tableScreenshot = XCTAttachment(screenshot: app.screenshot())
+        tableScreenshot.name = "Primera fase de juego"
+        tableScreenshot.lifetime = .keepAlways
+        add(tableScreenshot)
     }
 
     func testLobbyAddsAndRemovesPlayers() throws {
@@ -67,6 +81,21 @@ final class LocalLobbyUITests: XCTestCase {
         difficultyScreenshot.name = "Selección de dificultad"
         difficultyScreenshot.lifetime = .keepAlways
         add(difficultyScreenshot)
+    }
+
+    func testLeavingRoleAssignmentCancelsTheNewMatch() throws {
+        let app = launchLobby()
+        app.buttons["local.startGame"].tap()
+
+        let backButton = app.buttons["assignment.back"]
+        XCTAssertTrue(backButton.waitForExistence(timeout: 3))
+        backButton.tap()
+        XCTAssertTrue(app.alerts["¿Salir de la partida?"].waitForExistence(timeout: 3))
+        app.alerts.buttons["SALIR"].tap()
+
+        XCTAssertTrue(app.buttons["local.startGame"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'CONTINUAR PARTIDA'"))
+            .firstMatch.exists)
     }
 
     private func launchLobby() -> XCUIApplication {
