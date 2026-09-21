@@ -55,7 +55,6 @@ struct LocalLobbyView: View {
     @AppStorage("local.timing") private var savedTiming = ""
     @AppStorage("local.advanced") private var savedAdvanced = ""
     @State private var playing = false
-    @State private var replaceGame = false
     @State private var showingTiming = false
     @State private var showingAdvanced = false
     @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
@@ -66,36 +65,37 @@ struct LocalLobbyView: View {
 
     var body: some View {
         ZStack {
-            GeometryReader { geometry in
-                Image("mapa_pampa_vertical_dia")
-                    .resizable().scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                    .overlay(.black.opacity(0.54))
-            }
-            .ignoresSafeArea().accessibilityHidden(true)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    MenuHeader(title: "LOBBY LOCAL", back: dismiss.callAsFunction)
-                    lobbyHeader
-                    startPanel
-                    mapCard
-                    timingPanel
-                    advancedPanel
-                    playerControls
-                    playersPanel
+            if playing {
+                LocalMatchFlow(store: store, onExit: { playing = false })
+                    .transition(.opacity)
+            } else {
+                GeometryReader { geometry in
+                    Image("mapa_pampa_vertical_dia")
+                        .resizable().scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                        .overlay(.black.opacity(0.54))
                 }
-                .padding(16)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
+                .ignoresSafeArea().accessibilityHidden(true)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        MenuHeader(title: "LOBBY LOCAL", back: dismiss.callAsFunction)
+                        lobbyHeader
+                        startPanel
+                        mapCard
+                        timingPanel
+                        advancedPanel
+                        playerControls
+                        playersPanel
+                    }
+                    .padding(16)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
-        .confirmationDialog("¿Reemplazar la partida guardada?", isPresented: $replaceGame,
-                            titleVisibility: .visible) {
-            Button("Comenzar otra partida", role: .destructive) { start() }
-        }
         .alert("Editar nombre", isPresented: editAlertBinding) {
             TextField("Nombre del bot", text: $editedName)
             Button("Cancelar", role: .cancel) { editingBot = nil }
@@ -115,10 +115,6 @@ struct LocalLobbyView: View {
         }
         .sheet(isPresented: $showingAdvanced) {
             AdvancedOptionsView(config: $advanced)
-        }
-        .navigationDestination(isPresented: $playing) {
-            LocalMatchFlow(store: store)
-                .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -145,9 +141,7 @@ struct LocalLobbyView: View {
 
     private var startPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button("INICIAR PARTIDA") {
-                if let game = store.game, game.winner == nil { replaceGame = true } else { start() }
-            }
+            Button("INICIAR PARTIDA", action: start)
             .buttonStyle(TraidoresButtonStyle(prominent: true))
             .accessibilityIdentifier("local.startGame")
 
@@ -157,10 +151,18 @@ struct LocalLobbyView: View {
                 .font(.subheadline).foregroundStyle(TraidoresTheme.gold)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            TextField("Tu nombre", text: $name)
-                .textFieldStyle(.roundedBorder).autocorrectionDisabled()
-                .onChange(of: name) { _, value in name = String(value.prefix(18)) }
-                .accessibilityLabel("Tu nombre en la partida")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("TU NOMBRE (OPCIONAL)").font(.caption.bold()).tracking(1)
+                    .foregroundStyle(TraidoresTheme.secondary)
+                TextField("Escribí tu nombre", text: $name)
+                    .textFieldStyle(.plain).autocorrectionDisabled()
+                    .foregroundStyle(TraidoresTheme.text).tint(TraidoresTheme.gold)
+                    .padding(.horizontal, 12).frame(height: 46)
+                    .background(TraidoresTheme.ink.opacity(0.96), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
+                    .onChange(of: name) { _, value in name = String(value.prefix(18)) }
+                    .accessibilityLabel("Tu nombre en la partida, opcional")
+            }
 
             if let game = store.game, game.winner == nil {
                 Button("CONTINUAR PARTIDA · DÍA \(game.round)") { playing = true }
@@ -295,11 +297,7 @@ struct LocalLobbyView: View {
     private func start() {
         store.start(name: name, difficulty: difficulty, botNames: botNames,
                     timing: timing, advanced: advanced)
-        // Let Observation publish the new game before NavigationStack evaluates its destination.
-        Task { @MainActor in
-            await Task.yield()
-            playing = store.game != nil
-        }
+        playing = store.game != nil
     }
 
     private func saveBotName() {
@@ -556,26 +554,27 @@ private enum TimingField: String, CaseIterable, Identifiable {
 
 private struct LocalMatchFlow: View {
     @Bindable var store: LocalGameStore
-    @Environment(\.dismiss) private var dismiss
+    let onExit: () -> Void
     @Environment(MenuPreferences.self) private var preferences
     @State private var assignmentFinished = false
 
-    init(store: LocalGameStore) {
+    init(store: LocalGameStore, onExit: @escaping () -> Void) {
         self.store = store
+        self.onExit = onExit
         _assignmentFinished = State(initialValue: store.game?.phase != .assignment)
     }
 
     var body: some View {
         Group {
             if assignmentFinished {
-                LocalTableView(store: store, dismissMatch: dismiss)
+                LocalTableView(store: store, dismissMatch: onExit)
             } else {
                 LocalRoleAssignmentView(store: store) {
                     guard let game = store.game else { return }
                     store.advance(target: nil, revision: game.phaseIndex)
                     assignmentFinished = true
                 } onExit: {
-                    dismiss()
+                    onExit()
                 }
             }
         }
@@ -693,7 +692,7 @@ private enum AssignmentStage { case dealing, role }
 
 private struct LocalTableView: View {
     @Bindable var store: LocalGameStore
-    let dismissMatch: DismissAction
+    let dismissMatch: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: Int?
