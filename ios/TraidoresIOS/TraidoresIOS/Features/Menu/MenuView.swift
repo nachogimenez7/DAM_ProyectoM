@@ -55,7 +55,7 @@ struct MenuView: View {
                         }
                     }
                 }
-                .toolbar(.visible, for: .navigationBar)
+                .toolbar(.hidden, for: .navigationBar)
             }
         }
     }

@@ -9,7 +9,8 @@ struct LocalModeView: View {
         ZStack {
             MenuBackground()
             VStack(spacing: 0) {
-                localHeader(title: "JUGAR vs IA", back: dismiss.callAsFunction)
+                MenuHeader(title: "JUGAR vs IA", back: dismiss.callAsFunction)
+                    .padding(.horizontal, 16)
                 Spacer()
                 VStack(spacing: 16) {
                     Text("ELEGÍ UNA DIFICULTAD")
@@ -51,9 +52,12 @@ struct LocalLobbyView: View {
     @State private var store = LocalGameStore()
     @AppStorage("local.playerName") private var name = ""
     @AppStorage("local.botNames") private var savedBotNames = ""
+    @AppStorage("local.timing") private var savedTiming = ""
     @State private var playing = false
     @State private var replaceGame = false
+    @State private var showingTiming = false
     @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
+    @State private var timing = GameTimingConfig.normal
     @State private var editingBot: Int?
     @State private var editedName = ""
 
@@ -69,10 +73,11 @@ struct LocalLobbyView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    localHeader(title: "LOBBY LOCAL", back: dismiss.callAsFunction)
+                    MenuHeader(title: "LOBBY LOCAL", back: dismiss.callAsFunction)
                     lobbyHeader
                     startPanel
                     mapCard
+                    timingPanel
                     playerControls
                     playersPanel
                 }
@@ -98,6 +103,10 @@ struct LocalLobbyView: View {
         .onChange(of: botNames) { _, names in
             guard let data = try? JSONEncoder().encode(names) else { return }
             savedBotNames = String(decoding: data, as: UTF8.self)
+        }
+        .onChange(of: timing) { _, value in saveTiming(value) }
+        .sheet(isPresented: $showingTiming) {
+            TimingOptionsView(timing: $timing)
         }
         .fullScreenCover(isPresented: $playing) { LocalMatchFlow(store: store) }
     }
@@ -188,6 +197,27 @@ struct LocalLobbyView: View {
         }
     }
 
+    private var timingPanel: some View {
+        Button { showingTiming = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "timer").font(.title3).foregroundStyle(TraidoresTheme.gold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("OPCIONES DE PARTIDA").font(TraidoresTheme.title(18))
+                    Text("Transición \(timing.transitionSeconds)s · Noche \(timing.nightSeconds)s · Debate \(timing.discussionSeconds)s · Voto \(timing.votingSeconds)s")
+                        .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(TraidoresTheme.gold)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var playersPanel: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("JUGADORES").font(.caption.weight(.bold)).tracking(1.2)
@@ -230,7 +260,7 @@ struct LocalLobbyView: View {
     }
 
     private func start() {
-        store.start(name: name, difficulty: difficulty, botNames: botNames)
+        store.start(name: name, difficulty: difficulty, botNames: botNames, timing: timing)
         playing = true
     }
 
@@ -245,26 +275,155 @@ struct LocalLobbyView: View {
         guard let data = savedBotNames.data(using: .utf8),
               let names = try? JSONDecoder().decode([String].self, from: data),
               (ClassicGame.minimumPlayers - 1...ClassicGame.maximumPlayers - 1).contains(names.count)
-        else { return }
+        else {
+            restoreTiming()
+            return
+        }
         botNames = names
+        restoreTiming()
+    }
+
+    private func restoreTiming() {
+        guard let data = savedTiming.data(using: .utf8),
+              let value = try? JSONDecoder().decode(GameTimingConfig.self, from: data)
+        else { return }
+        timing = value.normalized
+    }
+
+    private func saveTiming(_ value: GameTimingConfig) {
+        guard let data = try? JSONEncoder().encode(value.normalized) else { return }
+        savedTiming = String(decoding: data, as: UTF8.self)
     }
 }
 
-private func localHeader(title: String, back: @escaping () -> Void) -> some View {
-    ZStack {
-        Text(title).font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.text)
-        HStack {
-            Button(action: back) {
-                Image(systemName: "chevron.left").font(.headline)
-                    .frame(width: 44, height: 44)
-                    .background(TraidoresTheme.panel.opacity(0.94), in: Circle())
-                    .overlay(Circle().stroke(TraidoresTheme.border))
+private struct TimingOptionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding private var timing: GameTimingConfig
+    @State private var draft: GameTimingConfig
+
+    init(timing: Binding<GameTimingConfig>) {
+        _timing = timing
+        _draft = State(initialValue: timing.wrappedValue)
+    }
+
+    var body: some View {
+        ZStack {
+            MenuBackground()
+            ScrollView {
+                VStack(spacing: 18) {
+                    Text("OPCIONES DE PARTIDA")
+                        .font(TraidoresTheme.title(25)).foregroundStyle(TraidoresTheme.gold)
+                    Text("Estos son los mismos tiempos y límites de la versión Android.")
+                        .foregroundStyle(TraidoresTheme.secondary).multilineTextAlignment(.center)
+                    presetButtons
+                    VStack(spacing: 10) {
+                        ForEach(TimingField.allCases) { field in timingRow(field) }
+                    }
+                    .padding(14)
+                    .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
+                    Button("APLICAR") {
+                        timing = draft.normalized
+                        dismiss()
+                    }
+                    .buttonStyle(TraidoresButtonStyle(prominent: true))
+                    Button("RESTABLECER") { draft = .normal }
+                        .buttonStyle(TraidoresButtonStyle())
+                    Button("CANCELAR") { dismiss() }
+                        .foregroundStyle(TraidoresTheme.secondary)
+                }
+                .padding(20).frame(maxWidth: 560).frame(maxWidth: .infinity)
             }
-            .foregroundStyle(TraidoresTheme.text)
-            Spacer()
+        }
+        .foregroundStyle(TraidoresTheme.text)
+        .presentationDetents([.large])
+    }
+
+    private var presetButtons: some View {
+        HStack(spacing: 8) {
+            preset("LENTO", value: .slow)
+            preset("NORMAL", value: .normal)
+            preset("RÁPIDO", value: .fast)
         }
     }
-    .frame(maxWidth: .infinity)
+
+    private func preset(_ title: String, value: GameTimingConfig) -> some View {
+        Button(title) { draft = value }
+            .font(.caption.bold())
+            .foregroundStyle(draft == value ? TraidoresTheme.ink : TraidoresTheme.text)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(draft == value ? TraidoresTheme.gold : TraidoresTheme.panel,
+                        in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.border))
+    }
+
+    private func timingRow(_ field: TimingField) -> some View {
+        HStack {
+            Text(field.title).font(.subheadline.weight(.semibold))
+            Spacer()
+            timingButton("minus") { field.change(&draft, by: -field.step) }
+                .disabled(field.value(in: draft) <= field.range.lowerBound)
+            Text("\(field.value(in: draft)) s")
+                .font(.subheadline.monospacedDigit()).foregroundStyle(TraidoresTheme.gold)
+                .frame(width: 58)
+            timingButton("plus") { field.change(&draft, by: field.step) }
+                .disabled(field.value(in: draft) >= field.range.upperBound)
+        }
+    }
+
+    private func timingButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).frame(width: 36, height: 34)
+                .background(TraidoresTheme.ink, in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
+        }
+        .foregroundStyle(TraidoresTheme.text)
+    }
+}
+
+private enum TimingField: String, CaseIterable, Identifiable {
+    case transition, night, discussion, voting
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .transition: "Transición"
+        case .night: "Noche"
+        case .discussion: "Debate"
+        case .voting: "Votación"
+        }
+    }
+    var range: ClosedRange<Int> {
+        switch self {
+        case .transition: 1...10
+        case .night: 10...90
+        case .discussion: 30...180
+        case .voting: 10...60
+        }
+    }
+    var step: Int {
+        switch self {
+        case .transition: 1
+        case .night, .voting: 5
+        case .discussion: 15
+        }
+    }
+    func value(in config: GameTimingConfig) -> Int {
+        switch self {
+        case .transition: config.transitionSeconds
+        case .night: config.nightSeconds
+        case .discussion: config.discussionSeconds
+        case .voting: config.votingSeconds
+        }
+    }
+    func change(_ config: inout GameTimingConfig, by amount: Int) {
+        let next = min(max(value(in: config) + amount, range.lowerBound), range.upperBound)
+        switch self {
+        case .transition: config.transitionSeconds = next
+        case .night: config.nightSeconds = next
+        case .discussion: config.discussionSeconds = next
+        case .voting: config.votingSeconds = next
+        }
+    }
 }
 
 private struct LocalMatchFlow: View {

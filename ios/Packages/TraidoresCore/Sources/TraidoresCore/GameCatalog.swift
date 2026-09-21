@@ -44,6 +44,34 @@ public enum BotDifficulty: String, CaseIterable, Codable, Sendable {
     case hard = "DIFICIL"
 }
 
+public struct GameTimingConfig: Codable, Equatable, Sendable {
+    public var transitionSeconds: Int
+    public var nightSeconds: Int
+    public var discussionSeconds: Int
+    public var votingSeconds: Int
+
+    public init(transitionSeconds: Int = 4, nightSeconds: Int = 40,
+                discussionSeconds: Int = 120, votingSeconds: Int = 20) {
+        self.transitionSeconds = transitionSeconds
+        self.nightSeconds = nightSeconds
+        self.discussionSeconds = discussionSeconds
+        self.votingSeconds = votingSeconds
+    }
+
+    public static let slow = Self(transitionSeconds: 6, nightSeconds: 90,
+                                  discussionSeconds: 180, votingSeconds: 60)
+    public static let normal = Self()
+    public static let fast = Self(transitionSeconds: 2, nightSeconds: 20,
+                                  discussionSeconds: 60, votingSeconds: 15)
+
+    public var normalized: Self {
+        .init(transitionSeconds: min(max(transitionSeconds, 1), 10),
+              nightSeconds: min(max(nightSeconds, 10), 90),
+              discussionSeconds: min(max(discussionSeconds, 30), 180),
+              votingSeconds: min(max(votingSeconds, 10), 60))
+    }
+}
+
 public struct RoleDefinition: Identifiable, Sendable {
     public let id: RoleKey
     public let title: String

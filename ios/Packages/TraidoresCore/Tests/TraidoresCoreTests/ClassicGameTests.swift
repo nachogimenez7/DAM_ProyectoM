@@ -51,6 +51,28 @@ struct ClassicGameTests {
         #expect(game.players.map(\.name) == ["Nacho", "Bot Uno", "Mora", "Lautaro", "Valen"])
     }
 
+    @Test func androidTimingPresetsAndLimitsReachTheSavedMatch() throws {
+        #expect(GameTimingConfig.normal == .init(transitionSeconds: 4, nightSeconds: 40,
+                                                 discussionSeconds: 120, votingSeconds: 20))
+        #expect(GameTimingConfig.slow == .init(transitionSeconds: 6, nightSeconds: 90,
+                                               discussionSeconds: 180, votingSeconds: 60))
+        #expect(GameTimingConfig.fast == .init(transitionSeconds: 2, nightSeconds: 20,
+                                               discussionSeconds: 60, votingSeconds: 15))
+        let unsafe = GameTimingConfig(transitionSeconds: 99, nightSeconds: 1,
+                                      discussionSeconds: 999, votingSeconds: 0)
+        let game = ClassicGame(name: "Humano", seed: 8, timing: unsafe)
+        #expect(game.timing == .init(transitionSeconds: 10, nightSeconds: 10,
+                                     discussionSeconds: 180, votingSeconds: 10))
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).timing == game.timing)
+
+        var oldEnvelope = try #require(JSONSerialization.jsonObject(with: ClassicSave.encode(game)) as? [String: Any])
+        var oldGame = try #require(oldEnvelope["game"] as? [String: Any])
+        oldGame.removeValue(forKey: "timingConfig")
+        oldEnvelope["game"] = oldGame
+        let oldData = try JSONSerialization.data(withJSONObject: oldEnvelope)
+        #expect(try ClassicSave.decode(oldData).timing == .normal)
+    }
+
     // Android GameEngine.resolveDawn: protection cancels death, all night actors act before dawn.
     @Test func protectionAndDawnWinner() {
         var protected = fixed(.dawn)

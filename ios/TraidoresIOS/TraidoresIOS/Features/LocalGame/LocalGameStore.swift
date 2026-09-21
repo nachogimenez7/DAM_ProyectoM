@@ -16,8 +16,10 @@ final class LocalGameStore {
         catch { errorMessage = "No se pudo recuperar la partida guardada. Podés comenzar una nueva." }
     }
 
-    func start(name: String, difficulty: BotDifficulty, botNames: [String], trainingRole: RoleKey? = nil) {
-        game = ClassicGame(name: name, trainingRole: trainingRole, difficulty: difficulty, botNames: botNames)
+    func start(name: String, difficulty: BotDifficulty, botNames: [String],
+               timing: GameTimingConfig, trainingRole: RoleKey? = nil) {
+        game = ClassicGame(name: name, trainingRole: trainingRole, difficulty: difficulty,
+                           timing: timing, botNames: botNames)
         save()
     }
 

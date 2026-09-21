@@ -48,12 +48,15 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var humanSpoke = false
     public internal(set) var humanSharedRead = false
     public let difficulty: BotDifficulty
+    /// Optional keeps saves from earlier iOS builds decodable; `timing` supplies the Android default.
+    public let timingConfig: GameTimingConfig?
     internal var random: ClassicRandom
     internal var messageSequence = 0
 
     public var human: ClassicPlayer { players[0] }
     public var living: [ClassicPlayer] { players.filter(\.alive) }
     public var humanInvestigations: [Investigation] { investigations.filter { $0.investigator == 0 } }
+    public var timing: GameTimingConfig { (timingConfig ?? .normal).normalized }
     public var isNight: Bool { [.assassinNight, .detectiveNight, .medicNight].contains(phase) }
     public func name(_ id: Int) -> String { players.first { $0.id == id }?.name ?? "Jugador" }
 
@@ -62,6 +65,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         seed: UInt64 = .random(in: .min ... .max),
         trainingRole: RoleKey? = nil,
         difficulty: BotDifficulty = .normal,
+        timing: GameTimingConfig = .normal,
         botNames: [String] = Array(Self.defaultBotNames.prefix(4))
     ) {
         var random = ClassicRandom(state: seed)
@@ -77,6 +81,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         let names = [cleanName.isEmpty ? "Vos" : cleanName] + filledBots
         players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
         self.difficulty = difficulty
+        timingConfig = timing.normalized
         self.random = random
         let villagers = players.count - 3
         append("Pampa clásica: 1 Asesino, 1 Comisario, 1 Médico y \(villagers) Aldeanos.")

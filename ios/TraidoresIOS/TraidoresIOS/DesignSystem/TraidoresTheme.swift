@@ -56,22 +56,48 @@ struct TraidoresButtonStyle: ButtonStyle {
 struct MenuPage<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
             MenuBackground()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18, content: content)
-                    .padding(20)
-                    .frame(maxWidth: 560)
-                    .frame(maxWidth: .infinity)
+            VStack(spacing: 0) {
+                MenuHeader(title: title, back: dismiss.callAsFunction)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18, content: content)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                        .frame(maxWidth: 560)
+                        .frame(maxWidth: .infinity)
+                }
             }
         }
         .foregroundStyle(TraidoresTheme.text)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TraidoresTheme.ink, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+struct MenuHeader: View {
+    let title: String
+    let back: () -> Void
+
+    var body: some View {
+        ZStack {
+            Text(title).font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.text)
+            HStack {
+                Button(action: back) {
+                    Image(systemName: "chevron.left").font(.headline)
+                        .frame(width: 44, height: 44)
+                        .background(TraidoresTheme.panel.opacity(0.94), in: Circle())
+                        .overlay(Circle().stroke(TraidoresTheme.border))
+                }
+                .foregroundStyle(TraidoresTheme.text)
+                Spacer()
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

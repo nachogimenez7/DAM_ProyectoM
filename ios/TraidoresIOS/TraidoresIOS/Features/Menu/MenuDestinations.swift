@@ -8,7 +8,7 @@ struct PlayModesView: View {
                 LocalModeView()
             } label: {
                 modeCard(title: "JUGAR CONTRA IA", image: "modo_juego_local_pampa_v3",
-                         message: "Pampa clásica · Vos contra cuatro bots, sin conexión.")
+                         message: "Pampa clásica · De 5 a 15 jugadores, sin conexión.")
             }.buttonStyle(.plain)
             modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online",
                      message: "Próximamente · Compartí la mesa con tus amigos.")
