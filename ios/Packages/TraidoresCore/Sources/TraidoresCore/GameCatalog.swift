@@ -72,6 +72,27 @@ public struct GameTimingConfig: Codable, Equatable, Sendable {
     }
 }
 
+public struct AdvancedGameConfig: Codable, Equatable, Sendable {
+    public var revealRolesOnDeath: Bool
+    public var showIndividualVotes: Bool
+    public var roleReadingSeconds: Int
+
+    public init(revealRolesOnDeath: Bool = false, showIndividualVotes: Bool = true,
+                roleReadingSeconds: Int = 0) {
+        self.revealRolesOnDeath = revealRolesOnDeath
+        self.showIndividualVotes = showIndividualVotes
+        self.roleReadingSeconds = roleReadingSeconds
+    }
+
+    public static let standard = Self()
+
+    public var normalized: Self {
+        .init(revealRolesOnDeath: revealRolesOnDeath,
+              showIndividualVotes: showIndividualVotes,
+              roleReadingSeconds: roleReadingSeconds <= 0 ? 0 : roleReadingSeconds <= 6 ? 6 : 10)
+    }
+}
+
 public struct RoleDefinition: Identifiable, Sendable {
     public let id: RoleKey
     public let title: String

@@ -53,11 +53,14 @@ struct LocalLobbyView: View {
     @AppStorage("local.playerName") private var name = ""
     @AppStorage("local.botNames") private var savedBotNames = ""
     @AppStorage("local.timing") private var savedTiming = ""
+    @AppStorage("local.advanced") private var savedAdvanced = ""
     @State private var playing = false
     @State private var replaceGame = false
     @State private var showingTiming = false
+    @State private var showingAdvanced = false
     @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
     @State private var timing = GameTimingConfig.normal
+    @State private var advanced = AdvancedGameConfig.standard
     @State private var editingBot: Int?
     @State private var editedName = ""
 
@@ -78,6 +81,7 @@ struct LocalLobbyView: View {
                     startPanel
                     mapCard
                     timingPanel
+                    advancedPanel
                     playerControls
                     playersPanel
                 }
@@ -105,8 +109,12 @@ struct LocalLobbyView: View {
             savedBotNames = String(decoding: data, as: UTF8.self)
         }
         .onChange(of: timing) { _, value in saveTiming(value) }
+        .onChange(of: advanced) { _, value in saveAdvanced(value) }
         .sheet(isPresented: $showingTiming) {
             TimingOptionsView(timing: $timing)
+        }
+        .sheet(isPresented: $showingAdvanced) {
+            AdvancedOptionsView(config: $advanced)
         }
         .fullScreenCover(isPresented: $playing) { LocalMatchFlow(store: store) }
     }
@@ -218,6 +226,27 @@ struct LocalLobbyView: View {
         .buttonStyle(.plain)
     }
 
+    private var advancedPanel: some View {
+        Button { showingAdvanced = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "slider.horizontal.3").font(.title3).foregroundStyle(TraidoresTheme.gold)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("OPCIONES AVANZADAS").font(TraidoresTheme.title(18))
+                    Text("Roles \(advanced.revealRolesOnDeath ? "visibles" : "ocultos") · Votos \(advanced.showIndividualVotes ? "individuales" : "totales") · Lectura \(advanced.roleReadingSeconds)s")
+                        .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(TraidoresTheme.gold)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var playersPanel: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("JUGADORES").font(.caption.weight(.bold)).tracking(1.2)
@@ -260,7 +289,8 @@ struct LocalLobbyView: View {
     }
 
     private func start() {
-        store.start(name: name, difficulty: difficulty, botNames: botNames, timing: timing)
+        store.start(name: name, difficulty: difficulty, botNames: botNames,
+                    timing: timing, advanced: advanced)
         playing = true
     }
 
@@ -286,13 +316,103 @@ struct LocalLobbyView: View {
     private func restoreTiming() {
         guard let data = savedTiming.data(using: .utf8),
               let value = try? JSONDecoder().decode(GameTimingConfig.self, from: data)
-        else { return }
+        else {
+            restoreAdvanced()
+            return
+        }
         timing = value.normalized
+        restoreAdvanced()
     }
 
     private func saveTiming(_ value: GameTimingConfig) {
         guard let data = try? JSONEncoder().encode(value.normalized) else { return }
         savedTiming = String(decoding: data, as: UTF8.self)
+    }
+
+    private func restoreAdvanced() {
+        guard let data = savedAdvanced.data(using: .utf8),
+              let value = try? JSONDecoder().decode(AdvancedGameConfig.self, from: data)
+        else { return }
+        advanced = value.normalized
+    }
+
+    private func saveAdvanced(_ value: AdvancedGameConfig) {
+        guard let data = try? JSONEncoder().encode(value.normalized) else { return }
+        savedAdvanced = String(decoding: data, as: UTF8.self)
+    }
+}
+
+private struct AdvancedOptionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding private var config: AdvancedGameConfig
+    @State private var draft: AdvancedGameConfig
+
+    init(config: Binding<AdvancedGameConfig>) {
+        _config = config
+        _draft = State(initialValue: config.wrappedValue)
+    }
+
+    var body: some View {
+        ZStack {
+            MenuBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("OPCIONES AVANZADAS")
+                        .font(TraidoresTheme.title(25)).foregroundStyle(TraidoresTheme.gold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text("REGLAS DE LA PARTIDA").font(.caption.bold()).tracking(1.2)
+                        .foregroundStyle(TraidoresTheme.secondary)
+                    optionToggle(title: "Mostrar roles al morir o al expulsar",
+                                 detail: "Si se desactiva, las cartas eliminadas permanecen ocultas.",
+                                 value: $draft.revealRolesOnDeath)
+                    optionToggle(title: "Mostrar votos individuales",
+                                 detail: "Si se desactiva, solamente se muestra el total recibido.",
+                                 value: $draft.showIndividualVotes)
+                    Text("LECTURA INICIAL DEL ROL").font(.caption.bold()).tracking(1.2)
+                        .foregroundStyle(TraidoresTheme.secondary)
+                    Text("Define cuándo aparece EMPEZAR después de recibir la carta.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    HStack(spacing: 8) {
+                        readingButton("INMEDIATO", seconds: 0)
+                        readingButton("6 S", seconds: 6)
+                        readingButton("10 S", seconds: 10)
+                    }
+                    Button("APLICAR") {
+                        config = draft.normalized
+                        dismiss()
+                    }
+                    .buttonStyle(TraidoresButtonStyle(prominent: true))
+                    Button("RESTABLECER") { draft = .standard }
+                        .buttonStyle(TraidoresButtonStyle())
+                    Button("CANCELAR") { dismiss() }
+                        .foregroundStyle(TraidoresTheme.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(20).frame(maxWidth: 560).frame(maxWidth: .infinity)
+            }
+        }
+        .foregroundStyle(TraidoresTheme.text)
+        .presentationDetents([.large])
+    }
+
+    private func optionToggle(title: String, detail: String, value: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(title, isOn: value).font(.headline).tint(TraidoresTheme.gold)
+            Text(detail).font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+        }
+        .padding(14)
+        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
+    }
+
+    private func readingButton(_ title: String, seconds: Int) -> some View {
+        Button(title) { draft.roleReadingSeconds = seconds }
+            .font(.caption.bold())
+            .foregroundStyle(draft.roleReadingSeconds == seconds ? TraidoresTheme.ink : TraidoresTheme.text)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(draft.roleReadingSeconds == seconds ? TraidoresTheme.gold : TraidoresTheme.panel,
+                        in: RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.border))
     }
 }
 
@@ -462,6 +582,7 @@ private struct LocalRoleAssignmentView: View {
     let onExit: () -> Void
 
     @State private var showingRole = false
+    @State private var canStart = false
     @State private var cardScale = 0.78
     @State private var cardRotation = -7.0
 
@@ -483,8 +604,13 @@ private struct LocalRoleAssignmentView: View {
                 }
                 Spacer()
                 if showingRole {
-                    Button("EMPEZAR") { onStart() }
-                        .buttonStyle(TraidoresButtonStyle(prominent: true))
+                    if canStart {
+                        Button("EMPEZAR") { onStart() }
+                            .buttonStyle(TraidoresButtonStyle(prominent: true))
+                    } else {
+                        Text("Leé tu carta antes de continuar...")
+                            .foregroundStyle(TraidoresTheme.secondary)
+                    }
                 } else {
                     Text("Preparando tu carta...").foregroundStyle(TraidoresTheme.secondary)
                 }
@@ -505,6 +631,10 @@ private struct LocalRoleAssignmentView: View {
             }
             try? await Task.sleep(for: .seconds(1.35))
             withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { showingRole = true }
+            if let seconds = store.game?.advanced.roleReadingSeconds, seconds > 0 {
+                try? await Task.sleep(for: .seconds(seconds))
+            }
+            canStart = true
         }
     }
 
@@ -626,7 +756,7 @@ private struct LocalTableView: View {
                         }
                         Text(player.name + (player.id == 0 ? " · VOS" : ""))
                             .font(.caption.weight(.bold)).lineLimit(1)
-                        Text(player.alive ? "EN LA MESA" : "ELIMINADO").font(.caption2)
+                        Text(playerStatus(player, game: game)).font(.caption2)
                             .foregroundStyle(TraidoresTheme.secondary)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -688,8 +818,16 @@ private struct LocalTableView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("RECUENTO").font(.caption.weight(.bold)).tracking(1.2)
                 .foregroundStyle(TraidoresTheme.secondary)
-            ForEach(game.votes.keys.sorted(), id: \.self) { voter in
-                Text("\(game.name(voter)) → \(game.name(game.votes[voter] ?? voter))").font(.subheadline)
+            if game.advanced.showIndividualVotes {
+                ForEach(game.votes.keys.sorted(), id: \.self) { voter in
+                    Text("\(game.name(voter)) → \(game.name(game.votes[voter] ?? voter))")
+                        .font(.subheadline)
+                }
+            } else {
+                let totals = Dictionary(grouping: game.votes.values, by: { $0 }).mapValues(\.count)
+                ForEach(totals.keys.sorted(), id: \.self) { target in
+                    Text("\(game.name(target)): \(totals[target] ?? 0) votos").font(.subheadline)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(14)
@@ -748,10 +886,19 @@ private struct LocalTableView: View {
         case .discussion: "Escuchá a la mesa, compartí información o marcá una sospecha."
         case .voting: "Elegí a quién expulsar. No podés votarte a vos mismo."
         case .tieVote: "Votá entre los jugadores empatados."
-        case .voteCount: "Revisá cómo votó cada participante."
+        case .voteCount: game.advanced.showIndividualVotes
+            ? "Revisá cómo votó cada participante."
+            : "Revisá el total de votos recibido por cada participante."
         case .result: game.messages.last?.text ?? "La mesa tomó una decisión."
         default: "La partida continúa."
         }
+    }
+
+    private func playerStatus(_ player: ClassicPlayer, game: ClassicGame) -> String {
+        if player.alive { return "EN LA MESA" }
+        return game.advanced.revealRolesOnDeath
+            ? "ELIMINADO · \(player.role.classicTitle.uppercased())"
+            : "ELIMINADO"
     }
 
     private func actionTitle(_ game: ClassicGame) -> String {

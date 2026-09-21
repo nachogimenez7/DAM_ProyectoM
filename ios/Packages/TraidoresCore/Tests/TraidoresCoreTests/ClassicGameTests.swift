@@ -73,6 +73,27 @@ struct ClassicGameTests {
         #expect(try ClassicSave.decode(oldData).timing == .normal)
     }
 
+    @Test func androidAdvancedDefaultsAndReadingChoicesReachTheSavedMatch() throws {
+        #expect(AdvancedGameConfig.standard == .init(revealRolesOnDeath: false,
+                                                     showIndividualVotes: true,
+                                                     roleReadingSeconds: 0))
+        let game = ClassicGame(name: "Humano", seed: 9,
+                               advanced: .init(revealRolesOnDeath: true,
+                                               showIndividualVotes: false,
+                                               roleReadingSeconds: 7))
+        #expect(game.advanced == .init(revealRolesOnDeath: true,
+                                       showIndividualVotes: false,
+                                       roleReadingSeconds: 10))
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).advanced == game.advanced)
+
+        var oldEnvelope = try #require(JSONSerialization.jsonObject(with: ClassicSave.encode(game)) as? [String: Any])
+        var oldGame = try #require(oldEnvelope["game"] as? [String: Any])
+        oldGame.removeValue(forKey: "advancedConfig")
+        oldEnvelope["game"] = oldGame
+        let oldData = try JSONSerialization.data(withJSONObject: oldEnvelope)
+        #expect(try ClassicSave.decode(oldData).advanced == .standard)
+    }
+
     // Android GameEngine.resolveDawn: protection cancels death, all night actors act before dawn.
     @Test func protectionAndDawnWinner() {
         var protected = fixed(.dawn)

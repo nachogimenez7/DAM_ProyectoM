@@ -17,9 +17,10 @@ final class LocalGameStore {
     }
 
     func start(name: String, difficulty: BotDifficulty, botNames: [String],
-               timing: GameTimingConfig, trainingRole: RoleKey? = nil) {
+               timing: GameTimingConfig, advanced: AdvancedGameConfig,
+               trainingRole: RoleKey? = nil) {
         game = ClassicGame(name: name, trainingRole: trainingRole, difficulty: difficulty,
-                           timing: timing, botNames: botNames)
+                           timing: timing, advanced: advanced, botNames: botNames)
         save()
     }
 
