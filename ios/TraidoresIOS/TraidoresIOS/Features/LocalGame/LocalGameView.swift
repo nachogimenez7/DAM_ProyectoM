@@ -398,8 +398,16 @@ struct LocalLobbyView: View {
     }
 
     private func start() {
+        let arguments = ProcessInfo.processInfo.arguments
+        let trainingRole: RoleKey? = if arguments.contains("-ui-testing-medic") {
+            .medic
+        } else if arguments.contains("-ui-testing-detective") {
+            .detective
+        } else {
+            nil
+        }
         store.start(name: "Vos", difficulty: difficulty, botNames: botNames,
-                    timing: timing, advanced: advanced)
+                    timing: timing, advanced: advanced, trainingRole: trainingRole)
         playing = store.game != nil
     }
 
@@ -807,6 +815,11 @@ private struct LocalRoleAssignmentView: View {
 
 private enum AssignmentStage { case dealing, role }
 
+private struct PrivateActionFeedback: Equatable {
+    let title: String
+    let message: String
+}
+
 private struct LocalTableView: View {
     @Bindable var store: LocalGameStore
     let dismissMatch: () -> Void
@@ -815,26 +828,35 @@ private struct LocalTableView: View {
     @State private var selected: Int?
     @State private var showingRole = false
     @State private var leaving = false
+    @State private var privateFeedback: PrivateActionFeedback?
 
     var body: some View {
         if let game = store.game {
             ZStack {
                 tableBackground(game)
-                VStack(spacing: 12) {
-                    tableHeader(game)
-                    ScrollView {
-                        VStack(spacing: 14) {
-                            playerGrid(game)
-                            phasePanel(game)
-                            if game.phase == .discussion { debatePanel(game) }
-                            if game.phase == .voteCount { votePanel(game) }
-                            if let winner = game.winner { resultPanel(game, winner: winner) }
-                        }
-                        .padding(.horizontal, 14).padding(.bottom, 10)
+                HStack(alignment: .top, spacing: 4) {
+                    playerColumn(sidePlayers(game).left, game: game)
+                    VStack(spacing: 4) {
+                        tableHeader(game)
+                        tableCenter(game)
+                        if game.winner == nil { humanPanel(game) }
                     }
-                    if game.winner == nil { actionDock(game) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    playerColumn(sidePlayers(game).right, game: game)
                 }
-                .padding(.top, 8)
+                .padding(.horizontal, 4).padding(.vertical, 8)
+
+                if showingRole {
+                    roleOverlay(game.human.role)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        .zIndex(2)
+                }
+
+                if let privateFeedback {
+                    privateFeedbackOverlay(privateFeedback)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        .zIndex(3)
+                }
 
                 if scenePhase != .active {
                     TraidoresTheme.ink.ignoresSafeArea()
@@ -847,7 +869,7 @@ private struct LocalTableView: View {
                                 isPresented: $leaving, titleVisibility: .visible) {
                 Button("Volver al menú") { dismissMatch() }
             }
-            .sheet(isPresented: $showingRole) { roleSheet(game.human.role) }
+            .animation(.easeInOut(duration: 0.18), value: showingRole)
         }
     }
 
@@ -862,56 +884,249 @@ private struct LocalTableView: View {
     }
 
     private func tableHeader(_ game: ClassicGame) -> some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
             Button { leaving = true } label: {
-                Image(systemName: "chevron.left").frame(width: 42, height: 42)
-                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                    Image(systemName: "chevron.left").font(.caption.bold()).frame(width: 30, height: 30)
+                        .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(game.phase.classicTitle.uppercased())
-                    .font(TraidoresTheme.title(20)).foregroundStyle(TraidoresTheme.gold)
+                        .font(TraidoresTheme.title(16)).foregroundStyle(TraidoresTheme.gold)
+                        .lineLimit(1).minimumScaleFactor(0.7)
                     .accessibilityIdentifier("table.phaseTitle")
-                Text("Ronda \(game.round) · Pampa").font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                    Text("Ronda \(game.round) · Pampa").font(.caption2).foregroundStyle(TraidoresTheme.secondary)
             }
             Spacer()
             Button { showingRole = true } label: {
-                Image(systemName: "person.text.rectangle").frame(width: 42, height: 42)
-                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                    Image(systemName: "person.text.rectangle").font(.caption).frame(width: 30, height: 30)
+                        .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
             }
             .accessibilityLabel("Ver mi rol")
+            }
+            .frame(height: 42).padding(.horizontal, 6)
+            Divider().overlay(TraidoresTheme.border)
+            Text(instructions(game))
+                .font(.caption2.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, minHeight: 35, alignment: .leading)
+                .padding(.horizontal, 7)
         }
-        .padding(.horizontal, 14)
+        .frame(height: 80)
+        .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
     }
 
-    private func playerGrid(_ game: ClassicGame) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
-            ForEach(game.players) { player in
+    private func sidePlayers(_ game: ClassicGame) -> (left: [ClassicPlayer], right: [ClassicPlayer]) {
+        let companions = game.players.filter { $0.id != 0 }
+        return (
+            companions.enumerated().compactMap { $0.offset.isMultiple(of: 2) ? $0.element : nil },
+            companions.enumerated().compactMap { !$0.offset.isMultiple(of: 2) ? $0.element : nil }
+        )
+    }
+
+    private func playerColumn(_ players: [ClassicPlayer], game: ClassicGame) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 5) {
+                ForEach(players) { player in
+                    sidePlayerCard(player, game: game)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(width: 60)
+    }
+
+    private func sidePlayerCard(_ player: ClassicPlayer, game: ClassicGame) -> some View {
                 let actionable = game.legalTargets(for: 0).contains(player.id)
-                Button {
+        return Button {
                     if actionable { selected = player.id }
                 } label: {
-                    VStack(spacing: 6) {
+            VStack(spacing: 2) {
+                ZStack {
+                    Image(publicCardImage(player, game: game)).resizable().scaledToFill()
+                        .frame(width: 43, height: 64).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
                         ZStack {
-                            Circle().fill(player.alive ? TraidoresTheme.border : Color.black.opacity(0.7))
-                                .frame(width: 48, height: 48)
-                            Text(String(player.name.prefix(1)).uppercased()).font(TraidoresTheme.title(22))
+                        Circle().fill(TraidoresTheme.ink.opacity(0.88)).frame(width: 24, height: 24)
+                        Text(String(player.name.prefix(1)).uppercased()).font(TraidoresTheme.title(12))
                                 .foregroundStyle(player.alive ? TraidoresTheme.gold : TraidoresTheme.secondary)
-                            if !player.alive { Image(systemName: "xmark").font(.title2.bold()) }
-                        }
-                        Text(player.name + (player.id == 0 ? " · VOS" : ""))
-                            .font(.caption.weight(.bold)).lineLimit(1)
-                        Text(playerStatus(player, game: game)).font(.caption2)
-                            .foregroundStyle(TraidoresTheme.secondary)
+                        if !player.alive { Image(systemName: "xmark").font(.caption.bold()) }
                     }
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(selected == player.id ? TraidoresTheme.border.opacity(0.95)
-                                : TraidoresTheme.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12)
-                        .stroke(actionable ? TraidoresTheme.gold.opacity(0.8) : TraidoresTheme.border.opacity(0.6)))
                 }
-                .buttonStyle(.plain).disabled(!actionable)
+                Text(player.name).font(.system(size: 9, weight: .bold)).lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Text(player.alive ? "EN JUEGO" : "FUERA")
+                    .font(.system(size: 6.5, weight: .bold)).foregroundStyle(TraidoresTheme.secondary)
+            }
+            .frame(width: 58).padding(.vertical, 4)
+            .background(TraidoresTheme.panel.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(
+                selected == player.id ? TraidoresTheme.gold : TraidoresTheme.border.opacity(actionable ? 1 : 0.55),
+                lineWidth: selected == player.id ? 2 : 1
+            ))
+        }
+        .buttonStyle(.plain).disabled(!actionable)
+        .opacity(player.alive ? 1 : 0.62)
+        .accessibilityIdentifier("table.player.\(player.id)")
+    }
+
+    private func publicCardImage(_ player: ClassicPlayer, game: ClassicGame) -> String {
+        !player.alive && game.advanced.revealRolesOnDeath ? player.role.classicImage : "card_back_traidores"
+    }
+
+    @ViewBuilder
+    private func tableCenter(_ game: ClassicGame) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 8) {
+                if let winner = game.winner {
+                    resultPanel(game, winner: winner)
+                } else if game.phase == .discussion {
+                    debatePanel(game)
+                } else if game.phase == .voteCount {
+                    votePanel(game)
+                } else if game.phase == .result {
+                    publicResultPanel(game)
+                } else if !game.legalTargets(for: 0).isEmpty {
+                    targetPrompt(game)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func targetPrompt(_ game: ClassicGame) -> some View {
+        VStack(spacing: 7) {
+            Image(systemName: selected == nil ? "hand.tap" : "checkmark.circle.fill")
+                .font(.title2).foregroundStyle(TraidoresTheme.gold)
+            Text(selected.map { game.name($0).uppercased() } ?? "ELEGÍ UN OBJETIVO")
+                .font(.caption.bold()).tracking(0.8).multilineTextAlignment(.center)
+            Text(selected == nil ? "Tocá una carta de la mesa." : "Objetivo preparado. Confirmá abajo.")
+                .font(.caption2).foregroundStyle(TraidoresTheme.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(12)
+        .background(TraidoresTheme.panel.opacity(0.93), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+    }
+
+    private func publicResultPanel(_ game: ClassicGame) -> some View {
+        VStack(spacing: 8) {
+            Text("DECISIÓN DE LA MESA")
+                .font(.caption2.bold()).tracking(1).foregroundStyle(TraidoresTheme.ink)
+                .padding(.horizontal, 11).padding(.vertical, 5)
+                .background(TraidoresTheme.gold, in: Capsule())
+            Text(game.eliminationTarget == nil ? "SIN EXPULSIÓN" : "EL PUEBLO DECIDIÓ")
+                .font(TraidoresTheme.title(20)).foregroundStyle(TraidoresTheme.gold)
+                .multilineTextAlignment(.center)
+            Divider().overlay(TraidoresTheme.border)
+            Text(game.messages.last?.text ?? "La mesa tomó una decisión.")
+                .font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity).padding(14)
+        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(TraidoresTheme.gold, lineWidth: 1.2))
+    }
+
+    private func humanPanel(_ game: ClassicGame) -> some View {
+        let targets = game.legalTargets(for: 0)
+        let canChooseSelf = targets.contains(0)
+        let canAdvance = targets.isEmpty || targets.contains(selected ?? -1)
+        return VStack(spacing: 5) {
+            Button {
+                if canChooseSelf { selected = 0 }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(game.human.role.classicImage).resizable().scaledToFill()
+                        .frame(width: 48, height: 76).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(
+                            selected == 0 ? TraidoresTheme.gold : TraidoresTheme.border,
+                            lineWidth: selected == 0 ? 2 : 1
+                        ))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
+                            .lineLimit(1)
+                        Text(game.human.role.classicTitle.uppercased())
+                            .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
+                        Text(humanHint(game, canChooseSelf: canChooseSelf))
+                            .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                            .lineLimit(2).minimumScaleFactor(0.82)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .buttonStyle(.plain).disabled(!canChooseSelf)
+
+            HStack(spacing: 5) {
+                Button("VER CARTA") { showingRole = true }
+                    .font(.system(size: 10, weight: .bold)).tracking(0.5)
+                    .foregroundStyle(TraidoresTheme.text)
+                    .frame(maxWidth: .infinity, minHeight: 32)
+                    .background(TraidoresTheme.ink.opacity(0.88), in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
+                Button(actionTitle(game)) {
+                    performPrimaryAction(game)
+                }
+                .font(.system(size: 10, weight: .heavy)).tracking(0.45)
+                .foregroundStyle(TraidoresTheme.ink)
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .background(TraidoresTheme.gold, in: RoundedRectangle(cornerRadius: 7))
+                .disabled(!canAdvance).opacity(canAdvance ? 1 : 0.52)
+                .accessibilityIdentifier("table.primaryAction")
             }
         }
+        .padding(7).frame(height: 142)
+        .background(TraidoresTheme.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+    }
+
+    private func performPrimaryAction(_ game: ClassicGame) {
+        let target = selected
+        let feedback: PrivateActionFeedback? = if game.phase == .detectiveNight,
+                                                  let target,
+                                                  let player = game.players.first(where: { $0.id == target }) {
+            .init(
+                title: "RESPUESTA PRIVADA",
+                message: "\(player.name) parece \(player.role == .assassin ? "SOSPECHOSO" : "INOCENTE")."
+            )
+        } else {
+            nil
+        }
+        store.advance(target: target, revision: game.phaseIndex)
+        privateFeedback = feedback
+    }
+
+    private func privateFeedbackOverlay(_ feedback: PrivateActionFeedback) -> some View {
+        ZStack {
+            Color.black.opacity(0.82).ignoresSafeArea()
+            VStack(spacing: 13) {
+                Image(systemName: "eye.fill")
+                    .font(.title2).foregroundStyle(TraidoresTheme.gold)
+                Text(feedback.title)
+                    .font(TraidoresTheme.title(21)).foregroundStyle(TraidoresTheme.gold)
+                Text(feedback.message)
+                    .font(.headline).multilineTextAlignment(.center)
+                Text("Solo vos recibís esta información.")
+                    .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                Button("CONTINUAR") { privateFeedback = nil }
+                    .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 210)
+                    .accessibilityIdentifier("table.dismissPrivateFeedback")
+            }
+            .padding(20).frame(maxWidth: 350)
+            .background(TraidoresTheme.panel.opacity(0.98), in: RoundedRectangle(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).stroke(TraidoresTheme.gold, lineWidth: 1.5))
+            .padding(18)
+        }
+    }
+
+    private func humanHint(_ game: ClassicGame, canChooseSelf: Bool) -> String {
+        if !game.human.alive { return "Estás eliminado. Podés observar la mesa." }
+        if selected == 0 { return "Te elegiste como objetivo." }
+        if canChooseSelf { return "Tocá tu carta para elegirte." }
+        if let selected { return "Objetivo: \(game.name(selected))" }
+        return instructions(game)
     }
 
     private func phasePanel(_ game: ClassicGame) -> some View {
@@ -997,27 +1212,41 @@ private struct LocalTableView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.gold))
     }
 
-    private func actionDock(_ game: ClassicGame) -> some View {
-        let targets = game.legalTargets(for: 0)
-        return Button(actionTitle(game)) { store.advance(target: selected, revision: game.phaseIndex) }
-            .buttonStyle(TraidoresButtonStyle(prominent: true))
-            .disabled(!targets.isEmpty && !targets.contains(selected ?? -1))
-            .opacity(!targets.isEmpty && selected == nil ? 0.58 : 1)
-            .padding(.horizontal, 14).padding(.bottom, 8)
-            .background(TraidoresTheme.ink.opacity(0.94))
-    }
-
-    private func roleSheet(_ role: RoleKey) -> some View {
-        ScrollView {
-            VStack(spacing: 15) {
-                Image(role.classicImage).resizable().scaledToFit().frame(maxHeight: 300)
-                Text(role.classicTitle).font(TraidoresTheme.title(32)).foregroundStyle(TraidoresTheme.gold)
-                Text(RoleCatalog.all.first { $0.id == role }?.instructions ?? "").multilineTextAlignment(.center)
-                Button("CERRAR") { showingRole = false }.buttonStyle(TraidoresButtonStyle(prominent: true))
+    private func roleOverlay(_ role: RoleKey) -> some View {
+        ZStack {
+            Color.black.opacity(0.82).ignoresSafeArea()
+            VStack(spacing: 7) {
+                Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
+                Text(role.classicTitle.uppercased())
+                    .font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
+                Text(role == .assassin ? "TRAIDORES" : "PUEBLO")
+                    .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
+                Divider().overlay(TraidoresTheme.border)
+                HStack(alignment: .top, spacing: 11) {
+                    Image(role.classicImage).resizable().scaledToFill()
+                        .frame(width: 92, height: 138).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.gold))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("QUÉ HACE").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                        Text(RoleCatalog.all.first { $0.id == role }?.instructions ?? "")
+                            .font(.caption).fixedSize(horizontal: false, vertical: true)
+                        Text("CONSEJO").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                            .padding(.top, 3)
+                        Text(role.classicAdvice).font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+                }
+                Button("CERRAR") { showingRole = false }
+                    .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 190)
             }
-            .padding(24)
+            .padding(14).frame(maxWidth: 370)
+            .foregroundStyle(TraidoresTheme.text)
+            .background(TraidoresTheme.panel.opacity(0.98), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(TraidoresTheme.gold, lineWidth: 1.5))
+            .padding(14)
         }
-        .foregroundStyle(TraidoresTheme.text).background(TraidoresTheme.ink)
     }
 
     private func instructions(_ game: ClassicGame) -> String {

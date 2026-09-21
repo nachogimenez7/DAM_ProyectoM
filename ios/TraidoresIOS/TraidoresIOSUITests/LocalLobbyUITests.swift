@@ -98,9 +98,58 @@ final class LocalLobbyUITests: XCTestCase {
             .firstMatch.exists)
     }
 
-    private func launchLobby() -> XCUIApplication {
+    func testMedicCanChooseTargetAndAdvanceTheNight() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-medic"])
+        app.buttons["local.startGame"].tap()
+
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        let target = app.buttons["table.player.1"]
+        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        XCTAssertTrue(target.isHittable)
+        target.tap()
+
+        let primaryAction = app.buttons["table.primaryAction"]
+        XCTAssertTrue(primaryAction.isEnabled)
+        primaryAction.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
+
+        primaryAction.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+
+        primaryAction.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
+        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        target.tap()
+        primaryAction.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
+    }
+
+    func testDetectiveReceivesPrivateInvestigationResult() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-detective"])
+        app.buttons["local.startGame"].tap()
+
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        let target = app.buttons["table.player.1"]
+        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        target.tap()
+        app.buttons["table.primaryAction"].tap()
+
+        XCTAssertTrue(app.staticTexts["RESPUESTA PRIVADA"].waitForExistence(timeout: 3))
+        let dismiss = app.buttons["table.dismissPrivateFeedback"]
+        XCTAssertTrue(dismiss.isHittable)
+        dismiss.tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
+    }
+
+    private func launchLobby(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-ui-testing"]
+        app.launchArguments = ["-ui-testing"] + extraArguments
         app.launch()
 
         let playButton = app.buttons["menu.play"]
@@ -116,4 +165,5 @@ final class LocalLobbyUITests: XCTestCase {
         normalDifficulty.tap()
         return app
     }
+
 }
