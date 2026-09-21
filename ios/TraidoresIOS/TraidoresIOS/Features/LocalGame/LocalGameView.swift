@@ -116,7 +116,10 @@ struct LocalLobbyView: View {
         .sheet(isPresented: $showingAdvanced) {
             AdvancedOptionsView(config: $advanced)
         }
-        .fullScreenCover(isPresented: $playing) { LocalMatchFlow(store: store) }
+        .navigationDestination(isPresented: $playing) {
+            LocalMatchFlow(store: store)
+                .toolbar(.hidden, for: .navigationBar)
+        }
     }
 
     private var editAlertBinding: Binding<Bool> {
@@ -146,6 +149,7 @@ struct LocalLobbyView: View {
                 if let game = store.game, game.winner == nil { replaceGame = true } else { start() }
             }
             .buttonStyle(TraidoresButtonStyle(prominent: true))
+            .accessibilityIdentifier("local.startGame")
 
             Text(difficulty == .hard
                  ? "Modo difícil: la IA traidora coordina mejor sus votos."
@@ -291,7 +295,11 @@ struct LocalLobbyView: View {
     private func start() {
         store.start(name: name, difficulty: difficulty, botNames: botNames,
                     timing: timing, advanced: advanced)
-        playing = true
+        // Let Observation publish the new game before NavigationStack evaluates its destination.
+        Task { @MainActor in
+            await Task.yield()
+            playing = store.game != nil
+        }
     }
 
     private func saveBotName() {
