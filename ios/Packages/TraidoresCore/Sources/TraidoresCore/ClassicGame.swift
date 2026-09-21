@@ -24,6 +24,12 @@ public struct TableMessage: Codable, Equatable, Identifiable, Sendable {
 
 public struct ClassicGame: Codable, Equatable, Sendable {
     public static let roles: [RoleKey] = [.assassin, .detective, .medic, .villager, .villager]
+    public static let minimumPlayers = 5
+    public static let maximumPlayers = 15
+    public static let defaultBotNames = [
+        "Thiago", "Mora", "Lautaro", "Valen", "Rami", "Juli", "Santi",
+        "Mili", "Toto", "Agus", "Bruno", "Lola", "Fede", "Cata"
+    ]
     public internal(set) var players: [ClassicPlayer]
     public internal(set) var phase: GamePhase = .assignment
     public internal(set) var phaseIndex = 0
@@ -55,17 +61,30 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         name: String,
         seed: UInt64 = .random(in: .min ... .max),
         trainingRole: RoleKey? = nil,
-        difficulty: BotDifficulty = .normal
+        difficulty: BotDifficulty = .normal,
+        botNames: [String] = Array(Self.defaultBotNames.prefix(4))
     ) {
         var random = ClassicRandom(state: seed)
-        var roles = Self.roles.shuffled(using: &random)
+        let cleanBots = botNames.prefix(Self.maximumPlayers - 1).enumerated().map { index, value in
+            let clean = String(value.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
+            return clean.isEmpty ? Self.defaultBotNames[index] : clean
+        }
+        let filledBots = cleanBots + Self.defaultBotNames.dropFirst(cleanBots.count)
+            .prefix(max(0, Self.minimumPlayers - 1 - cleanBots.count))
+        var roles = Self.roles(for: filledBots.count + 1).shuffled(using: &random)
         if let trainingRole, let index = roles.firstIndex(of: trainingRole) { roles.swapAt(0, index) }
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
-        let names = [cleanName.isEmpty ? "Vos" : cleanName, "Thiago", "Mora", "Lautaro", "Valen"]
+        let names = [cleanName.isEmpty ? "Vos" : cleanName] + filledBots
         players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
         self.difficulty = difficulty
         self.random = random
-        append("Pampa clásica: 1 Asesino, 1 Comisario, 1 Médico y 2 Aldeanos.")
+        let villagers = players.count - 3
+        append("Pampa clásica: 1 Asesino, 1 Comisario, 1 Médico y \(villagers) Aldeanos.")
+    }
+
+    public static func roles(for playerCount: Int) -> [RoleKey] {
+        let count = min(max(playerCount, minimumPlayers), maximumPlayers)
+        return [.assassin, .detective, .medic] + Array(repeating: .villager, count: count - 3)
     }
 
     /// Android GameRules.winnerFor, restricted to the four classic roles.

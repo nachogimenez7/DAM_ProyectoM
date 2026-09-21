@@ -32,6 +32,25 @@ struct ClassicGameTests {
         #expect(try ClassicSave.decode(ClassicSave.encode(game)).difficulty == .hard)
     }
 
+    @Test func classicLobbySupportsFiveThroughFifteenPlayers() throws {
+        for count in ClassicGame.minimumPlayers...ClassicGame.maximumPlayers {
+            let bots = Array(ClassicGame.defaultBotNames.prefix(count - 1))
+            let game = ClassicGame(name: "Humano", seed: UInt64(count), botNames: bots)
+            #expect(game.players.count == count)
+            #expect(game.players.filter { $0.role == .assassin }.count == 1)
+            #expect(game.players.filter { $0.role == .detective }.count == 1)
+            #expect(game.players.filter { $0.role == .medic }.count == 1)
+            #expect(game.players.filter { $0.role == .villager }.count == count - 3)
+            #expect(try ClassicSave.decode(ClassicSave.encode(game)) == game)
+        }
+    }
+
+    @Test func lobbyNamesAreCleanedAndMissingPlayersAreFilled() {
+        let game = ClassicGame(name: "  Nacho  ", seed: 3, botNames: ["  Bot Uno  ", ""])
+        #expect(game.players.count == ClassicGame.minimumPlayers)
+        #expect(game.players.map(\.name) == ["Nacho", "Bot Uno", "Mora", "Lautaro", "Valen"])
+    }
+
     // Android GameEngine.resolveDawn: protection cancels death, all night actors act before dawn.
     @Test func protectionAndDawnWinner() {
         var protected = fixed(.dawn)

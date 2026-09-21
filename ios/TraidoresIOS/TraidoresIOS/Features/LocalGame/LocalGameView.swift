@@ -1,47 +1,61 @@
+import Foundation
 import SwiftUI
 import TraidoresCore
 
 struct LocalModeView: View {
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        MenuPage(title: "Jugar vs IA") {
-            Text("ELEGÍ UNA DIFICULTAD")
-                .font(TraidoresTheme.title(26))
-                .foregroundStyle(TraidoresTheme.gold)
-            Text("Después irás al lobby para revisar el mapa y los participantes.")
-                .foregroundStyle(TraidoresTheme.secondary)
-            difficultyLink(.normal, title: "NORMAL",
-                           detail: "Una mesa equilibrada para aprender el ritmo de la partida.")
-            difficultyLink(.hard, title: "DIFÍCIL",
-                           detail: "Los Traidores coordinan mejor sus decisiones y sus votos.")
+        ZStack {
+            MenuBackground()
+            VStack(spacing: 0) {
+                localHeader(title: "JUGAR vs IA", back: dismiss.callAsFunction)
+                Spacer()
+                VStack(spacing: 16) {
+                    Text("ELEGÍ UNA DIFICULTAD")
+                        .font(TraidoresTheme.title(25))
+                        .foregroundStyle(TraidoresTheme.gold)
+                    Text("Elige una dificultad. Después irás al lobby para ajustar mapa, tiempos y cantidad de jugadores.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(TraidoresTheme.secondary)
+                        .padding(16)
+                        .frame(maxWidth: .infinity)
+                        .background(TraidoresTheme.panel.opacity(0.94), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+                    difficultyLink(.normal, title: "NORMAL", prominent: true)
+                    difficultyLink(.hard, title: "DIFÍCIL", prominent: false)
+                }
+                .padding(.horizontal, 32)
+                .frame(maxWidth: 560)
+                Spacer()
+            }
         }
+        .foregroundStyle(TraidoresTheme.text)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
-    private func difficultyLink(_ difficulty: BotDifficulty, title: String, detail: String) -> some View {
+    private func difficultyLink(_ difficulty: BotDifficulty, title: String, prominent: Bool) -> some View {
         NavigationLink {
             LocalLobbyView(difficulty: difficulty)
         } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(title).font(TraidoresTheme.title(23)).foregroundStyle(TraidoresTheme.gold)
-                Text(detail).font(.subheadline).foregroundStyle(TraidoresTheme.text)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
+            Text(title)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TraidoresButtonStyle(prominent: prominent))
     }
 }
 
 struct LocalLobbyView: View {
     let difficulty: BotDifficulty
 
+    @Environment(\.dismiss) private var dismiss
     @State private var store = LocalGameStore()
     @AppStorage("local.playerName") private var name = ""
+    @AppStorage("local.botNames") private var savedBotNames = ""
     @State private var playing = false
     @State private var replaceGame = false
-
-    private let botNames = ["Thiago", "Mora", "Lautaro", "Valen"]
+    @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
+    @State private var editingBot: Int?
+    @State private var editedName = ""
 
     var body: some View {
         ZStack {
@@ -55,9 +69,11 @@ struct LocalLobbyView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    localHeader(title: "LOBBY LOCAL", back: dismiss.callAsFunction)
                     lobbyHeader
                     startPanel
                     mapCard
+                    playerControls
                     playersPanel
                 }
                 .padding(16)
@@ -66,30 +82,41 @@ struct LocalLobbyView: View {
             }
         }
         .foregroundStyle(TraidoresTheme.text)
-        .navigationTitle("Lobby local")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TraidoresTheme.ink, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
         .confirmationDialog("¿Reemplazar la partida guardada?", isPresented: $replaceGame,
                             titleVisibility: .visible) {
             Button("Comenzar otra partida", role: .destructive) { start() }
         }
+        .alert("Editar nombre", isPresented: editAlertBinding) {
+            TextField("Nombre del bot", text: $editedName)
+            Button("Cancelar", role: .cancel) { editingBot = nil }
+            Button("Guardar") { saveBotName() }
+        } message: {
+            Text("Usá hasta 18 caracteres.")
+        }
+        .onAppear(perform: restoreBotNames)
+        .onChange(of: botNames) { _, names in
+            guard let data = try? JSONEncoder().encode(names) else { return }
+            savedBotNames = String(decoding: data, as: UTF8.self)
+        }
         .fullScreenCover(isPresented: $playing) { LocalMatchFlow(store: store) }
+    }
+
+    private var editAlertBinding: Binding<Bool> {
+        Binding(get: { editingBot != nil }, set: { if !$0 { editingBot = nil } })
     }
 
     private var lobbyHeader: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("MODO LOCAL").font(TraidoresTheme.title(24)).foregroundStyle(TraidoresTheme.gold)
-                Text("5/5 jugadores · IA \(difficulty.rawValue.lowercased())")
+                Text("\(botNames.count + 1)/\(ClassicGame.maximumPlayers) jugadores · IA \(difficulty.rawValue.lowercased())")
                     .font(.subheadline).foregroundStyle(TraidoresTheme.secondary)
             }
             Spacer()
-            Image(systemName: "gearshape.fill")
-                .foregroundStyle(TraidoresTheme.gold)
-                .frame(width: 44, height: 44)
-                .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
-                .accessibilityHidden(true)
+            Text("PAMPA").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                .padding(.horizontal, 11).padding(.vertical, 8)
+                .background(TraidoresTheme.ink, in: RoundedRectangle(cornerRadius: 8))
         }
         .padding(14)
         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
@@ -130,7 +157,7 @@ struct LocalLobbyView: View {
                 .resizable().scaledToFill().frame(height: 138).clipped().overlay(.black.opacity(0.42))
             VStack(alignment: .leading, spacing: 3) {
                 Text("PAMPA").font(TraidoresTheme.title(26)).foregroundStyle(TraidoresTheme.gold)
-                Text("Partida clásica · 1 Asesino, 1 Comisario, 1 Médico y 2 Aldeanos")
+                Text("Partida clásica · 1 Asesino, 1 Comisario, 1 Médico y \(botNames.count - 2) Aldeanos")
                     .font(.caption.weight(.semibold))
             }
             .padding(14)
@@ -139,13 +166,45 @@ struct LocalLobbyView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border))
     }
 
+    private var playerControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                guard botNames.count + 1 < ClassicGame.maximumPlayers else { return }
+                botNames.append(ClassicGame.defaultBotNames[botNames.count])
+            } label: {
+                Label("AGREGAR", systemImage: "person.badge.plus")
+            }
+            .buttonStyle(TraidoresButtonStyle(prominent: true))
+            .disabled(botNames.count + 1 >= ClassicGame.maximumPlayers)
+
+            Button {
+                guard botNames.count + 1 > ClassicGame.minimumPlayers else { return }
+                botNames.removeLast()
+            } label: {
+                Label("QUITAR", systemImage: "person.badge.minus")
+            }
+            .buttonStyle(TraidoresButtonStyle())
+            .disabled(botNames.count + 1 <= ClassicGame.minimumPlayers)
+        }
+    }
+
     private var playersPanel: some View {
         VStack(alignment: .leading, spacing: 9) {
             Text("JUGADORES").font(.caption.weight(.bold)).tracking(1.2)
                 .foregroundStyle(TraidoresTheme.secondary)
             playerRow(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Vos" : name,
                       human: true)
-            ForEach(botNames, id: \.self) { playerRow($0, human: false) }
+            ForEach(Array(botNames.enumerated()), id: \.offset) { index, botName in
+                Button {
+                    editingBot = index
+                    editedName = botName
+                } label: {
+                    playerRow(botName, human: false)
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Tocá un bot para cambiarle el nombre.")
+                .font(.caption).foregroundStyle(TraidoresTheme.secondary)
         }
         .padding(14)
         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
@@ -164,15 +223,48 @@ struct LocalLobbyView: View {
                     .foregroundStyle(TraidoresTheme.secondary)
             }
             Spacer()
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green.opacity(0.8))
+            Image(systemName: human ? "checkmark.circle.fill" : "pencil.circle.fill")
+                .foregroundStyle(human ? .green.opacity(0.8) : TraidoresTheme.gold)
         }
         .padding(.vertical, 4)
     }
 
     private func start() {
-        store.start(name: name, difficulty: difficulty)
+        store.start(name: name, difficulty: difficulty, botNames: botNames)
         playing = true
     }
+
+    private func saveBotName() {
+        guard let editingBot else { return }
+        let clean = String(editedName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
+        if !clean.isEmpty { botNames[editingBot] = clean }
+        self.editingBot = nil
+    }
+
+    private func restoreBotNames() {
+        guard let data = savedBotNames.data(using: .utf8),
+              let names = try? JSONDecoder().decode([String].self, from: data),
+              (ClassicGame.minimumPlayers - 1...ClassicGame.maximumPlayers - 1).contains(names.count)
+        else { return }
+        botNames = names
+    }
+}
+
+private func localHeader(title: String, back: @escaping () -> Void) -> some View {
+    ZStack {
+        Text(title).font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.text)
+        HStack {
+            Button(action: back) {
+                Image(systemName: "chevron.left").font(.headline)
+                    .frame(width: 44, height: 44)
+                    .background(TraidoresTheme.panel.opacity(0.94), in: Circle())
+                    .overlay(Circle().stroke(TraidoresTheme.border))
+            }
+            .foregroundStyle(TraidoresTheme.text)
+            Spacer()
+        }
+    }
+    .frame(maxWidth: .infinity)
 }
 
 private struct LocalMatchFlow: View {

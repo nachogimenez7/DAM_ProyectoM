@@ -14,9 +14,12 @@ public enum ClassicSave {
         let game = envelope.game
         let phases: [GamePhase] = [.assignment, .assassinNight, .detectiveNight, .medicNight,
                                    .dawn, .discussion, .voting, .voteCount, .tieVote, .result]
-        func valid(_ id: Int) -> Bool { (0..<5).contains(id) }
-        guard envelope.version == 1, game.players.map(\.id) == Array(0..<5),
-              game.players.map({ $0.role.rawValue }).sorted() == ClassicGame.roles.map(\.rawValue).sorted(),
+        let playerCount = game.players.count
+        func valid(_ id: Int) -> Bool { (0..<playerCount).contains(id) }
+        guard envelope.version == 1,
+              (ClassicGame.minimumPlayers...ClassicGame.maximumPlayers).contains(playerCount),
+              game.players.map(\.id) == Array(0..<playerCount),
+              game.players.map({ $0.role.rawValue }).sorted() == ClassicGame.roles(for: playerCount).map(\.rawValue).sorted(),
               game.players.allSatisfy({ !$0.name.isEmpty && $0.name.count <= 18 }),
               phases.contains(game.phase), game.round > 0, game.phaseIndex >= 0,
               game.winner == ClassicGame.winner(for: game.players),
