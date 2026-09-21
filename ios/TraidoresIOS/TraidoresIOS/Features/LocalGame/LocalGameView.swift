@@ -581,41 +581,22 @@ private struct LocalRoleAssignmentView: View {
     let onStart: () -> Void
     let onExit: () -> Void
 
-    @State private var showingRole = false
-    @State private var canStart = false
-    @State private var cardScale = 0.78
-    @State private var cardRotation = -7.0
+    @State private var stage = AssignmentStage.dealing
+    @State private var tableOpacity = 0.0
+    @State private var handsOpacity = 0.0
+    @State private var handsOffset = 70.0
+    @State private var cardOpacity = 0.0
+    @State private var cardOffset = -120.0
+    @State private var statusOpacity = 0.0
+    @State private var remainingReading = 0
 
     var body: some View {
         ZStack {
-            Image("mapa_pampa_vertical_noche").resizable().scaledToFill().ignoresSafeArea()
-                .overlay(.black.opacity(0.56))
+            Image("assigning_vertical_table").resizable().scaledToFill().ignoresSafeArea()
+                .opacity(tableOpacity)
+            Color.black.opacity(stage == .dealing ? 0.08 : 0.58).ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Spacer()
-                Text(showingRole ? "TU ROL SECRETO" : "REPARTIENDO ROLES")
-                    .font(.caption.weight(.bold)).tracking(2)
-                    .foregroundStyle(TraidoresTheme.secondary)
-                if let game = store.game, showingRole {
-                    roleCard(game.human.role)
-                        .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .opacity))
-                } else {
-                    cardBack.scaleEffect(cardScale).rotationEffect(.degrees(cardRotation))
-                }
-                Spacer()
-                if showingRole {
-                    if canStart {
-                        Button("EMPEZAR") { onStart() }
-                            .buttonStyle(TraidoresButtonStyle(prominent: true))
-                    } else {
-                        Text("Leé tu carta antes de continuar...")
-                            .foregroundStyle(TraidoresTheme.secondary)
-                    }
-                } else {
-                    Text("Preparando tu carta...").foregroundStyle(TraidoresTheme.secondary)
-                }
-            }
-            .padding(24).frame(maxWidth: 520)
+            if stage == .dealing { dealingStage } else if let game = store.game { rolePreview(game.human.role) }
 
             Button(action: onExit) {
                 Image(systemName: "chevron.left").font(.headline).frame(width: 46, height: 46)
@@ -625,44 +606,82 @@ private struct LocalRoleAssignmentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .task {
-            withAnimation(.easeInOut(duration: 0.55).repeatCount(2, autoreverses: true)) {
-                cardScale = 0.93
-                cardRotation = 7
+            withAnimation(.easeOut(duration: 0.42)) { tableOpacity = 1 }
+            try? await Task.sleep(for: .seconds(0.42))
+            withAnimation(.easeOut(duration: 0.48)) { handsOpacity = 1; handsOffset = 0 }
+            try? await Task.sleep(for: .seconds(0.56))
+            withAnimation(.spring(response: 0.62, dampingFraction: 0.72)) {
+                cardOpacity = 1; cardOffset = 0
             }
+            try? await Task.sleep(for: .seconds(0.9))
+            withAnimation(.easeIn(duration: 0.35)) { statusOpacity = 1 }
             try? await Task.sleep(for: .seconds(1.35))
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { showingRole = true }
-            if let seconds = store.game?.advanced.roleReadingSeconds, seconds > 0 {
-                try? await Task.sleep(for: .seconds(seconds))
+            withAnimation(.easeInOut(duration: 0.42)) { handsOpacity = 0; stage = .role }
+            remainingReading = store.game?.advanced.roleReadingSeconds ?? 0
+            while remainingReading > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                remainingReading -= 1
             }
-            canStart = true
         }
     }
 
-    private var cardBack: some View {
-        RoundedRectangle(cornerRadius: 18)
-            .fill(LinearGradient(colors: [.black, TraidoresTheme.panel, .black],
-                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-            .frame(width: 190, height: 300)
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(TraidoresTheme.gold, lineWidth: 3))
-            .overlay { Image("logo_traidores_clean").resizable().scaledToFit().frame(width: 92, height: 120) }
-            .shadow(color: .black.opacity(0.8), radius: 18, y: 12)
+    private var dealingStage: some View {
+        ZStack {
+            Ellipse().fill(TraidoresTheme.gold.opacity(0.18)).blur(radius: 28)
+                .frame(width: 230, height: 330).opacity(cardOpacity)
+            Image("card_back_traidores").resizable().scaledToFit()
+                .frame(width: 124, height: 196)
+                .shadow(color: .black.opacity(0.85), radius: 14, y: 12)
+                .offset(y: cardOffset).opacity(cardOpacity)
+            Image("assigning_dealer_hands").resizable().scaledToFill().ignoresSafeArea()
+                .offset(y: handsOffset).opacity(handsOpacity)
+            Text("¡Buena suerte con tu rol!")
+                .font(TraidoresTheme.title(22)).foregroundStyle(TraidoresTheme.gold)
+                .padding(.horizontal, 22).padding(.vertical, 10)
+                .background(TraidoresTheme.ink.opacity(0.9), in: Capsule())
+                .overlay(Capsule().stroke(TraidoresTheme.border))
+                .padding(.bottom, 18).opacity(statusOpacity)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        }
     }
 
-    private func roleCard(_ role: RoleKey) -> some View {
-        VStack(spacing: 13) {
-            Image(role.classicImage).resizable().scaledToFit().frame(maxHeight: 245)
-                .accessibilityHidden(true)
-            Text(role.classicTitle).font(TraidoresTheme.title(32)).foregroundStyle(TraidoresTheme.gold)
-            Text(role == .assassin ? "TRAIDORES" : "PUEBLO").font(.headline)
-                .foregroundStyle(role == .assassin ? Color.red.opacity(0.78) : Color.green.opacity(0.78))
-            Text(RoleCatalog.all.first { $0.id == role }?.instructions ?? "")
-                .font(.subheadline).multilineTextAlignment(.center)
+    private func rolePreview(_ role: RoleKey) -> some View {
+        VStack(spacing: 7) {
+            Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
+            Text(role.classicTitle.uppercased()).font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
+            Text(role == .assassin ? "TRAIDORES" : "PUEBLO")
+                .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
+            Divider().overlay(TraidoresTheme.border)
+            HStack(alignment: .top, spacing: 12) {
+                Image(role.classicImage).resizable().scaledToFill()
+                    .frame(width: 112, height: 168).clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.gold))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("QUÉ HACE").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                    Text(RoleCatalog.all.first { $0.id == role }?.instructions ?? "")
+                        .font(.footnote)
+                    Text("CONSEJO").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                        .padding(.top, 4)
+                    Text(role.classicAdvice).font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                }
+            }
+            if remainingReading == 0 {
+                Button("EMPEZAR") { onStart() }
+                    .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 190)
+            } else {
+                Text("EMPEZAR (\(remainingReading))").font(.caption.bold())
+                    .foregroundStyle(TraidoresTheme.secondary).frame(height: 48)
+            }
         }
-        .padding(20).frame(maxWidth: 360).foregroundStyle(TraidoresTheme.text)
-        .background(TraidoresTheme.panel.opacity(0.98), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(TraidoresTheme.gold, lineWidth: 2))
+        .padding(14).frame(maxWidth: 390).foregroundStyle(TraidoresTheme.text)
+        .background(TraidoresTheme.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(TraidoresTheme.gold, lineWidth: 1.5))
+        .padding(12).transition(.scale.combined(with: .opacity))
     }
 }
+
+private enum AssignmentStage { case dealing, role }
 
 private struct LocalTableView: View {
     @Bindable var store: LocalGameStore
@@ -929,6 +948,15 @@ private extension RoleKey {
         case .assassin: "rol_asesino_gaucho"
         case .medic: "rol_medico_gaucho"
         default: "rol_aldeano_gaucho"
+        }
+    }
+
+    var classicAdvice: String {
+        switch self {
+        case .assassin: "Mezclate con el Pueblo. Acusá con cuidado y evitá que tus votos revelen un patrón."
+        case .detective: "Protegé tus investigaciones. Revelarte demasiado pronto puede convertirte en el próximo objetivo."
+        case .medic: "Buscá a los roles valiosos y variá tus protecciones para que los Traidores no puedan anticiparte."
+        default: "Escuchá las contradicciones y observá los votos. Tu información se construye durante el debate."
         }
     }
 }
