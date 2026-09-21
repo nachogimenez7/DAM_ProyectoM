@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "filename": "modo_jugar_online.png",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

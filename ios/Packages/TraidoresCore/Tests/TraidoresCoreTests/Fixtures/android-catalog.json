@@ -1,0 +1,95 @@
+{
+  "sourceSHA256": {
+    "RoleCatalog.kt": "f75f81ba88e6bbfaaff524b23f56fdec46571d9b958383aa6249b9d7a4565785",
+    "GameModels.kt": "cb052d1167c34cd52bf1bc02b860e4489ee9600a58474c063acd58b579e84fcd"
+  },
+  "maps": [
+    "medieval",
+    "grecia",
+    "pampa"
+  ],
+  "phases": [
+    "REPARTO",
+    "NOCHE_ASESINO",
+    "NOCHE_MERCENARIO",
+    "NOCHE_POLICIA",
+    "NOCHE_MEDICO",
+    "NOCHE_ORACULO",
+    "AMANECER",
+    "DIA_DEBATE",
+    "CONTRAPUNTO",
+    "VOTACION",
+    "RECUENTO_VOTOS",
+    "DESEMPATE_VOTACION",
+    "ALCALDE_DESEMPATE",
+    "RESULTADO"
+  ],
+  "roles": [
+    {
+      "key": "aldeano",
+      "team": "Pueblo",
+      "minimumPlayers": 5,
+      "exclusiveMap": null
+    },
+    {
+      "key": "policia",
+      "team": "Pueblo",
+      "minimumPlayers": 5,
+      "exclusiveMap": null
+    },
+    {
+      "key": "medico",
+      "team": "Pueblo",
+      "minimumPlayers": 5,
+      "exclusiveMap": null
+    },
+    {
+      "key": "alcalde",
+      "team": "Pueblo",
+      "minimumPlayers": 8,
+      "exclusiveMap": null
+    },
+    {
+      "key": "asesino",
+      "team": "Traidores",
+      "minimumPlayers": 5,
+      "exclusiveMap": null
+    },
+    {
+      "key": "espia",
+      "team": "Traidores",
+      "minimumPlayers": 10,
+      "exclusiveMap": null
+    },
+    {
+      "key": "mercenario",
+      "team": "Traidores",
+      "minimumPlayers": 7,
+      "exclusiveMap": null
+    },
+    {
+      "key": "desertor",
+      "team": "Neutral",
+      "minimumPlayers": 14,
+      "exclusiveMap": null
+    },
+    {
+      "key": "payador",
+      "team": "Pueblo",
+      "minimumPlayers": 8,
+      "exclusiveMap": "pampa"
+    },
+    {
+      "key": "bufon",
+      "team": "Neutral",
+      "minimumPlayers": 8,
+      "exclusiveMap": "medieval"
+    },
+    {
+      "key": "oraculo",
+      "team": "Pueblo",
+      "minimumPlayers": 8,
+      "exclusiveMap": "grecia"
+    }
+  ]
+}

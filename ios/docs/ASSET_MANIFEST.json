@@ -1,0 +1,93 @@
+[
+  {
+    "source": "app/src/main/res/drawable/rol_aldeano_gaucho.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_aldeano_gaucho.imageset/rol_aldeano_gaucho.png",
+    "sourceSHA256": "7055b3fc3dd1038a34e59871c535961950d70c9805288103d0b38ba1b10a9015",
+    "destinationSHA256": "c46326496ff994349cdc3ac578d758a155f1e7337f482a77db0e1a5129384f2d",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/rol_asesino_gaucho.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_asesino_gaucho.imageset/rol_asesino_gaucho.png",
+    "sourceSHA256": "f52942001b3814373745c859c26b354d2dccbea9385636c14b2728eb067e9c49",
+    "destinationSHA256": "bb11b694a9b8ad930e12fedb3f2b4503fce4da2c34f4134c85a6dc0eec67640b",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/rol_medico_gaucho.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_medico_gaucho.imageset/rol_medico_gaucho.png",
+    "sourceSHA256": "b90fae4e3eb7bf435d0aa12a37bc8b6d9ad1cce1bd6f741a60103f1838d3ab78",
+    "destinationSHA256": "fa95a7dd04b6a20ab40acf9a344a3de51abcc13bf97d7f8b4764e7c9a2d3cead",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/rol_detective_gaucho.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_detective_gaucho.imageset/rol_detective_gaucho.png",
+    "sourceSHA256": "1cf337cd2abdb3fece12aef3892f684a1c80c20542bb9b7186a2ac959f69aa2a",
+    "destinationSHA256": "2c125102dba32224cc4c2b054ce1679e46b07e33c1e9a9e28414e65eab3f6cdc",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/mapa_pampa_vertical_dia.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/mapa_pampa_vertical_dia.imageset/mapa_pampa_vertical_dia.png",
+    "sourceSHA256": "c7ebe894568c179a8f2a3766e0df736536bdde30a2ffc84d13a33cf5c5e5920f",
+    "destinationSHA256": "fcd0061adb1f58ca8c1fcf5563c7ab5d6d8b628747acc5e7ed87bf6316bf3215",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/mapa_pampa_vertical_noche.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/mapa_pampa_vertical_noche.imageset/mapa_pampa_vertical_noche.png",
+    "sourceSHA256": "126ece87586bfbc369d9b533d55ce212b1330fa36ad41d62877af681a87a8e2b",
+    "destinationSHA256": "b8c98d4f154a3c288a11002cf75b5f9e5ec0b0cea91fc6aef887719dd7e452cc",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/fondo_menu.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/fondo_menu.imageset/fondo_menu.png",
+    "sourceSHA256": "a94a0b6ac62f1f0c373212f0d1238dfba02344dde274b5d1ea8bd57431a5fe39",
+    "destinationSHA256": "dd1b9cc9e555590bc004c01e8180e1b0b892ac514780ca9e1cedbe49d741bd07",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable/logo_traidores_clean.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/logo_traidores_clean.imageset/logo_traidores_clean.png",
+    "sourceSHA256": "900b8d55697f931c2164b121c4452be92e7735dbd8ec0e54edefbc55ad11e9fb",
+    "destinationSHA256": "9178fe9b430bf12bfe420c5b15dd55247815008b8520811994875ef653be2396",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/bandido_menu_medallion.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/bandido_menu_medallion.imageset/bandido_menu_medallion.png",
+    "sourceSHA256": "2b30a0b04e8af9e1ec540d091bb1bc77715ef05dec0696a70844767fddd36fde",
+    "destinationSHA256": "2b30a0b04e8af9e1ec540d091bb1bc77715ef05dec0696a70844767fddd36fde",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/drawable/modo_juego_local_pampa_v3.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/modo_juego_local_pampa_v3.imageset/modo_juego_local_pampa_v3.png",
+    "sourceSHA256": "a2301bffb2834f36ae284b66114ccb581a80ee338c9b664158f4ae131b466de9",
+    "destinationSHA256": "a2301bffb2834f36ae284b66114ccb581a80ee338c9b664158f4ae131b466de9",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/drawable/modo_jugar_online.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/modo_jugar_online.imageset/modo_jugar_online.png",
+    "sourceSHA256": "c6aaef76c1fa8ebeb38e1c1168c53282061211121c9963e6150c43892b402536",
+    "destinationSHA256": "21ce3c653e168bc3eeb11a4a9d5ceb05fce8dd7ab6d1ec85c03de0ba1b7978a5",
+    "operation": "WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/font/bree_serif.ttf",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/bree_serif.ttf",
+    "sourceSHA256": "fd080582d70112ef479ba4ddd72407f9a4fcbcec4caa7d29de259b13eeb5f431",
+    "destinationSHA256": "fd080582d70112ef479ba4ddd72407f9a4fcbcec4caa7d29de259b13eeb5f431",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/menu_music.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/menu_music.mp3",
+    "sourceSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
+    "destinationSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
+    "operation": "copy"
+  }
+]
