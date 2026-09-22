@@ -98,7 +98,7 @@ final class LocalLobbyUITests: XCTestCase {
             .firstMatch.exists)
     }
 
-    func testMedicCanChooseTargetAndAdvanceTheNight() throws {
+    func testMedicCanProtectThemselfAndAdvanceTheNight() throws {
         let app = launchLobby(extraArguments: ["-ui-testing-medic"])
         app.buttons["local.startGame"].tap()
 
@@ -106,14 +106,17 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
         roleStart.tap()
 
-        let target = app.buttons["table.player.1"]
-        XCTAssertTrue(target.waitForExistence(timeout: 3))
-        XCTAssertTrue(target.isHittable)
-        target.tap()
+        let ownCard = app.buttons["table.player.0"]
+        XCTAssertTrue(ownCard.waitForExistence(timeout: 3))
+        XCTAssertTrue(ownCard.isHittable, "El Médico debe poder elegirse a sí mismo como en Android")
+        ownCard.tap()
 
         let primaryAction = app.buttons["table.primaryAction"]
         XCTAssertTrue(primaryAction.isEnabled)
+        XCTAssertEqual(primaryAction.label, "SALVARME")
         primaryAction.tap()
+        XCTAssertTrue(app.staticTexts["PROTECCIÓN REGISTRADA"].waitForExistence(timeout: 3))
+        app.buttons["table.dismissPrivateFeedback"].tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
 
         primaryAction.tap()
@@ -121,7 +124,9 @@ final class LocalLobbyUITests: XCTestCase {
 
         primaryAction.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
-        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        let target = try XCTUnwrap((1...4)
+            .map { app.buttons["table.player.\($0)"] }
+            .first { $0.exists && $0.isEnabled && $0.isHittable })
         target.tap()
         primaryAction.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
@@ -147,6 +152,39 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
     }
 
+    func testFifteenPlayerTableKeepsEveryCompanionVisibleAndUniform() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-medic"])
+        let count = app.staticTexts["lobby.playerCount"]
+        XCTAssertTrue(count.waitForExistence(timeout: 3))
+
+        let addButton = app.buttons["lobby.addPlayer"]
+        for _ in 0..<ClassicGameMaximum.additionalPlayersFromMinimum {
+            guard !count.label.hasPrefix("15/") else { break }
+            XCTAssertTrue(addButton.isEnabled)
+            addButton.tap()
+        }
+        XCTAssertTrue(count.label.hasPrefix("15/"))
+
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        var frames: [CGRect] = []
+        for id in 1...14 {
+            let card = app.buttons["table.player.\(id)"]
+            XCTAssertTrue(card.waitForExistence(timeout: 3), "Falta la carta del jugador \(id)")
+            frames.append(card.frame)
+        }
+        let heights = frames.map(\.height)
+        XCTAssertLessThanOrEqual((heights.max() ?? 0) - (heights.min() ?? 0), 1)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Mesa responsive de 15 jugadores"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     private func launchLobby(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"] + extraArguments
@@ -166,4 +204,8 @@ final class LocalLobbyUITests: XCTestCase {
         return app
     }
 
+}
+
+private enum ClassicGameMaximum {
+    static let additionalPlayersFromMinimum = 10
 }

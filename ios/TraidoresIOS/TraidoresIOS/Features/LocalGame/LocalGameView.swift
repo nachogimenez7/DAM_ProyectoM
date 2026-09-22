@@ -60,14 +60,21 @@ struct LocalModeView: View {
     }
 }
 
+@MainActor private enum LocalLobbyPreferences {
+    static let store: UserDefaults = {
+        guard ProcessInfo.processInfo.arguments.contains("-ui-testing") else { return .standard }
+        return UserDefaults(suiteName: "com.traidores.juego.ios.ui-testing") ?? .standard
+    }()
+}
+
 struct LocalLobbyView: View {
     let difficulty: BotDifficulty
 
     @Environment(\.dismiss) private var dismiss
     @State private var store: LocalGameStore
-    @AppStorage("local.botNames") private var savedBotNames = ""
-    @AppStorage("local.timing") private var savedTiming = ""
-    @AppStorage("local.advanced") private var savedAdvanced = ""
+    @AppStorage("local.botNames", store: LocalLobbyPreferences.store) private var savedBotNames = ""
+    @AppStorage("local.timing", store: LocalLobbyPreferences.store) private var savedTiming = ""
+    @AppStorage("local.advanced", store: LocalLobbyPreferences.store) private var savedAdvanced = ""
     @State private var playing = false
     @State private var showingTiming = false
     @State private var showingAdvanced = false
@@ -818,6 +825,7 @@ private enum AssignmentStage { case dealing, role }
 private struct PrivateActionFeedback: Equatable {
     let title: String
     let message: String
+    let systemImage: String
 }
 
 private struct LocalTableView: View {
@@ -834,17 +842,31 @@ private struct LocalTableView: View {
         if let game = store.game {
             ZStack {
                 tableBackground(game)
-                HStack(alignment: .top, spacing: 4) {
-                    playerColumn(sidePlayers(game).left, game: game)
-                    VStack(spacing: 4) {
-                        tableHeader(game)
-                        tableCenter(game)
-                        if game.winner == nil { humanPanel(game) }
+                GeometryReader { geometry in
+                    let availableSideWidth = min(
+                        max(Int((geometry.size.width - 8 - 8 - 220) / 2), 54),
+                        78
+                    )
+                    let availableSideHeight = max(Int(geometry.size.height) - 154, 1)
+                    let metrics = ClassicCompanionMetrics.androidCompatible(
+                        totalPlayers: game.players.count,
+                        availableHeight: availableSideHeight,
+                        availableWidth: availableSideWidth
+                    )
+                    let sides = sidePlayers(game)
+
+                    HStack(alignment: .top, spacing: 4) {
+                        playerColumn(sides.left, game: game, metrics: metrics)
+                        VStack(spacing: 4) {
+                            tableHeader(game)
+                            tableCenter(game)
+                            if game.winner == nil { humanPanel(game) }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        playerColumn(sides.right, game: game, metrics: metrics)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    playerColumn(sidePlayers(game).right, game: game)
+                    .padding(.horizontal, 4).padding(.vertical, 8)
                 }
-                .padding(.horizontal, 4).padding(.vertical, 8)
 
                 if showingRole {
                     roleOverlay(game.human.role)
@@ -918,52 +940,69 @@ private struct LocalTableView: View {
 
     private func sidePlayers(_ game: ClassicGame) -> (left: [ClassicPlayer], right: [ClassicPlayer]) {
         let companions = game.players.filter { $0.id != 0 }
-        return (
-            companions.enumerated().compactMap { $0.offset.isMultiple(of: 2) ? $0.element : nil },
-            companions.enumerated().compactMap { !$0.offset.isMultiple(of: 2) ? $0.element : nil }
-        )
+        let leftCount = (companions.count + 1) / 2
+        return (Array(companions.prefix(leftCount)), Array(companions.dropFirst(leftCount)))
     }
 
-    private func playerColumn(_ players: [ClassicPlayer], game: ClassicGame) -> some View {
+    private func playerColumn(
+        _ players: [ClassicPlayer],
+        game: ClassicGame,
+        metrics: ClassicCompanionMetrics
+    ) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 5) {
+            VStack(spacing: CGFloat(metrics.itemGap)) {
                 ForEach(players) { player in
-                    sidePlayerCard(player, game: game)
+                    sidePlayerCard(player, game: game, metrics: metrics)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: metrics.scrollEnabled ? 0 : nil)
         }
-        .frame(width: 60)
+        .scrollDisabled(!metrics.scrollEnabled)
+        .frame(width: CGFloat(metrics.columnWidth))
     }
 
-    private func sidePlayerCard(_ player: ClassicPlayer, game: ClassicGame) -> some View {
-                let actionable = game.legalTargets(for: 0).contains(player.id)
+    private func sidePlayerCard(
+        _ player: ClassicPlayer,
+        game: ClassicGame,
+        metrics: ClassicCompanionMetrics
+    ) -> some View {
+        let actionable = game.legalTargets(for: 0).contains(player.id)
         return Button {
-                    if actionable { selected = player.id }
-                } label: {
-            VStack(spacing: 2) {
+            if actionable { selected = player.id }
+        } label: {
+            VStack(spacing: 0) {
                 ZStack {
-                    Image(publicCardImage(player, game: game)).resizable().scaledToFill()
-                        .frame(width: 43, height: 64).clipped()
+                    Image(publicCardImage(player, game: game)).resizable().scaledToFit()
+                        .frame(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
                         .clipShape(RoundedRectangle(cornerRadius: 5))
-                        ZStack {
-                        Circle().fill(TraidoresTheme.ink.opacity(0.88)).frame(width: 24, height: 24)
-                        Text(String(player.name.prefix(1)).uppercased()).font(TraidoresTheme.title(12))
+                    ZStack {
+                        Circle().fill(TraidoresTheme.ink.opacity(0.88))
+                            .frame(width: CGFloat(metrics.avatarSize), height: CGFloat(metrics.avatarSize))
+                        Text(String(player.name.prefix(1)).uppercased())
+                            .font(TraidoresTheme.title(max(CGFloat(metrics.avatarSize) * 0.5, 7)))
                                 .foregroundStyle(player.alive ? TraidoresTheme.gold : TraidoresTheme.secondary)
                         if !player.alive { Image(systemName: "xmark").font(.caption.bold()) }
                     }
                 }
-                Text(player.name).font(.system(size: 9, weight: .bold)).lineLimit(1)
+                Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold)).lineLimit(1)
                     .minimumScaleFactor(0.65)
-                Text(player.alive ? "EN JUEGO" : "FUERA")
-                    .font(.system(size: 6.5, weight: .bold)).foregroundStyle(TraidoresTheme.secondary)
+                    .frame(height: CGFloat(metrics.nameHeight))
             }
-            .frame(width: 58).padding(.vertical, 4)
-            .background(TraidoresTheme.panel.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(
-                selected == player.id ? TraidoresTheme.gold : TraidoresTheme.border.opacity(actionable ? 1 : 0.55),
-                lineWidth: selected == player.id ? 2 : 1
-            ))
+            .frame(
+                minWidth: CGFloat(metrics.minimumCardWidth),
+                maxWidth: CGFloat(metrics.minimumCardWidth),
+                minHeight: CGFloat(metrics.itemHeight),
+                alignment: .top
+            )
+            .contentShape(Rectangle())
+            .overlay {
+                if selected == player.id {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(TraidoresTheme.gold, lineWidth: 2)
+                        .frame(width: CGFloat(metrics.cardWidth + 4), height: CGFloat(metrics.cardHeight + 4))
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+            }
         }
         .buttonStyle(.plain).disabled(!actionable)
         .opacity(player.alive ? 1 : 0.62)
@@ -1057,6 +1096,7 @@ private struct LocalTableView: View {
                 }
             }
             .buttonStyle(.plain).disabled(!canChooseSelf)
+            .accessibilityIdentifier("table.player.0")
 
             HStack(spacing: 5) {
                 Button("VER CARTA") { showingRole = true }
@@ -1084,14 +1124,29 @@ private struct LocalTableView: View {
 
     private func performPrimaryAction(_ game: ClassicGame) {
         let target = selected
-        let feedback: PrivateActionFeedback? = if game.phase == .detectiveNight,
-                                                  let target,
-                                                  let player = game.players.first(where: { $0.id == target }) {
+        let targetPlayer = target.flatMap { target in game.players.first { $0.id == target } }
+        let feedback: PrivateActionFeedback? = switch (game.phase, targetPlayer) {
+        case (.assassinNight, let player?):
+            .init(
+                title: "VÍCTIMA ELEGIDA",
+                message: "Elegiste a \(player.name). El resultado se anunciará al amanecer.",
+                systemImage: "moon.fill"
+            )
+        case (.detectiveNight, let player?):
             .init(
                 title: "RESPUESTA PRIVADA",
-                message: "\(player.name) parece \(player.role == .assassin ? "SOSPECHOSO" : "INOCENTE")."
+                message: "\(player.name) parece \(player.role == .assassin ? "SOSPECHOSO" : "INOCENTE").",
+                systemImage: "eye.fill"
             )
-        } else {
+        case (.medicNight, let player?):
+            .init(
+                title: "PROTECCIÓN REGISTRADA",
+                message: player.id == 0
+                    ? "Te protegiste durante esta noche."
+                    : "Protegiste a \(player.name) durante esta noche.",
+                systemImage: "cross.case.fill"
+            )
+        default:
             nil
         }
         store.advance(target: target, revision: game.phaseIndex)
@@ -1102,7 +1157,7 @@ private struct LocalTableView: View {
         ZStack {
             Color.black.opacity(0.82).ignoresSafeArea()
             VStack(spacing: 13) {
-                Image(systemName: "eye.fill")
+                Image(systemName: feedback.systemImage)
                     .font(.title2).foregroundStyle(TraidoresTheme.gold)
                 Text(feedback.title)
                     .font(TraidoresTheme.title(21)).foregroundStyle(TraidoresTheme.gold)
@@ -1275,7 +1330,15 @@ private struct LocalTableView: View {
     }
 
     private func actionTitle(_ game: ClassicGame) -> String {
-        if !game.legalTargets(for: 0).isEmpty { return game.isNight ? "CONFIRMAR ACCIÓN" : "CONFIRMAR VOTO" }
+        if !game.legalTargets(for: 0).isEmpty {
+            return switch game.phase {
+            case .assassinNight: "MATAR"
+            case .detectiveNight: "INVESTIGAR"
+            case .medicNight: selected == 0 ? "SALVARME" : "SALVAR"
+            case .voting, .tieVote: "VOTAR"
+            default: "CONFIRMAR"
+            }
+        }
         return switch game.phase {
         case .discussion: "IR A VOTAR"
         case .dawn: "VER AMANECER"

@@ -148,6 +148,28 @@ struct ClassicGameTests {
         #expect(detective.messages.allSatisfy { !$0.text.contains("Investigué") })
     }
 
+    @Test func classicRoleTargetRulesMatchAndroid() {
+        var assassin = fixed(.assassinNight)
+        assassin.players[0] = .init(id: 0, name: "Humano", role: .assassin)
+        assassin.players[1] = .init(id: 1, name: "Aldeano", role: .villager)
+        #expect(!assassin.legalTargets(for: 0).contains(0))
+
+        var detective = fixed(.detectiveNight)
+        detective.players[0] = .init(id: 0, name: "Humano", role: .detective)
+        detective.players[2] = .init(id: 2, name: "Aldeano", role: .villager)
+        #expect(!detective.legalTargets(for: 0).contains(0))
+
+        var medic = fixed(.medicNight)
+        medic.players[0] = .init(id: 0, name: "Humano", role: .medic)
+        medic.players[3] = .init(id: 3, name: "Aldeano", role: .villager)
+        #expect(medic.legalTargets(for: 0).contains(0))
+
+        var voting = fixed(.voting)
+        voting.players[4].alive = false
+        #expect(!voting.legalTargets(for: 0).contains(0))
+        #expect(!voting.legalTargets(for: 0).contains(4))
+    }
+
     // Android continueAfterVoteRecount / resolveSecondTie without an alcalde: one runoff, then no expulsion.
     @Test func secondTieDoesNotKillAnyoneAndInvalidVotesAreIgnored() {
         var game = fixed(.voting)
