@@ -79,6 +79,19 @@ public struct ClassicCompanionMetrics: Equatable, Sendable {
         return fitted
     }
 
+    /// Keeps Android's responsive breakpoints while avoiding oversized cards on
+    /// tall, narrow iPhones when only two to four companions occupy each side.
+    public func cappedCardWidth(_ maximumWidth: Int) -> Self {
+        let safeMaximum = max(maximumWidth, 20)
+        guard cardWidth > safeMaximum else { return self }
+        let scale = Double(safeMaximum) / Double(cardWidth)
+        var copy = self
+        copy.cardWidth = safeMaximum
+        copy.cardHeight = max(Int(Double(cardHeight) * scale), 32)
+        copy.avatarSize = min(avatarSize, max(Int(Double(safeMaximum) * 0.52), 12))
+        return copy
+    }
+
     private func scaled(by scale: Double, itemHeight: Int?, allowGrowth: Bool) -> Self {
         let safeScale = allowGrowth ? min(max(scale, 1), 1.9) : min(max(scale, 0.35), 1)
         var copy = self

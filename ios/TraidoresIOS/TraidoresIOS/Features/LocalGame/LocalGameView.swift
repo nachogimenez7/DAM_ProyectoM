@@ -828,6 +828,18 @@ private struct PrivateActionFeedback: Equatable {
     let systemImage: String
 }
 
+private struct DayNightTransition: Equatable {
+    enum Period { case day, night }
+
+    let period: Period
+    let round: Int
+
+    var key: String { "\(period)-\(round)" }
+    var title: String { "\(period == .night ? "NOCHE" : "DÍA") \(round)" }
+    var image: String { period == .night ? "moon.stars.fill" : "sun.max.fill" }
+    var background: String { period == .night ? "mapa_pampa_vertical_noche" : "mapa_pampa_vertical_dia" }
+}
+
 private struct LocalTableView: View {
     @Bindable var store: LocalGameStore
     let dismissMatch: () -> Void
@@ -837,6 +849,10 @@ private struct LocalTableView: View {
     @State private var showingRole = false
     @State private var leaving = false
     @State private var privateFeedback: PrivateActionFeedback?
+    @State private var pendingTransition: DayNightTransition?
+    @State private var activeTransition: DayNightTransition?
+    @State private var lastTransitionKey: String?
+    @State private var transitionTask: Task<Void, Never>?
 
     var body: some View {
         if let game = store.game {
@@ -848,11 +864,14 @@ private struct LocalTableView: View {
                         78
                     )
                     let availableSideHeight = max(Int(geometry.size.height) - 154, 1)
-                    let metrics = ClassicCompanionMetrics.androidCompatible(
+                    let androidMetrics = ClassicCompanionMetrics.androidCompatible(
                         totalPlayers: game.players.count,
                         availableHeight: availableSideHeight,
                         availableWidth: availableSideWidth
                     )
+                    let metrics = game.players.count <= 9
+                        ? androidMetrics.cappedCardWidth(60)
+                        : androidMetrics
                     let sides = sidePlayers(game)
 
                     HStack(alignment: .top, spacing: 4) {
@@ -880,6 +899,12 @@ private struct LocalTableView: View {
                         .zIndex(3)
                 }
 
+                if let activeTransition {
+                    dayNightTransitionOverlay(activeTransition)
+                        .transition(.opacity)
+                        .zIndex(4)
+                }
+
                 if scenePhase != .active {
                     TraidoresTheme.ink.ignoresSafeArea()
                     Text("TRAIDORES").font(TraidoresTheme.title(36)).foregroundStyle(TraidoresTheme.gold)
@@ -887,6 +912,14 @@ private struct LocalTableView: View {
             }
             .foregroundStyle(TraidoresTheme.text)
             .onChange(of: game.phaseIndex) { _, _ in selected = nil }
+            .onChange(of: transitionSpec(for: game).key) { _, _ in
+                queueTransition(for: game)
+            }
+            .onChange(of: privateFeedback) { _, feedback in
+                if feedback == nil { presentPendingTransition(using: game) }
+            }
+            .onAppear { queueTransition(for: game) }
+            .onDisappear { transitionTask?.cancel() }
             .confirmationDialog("La partida queda guardada para continuar después.",
                                 isPresented: $leaving, titleVisibility: .visible) {
                 Button("Volver al menú") { dismissMatch() }
@@ -903,6 +936,65 @@ private struct LocalTableView: View {
                 .overlay(.black.opacity(0.62))
         }
         .ignoresSafeArea().accessibilityHidden(true)
+    }
+
+    private func transitionSpec(for game: ClassicGame) -> DayNightTransition {
+        .init(period: game.isNight ? .night : .day, round: game.round)
+    }
+
+    private func queueTransition(for game: ClassicGame) {
+        let spec = transitionSpec(for: game)
+        guard spec.key != lastTransitionKey, spec != activeTransition else { return }
+        pendingTransition = spec
+        presentPendingTransition(using: game)
+    }
+
+    private func presentPendingTransition(using game: ClassicGame) {
+        guard privateFeedback == nil, activeTransition == nil, let spec = pendingTransition else { return }
+        pendingTransition = nil
+        lastTransitionKey = spec.key
+        withAnimation(.easeInOut(duration: 0.24)) { activeTransition = spec }
+        transitionTask?.cancel()
+        let arguments = ProcessInfo.processInfo.arguments
+        let nanoseconds: UInt64 = if arguments.contains("-ui-testing-transition") {
+            1_500_000_000
+        } else if arguments.contains("-ui-testing") {
+            80_000_000
+        } else {
+            UInt64(game.timing.transitionSeconds) * 1_000_000_000
+        }
+        transitionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.32)) { activeTransition = nil }
+            try? await Task.sleep(nanoseconds: 340_000_000)
+            guard !Task.isCancelled else { return }
+            presentPendingTransition(using: game)
+        }
+    }
+
+    private func dayNightTransitionOverlay(_ transition: DayNightTransition) -> some View {
+        ZStack {
+            Image(transition.background)
+                .resizable().scaledToFill().ignoresSafeArea()
+            Color.black.opacity(transition.period == .night ? 0.55 : 0.28).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: transition.image)
+                    .font(.system(size: 82, weight: .light))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(TraidoresTheme.gold, Color.white.opacity(0.78))
+                    .shadow(color: .black.opacity(0.75), radius: 12, y: 5)
+                Text(transition.title)
+                    .font(TraidoresTheme.title(38))
+                    .tracking(2)
+                    .foregroundStyle(TraidoresTheme.gold)
+                    .shadow(color: .black, radius: 10, y: 4)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(transition.title)
+        .accessibilityIdentifier("table.dayNightTransition")
     }
 
     private func tableHeader(_ game: ClassicGame) -> some View {

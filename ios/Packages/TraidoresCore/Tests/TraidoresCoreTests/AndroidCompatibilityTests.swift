@@ -106,4 +106,21 @@ struct AndroidCompatibilityTests {
         #expect(thirteen.scrollEnabled)
         #expect(fifteen.scrollEnabled)
     }
+
+    @Test func sparseIPhoneTablesCanLimitGrowthWithoutChangingTheirLayoutSlots() {
+        let original = ClassicCompanionMetrics.androidCompatible(
+            totalPlayers: 5, availableHeight: 680, availableWidth: 78
+        )
+        let capped = original.cappedCardWidth(60)
+        #expect(original.cardWidth > 60)
+        #expect(capped.cardWidth == 60)
+        #expect(capped.cardHeight < original.cardHeight)
+        #expect(capped.columnWidth == original.columnWidth)
+        #expect(capped.itemHeight == original.itemHeight)
+
+        let alreadyCompact = ClassicCompanionMetrics.androidCompatible(
+            totalPlayers: 15, availableHeight: 680, availableWidth: 78
+        )
+        #expect(alreadyCompact.cappedCardWidth(60) == alreadyCompact)
+    }
 }

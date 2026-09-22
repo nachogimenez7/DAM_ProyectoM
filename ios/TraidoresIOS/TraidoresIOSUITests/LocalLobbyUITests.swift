@@ -117,6 +117,11 @@ final class LocalLobbyUITests: XCTestCase {
         primaryAction.tap()
         XCTAssertTrue(app.staticTexts["PROTECCIÓN REGISTRADA"].waitForExistence(timeout: 3))
         app.buttons["table.dismissPrivateFeedback"].tap()
+        let dayTransition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if dayTransition.waitForExistence(timeout: 1) {
+            XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 2))
+        }
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
 
         primaryAction.tap()
@@ -150,6 +155,22 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(dismiss.isHittable)
         dismiss.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
+    }
+
+    func testNightTransitionAppearsBeforeTheInteractiveTable() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-medic", "-ui-testing-transition"])
+        app.buttons["local.startGame"].tap()
+
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        let transition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        XCTAssertTrue(transition.waitForExistence(timeout: 2))
+        XCTAssertEqual(transition.label, "NOCHE 1")
+        XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["table.player.0"].isHittable)
     }
 
     func testFifteenPlayerTableKeepsEveryCompanionVisibleAndUniform() throws {
