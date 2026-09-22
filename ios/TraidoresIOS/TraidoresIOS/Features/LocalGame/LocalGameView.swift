@@ -836,8 +836,140 @@ private struct DayNightTransition: Equatable {
 
     var key: String { "\(period)-\(round)" }
     var title: String { "\(period == .night ? "NOCHE" : "DÍA") \(round)" }
-    var image: String { period == .night ? "moon.stars.fill" : "sun.max.fill" }
+    var artwork: String { period == .night ? "transition_moon" : "transition_sun" }
+    var leavingArtwork: String { period == .night ? "transition_sun" : "transition_moon" }
     var background: String { period == .night ? "mapa_pampa_vertical_noche" : "mapa_pampa_vertical_dia" }
+    var previousBackground: String {
+        period == .night ? "mapa_pampa_vertical_dia" : "mapa_pampa_vertical_noche"
+    }
+}
+
+private struct QuadraticTransitionMotion: AnimatableModifier {
+    var progress: CGFloat
+    let start: CGPoint
+    let control: CGPoint
+    let end: CGPoint
+
+    nonisolated var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let remaining = 1 - progress
+        let point = CGPoint(
+            x: remaining * remaining * start.x
+                + 2 * remaining * progress * control.x
+                + progress * progress * end.x,
+            y: remaining * remaining * start.y
+                + 2 * remaining * progress * control.y
+                + progress * progress * end.y
+        )
+        content.position(point)
+    }
+}
+
+private struct DayNightTransitionView: View {
+    let transition: DayNightTransition
+    let duration: TimeInterval
+
+    @State private var progress: CGFloat = 0
+    @State private var revealBackground = false
+    @State private var showTitle = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let artworkSize = min(max(width * 0.40, 128), 190)
+            let lowerY = height + artworkSize * 0.12
+            let enteringStart = transition.period == .night
+                ? CGPoint(x: -artworkSize, y: lowerY)
+                : CGPoint(x: width + artworkSize * 0.15, y: lowerY)
+            let enteringControl = transition.period == .night
+                ? CGPoint(x: width * 0.05, y: height * 0.42)
+                : CGPoint(x: width * 0.88, y: height * 0.42)
+            let enteringEnd = CGPoint(
+                x: width * (transition.period == .night ? 0.20 : 0.70),
+                y: height * 0.14
+            )
+            let leavingStart = CGPoint(
+                x: width * (transition.period == .night ? 0.70 : 0.20),
+                y: height * 0.14
+            )
+            let leavingControl = CGPoint(
+                x: width * (transition.period == .night ? 0.90 : 0.05),
+                y: height * 0.48
+            )
+            let leavingEnd = transition.period == .night
+                ? CGPoint(x: width + artworkSize * 0.15, y: lowerY)
+                : CGPoint(x: -artworkSize, y: lowerY)
+
+            ZStack {
+                Image(transition.previousBackground)
+                    .resizable().scaledToFill()
+                    .frame(width: width, height: height).clipped()
+                Image(transition.background)
+                    .resizable().scaledToFill()
+                    .frame(width: width, height: height).clipped()
+                    .opacity(revealBackground ? 1 : 0)
+                Color.black.opacity(transition.period == .night ? 0.48 : 0.26)
+
+                Image(transition.leavingArtwork)
+                    .resizable().scaledToFit()
+                    .frame(width: artworkSize, height: artworkSize)
+                    .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
+                    .modifier(QuadraticTransitionMotion(
+                        progress: progress,
+                        start: leavingStart,
+                        control: leavingControl,
+                        end: leavingEnd
+                    ))
+                    .opacity(1 - progress)
+
+                Image(transition.artwork)
+                    .resizable().scaledToFit()
+                    .frame(width: artworkSize, height: artworkSize)
+                    .shadow(color: .black.opacity(0.68), radius: 18, y: 8)
+                    .modifier(QuadraticTransitionMotion(
+                        progress: progress,
+                        start: enteringStart,
+                        control: enteringControl,
+                        end: enteringEnd
+                    ))
+                    .opacity(progress)
+
+                Text(transition.title)
+                    .font(TraidoresTheme.title(38))
+                    .tracking(2)
+                    .foregroundStyle(TraidoresTheme.gold)
+                    .shadow(color: .black, radius: 10, y: 4)
+                    .scaleEffect(showTitle ? 1 : 0.86)
+                    .opacity(showTitle ? 1 : 0)
+            }
+            .frame(width: width, height: height)
+        }
+        .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(transition.title)
+        .accessibilityIdentifier("table.dayNightTransition")
+        .task {
+            let movementDuration = max(duration * 0.82, 0.05)
+            withAnimation(.easeInOut(duration: movementDuration)) { progress = 1 }
+            withAnimation(.easeInOut(duration: max(duration * 0.66, 0.05))) {
+                revealBackground = true
+            }
+            let titleDelay = UInt64(max(duration * 0.19, 0.01) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: titleDelay)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: max(duration * 0.19, 0.05))) { showTitle = true }
+            let titleHold = UInt64(max(duration * 0.48, 0.01) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: titleHold)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: max(duration * 0.14, 0.05))) { showTitle = false }
+        }
+    }
 }
 
 private struct LocalTableView: View {
@@ -900,7 +1032,7 @@ private struct LocalTableView: View {
                 }
 
                 if let activeTransition {
-                    dayNightTransitionOverlay(activeTransition)
+                    dayNightTransitionOverlay(activeTransition, game: game)
                         .transition(.opacity)
                         .zIndex(4)
                 }
@@ -955,14 +1087,7 @@ private struct LocalTableView: View {
         lastTransitionKey = spec.key
         withAnimation(.easeInOut(duration: 0.24)) { activeTransition = spec }
         transitionTask?.cancel()
-        let arguments = ProcessInfo.processInfo.arguments
-        let nanoseconds: UInt64 = if arguments.contains("-ui-testing-transition") {
-            1_500_000_000
-        } else if arguments.contains("-ui-testing") {
-            80_000_000
-        } else {
-            UInt64(game.timing.transitionSeconds) * 1_000_000_000
-        }
+        let nanoseconds = UInt64(transitionDuration(for: game) * 1_000_000_000)
         transitionTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled else { return }
@@ -973,28 +1098,21 @@ private struct LocalTableView: View {
         }
     }
 
-    private func dayNightTransitionOverlay(_ transition: DayNightTransition) -> some View {
-        ZStack {
-            Image(transition.background)
-                .resizable().scaledToFill().ignoresSafeArea()
-            Color.black.opacity(transition.period == .night ? 0.55 : 0.28).ignoresSafeArea()
-            VStack(spacing: 18) {
-                Image(systemName: transition.image)
-                    .font(.system(size: 82, weight: .light))
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(TraidoresTheme.gold, Color.white.opacity(0.78))
-                    .shadow(color: .black.opacity(0.75), radius: 12, y: 5)
-                Text(transition.title)
-                    .font(TraidoresTheme.title(38))
-                    .tracking(2)
-                    .foregroundStyle(TraidoresTheme.gold)
-                    .shadow(color: .black, radius: 10, y: 4)
-            }
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(transition.title)
-        .accessibilityIdentifier("table.dayNightTransition")
+    private func transitionDuration(for game: ClassicGame) -> TimeInterval {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-ui-testing-transition") { return 1.5 }
+        if arguments.contains("-ui-testing") { return 0.08 }
+        return TimeInterval(game.timing.transitionSeconds)
+    }
+
+    private func dayNightTransitionOverlay(
+        _ transition: DayNightTransition,
+        game: ClassicGame
+    ) -> some View {
+        DayNightTransitionView(
+            transition: transition,
+            duration: transitionDuration(for: game)
+        )
     }
 
     private func tableHeader(_ game: ClassicGame) -> some View {
