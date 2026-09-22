@@ -15,7 +15,7 @@ struct LocalModeView: View {
                         .font(TraidoresTheme.title(24))
                         .foregroundStyle(TraidoresTheme.gold)
                         .padding(.bottom, 10)
-                    Text("En Normal, la IA juega de forma más directa. En Difícil, los Traidores coordinan mejor sus engaños y votos.")
+                    Text("Elige una dificultad. Después irás al lobby para ajustar mapa, tiempos y cantidad de jugadores.")
                         .font(.body)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(TraidoresTheme.secondary)
@@ -25,10 +25,8 @@ struct LocalModeView: View {
                         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10))
                         .overlay { RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border) }
                         .padding(.bottom, 28)
-                    VStack(spacing: 16) {
-                        difficultyLink(.normal, title: "NORMAL", prominent: true)
-                        difficultyLink(.hard, title: "DIFÍCIL", prominent: false)
-                    }
+                    difficultyLink(.normal, title: "NORMAL", prominent: true)
+                    difficultyLink(.hard, title: "DIFICIL", prominent: false)
                 }
                 .padding(.horizontal, 32)
                 .frame(maxWidth: 560)
