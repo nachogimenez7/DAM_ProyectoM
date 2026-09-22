@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "filename": "mapa_pampa.png",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

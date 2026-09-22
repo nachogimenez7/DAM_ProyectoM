@@ -47,6 +47,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var declaredDetectives: [Int] = []
     public internal(set) var humanSpoke = false
     public internal(set) var humanSharedRead = false
+    /// Optional keeps saves from builds that only supported Pampa decodable.
+    public let mapConfig: GameMap?
     public let difficulty: BotDifficulty
     /// Optional keeps saves from earlier iOS builds decodable; `timing` supplies the Android default.
     public let timingConfig: GameTimingConfig?
@@ -57,6 +59,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public var human: ClassicPlayer { players[0] }
     public var living: [ClassicPlayer] { players.filter(\.alive) }
     public var humanInvestigations: [Investigation] { investigations.filter { $0.investigator == 0 } }
+    public var map: GameMap { mapConfig ?? .pampa }
     public var timing: GameTimingConfig { (timingConfig ?? .normal).normalized }
     public var advanced: AdvancedGameConfig { (advancedConfig ?? .standard).normalized }
     public var isNight: Bool { [.assassinNight, .detectiveNight, .medicNight].contains(phase) }
@@ -66,6 +69,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         name: String,
         seed: UInt64 = .random(in: .min ... .max),
         trainingRole: RoleKey? = nil,
+        map: GameMap = .pampa,
         difficulty: BotDifficulty = .normal,
         timing: GameTimingConfig = .normal,
         advanced: AdvancedGameConfig = .standard,
@@ -83,12 +87,13 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
         let names = [cleanName.isEmpty ? "Vos" : cleanName] + filledBots
         players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
+        mapConfig = map
         self.difficulty = difficulty
         timingConfig = timing.normalized
         advancedConfig = advanced.normalized
         self.random = random
         let villagers = players.count - 3
-        append("Pampa clásica: 1 Asesino, 1 Comisario, 1 Médico y \(villagers) Aldeanos.")
+        append("\(map.title): 1 Asesino, 1 Comisario, 1 Médico y \(villagers) Aldeanos.")
     }
 
     public static func roles(for playerCount: Int) -> [RoleKey] {
@@ -230,7 +235,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         humanSpoke = false; humanSharedRead = false
         suspicion = suspicion.mapValues { $0 / 2 }
         transition(.assassinNight)
-        append("Noche \(round). La Pampa duerme.")
+        append("Noche \(round). \(map.title) duerme.")
         resolveBotNight()
     }
 

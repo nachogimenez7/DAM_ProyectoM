@@ -55,6 +55,32 @@ final class LocalLobbyUITests: XCTestCase {
         add(screenshot)
     }
 
+    func testLobbySelectsThreeMapsAndPassesTheChoiceToTheMatch() throws {
+        let app = launchLobby()
+        let selectedMapName = app.staticTexts["lobby.selectedMapName"]
+        XCTAssertTrue(selectedMapName.waitForExistence(timeout: 3))
+        XCTAssertEqual(selectedMapName.label, "PAMPA")
+
+        let medieval = app.buttons["lobby.map.medieval"]
+        XCTAssertTrue(medieval.isHittable)
+        medieval.tap()
+        XCTAssertEqual(selectedMapName.label, "MEDIEVAL")
+
+        let greece = app.buttons["lobby.map.grecia"]
+        XCTAssertTrue(greece.isHittable)
+        greece.tap()
+        XCTAssertEqual(selectedMapName.label, "GRECIA")
+
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        let tableMapName = app.staticTexts["table.mapName"]
+        XCTAssertTrue(tableMapName.waitForExistence(timeout: 3))
+        XCTAssertTrue(tableMapName.label.contains("Grecia"))
+    }
+
     func testModeAndDifficultyScreensMatchAndroidStructure() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]

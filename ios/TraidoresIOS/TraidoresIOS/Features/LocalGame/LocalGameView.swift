@@ -75,6 +75,7 @@ struct LocalLobbyView: View {
     @AppStorage("local.botNames", store: LocalLobbyPreferences.store) private var savedBotNames = ""
     @AppStorage("local.timing", store: LocalLobbyPreferences.store) private var savedTiming = ""
     @AppStorage("local.advanced", store: LocalLobbyPreferences.store) private var savedAdvanced = ""
+    @AppStorage("local.map", store: LocalLobbyPreferences.store) private var selectedMapKey = GameMap.pampa.rawValue
     @State private var playing = false
     @State private var showingTiming = false
     @State private var showingAdvanced = false
@@ -103,7 +104,7 @@ struct LocalLobbyView: View {
                     .transition(.opacity)
             } else {
                 GeometryReader { geometry in
-                    Image("mapa_pampa_vertical_dia")
+                    Image(selectedMap.dayBackgroundAsset)
                         .resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                         .overlay(.black.opacity(0.54))
@@ -155,6 +156,10 @@ struct LocalLobbyView: View {
 
     private var editAlertBinding: Binding<Bool> {
         Binding(get: { editingBot != nil }, set: { if !$0 { editingBot = nil } })
+    }
+
+    private var selectedMap: GameMap {
+        GameMap(rawValue: selectedMapKey) ?? .pampa
     }
 
     private var lobbyHeader: some View {
@@ -225,7 +230,8 @@ struct LocalLobbyView: View {
 
             sectionLabel("CONFIGURACIÓN")
             mapCard
-            Text("Pampa clásica · 1 Asesino, 1 Comisario, 1 Médico y \(botNames.count - 2) Aldeanos.")
+            mapSelector
+            Text(selectedMap.lobbyDescription)
                 .font(.caption)
                 .foregroundStyle(TraidoresTheme.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -244,8 +250,10 @@ struct LocalLobbyView: View {
             Color.black.opacity(0.42)
                 .allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 3) {
-                Text("PAMPA").font(TraidoresTheme.title(26)).foregroundStyle(TraidoresTheme.gold)
-                Text("MAPA CLÁSICO")
+                Text(selectedMap.title.uppercased())
+                    .font(TraidoresTheme.title(26)).foregroundStyle(TraidoresTheme.gold)
+                    .accessibilityIdentifier("lobby.selectedMapName")
+                Text("Rol exclusivo: \(selectedMap.exclusiveRoleTitle)")
                     .font(.caption.weight(.semibold))
             }
             .padding(14)
@@ -253,7 +261,7 @@ struct LocalLobbyView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 126)
         .background {
-            Image("mapa_pampa_vertical_dia")
+            Image(selectedMap.landscapeAsset)
                 .resizable()
                 .scaledToFill()
                 .allowsHitTesting(false)
@@ -262,6 +270,36 @@ struct LocalLobbyView: View {
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay { RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border) }
+    }
+
+    private var mapSelector: some View {
+        HStack(spacing: 8) {
+            ForEach(GameMap.allCases, id: \.rawValue) { map in
+                Button {
+                    selectedMapKey = map.rawValue
+                } label: {
+                    Image(map.landscapeAsset)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .clipped()
+                        .overlay {
+                            Color.black.opacity(map == selectedMap ? 0 : 0.30)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(map == selectedMap ? TraidoresTheme.gold : TraidoresTheme.border,
+                                        lineWidth: map == selectedMap ? 2 : 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mapa \(map.title)")
+                .accessibilityAddTraits(map == selectedMap ? .isSelected : [])
+                .accessibilityIdentifier("lobby.map.\(map.rawValue)")
+            }
+        }
     }
 
     private var playerControls: some View {
@@ -413,7 +451,7 @@ struct LocalLobbyView: View {
         } else {
             nil
         }
-        store.start(name: "Vos", difficulty: difficulty, botNames: botNames,
+        store.start(name: "Vos", map: selectedMap, difficulty: difficulty, botNames: botNames,
                     timing: timing, advanced: advanced, trainingRole: trainingRole)
         playing = store.game != nil
     }
@@ -828,19 +866,42 @@ private struct PrivateActionFeedback: Equatable {
     let systemImage: String
 }
 
+private extension GameMap {
+    var landscapeAsset: String { "mapa_\(rawValue)" }
+    var dayBackgroundAsset: String { "mapa_\(rawValue)_vertical_dia" }
+    var nightBackgroundAsset: String { "mapa_\(rawValue)_vertical_noche" }
+
+    var exclusiveRoleTitle: String {
+        switch self {
+        case .pampa: "Payador"
+        case .greece: "Oráculo"
+        case .medieval: "Bufón"
+        }
+    }
+
+    var lobbyDescription: String {
+        switch self {
+        case .pampa: "Sospechas en la pampa, el polvo del pueblo y la estación abandonada."
+        case .greece: "Intriga entre templos, plazas y discursos que esconden traiciones."
+        case .medieval: "Secretos entre murallas, castillos y un feudo que desconfía de todos."
+        }
+    }
+}
+
 private struct DayNightTransition: Equatable {
     enum Period { case day, night }
 
     let period: Period
     let round: Int
+    let map: GameMap
 
-    var key: String { "\(period)-\(round)" }
+    var key: String { "\(map.rawValue)-\(period)-\(round)" }
     var title: String { "\(period == .night ? "NOCHE" : "DÍA") \(round)" }
     var artwork: String { period == .night ? "transition_moon" : "transition_sun" }
     var leavingArtwork: String { period == .night ? "transition_sun" : "transition_moon" }
-    var background: String { period == .night ? "mapa_pampa_vertical_noche" : "mapa_pampa_vertical_dia" }
+    var background: String { period == .night ? map.nightBackgroundAsset : map.dayBackgroundAsset }
     var previousBackground: String {
-        period == .night ? "mapa_pampa_vertical_dia" : "mapa_pampa_vertical_noche"
+        period == .night ? map.dayBackgroundAsset : map.nightBackgroundAsset
     }
 }
 
@@ -1062,7 +1123,7 @@ private struct LocalTableView: View {
 
     private func tableBackground(_ game: ClassicGame) -> some View {
         GeometryReader { geometry in
-            Image(game.isNight ? "mapa_pampa_vertical_noche" : "mapa_pampa_vertical_dia")
+            Image(game.isNight ? game.map.nightBackgroundAsset : game.map.dayBackgroundAsset)
                 .resizable().scaledToFill()
                 .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 .overlay(.black.opacity(0.62))
@@ -1071,7 +1132,7 @@ private struct LocalTableView: View {
     }
 
     private func transitionSpec(for game: ClassicGame) -> DayNightTransition {
-        .init(period: game.isNight ? .night : .day, round: game.round)
+        .init(period: game.isNight ? .night : .day, round: game.round, map: game.map)
     }
 
     private func queueTransition(for game: ClassicGame) {
@@ -1123,11 +1184,13 @@ private struct LocalTableView: View {
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(game.phase.classicTitle.uppercased())
+                    Text(phaseTitle(for: game).uppercased())
                         .font(TraidoresTheme.title(16)).foregroundStyle(TraidoresTheme.gold)
                         .lineLimit(1).minimumScaleFactor(0.7)
                     .accessibilityIdentifier("table.phaseTitle")
-                    Text("Ronda \(game.round) · Pampa").font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                    Text("Ronda \(game.round) · \(game.map.title)")
+                        .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                        .accessibilityIdentifier("table.mapName")
             }
             Spacer()
             Button { showingRole = true } label: {
@@ -1532,6 +1595,11 @@ private struct LocalTableView: View {
         }
     }
 
+    private func phaseTitle(for game: ClassicGame) -> String {
+        if game.phase == .dawn { return "Amanece en \(game.map.title)" }
+        return game.phase.classicTitle
+    }
+
     private func playerStatus(_ player: ClassicPlayer, game: ClassicGame) -> String {
         if player.alive { return "EN LA MESA" }
         return game.advanced.revealRolesOnDeath
@@ -1593,13 +1661,13 @@ private extension GamePhase {
         switch self {
         case .assignment: "Tu identidad"
         case .assassinNight, .detectiveNight, .medicNight: "La noche"
-        case .dawn: "Amanece en la Pampa"
+        case .dawn: "Amanece"
         case .discussion: "Debate del pueblo"
         case .voting: "Votación"
         case .tieVote: "Desempate"
         case .voteCount: "Recuento de votos"
         case .result: "Resultado"
-        default: "Pampa"
+        default: "Partida"
         }
     }
 }

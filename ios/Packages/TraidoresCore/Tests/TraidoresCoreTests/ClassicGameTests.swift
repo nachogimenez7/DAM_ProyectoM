@@ -25,11 +25,21 @@ struct ClassicGameTests {
         }
     }
 
-    @Test func lobbyDifficultyAndAndroidBotNamesReachTheMatch() throws {
-        let game = ClassicGame(name: "Humano", seed: 17, difficulty: .hard)
+    @Test func lobbyMapDifficultyAndAndroidBotNamesReachTheMatch() throws {
+        let game = ClassicGame(name: "Humano", seed: 17, map: .greece, difficulty: .hard)
+        #expect(game.map == .greece)
         #expect(game.difficulty == .hard)
         #expect(game.players.map(\.name) == ["Humano", "Thiago", "Mora", "Lautaro", "Valen"])
-        #expect(try ClassicSave.decode(ClassicSave.encode(game)).difficulty == .hard)
+        let restored = try ClassicSave.decode(ClassicSave.encode(game))
+        #expect(restored.map == .greece)
+        #expect(restored.difficulty == .hard)
+
+        var oldEnvelope = try #require(JSONSerialization.jsonObject(with: ClassicSave.encode(game)) as? [String: Any])
+        var oldGame = try #require(oldEnvelope["game"] as? [String: Any])
+        oldGame.removeValue(forKey: "mapConfig")
+        oldEnvelope["game"] = oldGame
+        let oldData = try JSONSerialization.data(withJSONObject: oldEnvelope)
+        #expect(try ClassicSave.decode(oldData).map == .pampa)
     }
 
     @Test func classicLobbySupportsFiveThroughFifteenPlayers() throws {
