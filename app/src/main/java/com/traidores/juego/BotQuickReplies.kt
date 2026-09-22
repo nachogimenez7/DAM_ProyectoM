@@ -98,7 +98,15 @@ internal object BotQuickReplies {
     }
 
     fun rolesInPlay(session: GameSession): List<GameRole> {
-        val presentKeys = session.players.mapNotNull { it.role?.key }.toSet()
+        // En partidas online los roles de los demás jugadores pueden permanecer privados en
+        // `players`. La composición pública de la sala, en cambio, sí contiene todos los roles
+        // que fueron repartidos. Usarla evita que el selector muestre solo los roles que este
+        // cliente alcanzó a reconstruir desde sus asignaciones privadas.
+        val compositionKeys = session.roleComposition.counts
+            .filterValues { it > 0 }
+            .keys
+        val assignedKeys = session.players.mapNotNull { it.role?.key }
+        val presentKeys = (compositionKeys + assignedKeys).toSet()
         val map = RoleMap.fromSessionKey(session.mapKey)
         return RoleCatalog.guideKeys()
             .filter { roleKey -> roleKey in presentKeys && RoleCatalog.isAvailableOnMap(roleKey, map) }

@@ -120,6 +120,40 @@ class BotPlayerCenteredBrainTest {
     }
 
     @Test
+    fun rolePickerUsesPublicCompositionWhenRemoteRolesArePrivate() {
+        val base = session().copy(
+            players = session().players.map { player ->
+                if (player.isHuman) player else player.copy(role = null)
+            },
+            roleComposition = RoleCompositionConfig(
+                counts = mapOf(
+                    RoleCatalog.ALDEANO to 2,
+                    RoleCatalog.POLICIA to 1,
+                    RoleCatalog.MEDICO to 1,
+                    RoleCatalog.ASESINO to 1,
+                    RoleCatalog.MERCENARIO to 1,
+                    RoleCatalog.BUFON to 1
+                ),
+                customized = true
+            )
+        )
+
+        val roleKeys = BotQuickReplies.rolesInPlay(base).map { it.key }.toSet()
+
+        assertEquals(
+            setOf(
+                RoleCatalog.ALDEANO,
+                RoleCatalog.POLICIA,
+                RoleCatalog.MEDICO,
+                RoleCatalog.ASESINO,
+                RoleCatalog.MERCENARIO,
+                RoleCatalog.BUFON
+            ),
+            roleKeys
+        )
+    }
+
+    @Test
     fun extendedQuickChatCarriesStructuredIntentForTheLocalBrain() {
         val accusation = BotQuickReplies.suspect("Mora")
         val investigation = BotQuickReplies.investigation("Beto", suspicious = true)

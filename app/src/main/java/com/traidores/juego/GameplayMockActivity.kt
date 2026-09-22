@@ -43,6 +43,7 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -161,6 +162,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlineTraitorActionMarks = emptyList<OnlineTraitorActionMark>()
     private var humanActionMarkKey: String? = null
     private var humanActionMarkAnimator: AnimatorSet? = null
+    private var readyVotePulseAnimator: AnimatorSet? = null
+    private var lastReadyVoteAttentionKey: String? = null
     private val readyToVote = mutableSetOf<String>()
     private var readyVotePhaseIndex = -1
     private var readyVoteBotCascadeScheduled = false
@@ -188,6 +191,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     override val gameplayTextScale: Float
         get() = appliedGameplayTextScale
+
+    override fun onSystemBarInsetsChanged(safeArea: Insets) {
+        val scrim = findViewById<View>(R.id.topSystemBarScrim) ?: return
+        scrim.post {
+            scrim.layoutParams = scrim.layoutParams.apply {
+                height = (120 * resources.displayMetrics.density).toInt() + safeArea.top
+            }
+            scrim.translationY = -safeArea.top.toFloat()
+        }
+    }
     override val onlineRoomId: String
         get() = onlinePartidaId
     override val onlinePlayerUid: String
@@ -1341,6 +1354,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        cancelReadyVotePulse()
         dismissReactionPalette()
         clearReactionBubbles()
         pendingOnlineReactions.clear()
@@ -1423,6 +1437,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         hideTieVoteWindow(clearSelection = false)
         settleWinnerReveal()
         cancelActionPulse()
+        cancelReadyVotePulse()
         dismissReactionPalette()
         clearReactionBubbles()
         hideCentralPublicEventBanner(immediate = true)
@@ -6620,7 +6635,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             session.winner.isBlank() &&
             human.alive
         btnReadyToVote.visibility = if (visible) View.VISIBLE else View.GONE
-        if (!visible) return
+        if (!visible) {
+            updateReadyToVoteAttentionPulse(false)
+            return
+        }
 
         val unlockRemainingMs = readyVoteUnlockRemainingMs()
         val progress = readyVoteProgress()
@@ -6636,7 +6654,19 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             !localPhaseResolutionInProgress &&
             !countdown.isTransitionLocked(session.phaseIndex) &&
             !onlineAwaitingHostAdvance
-        btnReadyToVote.alpha = if (btnReadyToVote.isEnabled) 1f else 0.58f
+        val enabled = btnReadyToVote.isEnabled
+        val canPulse = enabled && !humanReady && unlockRemainingMs <= 0L
+        btnReadyToVote.background = readyToVoteBackground(
+            humanReady = humanReady,
+            enabled = enabled
+        )
+        btnReadyToVote.setTextColor(
+            if (humanReady) Color.parseColor("#E9F8EC") else Color.parseColor("#FFF2D4")
+        )
+        updateReadyToVoteAttentionPulse(canPulse)
+        if (!canPulse) {
+            btnReadyToVote.alpha = if (enabled) 1f else 0.58f
+        }
 
         if (!isOnlineGameplay() && humanReady && !readyVoteBotCascadeScheduled) {
             scheduleReadyVoteBotCascade()
@@ -7121,6 +7151,89 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             btnAction.scaleY = 1f
             btnAction.translationX = 0f
             btnAction.translationY = 0f
+        }
+    }
+
+    private fun readyToVoteBackground(humanReady: Boolean, enabled: Boolean): Drawable {
+        val fill = when {
+            !enabled -> Color.parseColor("#2A2318")
+            humanReady -> Color.parseColor("#2A3F2B")
+            else -> Color.parseColor("#5A4017")
+        }
+        val stroke = when {
+            !enabled -> Color.parseColor("#6B4F2A")
+            humanReady -> Color.parseColor("#78C98A")
+            else -> Color.parseColor("#F2BE62")
+        }
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(fill)
+            setStroke(dp(if (enabled) 2 else 1), stroke)
+            cornerRadius = dp(10).toFloat()
+        }
+    }
+
+    private fun updateReadyToVoteAttentionPulse(shouldPulse: Boolean) {
+        val attentionKey = if (shouldPulse) {
+            "${session.phaseIndex}:ready_to_vote"
+        } else {
+            null
+        }
+        if (attentionKey == lastReadyVoteAttentionKey) return
+
+        cancelReadyVotePulse()
+        lastReadyVoteAttentionKey = attentionKey
+        if (attentionKey == null || VisualEffectsPreferences.isReduced(this)) return
+
+        val pulseDuration = 2200L
+        val alpha = ObjectAnimator.ofFloat(
+            btnReadyToVote,
+            View.ALPHA,
+            1f,
+            0.78f,
+            1f
+        ).apply {
+            duration = pulseDuration
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        val scaleX = ObjectAnimator.ofFloat(
+            btnReadyToVote,
+            View.SCALE_X,
+            1f,
+            1.018f,
+            1f
+        ).apply {
+            duration = pulseDuration
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        val scaleY = ObjectAnimator.ofFloat(
+            btnReadyToVote,
+            View.SCALE_Y,
+            1f,
+            1.018f,
+            1f
+        ).apply {
+            duration = pulseDuration
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+        }
+        readyVotePulseAnimator = AnimatorSet().apply {
+            interpolator = AccelerateDecelerateInterpolator()
+            playTogether(alpha, scaleX, scaleY)
+            start()
+        }
+    }
+
+    private fun cancelReadyVotePulse() {
+        readyVotePulseAnimator?.cancel()
+        readyVotePulseAnimator = null
+        lastReadyVoteAttentionKey = null
+        if (::btnReadyToVote.isInitialized) {
+            btnReadyToVote.scaleX = 1f
+            btnReadyToVote.scaleY = 1f
+            btnReadyToVote.alpha = 1f
         }
     }
 

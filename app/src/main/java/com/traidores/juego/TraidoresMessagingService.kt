@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
+@Suppress("DEPRECATION")
 class TraidoresMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val title = message.notification?.title
@@ -16,6 +17,7 @@ class TraidoresMessagingService : FirebaseMessagingService() {
         TraidoresNotifications.show(this, title, body)
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onNewToken(token: String) {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
             Log.d(LOG_TAG, "Nuevo token de prueba FCM: $token")

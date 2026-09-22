@@ -1166,7 +1166,9 @@ class GameplayChatController(
         renderChatTitle()
         renderAmbientPinnedInfo(channel)
         chatAmbientMessages.removeAllViews()
-        chatAmbientMessages.gravity = if (entries.isEmpty()) Gravity.CENTER else Gravity.BOTTOM
+        // El chat acompaña al encabezado: con pocos mensajes no debe quedar pegado al borde
+        // inferior dejando un hueco enorme entre "Amanecer" y "CHAT DEL PUEBLO".
+        chatAmbientMessages.gravity = if (entries.isEmpty()) Gravity.CENTER else Gravity.TOP
         if (entries.isEmpty()) {
             chatAmbientMessages.addView(createAmbientPlaceholderRow())
             lastAnimatedAmbientEntryKey = ""

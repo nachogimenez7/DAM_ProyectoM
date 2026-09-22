@@ -62,6 +62,7 @@ object NotificationPreferences {
             ) == PackageManager.PERMISSION_GRANTED
     }
 
+    @Suppress("DEPRECATION")
     fun logRegistrationTokenForTesting(context: Context) {
         val isDebuggable = context.applicationInfo.flags and
             ApplicationInfo.FLAG_DEBUGGABLE != 0

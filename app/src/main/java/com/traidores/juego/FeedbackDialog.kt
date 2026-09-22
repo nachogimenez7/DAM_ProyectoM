@@ -23,6 +23,7 @@ object FeedbackDialog {
     private const val MAX_SUBJECT = 80
     private const val MAX_MESSAGE = 1200
 
+    @Suppress("DEPRECATION")
     fun show(activity: Activity) {
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
