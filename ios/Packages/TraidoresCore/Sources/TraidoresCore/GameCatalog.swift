@@ -93,6 +93,26 @@ public struct AdvancedGameConfig: Codable, Equatable, Sendable {
     }
 }
 
+public struct LocalTestOptions: Codable, Equatable, Sendable {
+    public var quickMatch: Bool
+    public var botsFollowAccusation: Bool
+    public var forceVoteTies: Bool
+    public var botsNeverKillHuman: Bool
+    public var botsNeverVoteHuman: Bool
+
+    public init(quickMatch: Bool = false, botsFollowAccusation: Bool = false,
+                forceVoteTies: Bool = false, botsNeverKillHuman: Bool = false,
+                botsNeverVoteHuman: Bool = false) {
+        self.quickMatch = quickMatch
+        self.botsFollowAccusation = botsFollowAccusation
+        self.forceVoteTies = forceVoteTies
+        self.botsNeverKillHuman = botsNeverKillHuman
+        self.botsNeverVoteHuman = botsNeverVoteHuman
+    }
+
+    public static let standard = Self()
+}
+
 public struct RoleDefinition: Identifiable, Sendable {
     public let id: RoleKey
     public let title: String

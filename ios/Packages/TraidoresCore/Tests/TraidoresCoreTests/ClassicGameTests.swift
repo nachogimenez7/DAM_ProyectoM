@@ -50,7 +50,8 @@ struct ClassicGameTests {
             #expect(game.players.filter { $0.role == .assassin }.count == 1)
             #expect(game.players.filter { $0.role == .detective }.count == 1)
             #expect(game.players.filter { $0.role == .medic }.count == 1)
-            #expect(game.players.filter { $0.role == .villager }.count == count - 3)
+            #expect(game.players.filter { $0.role == .mercenary }.count == (count >= 7 ? 1 : 0))
+            #expect(game.players.filter { $0.role == .villager }.count == count - (count >= 7 ? 4 : 3))
             #expect(try ClassicSave.decode(ClassicSave.encode(game)) == game)
         }
     }
@@ -59,6 +60,54 @@ struct ClassicGameTests {
         let game = ClassicGame(name: "  Nacho  ", seed: 3, botNames: ["  Bot Uno  ", ""])
         #expect(game.players.count == ClassicGame.minimumPlayers)
         #expect(game.players.map(\.name) == ["Nacho", "Bot Uno", "Mora", "Lautaro", "Valen"])
+    }
+
+    @Test func testRoleAndDebugRulesAffectTheGame() throws {
+        let bots = Array(ClassicGame.defaultBotNames.prefix(4))
+        let options = LocalTestOptions(quickMatch: true, botsFollowAccusation: true,
+                                       forceVoteTies: true, botsNeverKillHuman: true,
+                                       botsNeverVoteHuman: true)
+        var game = ClassicGame(name: "Humano", seed: 7, trainingRole: .mercenary,
+                               testOptions: options, botNames: bots)
+        #expect(game.human.role == .mercenary)
+        #expect(game.players.filter { $0.role == .villager }.count == 1)
+        #expect(game.effectiveTiming.transitionSeconds == 1)
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).testOptions == options)
+        let started = game.advance(expectedPhaseIndex: game.phaseIndex)
+        #expect(started)
+        // The assassin is a bot and may not select the human under this debug setting.
+        #expect(game.nightTarget != 0)
+
+        game.phase = .discussion
+        let accused = game.accuse(2, expectedPhaseIndex: game.phaseIndex)
+        #expect(accused)
+        let beganVoting = game.advance(expectedPhaseIndex: game.phaseIndex)
+        #expect(beganVoting)
+        #expect(game.legalTargets(for: 1).contains(0) == false)
+        let voted = game.advance(target: 2, expectedPhaseIndex: game.phaseIndex)
+        #expect(voted)
+        #expect(game.phase == .voteCount)
+        #expect(game.tieCandidates.count == 2)
+        #expect(game.votes.values.filter { $0 == game.tieCandidates[0] }.count ==
+                game.votes.values.filter { $0 == game.tieCandidates[1] }.count)
+    }
+
+    @Test func forcedTiesRemainLegalAcrossTableSizes() {
+        for count in [5, 7, 10, 12, 15] {
+            let options = LocalTestOptions(forceVoteTies: true, botsNeverVoteHuman: true)
+            var game = ClassicGame(name: "Humano", seed: UInt64(count),
+                                   testOptions: options,
+                                   botNames: Array(ClassicGame.defaultBotNames.prefix(count - 1)))
+            game.phase = .voting
+            let target = game.legalTargets(for: 0).first
+            let voted = game.advance(target: target, expectedPhaseIndex: game.phaseIndex)
+            #expect(voted)
+            #expect(game.tieCandidates.count == 2)
+            for (voter, choice) in game.votes {
+                #expect(voter != choice)
+                #expect(voter == 0 || choice != 0)
+            }
+        }
     }
 
     @Test func androidTimingPresetsAndLimitsReachTheSavedMatch() throws {
@@ -134,6 +183,8 @@ struct ClassicGameTests {
         var game = ClassicGame(name: "", seed: 2, trainingRole: .medic)
         let accepted52 = game.advance(expectedPhaseIndex: 0)
         #expect(accepted52)
+        let reachedMedic = game.skipPassiveNight(expectedPhaseIndex: game.phaseIndex)
+        #expect(reachedMedic)
         #expect(game.phase == .medicNight)
         #expect(game.legalTargets(for: 0).contains(0))
         let before = game
@@ -150,12 +201,62 @@ struct ClassicGameTests {
         var detective = ClassicGame(name: "", seed: 2, trainingRole: .detective)
         let accepted64 = detective.advance(expectedPhaseIndex: 0)
         #expect(accepted64)
+        let reachedDetective = detective.skipPassiveNight(expectedPhaseIndex: detective.phaseIndex)
+        #expect(reachedDetective)
         #expect(!detective.legalTargets(for: 0).contains(0))
         let target = detective.legalTargets(for: 0).first!
         let accepted67 = detective.advance(target: target, expectedPhaseIndex: detective.phaseIndex)
         #expect(accepted67)
         #expect(detective.humanInvestigations.last?.suspicious == (detective.players[target].role == .assassin))
         #expect(detective.messages.allSatisfy { !$0.text.contains("Investigué") })
+    }
+
+    @Test func passiveNightCanBeSkippedButAnActionCannot() {
+        var villager = ClassicGame(name: "Humano", seed: 3, trainingRole: .villager)
+        let started = villager.advance(expectedPhaseIndex: villager.phaseIndex)
+        #expect(started)
+        #expect(villager.phase == .assassinNight)
+        #expect(villager.legalTargets(for: 0).isEmpty)
+        let skipped = villager.skipPassiveNight(expectedPhaseIndex: villager.phaseIndex)
+        #expect(skipped)
+        #expect(villager.phase == .dawn)
+        #expect(villager.nightTarget != nil)
+
+        var medic = ClassicGame(name: "Humano", seed: 3, trainingRole: .medic)
+        let startedMedic = medic.advance(expectedPhaseIndex: medic.phaseIndex)
+        #expect(startedMedic)
+        let skippedToMedic = medic.skipPassiveNight(expectedPhaseIndex: medic.phaseIndex)
+        #expect(skippedToMedic)
+        #expect(medic.phase == .medicNight)
+        let cannotSkip = medic.skipPassiveNight(expectedPhaseIndex: medic.phaseIndex)
+        #expect(!cannotSkip)
+    }
+
+    // Android GameEngine.enterUnifiedNight resolves every bot-only phase after
+    // the human acts, rather than keeping the local player waiting for each bot.
+    @Test func humanNightActionImmediatelyReachesDawn() {
+        for role in [RoleKey.assassin, .mercenary, .detective, .medic] {
+            var game = ClassicGame(name: "Vos", seed: 42, trainingRole: role,
+                                   botNames: Array(ClassicGame.defaultBotNames.prefix(6)))
+            let started = game.advance(expectedPhaseIndex: game.phaseIndex)
+            #expect(started)
+            if game.legalTargets(for: 0).isEmpty {
+                let skipped = game.skipPassiveNight(expectedPhaseIndex: game.phaseIndex)
+                #expect(skipped)
+            }
+            #expect(game.human.role == role)
+            #expect(game.isNight)
+            let target = game.legalTargets(for: 0).first!
+            let revision = game.phaseIndex
+            let acted = game.advance(target: target, expectedPhaseIndex: revision)
+            #expect(acted)
+            #expect(game.phase == .dawn)
+            #expect(!game.isNight)
+            #expect(game.nightTarget != nil)
+            #expect(game.protectedPlayer != nil)
+            #expect(game.silencedPlayer != nil)
+            if role == .detective { #expect(game.humanInvestigations.count == 1) }
+        }
     }
 
     @Test func classicRoleTargetRulesMatchAndroid() {

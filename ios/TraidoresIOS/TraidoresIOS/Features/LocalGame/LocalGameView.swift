@@ -25,8 +25,10 @@ struct LocalModeView: View {
                         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10))
                         .overlay { RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border) }
                         .padding(.bottom, 28)
-                    difficultyLink(.normal, title: "NORMAL", prominent: true)
-                    difficultyLink(.hard, title: "DIFICIL", prominent: false)
+                    VStack(spacing: 14) {
+                        difficultyLink(.normal, title: "NORMAL", prominent: true)
+                        difficultyLink(.hard, title: "DIFICIL", prominent: false)
+                    }
                 }
                 .padding(.horizontal, 32)
                 .frame(maxWidth: 560)
@@ -75,6 +77,8 @@ struct LocalLobbyView: View {
     @AppStorage("local.botNames", store: LocalLobbyPreferences.store) private var savedBotNames = ""
     @AppStorage("local.timing", store: LocalLobbyPreferences.store) private var savedTiming = ""
     @AppStorage("local.advanced", store: LocalLobbyPreferences.store) private var savedAdvanced = ""
+    @AppStorage("local.testOptions", store: LocalLobbyPreferences.store) private var savedTestOptions = ""
+    @AppStorage("local.trainingRole", store: LocalLobbyPreferences.store) private var selectedTrainingRoleKey = ""
     @AppStorage("local.map", store: LocalLobbyPreferences.store) private var selectedMapKey = GameMap.pampa.rawValue
     @State private var playing = false
     @State private var showingTiming = false
@@ -82,6 +86,7 @@ struct LocalLobbyView: View {
     @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
     @State private var timing = GameTimingConfig.normal
     @State private var advanced = AdvancedGameConfig.standard
+    @State private var testOptions = LocalTestOptions.standard
     @State private var editingBot: Int?
     @State private var editedName = ""
 
@@ -146,11 +151,16 @@ struct LocalLobbyView: View {
         }
         .onChange(of: timing) { _, value in saveTiming(value) }
         .onChange(of: advanced) { _, value in saveAdvanced(value) }
+        .onChange(of: testOptions) { _, value in
+            guard let data = try? JSONEncoder().encode(value) else { return }
+            savedTestOptions = String(decoding: data, as: UTF8.self)
+        }
         .sheet(isPresented: $showingTiming) {
-            TimingOptionsView(timing: $timing)
+            MatchOptionsView(config: $testOptions)
         }
         .sheet(isPresented: $showingAdvanced) {
-            AdvancedOptionsView(config: $advanced)
+            AdvancedOptionsView(config: $advanced, timing: $timing,
+                                trainingRoleKey: $selectedTrainingRoleKey)
         }
     }
 
@@ -449,10 +459,16 @@ struct LocalLobbyView: View {
         } else if arguments.contains("-ui-testing-detective") {
             .detective
         } else {
-            nil
+            RoleKey(rawValue: selectedTrainingRoleKey)
         }
+        #if DEBUG
+        let appliedTestOptions = testOptions
+        #else
+        let appliedTestOptions = LocalTestOptions(quickMatch: testOptions.quickMatch)
+        #endif
         store.start(name: "Vos", map: selectedMap, difficulty: difficulty, botNames: botNames,
-                    timing: timing, advanced: advanced, trainingRole: trainingRole)
+                    timing: timing, advanced: advanced, testOptions: appliedTestOptions,
+                    trainingRole: trainingRole)
         playing = store.game != nil
     }
 
@@ -492,6 +508,12 @@ struct LocalLobbyView: View {
     }
 
     private func restoreAdvanced() {
+        defer {
+            if let data = savedTestOptions.data(using: .utf8),
+               let value = try? JSONDecoder().decode(LocalTestOptions.self, from: data) {
+                testOptions = value
+            }
+        }
         guard let data = savedAdvanced.data(using: .utf8),
               let value = try? JSONDecoder().decode(AdvancedGameConfig.self, from: data)
         else { return }
@@ -507,11 +529,19 @@ struct LocalLobbyView: View {
 private struct AdvancedOptionsView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding private var config: AdvancedGameConfig
+    @Binding private var timing: GameTimingConfig
+    @Binding private var trainingRoleKey: String
     @State private var draft: AdvancedGameConfig
+    @State private var draftRoleKey: String
+    @State private var showingTiming = false
 
-    init(config: Binding<AdvancedGameConfig>) {
+    init(config: Binding<AdvancedGameConfig>, timing: Binding<GameTimingConfig>,
+         trainingRoleKey: Binding<String>) {
         _config = config
+        _timing = timing
+        _trainingRoleKey = trainingRoleKey
         _draft = State(initialValue: config.wrappedValue)
+        _draftRoleKey = State(initialValue: trainingRoleKey.wrappedValue)
     }
 
     var body: some View {
@@ -532,19 +562,69 @@ private struct AdvancedOptionsView: View {
                                  value: $draft.showIndividualVotes)
                     Text("LECTURA INICIAL DEL ROL").font(.caption.bold()).tracking(1.2)
                         .foregroundStyle(TraidoresTheme.secondary)
-                    Text("Define cuándo aparece EMPEZAR después de recibir la carta.")
+                    Text("Elegí cuánto esperar antes de habilitar EMPEZAR. Al tocarlo comienza la primera noche.")
                         .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                     HStack(spacing: 8) {
                         readingButton("INMEDIATO", seconds: 0)
                         readingButton("6 S", seconds: 6)
                         readingButton("10 S", seconds: 10)
                     }
+                    Text("TIEMPOS DE PARTIDA").font(.caption.bold()).tracking(1.2)
+                        .foregroundStyle(TraidoresTheme.secondary)
+                    Text("Cuánto dura cada etapa de la partida. Podés usar los valores normales o ajustarlos.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    Button {
+                        showingTiming = true
+                    } label: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("CAMBIAR TIEMPOS")
+                                    .font(TraidoresTheme.title(17))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                            }
+                            timingSummaryRow("Cambio día/noche", seconds: timing.transitionSeconds)
+                            timingSummaryRow("Acción nocturna", seconds: timing.nightSeconds)
+                            timingSummaryRow("Debate del pueblo", seconds: timing.discussionSeconds)
+                            timingSummaryRow("Votación", seconds: timing.votingSeconds)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+                    }
+                    .buttonStyle(.plain)
+                    Text("MODO DE PRUEBA · PARTIDA LOCAL").font(.caption.bold()).tracking(1.2)
+                        .foregroundStyle(TraidoresTheme.secondary)
+                    Text("Elegí el rol que querés probar en la próxima partida. AZAR mantiene el reparto normal.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("TU ROL").font(.subheadline.bold())
+                            Spacer()
+                            Picker("Tu rol", selection: $draftRoleKey) {
+                                Text("Al azar").tag("")
+                                ForEach(ClassicGame.supportedTrainingRoles, id: \.self) { role in
+                                    Text(role.classicTitle).tag(role.rawValue)
+                                }
+                            }
+                            .labelsHidden()
+                            .tint(TraidoresTheme.gold)
+                        }
+                        Text(trainingRoleExplanation)
+                            .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
                     Button("APLICAR") {
                         config = draft.normalized
+                        trainingRoleKey = draftRoleKey
                         dismiss()
                     }
                     .buttonStyle(TraidoresButtonStyle(prominent: true))
-                    Button("RESTABLECER") { draft = .standard }
+                    Button("RESTABLECER") { draft = .standard; draftRoleKey = "" }
                         .buttonStyle(TraidoresButtonStyle())
                     Button("CANCELAR") { dismiss() }
                         .foregroundStyle(TraidoresTheme.secondary)
@@ -555,6 +635,7 @@ private struct AdvancedOptionsView: View {
         }
         .foregroundStyle(TraidoresTheme.text)
         .presentationDetents([.large])
+        .sheet(isPresented: $showingTiming) { TimingOptionsView(timing: $timing) }
     }
 
     private func optionToggle(title: String, detail: String, value: Binding<Bool>) -> some View {
@@ -567,6 +648,24 @@ private struct AdvancedOptionsView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
     }
 
+    private func timingSummaryRow(_ label: String, seconds: Int) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(TraidoresTheme.secondary)
+            Spacer(minLength: 8)
+            Text("\(seconds) s")
+                .monospacedDigit()
+                .foregroundStyle(TraidoresTheme.gold)
+        }
+        .font(.subheadline)
+    }
+
+    private var trainingRoleExplanation: String {
+        guard let role = ClassicGame.supportedTrainingRoles.first(where: { $0.rawValue == draftRoleKey }) else {
+            return "Se te asignará un rol al azar según la composición elegida."
+        }
+        return "Vas a jugar como \(role.classicTitle). Si no estaba en la composición, ocupará el lugar de un Aldeano; los demás roles se reparten normalmente."
+    }
+
     private func readingButton(_ title: String, seconds: Int) -> some View {
         Button(title) { draft.roleReadingSeconds = seconds }
             .font(.caption.bold())
@@ -575,6 +674,65 @@ private struct AdvancedOptionsView: View {
             .background(draft.roleReadingSeconds == seconds ? TraidoresTheme.gold : TraidoresTheme.panel,
                         in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.border))
+    }
+}
+
+private struct MatchOptionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding private var config: LocalTestOptions
+    @State private var draft: LocalTestOptions
+
+    init(config: Binding<LocalTestOptions>) {
+        _config = config
+        _draft = State(initialValue: config.wrappedValue)
+    }
+
+    var body: some View {
+        ZStack {
+            MenuBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("OPCIONES DE PARTIDA")
+                        .font(TraidoresTheme.title(25)).foregroundStyle(TraidoresTheme.gold)
+                        .frame(maxWidth: .infinity)
+                    Text("RITMO").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                    toggle("Partida rápida", detail: "Acorta los tiempos y salta automáticamente las fases nocturnas sin acción propia.",
+                           value: $draft.quickMatch)
+                    #if DEBUG
+                    Text("HERRAMIENTAS DEBUG").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                    toggle("IA obedece votos del chat", detail: "Los bots siguen tu sospecha al votar.",
+                           value: $draft.botsFollowAccusation)
+                    toggle("Forzar empates", detail: "Prepara una votación empatada cuando hay votos suficientes.",
+                           value: $draft.forceVoteTies)
+                    toggle("Bots no te matan de noche", detail: nil,
+                           value: $draft.botsNeverKillHuman)
+                    toggle("Bots no te votan", detail: nil,
+                           value: $draft.botsNeverVoteHuman)
+                    #else
+                    Text("Las herramientas debug solo aparecen en compilaciones de prueba.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    #endif
+                    HStack(spacing: 10) {
+                        Button("CANCELAR") { dismiss() }.buttonStyle(TraidoresButtonStyle())
+                        Button("APLICAR") { config = draft; dismiss() }
+                            .buttonStyle(TraidoresButtonStyle(prominent: true))
+                    }
+                }
+                .padding(20).frame(maxWidth: 560).frame(maxWidth: .infinity)
+            }
+        }
+        .foregroundStyle(TraidoresTheme.text)
+        .presentationDetents([.large])
+    }
+
+    private func toggle(_ title: String, detail: String?, value: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Toggle(title, isOn: value).tint(TraidoresTheme.gold)
+            if let detail { Text(detail).font(.footnote).foregroundStyle(TraidoresTheme.secondary) }
+        }
+        .padding(13)
+        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
     }
 }
 
@@ -725,13 +883,19 @@ private struct LocalMatchFlow: View {
             if assignmentFinished {
                 LocalTableView(store: store, dismissMatch: onExit)
             } else {
-                LocalRoleAssignmentView(store: store) {
-                    guard let game = store.game else { return }
-                    store.advance(target: nil, revision: game.phaseIndex)
-                    assignmentFinished = true
-                } onExit: {
-                    store.cancel()
-                    onExit()
+                ZStack {
+                    // Keep the actual match table underneath the private role reveal,
+                    // as Android does. The dealing animation itself remains full-screen.
+                    LocalTableView(store: store, dismissMatch: onExit)
+                        .allowsHitTesting(false)
+                    LocalRoleAssignmentView(store: store) {
+                        guard let game = store.game else { return }
+                        store.advance(target: nil, revision: game.phaseIndex)
+                        assignmentFinished = true
+                    } onExit: {
+                        store.cancel()
+                        onExit()
+                    }
                 }
             }
         }
@@ -747,21 +911,44 @@ private struct LocalRoleAssignmentView: View {
 
     @State private var stage = AssignmentStage.dealing
     @State private var tableOpacity = 0.0
+    @State private var vignetteOpacity = 0.0
+    @State private var candleOpacity = 0.0
+    @State private var dealingOpacity = 1.0
+    @State private var backOpacity = 0.0
     @State private var handsOpacity = 0.0
-    @State private var handsOffset = 70.0
+    @State private var handsOffset = 58.0
+    @State private var leftHandOffset = -28.0
+    @State private var rightHandOffset = 28.0
+    @State private var handsScale = 0.91
+    @State private var leftHandRotation = -5.0
+    @State private var rightHandRotation = 5.0
     @State private var cardOpacity = 0.0
-    @State private var cardOffset = -120.0
+    @State private var cardOffset = -112.0
+    @State private var cardScale = 0.78
+    @State private var cardRotation = -3.0
+    @State private var cardRotationX = 4.0
+    @State private var cardRotationY = -11.0
+    @State private var auraOpacity = 0.0
+    @State private var auraScale = 0.74
+    @State private var shadowOpacity = 0.0
+    @State private var shadowScale = 0.88
+    @State private var shadowOffset = 7.0
+    @State private var shadowRotation = -3.0
     @State private var statusOpacity = 0.0
+    @State private var viewportHeight = 0.0
     @State private var remainingReading = 0
     @State private var showingExitConfirmation = false
+    @State private var showingTeammates = false
 
     var body: some View {
         ZStack {
-            Image("assigning_vertical_table").resizable().scaledToFill().ignoresSafeArea()
-                .opacity(tableOpacity)
-            Color.black.opacity(stage == .dealing ? 0.08 : 0.58).ignoresSafeArea()
-
-            if stage == .dealing { dealingStage } else if let game = store.game { rolePreview(game.human.role) }
+            if stage == .dealing {
+                Color.black.ignoresSafeArea()
+                dealingStage.opacity(dealingOpacity)
+            } else if let game = store.game {
+                Color.black.opacity(0.58).ignoresSafeArea()
+                rolePreview(game.human.role)
+            }
 
             Button { showingExitConfirmation = true } label: {
                 Image(systemName: "chevron.left").font(.headline).frame(width: 46, height: 46)
@@ -769,7 +956,14 @@ private struct LocalRoleAssignmentView: View {
             }
             .foregroundStyle(TraidoresTheme.text).padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .opacity(backOpacity)
+            .disabled(backOpacity < 0.7)
             .accessibilityIdentifier("assignment.back")
+
+            if showingTeammates, let game = store.game {
+                teammateReveal(game)
+                    .zIndex(2)
+            }
         }
         .alert("¿Salir de la partida?", isPresented: $showingExitConfirmation) {
             Button("SALIR", role: .destructive, action: onExit)
@@ -778,51 +972,261 @@ private struct LocalRoleAssignmentView: View {
             Text("Si salís ahora, se cancelará la partida y perderás su progreso.")
         }
         .task {
-            withAnimation(.easeOut(duration: 0.42)) { tableOpacity = 1 }
-            try? await Task.sleep(for: .seconds(0.42))
-            withAnimation(.easeOut(duration: 0.48)) { handsOpacity = 1; handsOffset = 0 }
-            try? await Task.sleep(for: .seconds(0.56))
-            withAnimation(.spring(response: 0.62, dampingFraction: 0.72)) {
-                cardOpacity = 1; cardOffset = 0
-            }
-            try? await Task.sleep(for: .seconds(0.9))
-            withAnimation(.easeIn(duration: 0.35)) { statusOpacity = 1 }
-            try? await Task.sleep(for: .seconds(1.35))
-            withAnimation(.easeInOut(duration: 0.42)) { handsOpacity = 0; stage = .role }
+            await runDealingAnimation()
             remainingReading = store.game?.advanced.roleReadingSeconds ?? 0
             while remainingReading > 0 {
                 try? await Task.sleep(for: .seconds(1))
                 remainingReading -= 1
             }
         }
+        .task(id: showingTeammates) {
+            guard showingTeammates else { return }
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, showingTeammates else { return }
+            showingTeammates = false
+            onStart()
+        }
+    }
+
+    @MainActor
+    private func runDealingAnimation() async {
+        let settleY = -max(viewportHeight, 700) * 0.02
+
+        withAnimation(.easeOut(duration: 0.42)) {
+            tableOpacity = 1
+            vignetteOpacity = 0.78
+            candleOpacity = 0.16
+        }
+        try? await Task.sleep(for: .seconds(0.42))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeOut(duration: 0.48)) {
+            handsOpacity = 1
+            handsOffset = 0
+            leftHandOffset = -4
+            rightHandOffset = 4
+            handsScale = 0.94
+            leftHandRotation = -1
+            rightHandRotation = 1
+        }
+        withAnimation(.easeOut(duration: 0.22).delay(0.12)) { backOpacity = 0.76 }
+        try? await Task.sleep(for: .seconds(0.48))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeOut(duration: 0.50)) {
+            cardOpacity = 1
+            cardOffset = settleY + 8
+            cardScale = 1.04
+            cardRotation = 0
+            cardRotationX = -1
+            cardRotationY = 2
+            auraOpacity = 0.38
+            auraScale = 1
+            shadowOpacity = 0.44
+            shadowScale = 1
+            shadowOffset = 2
+            shadowRotation = -1
+            leftHandOffset = 10
+            rightHandOffset = -10
+            handsOffset = -4
+            handsScale = 0.95
+            leftHandRotation = 1.5
+            rightHandRotation = -1.5
+        }
+        try? await Task.sleep(for: .seconds(0.50))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeInOut(duration: 0.13)) {
+            cardOffset = settleY + 12
+            cardScale = 1
+        }
+        try? await Task.sleep(for: .seconds(0.13))
+        withAnimation(.easeInOut(duration: 0.13)) {
+            cardOffset = settleY + 2
+            cardScale = 1.06
+            cardRotationX = 0
+            cardRotationY = 0
+            shadowOpacity = 0.58
+            shadowScale = 0.94
+            shadowOffset = 0
+            shadowRotation = 0
+            leftHandOffset = 3
+            rightHandOffset = -3
+            handsOffset = 2
+            handsScale = 0.94
+            leftHandRotation = 0
+            rightHandRotation = 0
+        }
+        // The settle motion lasts 0.13 s; keep only a brief beat before the hands leave.
+        try? await Task.sleep(for: .seconds(0.18))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeOut(duration: 0.62)) {
+            handsOpacity = 0
+            handsOffset = 82
+            leftHandOffset = -42
+            rightHandOffset = 42
+            handsScale = 0.91
+            leftHandRotation = -6
+            rightHandRotation = 6
+            cardScale = 1.13
+            cardOffset = settleY - 2
+            auraOpacity = 0.58
+            shadowOpacity = 0.48
+            statusOpacity = 1
+        }
+        try? await Task.sleep(for: .seconds(0.62))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeInOut(duration: 0.52)) {
+            cardScale = 1.08
+            cardOffset = settleY + 5
+            statusOpacity = 0.72
+            auraOpacity = 0.42
+        }
+        try? await Task.sleep(for: .seconds(0.52))
+        withAnimation(.easeInOut(duration: 0.52)) {
+            cardScale = 1.13
+            cardOffset = settleY - 2
+            statusOpacity = 1
+            auraOpacity = 0.58
+        }
+        // Leave the dealt card on the table just a touch longer before revealing the role.
+        try? await Task.sleep(for: .seconds(0.72))
+        guard !Task.isCancelled else { return }
+
+        withAnimation(.easeOut(duration: 0.48)) {
+            dealingOpacity = 0
+            backOpacity = 0
+        }
+        try? await Task.sleep(for: .seconds(0.48))
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeOut(duration: 0.28)) {
+            stage = .role
+            backOpacity = 1
+        }
     }
 
     private var dealingStage: some View {
-        ZStack {
-            Ellipse().fill(TraidoresTheme.gold.opacity(0.18)).blur(radius: 28)
-                .frame(width: 230, height: 330).opacity(cardOpacity)
-            Image("card_back_traidores").resizable().scaledToFit()
-                .frame(width: 124, height: 196)
-                .shadow(color: .black.opacity(0.85), radius: 14, y: 12)
-                .offset(y: cardOffset).opacity(cardOpacity)
-            Image("assigning_dealer_hands").resizable().scaledToFill().ignoresSafeArea()
-                .offset(y: handsOffset).opacity(handsOpacity)
-            Text("¡Buena suerte con tu rol!")
-                .font(TraidoresTheme.title(22)).foregroundStyle(TraidoresTheme.gold)
-                .padding(.horizontal, 22).padding(.vertical, 10)
-                .background(TraidoresTheme.ink.opacity(0.9), in: Capsule())
-                .overlay(Capsule().stroke(TraidoresTheme.border))
-                .padding(.bottom, 18).opacity(statusOpacity)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .accessibilityIdentifier("assignment.status")
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            let cardTop = height * 0.29
+
+            ZStack(alignment: .topLeading) {
+                Image("assigning_vertical_table")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .opacity(tableOpacity)
+
+                RadialGradient(
+                    colors: [Color(red: 1, green: 176 / 255, blue: 79 / 255).opacity(0.55),
+                             Color(red: 232 / 255, green: 139 / 255, blue: 50 / 255).opacity(0.19),
+                             .clear],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 115
+                )
+                .frame(width: 210, height: 250)
+                .offset(x: -42, y: -22)
+                .opacity(candleOpacity)
+
+                RadialGradient(
+                    colors: [.clear, .black.opacity(0.08), .black.opacity(0.64)],
+                    center: .center,
+                    startRadius: min(width, height) * 0.12,
+                    endRadius: max(width, height) * 0.62
+                )
+                .frame(width: width, height: height)
+                .opacity(vignetteOpacity)
+
+                Ellipse()
+                    .fill(RadialGradient(
+                        colors: [TraidoresTheme.gold.opacity(0.65), TraidoresTheme.gold.opacity(0.26), .clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 130
+                    ))
+                    .frame(width: 220, height: 312)
+                    .scaleEffect(auraScale)
+                    .opacity(auraOpacity)
+                    .position(x: width / 2, y: cardTop + 98)
+
+                Ellipse()
+                    .fill(LinearGradient(
+                        colors: [.clear, .black.opacity(0.27), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+                    .frame(width: 144, height: 216)
+                    .scaleEffect(shadowScale)
+                    .rotationEffect(.degrees(shadowRotation))
+                    .opacity(shadowOpacity)
+                    .position(x: width / 2 + shadowOffset, y: cardTop + 116)
+
+                Image("card_back_traidores")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 124, height: 196)
+                    .rotation3DEffect(.degrees(cardRotationX), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
+                    .rotation3DEffect(.degrees(cardRotationY), axis: (x: 0, y: 1, z: 0), perspective: 0.35)
+                    .rotationEffect(.degrees(cardRotation))
+                    .scaleEffect(cardScale)
+                    .opacity(cardOpacity)
+                    .position(x: width / 2, y: cardTop + 98 + cardOffset)
+
+                dealerHands(width: width, height: height, leftHalf: true)
+                    .scaleEffect(handsScale, anchor: UnitPoint(x: 0.18, y: 1))
+                    .rotationEffect(.degrees(leftHandRotation), anchor: UnitPoint(x: 0.18, y: 1))
+                    .offset(x: leftHandOffset, y: handsOffset)
+                    .opacity(handsOpacity)
+
+                dealerHands(width: width, height: height, leftHalf: false)
+                    .scaleEffect(handsScale, anchor: UnitPoint(x: 0.82, y: 1))
+                    .rotationEffect(.degrees(rightHandRotation), anchor: UnitPoint(x: 0.82, y: 1))
+                    .offset(x: rightHandOffset, y: handsOffset)
+                    .opacity(handsOpacity)
+
+                Text("¡Buena suerte con tu rol!")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(TraidoresTheme.gold)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+                    .background(TraidoresTheme.ink.opacity(0.92), in: Capsule())
+                    .overlay(Capsule().stroke(TraidoresTheme.border))
+                    .opacity(statusOpacity)
+                    .position(x: width / 2, y: height - 108)
+                    .accessibilityIdentifier("assignment.status")
+            }
+            .frame(width: width, height: height)
+            .clipped()
+            .onAppear { viewportHeight = height }
         }
+        .ignoresSafeArea()
+    }
+
+    private func dealerHands(width: CGFloat, height: CGFloat, leftHalf: Bool) -> some View {
+        Image("assigning_dealer_hands")
+            .resizable()
+            .scaledToFill()
+            .frame(width: width, height: height)
+            .clipped()
+            .mask {
+                HStack(spacing: 0) {
+                    if leftHalf { Color.white } else { Color.clear }
+                    if leftHalf { Color.clear } else { Color.white }
+                }
+            }
+            .accessibilityHidden(true)
     }
 
     private func rolePreview(_ role: RoleKey) -> some View {
         VStack(spacing: 7) {
             Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
             Text(role.classicTitle.uppercased()).font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
-            Text(role == .assassin ? "TRAIDORES" : "PUEBLO")
+            Text([RoleKey.assassin, .mercenary, .spy].contains(role) ? "TRAIDORES" : "PUEBLO")
                 .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
             Divider().overlay(TraidoresTheme.border)
             HStack(alignment: .top, spacing: 12) {
@@ -843,7 +1247,7 @@ private struct LocalRoleAssignmentView: View {
                 .layoutPriority(1)
             }
             if remainingReading == 0 {
-                Button("EMPEZAR") { onStart() }
+                Button("EMPEZAR") { beginMatch() }
                     .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 190)
                     .accessibilityIdentifier("role.start")
             } else {
@@ -856,9 +1260,111 @@ private struct LocalRoleAssignmentView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(TraidoresTheme.gold, lineWidth: 1.5))
         .padding(12).transition(.scale.combined(with: .opacity))
     }
+
+    private func beginMatch() {
+        guard let game = store.game else { return }
+        let traitorRoles: Set<RoleKey> = [.assassin, .mercenary, .spy]
+        let teammates = game.players.filter { $0.id != 0 && traitorRoles.contains($0.role) }
+        if traitorRoles.contains(game.human.role), !teammates.isEmpty {
+            showingTeammates = true
+        } else {
+            onStart()
+        }
+    }
+
+    private func teammateReveal(_ game: ClassicGame) -> some View {
+        let traitorRoles: Set<RoleKey> = [.assassin, .mercenary, .spy]
+        let teammates = game.players.filter { $0.id != 0 && traitorRoles.contains($0.role) }
+        return ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 10) {
+                Text("TUS COMPAÑEROS TRAIDORES")
+                    .font(TraidoresTheme.title(17)).foregroundStyle(TraidoresTheme.gold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2).minimumScaleFactor(0.85)
+                HStack(spacing: 12) {
+                    ForEach(teammates) { teammate in
+                        VStack(spacing: 3) {
+                            Image(teammate.role.classicImage)
+                                .resizable().scaledToFill()
+                                .frame(width: teammates.count > 2 ? 68 : 92,
+                                       height: teammates.count > 2 ? 96 : 124)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.gold))
+                            Text(teammate.name).font(.caption.bold()).lineLimit(1)
+                            Text(teammate.role.classicTitle.uppercased())
+                                .font(.system(size: 10)).foregroundStyle(TraidoresTheme.secondary)
+                        }
+                    }
+                }
+                Text("Tocá para continuar · continúa solo en 6 s")
+                    .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: 260)
+            .modifier(LocalEventCard(map: game.map))
+            .padding(10)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard showingTeammates else { return }
+            showingTeammates = false
+            onStart()
+        }
+        .accessibilityIdentifier("assignment.teammates")
+    }
 }
 
 private enum AssignmentStage { case dealing, role }
+
+private struct EventSeal: View {
+    let symbol: String
+    let accent: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9)
+                .fill(accent.opacity(0.22))
+                .frame(width: 52, height: 52)
+                .rotationEffect(.degrees(45))
+            Circle().fill(TraidoresTheme.ink).frame(width: 66, height: 66)
+            Circle().strokeBorder(accent.opacity(0.86), lineWidth: 1.5)
+                .frame(width: 66, height: 66)
+            Circle().strokeBorder(accent.opacity(0.34), lineWidth: 1)
+                .frame(width: 55, height: 55)
+            Image(systemName: symbol)
+                .font(.system(size: 27, weight: .medium))
+                .foregroundStyle(accent)
+        }
+        .frame(width: 82, height: 82)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct LocalEventCard: ViewModifier {
+    let map: GameMap
+
+    func body(content: Content) -> some View {
+        content
+            // Keep the artwork square and the reading surface entirely inside it.
+            .frame(width: 260, height: 260)
+            .padding(45)
+            .background {
+                Rectangle()
+                    .fill(Color.black.opacity(0.72))
+                    .frame(width: 276, height: 276)
+            }
+            .overlay {
+                Image(map.eventFrameAsset)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 350, height: 350)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+    }
+}
 
 private struct PrivateActionFeedback: Equatable {
     let title: String
@@ -866,10 +1372,23 @@ private struct PrivateActionFeedback: Equatable {
     let systemImage: String
 }
 
+private enum DawnAnnouncement: Equatable {
+    case death(String)
+    case silence(String)
+    case peaceful
+}
+
 private extension GameMap {
     var landscapeAsset: String { "mapa_\(rawValue)" }
     var dayBackgroundAsset: String { "mapa_\(rawValue)_vertical_dia" }
     var nightBackgroundAsset: String { "mapa_\(rawValue)_vertical_noche" }
+    var eventFrameAsset: String {
+        switch self {
+        case .pampa: "event_frame_pampa_modal"
+        case .greece: "event_frame_greece_modal"
+        case .medieval: "event_frame_medieval_modal"
+        }
+    }
 
     var exclusiveRoleTitle: String {
         switch self {
@@ -1040,12 +1559,18 @@ private struct LocalTableView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: Int?
     @State private var showingRole = false
+    @State private var humanCardRevealed = false
     @State private var leaving = false
     @State private var privateFeedback: PrivateActionFeedback?
+    @State private var dawnAnnouncements: [DawnAnnouncement] = []
     @State private var pendingTransition: DayNightTransition?
     @State private var activeTransition: DayNightTransition?
     @State private var lastTransitionKey: String?
     @State private var transitionTask: Task<Void, Never>?
+    @State private var nightCountdownTask: Task<Void, Never>?
+    @State private var nightSkipTask: Task<Void, Never>?
+    @State private var remainingNightSeconds: Int?
+    @State private var nightSkipReady = false
 
     var body: some View {
         if let game = store.game {
@@ -1056,28 +1581,46 @@ private struct LocalTableView: View {
                         max(Int((geometry.size.width - 8 - 8 - 220) / 2), 54),
                         78
                     )
-                    let availableSideHeight = max(Int(geometry.size.height) - 154, 1)
+                    let footerInset: CGFloat = game.winner == nil ? 148 : 8
+                    // Leave a visible lane between the last side card and the
+                    // full-width player panel, especially at 13–15 players.
+                    let availableSideHeight = max(
+                        Int(geometry.size.height) - Int(footerInset) - 36,
+                        1
+                    )
                     let androidMetrics = ClassicCompanionMetrics.androidCompatible(
                         totalPlayers: game.players.count,
                         availableHeight: availableSideHeight,
                         availableWidth: availableSideWidth
                     )
-                    let metrics = game.players.count <= 9
-                        ? androidMetrics.cappedCardWidth(60)
-                        : androidMetrics
+                    let metrics = androidMetrics
                     let sides = sidePlayers(game)
+                    let footerWidth = min(max(geometry.size.width - 24, 244), 372)
 
-                    HStack(alignment: .top, spacing: 4) {
-                        playerColumn(sides.left, game: game, metrics: metrics)
-                        VStack(spacing: 4) {
-                            tableHeader(game)
-                            tableCenter(game)
-                            if game.winner == nil { humanPanel(game) }
+                    ZStack(alignment: .bottom) {
+                        HStack(alignment: .top, spacing: 4) {
+                            playerColumn(sides.left, game: game, metrics: metrics)
+                            VStack(spacing: 4) {
+                                tableHeader(game)
+                                tableCenter(game)
+                            }
+                            .padding(4)
+                            .background(TraidoresTheme.ink.opacity(0.42), in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border, lineWidth: 1))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            playerColumn(sides.right, game: game, metrics: metrics)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        playerColumn(sides.right, game: game, metrics: metrics)
+                        .padding(.horizontal, 4)
+                        .padding(.top, 8)
+                        .padding(.bottom, footerInset)
+
+                        if game.winner == nil {
+                            humanPanel(game)
+                                .frame(width: footerWidth)
+                                .padding(.bottom, 8)
+                                .zIndex(1)
+                        }
                     }
-                    .padding(.horizontal, 4).padding(.vertical, 8)
                 }
 
                 if showingRole {
@@ -1087,8 +1630,14 @@ private struct LocalTableView: View {
                 }
 
                 if let privateFeedback {
-                    privateFeedbackOverlay(privateFeedback)
+                    privateFeedbackOverlay(privateFeedback, map: game.map)
                         .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                        .zIndex(3)
+                }
+
+                if let announcement = dawnAnnouncements.first {
+                    dawnAnnouncementOverlay(announcement, map: game.map)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         .zIndex(3)
                 }
 
@@ -1104,15 +1653,32 @@ private struct LocalTableView: View {
                 }
             }
             .foregroundStyle(TraidoresTheme.text)
-            .onChange(of: game.phaseIndex) { _, _ in selected = nil }
+            .onChange(of: game.phaseIndex) { _, _ in
+                selected = nil
+                nightCountdownTask?.cancel()
+                nightSkipTask?.cancel()
+                remainingNightSeconds = nil
+                nightSkipReady = false
+                Task { @MainActor in
+                    await Task.yield()
+                    if let current = store.game { armNightPhaseIfReady(current) }
+                }
+            }
             .onChange(of: transitionSpec(for: game).key) { _, _ in
                 queueTransition(for: game)
             }
             .onChange(of: privateFeedback) { _, feedback in
-                if feedback == nil { presentPendingTransition(using: game) }
+                if feedback == nil {
+                    presentPendingTransition(using: game)
+                    armNightPhaseIfReady(game)
+                }
             }
             .onAppear { queueTransition(for: game) }
-            .onDisappear { transitionTask?.cancel() }
+            .onDisappear {
+                transitionTask?.cancel()
+                nightCountdownTask?.cancel()
+                nightSkipTask?.cancel()
+            }
             .confirmationDialog("La partida queda guardada para continuar después.",
                                 isPresented: $leaving, titleVisibility: .visible) {
                 Button("Volver al menú") { dismissMatch() }
@@ -1126,7 +1692,12 @@ private struct LocalTableView: View {
             Image(game.isNight ? game.map.nightBackgroundAsset : game.map.dayBackgroundAsset)
                 .resizable().scaledToFill()
                 .frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                .overlay(.black.opacity(0.62))
+                // Android leaves the map legible around the table; darkness belongs on
+                // the central play surface, not over the whole screen.
+                .overlay(alignment: .top) {
+                    LinearGradient(colors: [.black.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 90)
+                }
         }
         .ignoresSafeArea().accessibilityHidden(true)
     }
@@ -1136,6 +1707,9 @@ private struct LocalTableView: View {
     }
 
     private func queueTransition(for game: ClassicGame) {
+        // The assignment layer shows the table as a backdrop, but the first real
+        // transition must wait until the player taps EMPEZAR and night begins.
+        guard game.phase != .assignment else { return }
         let spec = transitionSpec(for: game)
         guard spec.key != lastTransitionKey, spec != activeTransition else { return }
         pendingTransition = spec
@@ -1155,15 +1729,57 @@ private struct LocalTableView: View {
             withAnimation(.easeInOut(duration: 0.32)) { activeTransition = nil }
             try? await Task.sleep(nanoseconds: 340_000_000)
             guard !Task.isCancelled else { return }
+            if let current = store.game, current.isNight {
+                startNightCountdown(for: current)
+            }
             presentPendingTransition(using: game)
         }
+    }
+
+    private func startNightCountdown(for game: ClassicGame) {
+        nightCountdownTask?.cancel()
+        nightSkipTask?.cancel()
+        nightSkipReady = false
+        let phaseIndex = game.phaseIndex
+        let duration = game.effectiveTiming.nightSeconds
+        remainingNightSeconds = duration
+        if game.legalTargets(for: 0).isEmpty {
+            nightSkipTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(game.testOptions.quickMatch ? 1_200 : 3_500))
+                guard !Task.isCancelled, let current = store.game,
+                      current.phaseIndex == phaseIndex, current.isNight,
+                      current.legalTargets(for: 0).isEmpty else { return }
+                if current.testOptions.quickMatch {
+                    store.skipPassiveNight(revision: phaseIndex)
+                } else {
+                    nightSkipReady = true
+                }
+            }
+        }
+        nightCountdownTask = Task { @MainActor in
+            for remaining in stride(from: duration - 1, through: 0, by: -1) {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let current = store.game,
+                      current.phaseIndex == phaseIndex else { return }
+                remainingNightSeconds = remaining
+            }
+            store.expireNight(revision: phaseIndex)
+        }
+    }
+
+    private func armNightPhaseIfReady(_ game: ClassicGame) {
+        guard game.isNight, activeTransition == nil, pendingTransition == nil,
+              privateFeedback == nil,
+              lastTransitionKey == transitionSpec(for: game).key,
+              remainingNightSeconds == nil else { return }
+        startNightCountdown(for: game)
     }
 
     private func transitionDuration(for game: ClassicGame) -> TimeInterval {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains("-ui-testing-transition") { return 1.5 }
         if arguments.contains("-ui-testing") { return 0.08 }
-        return TimeInterval(game.timing.transitionSeconds)
+        return TimeInterval(game.effectiveTiming.transitionSeconds)
     }
 
     private func dayNightTransitionOverlay(
@@ -1177,36 +1793,53 @@ private struct LocalTableView: View {
     }
 
     private func tableHeader(_ game: ClassicGame) -> some View {
-        VStack(spacing: 0) {
+        let roomy = game.players.count <= 8
+        let relaxed = game.players.count <= 10
+        let headerHeight: CGFloat = roomy ? 90 : (relaxed ? 82 : 76)
+        let rowHeight: CGFloat = roomy ? 44 : 38
+        let subtitleHeight = headerHeight - rowHeight - 5
+
+        return VStack(spacing: 0) {
             HStack(spacing: 6) {
-            Button { leaving = true } label: {
+                Button { leaving = true } label: {
                     Image(systemName: "chevron.left").font(.caption.bold()).frame(width: 30, height: 30)
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
-            }
-            VStack(alignment: .leading, spacing: 1) {
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                }
+                .accessibilityLabel("Salir de la partida")
+                VStack(alignment: .leading, spacing: 1) {
                     Text(phaseTitle(for: game).uppercased())
                         .font(TraidoresTheme.title(16)).foregroundStyle(TraidoresTheme.gold)
                         .lineLimit(1).minimumScaleFactor(0.7)
-                    .accessibilityIdentifier("table.phaseTitle")
+                        .accessibilityIdentifier("table.phaseTitle")
                     Text("Ronda \(game.round) · \(game.map.title)")
                         .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
                         .accessibilityIdentifier("table.mapName")
-            }
-            Spacer()
-            Button { showingRole = true } label: {
+                }
+                Spacer(minLength: 2)
+                if game.isNight, let remainingNightSeconds {
+                    Text("\(remainingNightSeconds)")
+                        .font(.caption.bold()).monospacedDigit()
+                        .frame(minWidth: 30, minHeight: 30)
+                        .background(TraidoresTheme.ink.opacity(0.84),
+                                    in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                }
+                Button { showingRole = true } label: {
                     Image(systemName: "person.text.rectangle").font(.caption).frame(width: 30, height: 30)
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                }
+                .accessibilityLabel("Ver mi rol")
             }
-            .accessibilityLabel("Ver mi rol")
-            }
-            .frame(height: 42).padding(.horizontal, 6)
-            Divider().overlay(TraidoresTheme.border)
+            .frame(height: rowHeight).padding(.horizontal, 6)
+            Rectangle().fill(TraidoresTheme.border.opacity(0.82)).frame(height: 1)
             Text(instructions(game))
                 .font(.caption2.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 35, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: subtitleHeight, alignment: .leading)
                 .padding(.horizontal, 7)
         }
-        .frame(height: 80)
+        .frame(height: headerHeight)
         .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
     }
@@ -1222,15 +1855,21 @@ private struct LocalTableView: View {
         game: ClassicGame,
         metrics: ClassicCompanionMetrics
     ) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: CGFloat(metrics.itemGap)) {
-                ForEach(players) { player in
-                    sidePlayerCard(player, game: game, metrics: metrics)
+        GeometryReader { columnGeometry in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: CGFloat(metrics.itemGap)) {
+                    ForEach(players) { player in
+                        sidePlayerCard(player, game: game, metrics: metrics)
+                    }
                 }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: metrics.scrollEnabled ? 0 : columnGeometry.size.height,
+                    alignment: metrics.scrollEnabled ? .top : .center
+                )
             }
-            .frame(maxWidth: .infinity, minHeight: metrics.scrollEnabled ? 0 : nil)
+            .scrollDisabled(!metrics.scrollEnabled)
         }
-        .scrollDisabled(!metrics.scrollEnabled)
         .frame(width: CGFloat(metrics.columnWidth))
     }
 
@@ -1248,16 +1887,47 @@ private struct LocalTableView: View {
                     Image(publicCardImage(player, game: game)).resizable().scaledToFit()
                         .frame(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
                         .clipShape(RoundedRectangle(cornerRadius: 5))
-                    ZStack {
-                        Circle().fill(TraidoresTheme.ink.opacity(0.88))
-                            .frame(width: CGFloat(metrics.avatarSize), height: CGFloat(metrics.avatarSize))
-                        Text(String(player.name.prefix(1)).uppercased())
-                            .font(TraidoresTheme.title(max(CGFloat(metrics.avatarSize) * 0.5, 7)))
-                                .foregroundStyle(player.alive ? TraidoresTheme.gold : TraidoresTheme.secondary)
-                        if !player.alive { Image(systemName: "xmark").font(.caption.bold()) }
-                    }
+                        .overlay {
+                            if actionable && game.isNight {
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(phaseAccent(game.phase).opacity(0.9), lineWidth: 1.5)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if actionable && game.isNight {
+                                Text(game.phase == .assassinNight ? "MATAR" :
+                                     game.phase == .mercenaryNight ? "SILENCIAR" :
+                                     game.phase == .medicNight ? "SALVAR" : "INVESTIGAR")
+                                    .font(.system(size: 8, weight: .heavy))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 2)
+                                    .background(phaseAccent(game.phase).opacity(0.9))
+                                    .padding(.horizontal, 2).padding(.bottom, 2)
+                            }
+                        }
+                        .overlay(alignment: .top) {
+                            if !game.isNight, game.silencedPlayer == player.id, player.alive {
+                                Text("MUDO")
+                                    .font(.system(size: 8, weight: .heavy))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .background(TraidoresTheme.ink.opacity(0.9))
+                            }
+                        }
+                        .overlay {
+                            if !player.alive {
+                                Image("death_blood_splatter_art")
+                                    .resizable().scaledToFit()
+                                    .frame(width: CGFloat(metrics.cardWidth) * 0.85,
+                                           height: CGFloat(metrics.cardHeight) * 0.8)
+                            }
+                        }
                 }
-                Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold)).lineLimit(1)
+                Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold))
+                    .foregroundStyle(player.alive ? playerNameColor(player.id) : playerNameColor(player.id).opacity(0.62))
+                    .strikethrough(!player.alive)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.65)
                     .frame(height: CGFloat(metrics.nameHeight))
             }
@@ -1278,7 +1948,7 @@ private struct LocalTableView: View {
             }
         }
         .buttonStyle(.plain).disabled(!actionable)
-        .opacity(player.alive ? 1 : 0.62)
+        .opacity(player.alive ? 1 : 0.72)
         .accessibilityIdentifier("table.player.\(player.id)")
     }
 
@@ -1286,26 +1956,137 @@ private struct LocalTableView: View {
         !player.alive && game.advanced.revealRolesOnDeath ? player.role.classicImage : "card_back_traidores"
     }
 
+    private func playerNameColor(_ id: Int) -> Color {
+        let palette: [(Double, Double, Double)] = [
+            (0.831, 0.635, 0.306), (0.788, 0.431, 0.290), (0.561, 0.722, 0.416),
+            (0.416, 0.651, 0.722), (0.722, 0.541, 0.847), (0.847, 0.537, 0.537),
+            (0.784, 0.710, 0.416), (0.541, 0.690, 0.847)
+        ]
+        let color = palette[(max(id, 0)) % palette.count]
+        return Color(red: color.0, green: color.1, blue: color.2)
+    }
+
+    private func roleCountName(_ role: RoleKey, count: Int) -> String {
+        guard count > 1 else { return role.classicTitle }
+        return switch role {
+        case .villager: "Aldeanos"
+        case .detective: "Detectives"
+        case .medic: "Médicos"
+        case .mayor: "Alcaldes"
+        case .assassin: "Asesinos"
+        case .mercenary: "Mercenarios"
+        case .spy: "Espías"
+        case .deserter: "Desertores"
+        case .payador: "Payadores"
+        case .jester: "Bufones"
+        case .oracle: "Oráculos"
+        }
+    }
+
     @ViewBuilder
     private func tableCenter(_ game: ClassicGame) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 8) {
-                if let winner = game.winner {
-                    resultPanel(game, winner: winner)
-                } else if game.phase == .discussion {
-                    debatePanel(game)
-                } else if game.phase == .voteCount {
-                    votePanel(game)
-                } else if game.phase == .result {
-                    publicResultPanel(game)
-                } else if !game.legalTargets(for: 0).isEmpty {
-                    targetPrompt(game)
+        GeometryReader { centerGeometry in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 8) {
+                    if let winner = game.winner {
+                        resultPanel(game, winner: winner)
+                    } else {
+                        compositionPanel(game)
+                        phaseSummaryPanel(game)
+                        if game.isNight {
+                            nightPanel(game)
+                                .frame(minHeight: max(285, centerGeometry.size.height - 115))
+                        } else if game.phase == .discussion {
+                            debatePanel(game)
+                        } else if game.phase == .voteCount {
+                            votePanel(game)
+                        } else if game.phase == .result {
+                            publicResultPanel(game)
+                        } else if !game.legalTargets(for: 0).isEmpty {
+                            targetPrompt(game)
+                        } else {
+                            phasePanel(game)
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func compositionPanel(_ game: ClassicGame) -> some View {
+        let counts = Dictionary(grouping: game.players, by: \.role).mapValues(\.count)
+        let ordered: [RoleKey] = [.villager, .detective, .medic, .mayor, .assassin, .mercenary, .spy, .deserter, .payador, .jester, .oracle]
+        let summary = ordered.compactMap { role -> String? in
+            guard let count = counts[role], count > 0 else { return nil }
+            return "\(count) \(roleCountName(role, count: count))"
+        }.joined(separator: " · ")
+        return Text("PARTIDA · \(summary)")
+            .font(.system(size: 9, weight: .bold)).multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity).padding(.horizontal, 5).padding(.vertical, 6)
+            .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.border))
+    }
+
+    private func phaseSummaryPanel(_ game: ClassicGame) -> some View {
+        let events = game.messages.filter { $0.round == game.round && $0.speaker == nil }
+        let event = game.phase == .discussion
+            ? events.first(where: { $0.text.contains("murió durante") || $0.text.contains("Amanece sin") })?.text
+                ?? events.last?.text
+            : events.last?.text
+        return VStack(spacing: 3) {
+            Text(game.isNight ? "NOCHE \(game.round)" : "DÍA \(game.round) · \(game.phase.classicTitle.uppercased())")
+                .font(TraidoresTheme.title(15)).foregroundStyle(TraidoresTheme.gold)
+                .lineLimit(1).minimumScaleFactor(0.75)
+            Text(event ?? instructions(game))
+                .font(.system(size: 10, weight: .semibold)).multilineTextAlignment(.center)
+                .lineLimit(2).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 7).padding(.horizontal, 6)
+        .background(game.isNight ? TraidoresTheme.ink.opacity(0.96)
+                                 : TraidoresTheme.panel.opacity(0.95),
+                    in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(
+            game.isNight ? phaseAccent(game.phase).opacity(0.75) : TraidoresTheme.border))
+    }
+
+    private func nightPanel(_ game: ClassicGame) -> some View {
+        let traitorChat = [.assassin, .mercenary, .spy].contains(game.human.role)
+        return VStack(spacing: 10) {
+            Text(traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
+                .font(TraidoresTheme.title(12))
+                .foregroundStyle(phaseAccent(game.phase))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 5) {
+                Rectangle().fill(phaseAccent(game.phase).opacity(0.5)).frame(height: 1)
+                Text("◆").font(.system(size: 8)).foregroundStyle(phaseAccent(game.phase))
+                Rectangle().fill(phaseAccent(game.phase).opacity(0.5)).frame(height: 1)
+            }
+            Label("Noche \(game.round): comienza la noche.", systemImage: "moon.stars.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(phaseAccent(game.phase).opacity(0.16),
+                            in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(phaseAccent(game.phase).opacity(0.35)))
+            Spacer(minLength: 28)
+            Label(traitorChat ? "Hablen bajo. El pueblo no debe oírlos." :
+                  "El pueblo duerme. Esperá el amanecer.",
+                  systemImage: traitorChat ? "person.wave.2.fill" : "moon.fill")
+                .font(.system(size: 10))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(TraidoresTheme.ink.opacity(0.75),
+                            in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
+        .background(TraidoresTheme.panel.opacity(0.95),
+                    in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(phaseAccent(game.phase).opacity(0.72)))
     }
 
     private func targetPrompt(_ game: ClassicGame) -> some View {
@@ -1343,23 +2124,23 @@ private struct LocalTableView: View {
     private func humanPanel(_ game: ClassicGame) -> some View {
         let targets = game.legalTargets(for: 0)
         let canChooseSelf = targets.contains(0)
-        let canAdvance = targets.isEmpty || targets.contains(selected ?? -1)
+        let canAdvance = game.isNight && targets.isEmpty
+            ? nightSkipReady : (targets.isEmpty || targets.contains(selected ?? -1))
         return VStack(spacing: 5) {
-            Button {
-                if canChooseSelf { selected = 0 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(game.human.role.classicImage).resizable().scaledToFill()
+            HStack(spacing: 8) {
+                Button { humanCardRevealed.toggle() } label: {
+                    Image(humanCardRevealed ? game.human.role.classicImage : "card_back_traidores")
+                        .resizable().scaledToFill()
                         .frame(width: 48, height: 76).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(
-                            selected == 0 ? TraidoresTheme.gold : TraidoresTheme.border,
-                            lineWidth: selected == 0 ? 2 : 1
-                        ))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.border))
+                }
+                .buttonStyle(.plain)
+                HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
                             .lineLimit(1)
-                        Text(game.human.role.classicTitle.uppercased())
+                        Text(humanCardRevealed ? game.human.role.classicTitle.uppercased() : "CARTA OCULTA")
                             .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
                         Text(humanHint(game, canChooseSelf: canChooseSelf))
                             .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
@@ -1368,11 +2149,9 @@ private struct LocalTableView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .buttonStyle(.plain).disabled(!canChooseSelf)
-            .accessibilityIdentifier("table.player.0")
 
             HStack(spacing: 5) {
-                Button("VER CARTA") { showingRole = true }
+                Button(humanCardRevealed ? "OCULTAR CARTA" : "VER CARTA") { humanCardRevealed.toggle() }
                     .font(.system(size: 10, weight: .bold)).tracking(0.5)
                     .foregroundStyle(TraidoresTheme.text)
                     .frame(maxWidth: .infinity, minHeight: 32)
@@ -1382,20 +2161,27 @@ private struct LocalTableView: View {
                     performPrimaryAction(game)
                 }
                 .font(.system(size: 10, weight: .heavy)).tracking(0.45)
-                .foregroundStyle(TraidoresTheme.ink)
+                .foregroundStyle(game.isNight && !targets.isEmpty ? Color.white : TraidoresTheme.ink)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: 32)
-                .background(TraidoresTheme.gold, in: RoundedRectangle(cornerRadius: 7))
+                .background(game.isNight && !targets.isEmpty ? phaseAccent(game.phase) : TraidoresTheme.gold,
+                            in: RoundedRectangle(cornerRadius: 7))
                 .disabled(!canAdvance).opacity(canAdvance ? 1 : 0.52)
                 .accessibilityIdentifier("table.primaryAction")
             }
         }
-        .padding(7).frame(height: 142)
+                .padding(6).frame(height: 132)
         .background(TraidoresTheme.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
     }
 
     private func performPrimaryAction(_ game: ClassicGame) {
+        if game.isNight && game.legalTargets(for: 0).isEmpty {
+            guard nightSkipReady else { return }
+            nightSkipReady = false
+            store.skipPassiveNight(revision: game.phaseIndex)
+            return
+        }
         let target = selected
         let targetPlayer = target.flatMap { target in game.players.first { $0.id == target } }
         let feedback: PrivateActionFeedback? = switch (game.phase, targetPlayer) {
@@ -1405,10 +2191,16 @@ private struct LocalTableView: View {
                 message: "Elegiste a \(player.name). El resultado se anunciará al amanecer.",
                 systemImage: "moon.fill"
             )
+        case (.mercenaryNight, let player?):
+            .init(
+                title: "SILENCIO REGISTRADO",
+                message: "\(player.name) no podrá hablar ni votar durante el día.",
+                systemImage: "speaker.slash.fill"
+            )
         case (.detectiveNight, let player?):
             .init(
                 title: "RESPUESTA PRIVADA",
-                message: "\(player.name) parece \(player.role == .assassin ? "SOSPECHOSO" : "INOCENTE").",
+                message: "\(player.name) parece \([RoleKey.assassin, .mercenary].contains(player.role) ? "SOSPECHOSO" : "INOCENTE").",
                 systemImage: "eye.fill"
             )
         case (.medicNight, let player?):
@@ -1424,33 +2216,146 @@ private struct LocalTableView: View {
         }
         store.advance(target: target, revision: game.phaseIndex)
         privateFeedback = feedback
+        if game.phase == .dawn, let updated = store.game, updated.phaseIndex != game.phaseIndex {
+            if let victim = game.nightTarget,
+               victim != game.protectedPlayer,
+               !updated.players[victim].alive {
+                dawnAnnouncements = [.death(updated.name(victim))]
+            } else {
+                dawnAnnouncements = [.peaceful]
+            }
+            if let silenced = game.silencedPlayer, updated.players[silenced].alive {
+                dawnAnnouncements.append(.silence(updated.name(silenced)))
+            }
+        }
     }
 
-    private func privateFeedbackOverlay(_ feedback: PrivateActionFeedback) -> some View {
-        ZStack {
-            Color.black.opacity(0.82).ignoresSafeArea()
-            VStack(spacing: 13) {
-                Image(systemName: feedback.systemImage)
-                    .font(.title2).foregroundStyle(TraidoresTheme.gold)
+    private func privateFeedbackOverlay(_ feedback: PrivateActionFeedback, map: GameMap) -> some View {
+        let accent = eventAccent(for: feedback.systemImage)
+        return ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 12) {
+                EventSeal(symbol: feedback.systemImage, accent: accent)
                 Text(feedback.title)
-                    .font(TraidoresTheme.title(21)).foregroundStyle(TraidoresTheme.gold)
+                    .font(TraidoresTheme.title(19)).foregroundStyle(accent)
+                    .multilineTextAlignment(.center)
                 Text(feedback.message)
-                    .font(.headline).multilineTextAlignment(.center)
-                Text("Solo vos recibís esta información.")
-                    .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                    .font(.subheadline.weight(.semibold)).multilineTextAlignment(.center)
                 Button("CONTINUAR") { privateFeedback = nil }
-                    .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 210)
+                    .buttonStyle(TraidoresButtonStyle(prominent: false)).frame(maxWidth: .infinity)
                     .accessibilityIdentifier("table.dismissPrivateFeedback")
             }
-            .padding(20).frame(maxWidth: 350)
-            .background(TraidoresTheme.panel.opacity(0.98), in: RoundedRectangle(cornerRadius: 15))
-            .overlay(RoundedRectangle(cornerRadius: 15).stroke(TraidoresTheme.gold, lineWidth: 1.5))
-            .padding(18)
+            .frame(maxWidth: 260)
+            .modifier(LocalEventCard(map: map))
+            .padding(10)
+        }
+    }
+
+    private func dawnAnnouncementOverlay(_ announcement: DawnAnnouncement, map: GameMap) -> some View {
+        let accent = announcementAccent(announcement)
+        return ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 8) {
+                if case .death = announcement {
+                    ZStack {
+                        Image("card_back_traidores")
+                            .resizable().scaledToFit().frame(width: 63, height: 86)
+                            .rotationEffect(.degrees(-4))
+                        Image("death_blood_splatter_art")
+                            .resizable().scaledToFit().frame(width: 80, height: 80)
+                    }
+                    .frame(height: 90)
+                } else {
+                    EventSeal(symbol: announcementSymbol(announcement), accent: accent)
+                }
+                Text(announcementTitle(announcement))
+                    .font(TraidoresTheme.title(17)).foregroundStyle(accent)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2).minimumScaleFactor(0.85)
+                Text(announcementName(announcement))
+                    .font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.text)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2).minimumScaleFactor(0.85)
+                Text(announcementMessage(announcement))
+                    .font(.subheadline).foregroundStyle(TraidoresTheme.secondary)
+                    .multilineTextAlignment(.center)
+                Button("CONTINUAR") { dismissDawnAnnouncement() }
+                    .buttonStyle(TraidoresButtonStyle()).frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: 260)
+            .modifier(LocalEventCard(map: map))
+            .padding(10)
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled, dawnAnnouncements.first == announcement else { return }
+            dismissDawnAnnouncement()
+        }
+        .accessibilityIdentifier("table.dawnAnnouncement")
+    }
+
+    private func dismissDawnAnnouncement() {
+        guard !dawnAnnouncements.isEmpty else { return }
+        dawnAnnouncements.removeFirst()
+    }
+
+    private func announcementSymbol(_ announcement: DawnAnnouncement) -> String {
+        switch announcement {
+        case .death: "moon.fill"
+        case .silence: "speaker.slash.fill"
+        case .peaceful: "sunrise.fill"
+        }
+    }
+
+    private func announcementAccent(_ announcement: DawnAnnouncement) -> Color {
+        switch announcement {
+        case .death: Color(red: 0.73, green: 0.20, blue: 0.25)
+        case .silence: Color(red: 0.52, green: 0.24, blue: 0.33)
+        case .peaceful: TraidoresTheme.gold
+        }
+    }
+
+    private func eventAccent(for symbol: String) -> Color {
+        switch symbol {
+        case "cross.case.fill": phaseAccent(.medicNight)
+        case "eye.fill": phaseAccent(.detectiveNight)
+        case "speaker.slash.fill": phaseAccent(.mercenaryNight)
+        default: phaseAccent(.assassinNight)
+        }
+    }
+
+    private func announcementTitle(_ announcement: DawnAnnouncement) -> String {
+        switch announcement {
+        case .death: "AL AMANECER..."
+        case .silence: "UNA VOZ FUE SILENCIADA"
+        case .peaceful: "AL AMANECER..."
+        }
+    }
+
+    private func announcementName(_ announcement: DawnAnnouncement) -> String {
+        switch announcement {
+        case .death(let name), .silence(let name): name.uppercased()
+        case .peaceful: "NADIE MURIÓ"
+        }
+    }
+
+    private func announcementMessage(_ announcement: DawnAnnouncement) -> String {
+        switch announcement {
+        case .death: "Murió durante la noche"
+        case .silence: "No puede hablar ni votar durante el día"
+        case .peaceful: "El pueblo despierta sin víctimas"
         }
     }
 
     private func humanHint(_ game: ClassicGame, canChooseSelf: Bool) -> String {
         if !game.human.alive { return "Estás eliminado. Podés observar la mesa." }
+        if game.isNight && game.legalTargets(for: 0).isEmpty {
+            return "No actuás ahora. Esperá o saltá hasta tu turno o el amanecer."
+        }
+        if game.silencedPlayer == 0, !game.isNight { return "Hoy no podés hablar ni votar." }
+        if game.phase == .assassinNight && selected == nil {
+            return "Los Traidores se mueven en silencio."
+        }
         if selected == 0 { return "Te elegiste como objetivo." }
         if canChooseSelf { return "Tocá tu carta para elegirte." }
         if let selected { return "Objetivo: \(game.name(selected))" }
@@ -1474,17 +2379,30 @@ private struct LocalTableView: View {
 
     private func debatePanel(_ game: ClassicGame) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("LA MESA HABLA").font(.caption.weight(.bold)).tracking(1.2)
-                .foregroundStyle(TraidoresTheme.secondary)
-            ForEach(game.messages.filter { $0.round == game.round && $0.speaker != nil }.suffix(5)) { message in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(game.name(message.speaker ?? 0)).font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
-                    Text(message.text).font(.subheadline)
-                }
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 9))
+            HStack(spacing: 5) {
+                Rectangle().fill(TraidoresTheme.border).frame(height: 1)
+                Text("◆").font(.system(size: 8)).foregroundStyle(TraidoresTheme.gold)
+                Rectangle().fill(TraidoresTheme.border).frame(height: 1)
             }
-            if game.human.alive && !game.humanSpoke {
+            Text("CHAT DEL PUEBLO").font(.caption.weight(.bold)).tracking(1.2)
+                .foregroundStyle(TraidoresTheme.gold)
+            ForEach(game.messages.filter { $0.round == game.round }.suffix(6)) { message in
+                if let speaker = message.speaker {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(game.name(speaker)).font(.caption.bold()).foregroundStyle(playerNameColor(speaker))
+                        Text(message.text).font(.system(size: 11))
+                    }
+                    .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 7))
+                } else {
+                    Label(message.text, systemImage: "moon.stars.fill")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(TraidoresTheme.text)
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(TraidoresTheme.ink.opacity(0.85), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
+                }
+            }
+            if game.human.alive && game.silencedPlayer != 0 && !game.humanSpoke {
                 Menu("SEÑALAR UNA SOSPECHA") {
                     ForEach(game.living.filter { $0.id != 0 }) { player in
                         Button(player.name) { store.accuse(player.id, revision: game.phaseIndex) }
@@ -1492,7 +2410,8 @@ private struct LocalTableView: View {
                 }
                 .buttonStyle(TraidoresButtonStyle())
             }
-            if game.human.alive && !game.humanInvestigations.isEmpty && !game.humanSharedRead {
+            if game.human.alive && game.silencedPlayer != 0 &&
+                !game.humanInvestigations.isEmpty && !game.humanSharedRead {
                 Button("COMPARTIR INVESTIGACIÓN") { store.shareRead(revision: game.phaseIndex) }
                     .buttonStyle(TraidoresButtonStyle())
             }
@@ -1547,7 +2466,7 @@ private struct LocalTableView: View {
                 Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Text(role.classicTitle.uppercased())
                     .font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
-                Text(role == .assassin ? "TRAIDORES" : "PUEBLO")
+                Text([RoleKey.assassin, .mercenary, .spy].contains(role) ? "TRAIDORES" : "PUEBLO")
                     .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Divider().overlay(TraidoresTheme.border)
                 HStack(alignment: .top, spacing: 11) {
@@ -1579,8 +2498,18 @@ private struct LocalTableView: View {
 
     private func instructions(_ game: ClassicGame) -> String {
         if !game.human.alive { return "Fuiste eliminado. Podés observar la mesa hasta que termine la partida." }
+        if game.isNight && game.legalTargets(for: 0).isEmpty {
+            return "No actuás en esta fase. Podés esperar o saltarla en unos segundos."
+        }
+        if game.silencedPlayer == 0, !game.isNight {
+            return "Una voz fue silenciada: hoy no podés hablar ni votar."
+        }
+        let allies = game.players.filter { $0.role == .mercenary && $0.id != 0 }.map(\.name)
         return switch game.phase {
-        case .assassinNight: "Elegí a quién atacar esta noche."
+        case .assassinNight:
+            allies.isEmpty ? "Elegí una víctima y confirmá MATAR." :
+                "Elegí una víctima y confirmá MATAR. Aliados: \(allies.joined(separator: ", "))."
+        case .mercenaryNight: "Elegí a quién silenciar. No podrá hablar ni votar durante el día."
         case .detectiveNight: "Elegí a quién investigar. El resultado será privado."
         case .medicNight: "Elegí a quién proteger. También podés protegerte."
         case .dawn: "La noche terminó. Continuá para conocer lo ocurrido."
@@ -1596,6 +2525,7 @@ private struct LocalTableView: View {
     }
 
     private func phaseTitle(for game: ClassicGame) -> String {
+        if game.isNight { return "Noche \(game.round)" }
         if game.phase == .dawn { return "Amanece en \(game.map.title)" }
         return game.phase.classicTitle
     }
@@ -1608,9 +2538,13 @@ private struct LocalTableView: View {
     }
 
     private func actionTitle(_ game: ClassicGame) -> String {
+        if game.isNight && game.legalTargets(for: 0).isEmpty {
+            return nightSkipReady ? "SALTAR NOCHE" : "ESPERAR"
+        }
         if !game.legalTargets(for: 0).isEmpty {
             return switch game.phase {
-            case .assassinNight: "MATAR"
+            case .assassinNight: selected == nil ? "ELEGIR OBJETIVO" : "MATAR"
+            case .mercenaryNight: selected == nil ? "ELEGIR OBJETIVO" : "SILENCIAR"
             case .detectiveNight: "INVESTIGAR"
             case .medicNight: selected == 0 ? "SALVARME" : "SALVAR"
             case .voting, .tieVote: "VOTAR"
@@ -1625,6 +2559,17 @@ private struct LocalTableView: View {
         default: "CONTINUAR"
         }
     }
+
+    private func phaseAccent(_ phase: GamePhase) -> Color {
+        switch phase {
+        case .assassinNight: Color(red: 0.73, green: 0.20, blue: 0.25)
+        case .mercenaryNight: Color(red: 0.52, green: 0.24, blue: 0.33)
+        case .detectiveNight: Color(red: 0.29, green: 0.50, blue: 0.71)
+        case .medicNight: Color(red: 0.35, green: 0.56, blue: 0.27)
+        case .oracleNight: Color(red: 0.54, green: 0.37, blue: 0.75)
+        default: TraidoresTheme.gold
+        }
+    }
 }
 
 private extension RoleKey {
@@ -1632,6 +2577,7 @@ private extension RoleKey {
         switch self {
         case .detective: "Comisario"
         case .assassin: "Asesino"
+        case .mercenary: "Mercenario"
         case .medic: "Médico"
         default: "Aldeano"
         }
@@ -1641,6 +2587,7 @@ private extension RoleKey {
         switch self {
         case .detective: "rol_detective_gaucho"
         case .assassin: "rol_asesino_gaucho"
+        case .mercenary: "rol_mercenario_gaucho"
         case .medic: "rol_medico_gaucho"
         default: "rol_aldeano_gaucho"
         }
@@ -1649,6 +2596,7 @@ private extension RoleKey {
     var classicAdvice: String {
         switch self {
         case .assassin: "Mezclate con el Pueblo. Acusá con cuidado y evitá que tus votos revelen un patrón."
+        case .mercenary: "Elegí bien a quién silenciar: durante el día no podrá hablar ni votar."
         case .detective: "Protegé tus investigaciones. Revelarte demasiado pronto puede convertirte en el próximo objetivo."
         case .medic: "Buscá a los roles valiosos y variá tus protecciones para que los Traidores no puedan anticiparte."
         default: "Escuchá las contradicciones y observá los votos. Tu información se construye durante el debate."
@@ -1660,7 +2608,7 @@ private extension GamePhase {
     var classicTitle: String {
         switch self {
         case .assignment: "Tu identidad"
-        case .assassinNight, .detectiveNight, .medicNight: "La noche"
+        case .assassinNight, .mercenaryNight, .detectiveNight, .medicNight: "La noche"
         case .dawn: "Amanece"
         case .discussion: "Debate del pueblo"
         case .voting: "Votación"

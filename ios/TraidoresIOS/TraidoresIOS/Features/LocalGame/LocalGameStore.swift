@@ -18,14 +18,27 @@ final class LocalGameStore {
 
     func start(name: String, map: GameMap = .pampa, difficulty: BotDifficulty, botNames: [String],
                timing: GameTimingConfig, advanced: AdvancedGameConfig,
-               trainingRole: RoleKey? = nil) {
+               testOptions: LocalTestOptions = .standard, trainingRole: RoleKey? = nil) {
         game = ClassicGame(name: name, trainingRole: trainingRole, map: map, difficulty: difficulty,
-                           timing: timing, advanced: advanced, botNames: botNames)
+                           timing: timing, advanced: advanced, testOptions: testOptions,
+                           botNames: botNames)
         save()
     }
 
     func advance(target: Int?, revision: Int) {
         guard var current = game, current.advance(target: target, expectedPhaseIndex: revision) else { return }
+        game = current
+        save()
+    }
+
+    func expireNight(revision: Int) {
+        guard var current = game, current.expireNight(expectedPhaseIndex: revision) else { return }
+        game = current
+        save()
+    }
+
+    func skipPassiveNight(revision: Int) {
+        guard var current = game, current.skipPassiveNight(expectedPhaseIndex: revision) else { return }
         game = current
         save()
     }

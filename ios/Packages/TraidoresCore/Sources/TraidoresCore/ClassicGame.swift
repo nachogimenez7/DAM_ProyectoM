@@ -37,6 +37,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var winner: RoleTeam?
     public internal(set) var nightTarget: Int?
     public internal(set) var protectedPlayer: Int?
+    public internal(set) var silencedPlayer: Int?
     public internal(set) var investigations: [Investigation] = []
     public internal(set) var votes: [Int: Int] = [:]
     public internal(set) var voteRound = 0
@@ -47,12 +48,15 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var declaredDetectives: [Int] = []
     public internal(set) var humanSpoke = false
     public internal(set) var humanSharedRead = false
+    public internal(set) var humanAccusation: Int?
     /// Optional keeps saves from builds that only supported Pampa decodable.
     public let mapConfig: GameMap?
     public let difficulty: BotDifficulty
     /// Optional keeps saves from earlier iOS builds decodable; `timing` supplies the Android default.
     public let timingConfig: GameTimingConfig?
     public let advancedConfig: AdvancedGameConfig?
+    public let testOptionsConfig: LocalTestOptions?
+    public let trainingRoleConfig: RoleKey?
     internal var random: ClassicRandom
     internal var messageSequence = 0
 
@@ -62,7 +66,13 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public var map: GameMap { mapConfig ?? .pampa }
     public var timing: GameTimingConfig { (timingConfig ?? .normal).normalized }
     public var advanced: AdvancedGameConfig { (advancedConfig ?? .standard).normalized }
-    public var isNight: Bool { [.assassinNight, .detectiveNight, .medicNight].contains(phase) }
+    public var testOptions: LocalTestOptions { testOptionsConfig ?? .standard }
+    public var effectiveTiming: GameTimingConfig {
+        guard testOptions.quickMatch else { return timing }
+        return .init(transitionSeconds: 1, nightSeconds: 10,
+                     discussionSeconds: 30, votingSeconds: 10)
+    }
+    public var isNight: Bool { [.assassinNight, .mercenaryNight, .detectiveNight, .medicNight].contains(phase) }
     public func name(_ id: Int) -> String { players.first { $0.id == id }?.name ?? "Jugador" }
 
     public init(
@@ -73,6 +83,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         difficulty: BotDifficulty = .normal,
         timing: GameTimingConfig = .normal,
         advanced: AdvancedGameConfig = .standard,
+        testOptions: LocalTestOptions = .standard,
         botNames: [String] = Array(Self.defaultBotNames.prefix(4))
     ) {
         var random = ClassicRandom(state: seed)
@@ -83,7 +94,16 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         let filledBots = cleanBots + Self.defaultBotNames.dropFirst(cleanBots.count)
             .prefix(max(0, Self.minimumPlayers - 1 - cleanBots.count))
         var roles = Self.roles(for: filledBots.count + 1).shuffled(using: &random)
-        if let trainingRole, let index = roles.firstIndex(of: trainingRole) { roles.swapAt(0, index) }
+        if let trainingRole, let index = roles.firstIndex(of: trainingRole) {
+            roles.swapAt(0, index)
+        } else if let trainingRole,
+                  Self.supportedTrainingRoles.contains(trainingRole),
+                  let villager = roles.firstIndex(of: .villager) {
+            // Android's test mode replaces one villager when the requested role
+            // is absent from the recommended composition.
+            roles[villager] = trainingRole
+            roles.swapAt(0, villager)
+        }
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
         let names = [cleanName.isEmpty ? "Vos" : cleanName] + filledBots
         players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
@@ -91,37 +111,54 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         self.difficulty = difficulty
         timingConfig = timing.normalized
         advancedConfig = advanced.normalized
+        testOptionsConfig = testOptions
+        trainingRoleConfig = trainingRole
         self.random = random
-        let villagers = players.count - 3
-        append("\(map.title): 1 Asesino, 1 Comisario, 1 Médico y \(villagers) Aldeanos.")
+        let villagers = players.filter { $0.role == .villager }.count
+        let mercenary = players.contains { $0.role == .mercenary } ? "1 Mercenario, " : ""
+        append("\(map.title): 1 Asesino, \(mercenary)1 Comisario, 1 Médico y \(villagers) Aldeanos.")
     }
 
     public static func roles(for playerCount: Int) -> [RoleKey] {
         let count = min(max(playerCount, minimumPlayers), maximumPlayers)
-        return [.assassin, .detective, .medic] + Array(repeating: .villager, count: count - 3)
+        let special: [RoleKey] = count >= 7
+            ? [.assassin, .mercenary, .detective, .medic]
+            : [.assassin, .detective, .medic]
+        return special + Array(repeating: .villager, count: count - special.count)
     }
 
-    /// Android GameRules.winnerFor, restricted to the four classic roles.
+    public static let supportedTrainingRoles: [RoleKey] =
+        [.villager, .detective, .medic, .assassin, .mercenary]
+
+    /// Android GameRules.winnerFor for the roles currently supported by the local port.
     public static func winner(for players: [ClassicPlayer]) -> RoleTeam? {
         let alive = players.filter(\.alive)
         guard !alive.isEmpty else { return nil }
-        let killers = alive.filter { $0.role == .assassin }.count
-        if killers == 0 { return .town }
-        return killers >= alive.count - killers ? .traitors : nil
+        guard alive.contains(where: { $0.role == .assassin }) else { return .town }
+        let traitors = alive.filter { $0.role == .assassin || $0.role == .mercenary }.count
+        return traitors >= alive.count - traitors ? .traitors : nil
     }
 
     public func legalTargets(for actor: Int) -> [Int] {
         guard winner == nil, let player = living.first(where: { $0.id == actor }) else { return [] }
         switch phase {
-        case .assassinNight where player.role == .assassin,
+        case .assassinNight where player.role == .assassin:
+            return living.filter { $0.id != actor && $0.role != .mercenary && $0.role != .assassin }
+                .filter { !(actor != 0 && testOptions.botsNeverKillHuman && $0.id == 0) }
+                .map(\.id)
+        case .mercenaryNight where player.role == .mercenary,
              .detectiveNight where player.role == .detective:
             return living.filter { $0.id != actor }.map(\.id)
         case .medicNight where player.role == .medic:
             return living.map(\.id) // Android allows self-protection and repeated protection.
         case .voting:
-            return living.filter { $0.id != actor }.map(\.id)
+            if actor == silencedPlayer { return [] }
+            return living.filter { $0.id != actor &&
+                !(actor != 0 && testOptions.botsNeverVoteHuman && $0.id == 0) }.map(\.id)
         case .tieVote:
-            return living.filter { $0.id != actor && tieCandidates.contains($0.id) }.map(\.id)
+            if actor == silencedPlayer { return [] }
+            return living.filter { $0.id != actor && tieCandidates.contains($0.id) &&
+                !(actor != 0 && testOptions.botsNeverVoteHuman && $0.id == 0) }.map(\.id)
         default: return []
         }
     }
@@ -135,16 +172,20 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         switch phase {
         case .assignment:
             startNight()
-        case .assassinNight, .detectiveNight, .medicNight:
-            guard let target, targets.contains(target) else { return false }
-            performNightAction(actor: 0, target: target)
-            nextNightPhase()
-            resolveBotNight()
+        case .assassinNight, .mercenaryNight, .detectiveNight, .medicNight:
+            if !targets.isEmpty {
+                guard let target, targets.contains(target) else { return false }
+                performNightAction(actor: 0, target: target)
+            }
+            advanceThroughPassiveNight()
         case .dawn:
             if let victim = nightTarget, victim != protectedPlayer {
                 players[victim].alive = false
                 append("\(name(victim)) murió durante la noche.")
             } else { append("Amanece sin víctimas.") }
+            if let silencedPlayer, players[silencedPlayer].alive {
+                append("\(name(silencedPlayer)) no puede hablar ni votar durante el día.")
+            }
             transition(.discussion)
             checkWinner()
             if winner == nil { botDebate() }
@@ -159,7 +200,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                     if let target, targets.contains(target) { ballot[0] = target }
                 } else if let choice = botChoice(actor: player.id) { ballot[player.id] = choice }
             }
-            recordVotes(ballot)
+            recordVotes(forcedTieBallot(from: ballot) ?? ballot)
         case .voteCount:
             if voteRound == 1 && tieCandidates.count > 1 {
                 votes = [:]
@@ -183,11 +224,41 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         return true
     }
 
+    /// A timed-out human night action ends without inventing a target.
+    @discardableResult
+    public mutating func expireNight(expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, winner == nil, isNight else { return false }
+        advanceThroughPassiveNight()
+        return true
+    }
+
+    /// Android's SALTAR NOCHE skips only passive phases, stopping before any
+    /// action that requires the human. The UI arms this after 3.5 seconds.
+    @discardableResult
+    public mutating func skipPassiveNight(expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, winner == nil, isNight,
+              legalTargets(for: 0).isEmpty else { return false }
+        advanceThroughPassiveNight()
+        return true
+    }
+
+    /// Like Android's unified local night: finish bot-only phases immediately,
+    /// but stop before another human action or at dawn.
+    private mutating func advanceThroughPassiveNight() {
+        for _ in 0..<4 {
+            nextNightPhase()
+            resolveBotNight()
+            if !isNight || !legalTargets(for: 0).isEmpty { break }
+        }
+    }
+
     @discardableResult
     public mutating func accuse(_ target: Int, expectedPhaseIndex: Int) -> Bool {
         guard phaseIndex == expectedPhaseIndex, phase == .discussion, winner == nil,
-              human.alive, !humanSpoke, living.contains(where: { $0.id == target && target != 0 }) else { return false }
+              human.alive, silencedPlayer != 0, !humanSpoke,
+              living.contains(where: { $0.id == target && target != 0 }) else { return false }
         humanSpoke = true
+        humanAccusation = target
         suspicion[target, default: 0] += 1
         append("Sospecho de \(name(target)). Quiero escuchar su versión.", speaker: 0)
         // This is a structured local debate, not a language-model chatbot.
@@ -198,7 +269,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func shareInvestigation(expectedPhaseIndex: Int) -> Bool {
         guard phaseIndex == expectedPhaseIndex, phase == .discussion, winner == nil,
-              human.alive, !humanSharedRead, let read = humanInvestigations.last else { return false }
+              human.alive, silencedPlayer != 0, !humanSharedRead,
+              let read = humanInvestigations.last else { return false }
         humanSharedRead = true
         declare(read)
         return true
@@ -230,9 +302,10 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
 
     private mutating func startNight() {
-        nightTarget = nil; protectedPlayer = nil; eliminationTarget = nil
+        nightTarget = nil; protectedPlayer = nil; silencedPlayer = nil; eliminationTarget = nil
         votes = [:]; tieCandidates = []; voteRound = 0
         humanSpoke = false; humanSharedRead = false
+        humanAccusation = nil
         suspicion = suspicion.mapValues { $0 / 2 }
         transition(.assassinNight)
         append("Noche \(round). \(map.title) duerme.")
@@ -241,7 +314,9 @@ public struct ClassicGame: Codable, Equatable, Sendable {
 
     private mutating func nextNightPhase() {
         switch phase {
-        case .assassinNight: transition(.detectiveNight)
+        case .assassinNight:
+            transition(living.contains(where: { $0.role == .mercenary }) ? .mercenaryNight : .detectiveNight)
+        case .mercenaryNight: transition(.detectiveNight)
         case .detectiveNight: transition(.medicNight)
         case .medicNight: transition(.dawn)
         default: break
@@ -249,24 +324,26 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
 
     private mutating func resolveBotNight() {
-        // At most three night phases; never a timer or an unbounded loop.
-        for _ in 0..<3 {
-            guard isNight else { return }
-            let role: RoleKey = phase == .assassinNight ? .assassin : phase == .detectiveNight ? .detective : .medic
-            if let actor = living.first(where: { $0.role == role }) {
-                if actor.id == 0 { return }
-                if let target = botChoice(actor: actor.id) { performNightAction(actor: actor.id, target: target) }
-            }
-            nextNightPhase()
+        guard isNight else { return }
+        let role: RoleKey = switch phase {
+        case .assassinNight: .assassin
+        case .mercenaryNight: .mercenary
+        case .detectiveNight: .detective
+        default: .medic
+        }
+        if let actor = living.first(where: { $0.role == role }), actor.id != 0,
+           let target = botChoice(actor: actor.id) {
+            performNightAction(actor: actor.id, target: target)
         }
     }
 
     private mutating func performNightAction(actor: Int, target: Int) {
         switch phase {
         case .assassinNight: nightTarget = target
+        case .mercenaryNight: silencedPlayer = target
         case .detectiveNight:
             investigations.append(.init(round: round, investigator: actor, target: target,
-                                        suspicious: players[target].role == .assassin))
+                                        suspicious: [.assassin, .mercenary].contains(players[target].role)))
         case .medicNight: protectedPlayer = target
         default: break
         }
@@ -280,7 +357,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
 
     private mutating func botDebate() {
-        for actor in living where actor.id != 0 {
+        for actor in living where actor.id != 0 && actor.id != silencedPlayer {
             if let read = investigations.last(where: { $0.investigator == actor.id && $0.round == round }) {
                 declare(read)
             } else {
@@ -293,7 +370,61 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
 
     private mutating func botChoice(actor: Int) -> Int? {
-        pick(legalTargets(for: actor), actor: actor, purpose: phase)
+        if (phase == .voting || phase == .tieVote), testOptions.botsFollowAccusation,
+           let humanAccusation, legalTargets(for: actor).contains(humanAccusation) {
+            return humanAccusation
+        }
+        return pick(legalTargets(for: actor), actor: actor, purpose: phase)
+    }
+
+    private func forcedTieBallot(from original: [Int: Int]) -> [Int: Int]? {
+        guard phase == .voting, testOptions.forceVoteTies else { return nil }
+        let voters = living.filter { $0.id != silencedPlayer }.map(\.id)
+        guard voters.count >= 4 else { return nil }
+        let bots = voters.filter { $0 != 0 }
+        let candidates = living.map(\.id)
+        for first in candidates {
+            for second in candidates where second > first {
+                let firstBase = original[0] == first ? 1 : 0
+                let secondBase = original[0] == second ? 1 : 0
+                if let result = tieAssignment(bots: bots, index: 0, first: first, second: second,
+                                              firstVotes: firstBase, secondVotes: secondBase,
+                                              otherVotes: original[0].map { $0 != first && $0 != second ? 1 : 0 } ?? 0,
+                                              ballot: original.filter { $0.key == 0 }) {
+                    return result
+                }
+            }
+        }
+        return nil
+    }
+
+    private func tieAssignment(bots: [Int], index: Int, first: Int, second: Int,
+                               firstVotes: Int, secondVotes: Int, otherVotes: Int,
+                               ballot: [Int: Int]) -> [Int: Int]? {
+        let remaining = bots.count - index
+        guard abs(firstVotes - secondVotes) <= remaining,
+              otherVotes <= 1 else { return nil }
+        if index == bots.count {
+            return firstVotes == secondVotes && firstVotes > otherVotes ? ballot : nil
+        }
+        let bot = bots[index]
+        let legal = legalTargets(for: bot)
+        for target in [first, second] where legal.contains(target) {
+            var next = ballot
+            next[bot] = target
+            if let found = tieAssignment(bots: bots, index: index + 1, first: first, second: second,
+                                         firstVotes: firstVotes + (target == first ? 1 : 0),
+                                         secondVotes: secondVotes + (target == second ? 1 : 0),
+                                         otherVotes: otherVotes, ballot: next) { return found }
+        }
+        if otherVotes == 0, let third = legal.first(where: { $0 != first && $0 != second }) {
+            var next = ballot
+            next[bot] = third
+            return tieAssignment(bots: bots, index: index + 1, first: first, second: second,
+                                 firstVotes: firstVotes, secondVotes: secondVotes,
+                                 otherVotes: 1, ballot: next)
+        }
+        return nil
     }
 
     /// Deliberately contains only own role, own investigations and public information.
