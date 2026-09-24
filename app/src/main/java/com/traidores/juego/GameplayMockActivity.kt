@@ -84,6 +84,8 @@ private data class TraitorRevealCardMetrics(
 
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
+    private val fullBleedModalOverlays = mutableListOf<FrameLayout>()
+
     private var isCardRevealed = false
     private var appliedGameplayTextScale = 1f
     private var isEventLogExpanded = false
@@ -193,12 +195,41 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         get() = appliedGameplayTextScale
 
     override fun onSystemBarInsetsChanged(safeArea: Insets) {
+        val content = findViewById<FrameLayout>(android.R.id.content) ?: return
+        val root = findViewById<RelativeLayout>(R.id.gameplayRoot) ?: return
         val scrim = findViewById<View>(R.id.topSystemBarScrim) ?: return
-        scrim.post {
-            scrim.layoutParams = scrim.layoutParams.apply {
-                height = (120 * resources.displayMetrics.density).toInt() + safeArea.top
+        if (scrim.parent === root) {
+            root.removeView(scrim)
+            content.addView(scrim, 1, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(120) + safeArea.top
+            ))
+        } else {
+            scrim.layoutParams = scrim.layoutParams.apply { height = dp(120) + safeArea.top }
+        }
+        scrim.translationY = 0f
+
+        // Full-screen transitions and dimmed dialogs need to cover the system bars as well.
+        // Their panels still lay out inside the safe area so controls remain reachable.
+        val overlays = (0 until root.childCount)
+            .map(root::getChildAt)
+            .filterIsInstance<FrameLayout>()
+            .filter { view ->
+                view.layoutParams.width == ViewGroup.LayoutParams.MATCH_PARENT &&
+                    view.layoutParams.height == ViewGroup.LayoutParams.MATCH_PARENT
             }
-            scrim.translationY = -safeArea.top.toFloat()
+        overlays.forEach { overlay ->
+            root.removeView(overlay)
+            content.addView(overlay, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+            if (overlay.id != R.id.dayNightTransitionOverlay) {
+                fullBleedModalOverlays.add(overlay)
+            }
+        }
+        fullBleedModalOverlays.forEach { overlay ->
+            overlay.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
         }
     }
     override val onlineRoomId: String

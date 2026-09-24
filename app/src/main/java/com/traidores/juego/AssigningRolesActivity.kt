@@ -22,8 +22,29 @@ import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
+import androidx.core.graphics.Insets
 
 class AssigningRolesActivity : BaseActivity() {
+
+    private var navigationInset = 0
+
+    override fun drawsFullScreenContent(): Boolean = true
+
+    override fun onSystemBarInsetsChanged(safeArea: Insets) {
+        navigationInset = safeArea.bottom
+        findViewById<ImageButton>(R.id.btnBack)?.let { back ->
+            val layout = back.layoutParams as FrameLayout.LayoutParams
+            layout.topMargin = dp(10) + safeArea.top
+            layout.leftMargin = dp(10) + safeArea.left
+            back.layoutParams = layout
+        }
+        findViewById<TextView>(R.id.assigningStatus)?.let { status ->
+            val layout = status.layoutParams as FrameLayout.LayoutParams
+            layout.bottomMargin = navigationInset +
+                if (dealingAnimator == null) dp(16) else dp(108)
+            status.layoutParams = layout
+        }
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var dealingAnimator: AnimatorSet? = null
@@ -186,7 +207,7 @@ class AssigningRolesActivity : BaseActivity() {
 
         status.layoutParams = (status.layoutParams as FrameLayout.LayoutParams).apply {
             gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
-            bottomMargin = dp(108)
+            bottomMargin = navigationInset + dp(108)
         }
         status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
         status.text = DEALING_STATUS_MESSAGE

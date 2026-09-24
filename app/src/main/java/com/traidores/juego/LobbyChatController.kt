@@ -34,6 +34,7 @@ class LobbyChatController(
     private var activeQuery: Query? = null
     private var listener: ValueEventListener? = null
     private var lastSendAttemptAtMs = 0L
+    private var lastEmoteAttemptAtMs = 0L
     private var nextMessageSlot = 0
 
     fun start() {
@@ -91,7 +92,7 @@ class LobbyChatController(
         val emoteRemainingMs = if (emoteId == null) {
             0L
         } else {
-            remainingCooldown(now, lastSendAttemptAtMs, EMOTE_COOLDOWN_MS)
+            remainingCooldown(now, lastEmoteAttemptAtMs, EMOTE_COOLDOWN_MS)
         }
         val remainingMs = maxOf(generalRemainingMs, emoteRemainingMs)
         if (remainingMs > 0L) {
@@ -100,6 +101,7 @@ class LobbyChatController(
         }
 
         lastSendAttemptAtMs = now
+        if (emoteId != null) lastEmoteAttemptAtMs = now
         val payload = hashMapOf<String, Any>(
             FIELD_ACTOR_ID to actorId,
             FIELD_SPEAKER to speaker.take(18),
@@ -142,7 +144,7 @@ class LobbyChatController(
         const val NODE = "chat_lobby"
         const val MAX_MESSAGES = 30
         const val MESSAGE_COOLDOWN_MS = 1_200L
-        const val EMOTE_COOLDOWN_MS = 4_000L
+        const val EMOTE_COOLDOWN_MS = 10_000L
         const val MESSAGE_SLOTS_PER_PLAYER = 2
         private const val MAX_TEXT_LENGTH = 140
         private const val FIELD_ACTOR_ID = "actorId"
