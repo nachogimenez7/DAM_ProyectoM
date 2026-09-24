@@ -947,7 +947,9 @@ private struct LocalRoleAssignmentView: View {
                 dealingStage.opacity(dealingOpacity)
             } else if let game = store.game {
                 Color.black.opacity(0.58).ignoresSafeArea()
-                rolePreview(game.human.role)
+                if !showingTeammates {
+                    rolePreview(game.human.role)
+                }
             }
 
             Button { showingExitConfirmation = true } label: {
@@ -956,8 +958,8 @@ private struct LocalRoleAssignmentView: View {
             }
             .foregroundStyle(TraidoresTheme.text).padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .opacity(backOpacity)
-            .disabled(backOpacity < 0.7)
+            .opacity(showingTeammates ? 0 : backOpacity)
+            .disabled(showingTeammates || backOpacity < 0.7)
             .accessibilityIdentifier("assignment.back")
 
             if showingTeammates, let game = store.game {
@@ -1352,7 +1354,9 @@ private struct LocalEventCard: ViewModifier {
             .padding(45)
             .background {
                 Rectangle()
-                    .fill(Color.black.opacity(0.72))
+                    // The frame has a transparent opening; an opaque reading
+                    // surface prevents the underlying table from showing through.
+                    .fill(Color(red: 0.075, green: 0.065, blue: 0.055))
                     .frame(width: 276, height: 276)
             }
             .overlay {
@@ -1608,6 +1612,10 @@ private struct LocalTableView: View {
                             .background(TraidoresTheme.ink.opacity(0.42), in: RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border, lineWidth: 1))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            // The table's old rounded panel is wider than the
+                            // illustrated event frame. Keep it out of sight
+                            // while an event is presented.
+                            .opacity(privateFeedback != nil || !dawnAnnouncements.isEmpty ? 0 : 1)
                             playerColumn(sides.right, game: game, metrics: metrics)
                         }
                         .padding(.horizontal, 4)
@@ -1688,8 +1696,16 @@ private struct LocalTableView: View {
     }
 
     private func tableBackground(_ game: ClassicGame) -> some View {
-        GeometryReader { geometry in
-            Image(game.isNight ? game.map.nightBackgroundAsset : game.map.dayBackgroundAsset)
+        let spec = transitionSpec(for: game)
+        let transitionUnfinished = game.phase != .assignment && (
+            lastTransitionKey != spec.key || pendingTransition == spec || activeTransition == spec
+        )
+        // Keep the previous map visible until the transition finishes. This
+        // also covers the frame between a night action and queuing the dawn
+        // transition, including actions that auto-resolve bot-only phases.
+        let showsNight = transitionUnfinished ? spec.period == .day : game.isNight
+        return GeometryReader { geometry in
+            Image(showsNight ? game.map.nightBackgroundAsset : game.map.dayBackgroundAsset)
                 .resizable().scaledToFill()
                 .frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 // Android leaves the map legible around the table; darkness belongs on
