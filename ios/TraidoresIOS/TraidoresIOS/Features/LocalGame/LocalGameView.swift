@@ -1465,7 +1465,7 @@ private struct DayNightTransitionView: View {
         GeometryReader { geometry in
             let width = geometry.size.width
             let height = geometry.size.height
-            let artworkSize = min(max(width * 0.40, 128), 190)
+            let artworkSize = min(max(width * 0.35, 112), 170)
             let lowerY = height + artworkSize * 0.12
             let enteringStart = transition.period == .night
                 ? CGPoint(x: -artworkSize, y: lowerY)
