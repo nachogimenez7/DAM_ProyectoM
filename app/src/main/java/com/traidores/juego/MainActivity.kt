@@ -7,7 +7,9 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -16,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.Insets
 import com.traidores.juego.GameToast as Toast
 import java.util.concurrent.TimeoutException
 
@@ -38,6 +41,21 @@ class MainActivity : BaseActivity() {
                 Toast.LENGTH_LONG
             ).show()
         }
+    }
+
+    override fun onSystemBarInsetsChanged(safeArea: Insets) {
+        val content = findViewById<FrameLayout>(android.R.id.content) ?: return
+        val intro = findViewById<FrameLayout>(R.id.brandIntroOverlay) ?: return
+        val parent = intro.parent as? ViewGroup ?: return
+        if (parent === content) return
+
+        // Keep the intro backdrop continuous behind the status and navigation bars too.
+        // Otherwise the menu artwork can peek through above the black logo splash.
+        parent.removeView(intro)
+        content.addView(intro, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
