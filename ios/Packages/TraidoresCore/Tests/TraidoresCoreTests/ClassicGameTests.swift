@@ -25,6 +25,31 @@ struct ClassicGameTests {
         }
     }
 
+    @Test func publicChatSendsRepliesAndRespectsSilenceAndPhase() throws {
+        var game = fixed(.discussion)
+        let revision = game.phaseIndex
+        let blankSent = game.sendPublicMessage("  ", expectedPhaseIndex: revision)
+        let staleSent = game.sendPublicMessage("Hola", expectedPhaseIndex: revision + 1)
+        #expect(!blankSent)
+        #expect(!staleSent)
+        let initialCount = game.messages.count
+        let sent = game.sendPublicMessage("Sospecho de Asesino", expectedPhaseIndex: revision)
+        #expect(sent)
+        #expect(game.messages.count == initialCount + 2)
+        #expect(game.messages[initialCount].speaker == 0)
+        #expect(game.messages[initialCount + 1].speaker == 1)
+        #expect(game.humanAccusation == 1)
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).messages == game.messages)
+
+        game.silencedPlayer = 0
+        let silencedSent = game.sendPublicMessage("No debería salir", expectedPhaseIndex: revision)
+        #expect(!silencedSent)
+        game.silencedPlayer = nil
+        game.phase = .voting
+        let votingSent = game.sendPublicMessage("Tampoco", expectedPhaseIndex: revision)
+        #expect(!votingSent)
+    }
+
     @Test func lobbyMapDifficultyAndAndroidBotNamesReachTheMatch() throws {
         let game = ClassicGame(name: "Humano", seed: 17, map: .greece, difficulty: .hard)
         #expect(game.map == .greece)

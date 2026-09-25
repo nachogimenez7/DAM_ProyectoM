@@ -1393,6 +1393,13 @@ private extension GameMap {
         case .medieval: "event_frame_medieval_modal"
         }
     }
+    var chatLogAsset: String {
+        switch self {
+        case .pampa: "chat_log_pampa"
+        case .greece: "chat_log_greece"
+        case .medieval: "chat_log_medieval"
+        }
+    }
 
     var exclusiveRoleTitle: String {
         switch self {
@@ -1563,6 +1570,10 @@ private struct LocalTableView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: Int?
     @State private var showingRole = false
+    @State private var showingChat = false
+    @State private var chatDraft = ""
+    @State private var readingOlderChat = false
+    @FocusState private var chatInputFocused: Bool
     @State private var humanCardRevealed = false
     @State private var leaving = false
     @State private var privateFeedback: PrivateActionFeedback?
@@ -1628,6 +1639,15 @@ private struct LocalTableView: View {
                                 .padding(.bottom, 8)
                                 .zIndex(1)
                         }
+
+                        if showingChat && game.phase == .discussion {
+                            chatPanel(game)
+                                .frame(width: min(geometry.size.width - 16, 340),
+                                       height: max(220, geometry.size.height - 92
+                                           - (chatInputFocused ? 8 : footerInset)))
+                                .padding(.bottom, chatInputFocused ? 8 : footerInset)
+                                .zIndex(2)
+                        }
                     }
                 }
 
@@ -1663,6 +1683,11 @@ private struct LocalTableView: View {
             .foregroundStyle(TraidoresTheme.text)
             .onChange(of: game.phaseIndex) { _, _ in
                 selected = nil
+                if game.phase != .discussion {
+                    showingChat = false
+                    chatInputFocused = false
+                    readingOlderChat = false
+                }
                 nightCountdownTask?.cancel()
                 nightSkipTask?.cancel()
                 remainingNightSeconds = nil
@@ -2014,6 +2039,7 @@ private struct LocalTableView: View {
                                 .frame(minHeight: max(285, centerGeometry.size.height - 115))
                         } else if game.phase == .discussion {
                             debatePanel(game)
+                                .frame(minHeight: max(285, centerGeometry.size.height - 115))
                         } else if game.phase == .voteCount {
                             votePanel(game)
                         } else if game.phase == .result {
@@ -2394,46 +2420,259 @@ private struct LocalTableView: View {
     }
 
     private func debatePanel(_ game: ClassicGame) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CHAT DEL PUEBLO")
+                .font(.caption.weight(.bold)).tracking(1.2)
+                .foregroundStyle(TraidoresTheme.gold)
             HStack(spacing: 5) {
                 Rectangle().fill(TraidoresTheme.border).frame(height: 1)
                 Text("◆").font(.system(size: 8)).foregroundStyle(TraidoresTheme.gold)
                 Rectangle().fill(TraidoresTheme.border).frame(height: 1)
             }
-            Text("CHAT DEL PUEBLO").font(.caption.weight(.bold)).tracking(1.2)
-                .foregroundStyle(TraidoresTheme.gold)
-            ForEach(game.messages.filter { $0.round == game.round }.suffix(6)) { message in
-                if let speaker = message.speaker {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(game.name(speaker)).font(.caption.bold()).foregroundStyle(playerNameColor(speaker))
-                        Text(message.text).font(.system(size: 11))
-                    }
-                    .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 7))
-                } else {
-                    Label(message.text, systemImage: "moon.stars.fill")
-                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(TraidoresTheme.text)
-                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(TraidoresTheme.ink.opacity(0.85), in: RoundedRectangle(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
-                }
-            }
-            if game.human.alive && game.silencedPlayer != 0 && !game.humanSpoke {
-                Menu("SEÑALAR UNA SOSPECHA") {
-                    ForEach(game.living.filter { $0.id != 0 }) { player in
-                        Button(player.name) { store.accuse(player.id, revision: game.phaseIndex) }
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(game.messages.filter { $0.round == game.round }.suffix(4)) { message in
+                    if let speaker = message.speaker {
+                        (Text(game.name(speaker) + ": ").foregroundColor(playerNameColor(speaker))
+                         + Text(message.text).foregroundColor(TraidoresTheme.text))
+                            .font(.system(size: 11))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Label(message.text, systemImage: "moon.stars.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(TraidoresTheme.ink.opacity(0.8),
+                                        in: RoundedRectangle(cornerRadius: 6))
                     }
                 }
-                .buttonStyle(TraidoresButtonStyle())
             }
-            if game.human.alive && game.silencedPlayer != 0 &&
-                !game.humanInvestigations.isEmpty && !game.humanSharedRead {
-                Button("COMPARTIR INVESTIGACIÓN") { store.shareRead(revision: game.phaseIndex) }
-                    .buttonStyle(TraidoresButtonStyle())
+            .contentShape(Rectangle())
+            .onTapGesture { openChat(focus: false) }
+            Spacer(minLength: 8)
+            Button {
+                openChat(focus: true)
+            } label: {
+                Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
+                      "Escribí tu primera sospecha…", systemImage: "person.wave.2.fill")
+                    .font(.system(size: 11))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(9)
+                    .background(TraidoresTheme.ink.opacity(0.83), in: Capsule())
+                    .overlay(Capsule().stroke(TraidoresTheme.border))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("table.openChat")
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
+        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func openChat(focus: Bool) {
+        showingChat = true
+        readingOlderChat = false
+        if focus {
+            Task { @MainActor in
+                await Task.yield()
+                chatInputFocused = true
             }
         }
-        .padding(14)
-        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func sendChat(_ game: ClassicGame) {
+        let message = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return }
+        store.sendPublicMessage(message, revision: game.phaseIndex)
+        chatDraft = ""
+        readingOlderChat = false
+        chatInputFocused = true
+    }
+
+    private func chatPanel(_ game: ClassicGame) -> some View {
+        let canWrite = game.human.alive && game.silencedPlayer != 0
+        return VStack(spacing: 5) {
+            HStack {
+                Text("CHAT DEL PUEBLO")
+                    .font(.caption.bold()).tracking(0.6)
+                    .foregroundStyle(TraidoresTheme.gold)
+                Spacer()
+                Button {
+                    chatInputFocused = false
+                    showingChat = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.bold())
+                        .frame(width: 30, height: 30)
+                        .background(TraidoresTheme.ink, in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
+                }
+                .accessibilityLabel("Cerrar chat")
+                .accessibilityIdentifier("table.closeChat")
+            }
+            .frame(height: 32)
+
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 7) {
+                        ForEach(game.messages.suffix(100)) { message in
+                            chatMessage(message, game: game)
+                                .id(message.id)
+                        }
+                        Color.clear.frame(height: 1).id("chat.bottom")
+                    }
+                    .padding(.vertical, 5)
+                }
+                .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
+                    if value.translation.height > 24 { readingOlderChat = true }
+                })
+                .onAppear { proxy.scrollTo("chat.bottom", anchor: .bottom) }
+                .onChange(of: game.messages.last?.id) { _, _ in
+                    if !readingOlderChat {
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            proxy.scrollTo("chat.bottom", anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: chatInputFocused) { _, focused in
+                    if focused && !readingOlderChat {
+                        proxy.scrollTo("chat.bottom", anchor: .bottom)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if readingOlderChat {
+                        Button("MENSAJES NUEVOS · VER") {
+                            readingOlderChat = false
+                            withAnimation { proxy.scrollTo("chat.bottom", anchor: .bottom) }
+                        }
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(TraidoresTheme.gold)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(TraidoresTheme.ink, in: Capsule())
+                        .padding(.bottom, 4)
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Text("\(chatDraft.count)/140")
+                    .font(.system(size: 10))
+                    .foregroundStyle(TraidoresTheme.secondary)
+            }
+            .frame(height: 14)
+
+            if canWrite {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        if !game.humanSpoke {
+                            Menu("Sospecho de…") {
+                                ForEach(game.living.filter { $0.id != 0 }) { player in
+                                    Button(player.name) {
+                                        store.accuse(player.id, revision: game.phaseIndex)
+                                    }
+                                }
+                            }
+                            .accessibilityIdentifier("chat.accuse")
+                        }
+                        if !game.humanInvestigations.isEmpty && !game.humanSharedRead {
+                            Button("Compartir investigación") {
+                                store.shareRead(revision: game.phaseIndex)
+                            }
+                        }
+                    }
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(TraidoresTheme.text)
+                    .buttonStyle(.bordered)
+                }
+                .frame(height: 32)
+            }
+
+            HStack(spacing: 5) {
+                TextField(canWrite ? "Escribir…" : "No podés hablar ahora", text: $chatDraft)
+                    .font(.system(size: 12))
+                    .textInputAutocapitalization(.sentences)
+                    .submitLabel(.send)
+                    .focused($chatInputFocused)
+                    .onSubmit { sendChat(game) }
+                    .onChange(of: chatDraft) { _, value in
+                        if value.count > 140 { chatDraft = String(value.prefix(140)) }
+                    }
+                    .disabled(!canWrite)
+                    .padding(.horizontal, 10)
+                    .frame(height: 38)
+                    .background(TraidoresTheme.ink.opacity(0.92),
+                                in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.border))
+                    .accessibilityIdentifier("chat.input")
+                Button("ENVIAR") { sendChat(game) }
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(TraidoresTheme.ink)
+                    .frame(width: 64, height: 38)
+                    .background(TraidoresTheme.gold, in: RoundedRectangle(cornerRadius: 9))
+                    .disabled(!canWrite || chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("chat.send")
+            }
+        }
+        .padding(9)
+        .background {
+            GeometryReader { panel in
+                ZStack {
+                    Color(red: 0.14, green: 0.11, blue: 0.08)
+                    Image(game.map.chatLogAsset)
+                        .resizable()
+                        .frame(width: panel.size.width, height: panel.size.height)
+                        .opacity(0.48)
+                    Color.black.opacity(0.48)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16)
+                    .stroke(TraidoresTheme.gold.opacity(0.9), lineWidth: 2))
+            }
+        }
+        .shadow(color: .black.opacity(0.68), radius: 13, y: 6)
+        .accessibilityIdentifier("table.chatPanel")
+    }
+
+    @ViewBuilder
+    private func chatMessage(_ message: TableMessage, game: ClassicGame) -> some View {
+        if let speaker = message.speaker {
+            let mine = speaker == 0
+            HStack {
+                if mine { Spacer(minLength: 28) }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mine ? "VOS" : game.name(speaker).uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(mine ? TraidoresTheme.ink : playerNameColor(speaker))
+                    Text(message.text)
+                        .font(.system(size: 11))
+                        .foregroundStyle(mine ? TraidoresTheme.ink : TraidoresTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(mine ? TraidoresTheme.gold : TraidoresTheme.panel,
+                            in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(mine ? TraidoresTheme.gold : TraidoresTheme.border.opacity(0.7)))
+                if !mine { Spacer(minLength: 28) }
+            }
+        } else {
+            let night = message.text.localizedCaseInsensitiveContains("noche")
+            let roles = message.text.localizedCaseInsensitiveContains("Asesino")
+                && message.text.localizedCaseInsensitiveContains("Aldeano")
+            let eventColor = roles ? Color(red: 0.38, green: 0.27, blue: 0.10)
+                : night ? Color(red: 0.12, green: 0.20, blue: 0.34)
+                : Color(red: 0.38, green: 0.18, blue: 0.15)
+            Text(message.text)
+                .font(.system(size: 10, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(TraidoresTheme.text)
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(eventColor, in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(TraidoresTheme.border.opacity(0.7)))
+        }
     }
 
     private func votePanel(_ game: ClassicGame) -> some View {

@@ -49,6 +49,13 @@ final class LocalGameStore {
         save()
     }
 
+    func sendPublicMessage(_ text: String, revision: Int) {
+        guard var current = game,
+              current.sendPublicMessage(text, expectedPhaseIndex: revision) else { return }
+        game = current
+        save()
+    }
+
     func shareRead(revision: Int) {
         guard var current = game, current.shareInvestigation(expectedPhaseIndex: revision) else { return }
         game = current

@@ -266,6 +266,38 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         return true
     }
 
+    /// Adds a player's public message to the local debate. The response is
+    /// deliberately deterministic and local; it never sends text to a server.
+    @discardableResult
+    public mutating func sendPublicMessage(_ text: String, expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, phase == .discussion, winner == nil,
+              human.alive, silencedPlayer != 0 else { return false }
+        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(140))
+        guard !clean.isEmpty else { return false }
+        append(clean, speaker: 0)
+
+        let mentioned = living.first { player in
+            player.id != 0 && clean.localizedCaseInsensitiveContains(player.name)
+        }
+        let accusation = ["sospecho", "voto", "contra", "culpable"].contains {
+            clean.localizedCaseInsensitiveContains($0)
+        }
+        if let mentioned, accusation {
+            humanAccusation = mentioned.id
+            suspicion[mentioned.id, default: 0] += 1
+        }
+
+        if let responder = (mentioned?.id == silencedPlayer ? nil : mentioned)
+            ?? living.first(where: { $0.id != 0 && $0.id != silencedPlayer }) {
+            let answer = mentioned != nil
+                ? (accusation ? "¿Qué prueba tenés contra mí? Escuchemos a los demás."
+                   : "Te escucho. Comparemos lo que pasó esta noche.")
+                : "Antes de votar, comparemos las versiones de todos."
+            append(answer, speaker: responder.id)
+        }
+        return true
+    }
+
     @discardableResult
     public mutating func shareInvestigation(expectedPhaseIndex: Int) -> Bool {
         guard phaseIndex == expectedPhaseIndex, phase == .discussion, winner == nil,

@@ -183,6 +183,36 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
     }
 
+    func testPublicChatKeepsNewMessagesVisible() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-medic"])
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+
+        app.buttons["table.player.0"].tap()
+        app.buttons["table.primaryAction"].tap()
+        app.buttons["table.dismissPrivateFeedback"].tap()
+        let transition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if transition.waitForExistence(timeout: 1) {
+            XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
+        }
+        app.buttons["table.primaryAction"].tap()
+        let openChat = app.buttons["table.openChat"]
+        XCTAssertTrue(openChat.waitForExistence(timeout: 3))
+        openChat.tap()
+        XCTAssertTrue(app.buttons["table.closeChat"].waitForExistence(timeout: 3))
+
+        let input = app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 3))
+        input.tap()
+        input.typeText("Sospecho de Mora")
+        app.buttons["chat.send"].tap()
+        XCTAssertTrue(app.staticTexts["Sospecho de Mora"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["¿Qué prueba tenés contra mí? Escuchemos a los demás."].exists)
+    }
+
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {
         let app = launchLobby(extraArguments: ["-ui-testing-medic", "-ui-testing-transition"])
         app.buttons["local.startGame"].tap()
