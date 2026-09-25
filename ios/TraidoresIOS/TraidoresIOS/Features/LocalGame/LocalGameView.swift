@@ -1640,7 +1640,7 @@ private struct LocalTableView: View {
                                 .zIndex(1)
                         }
 
-                        if showingChat && game.phase == .discussion {
+                        if showingChat && (game.isNight || game.phase == .discussion) {
                             chatPanel(game)
                                 .frame(width: min(geometry.size.width - 16, 340),
                                        height: max(220, geometry.size.height - 92
@@ -1683,7 +1683,7 @@ private struct LocalTableView: View {
             .foregroundStyle(TraidoresTheme.text)
             .onChange(of: game.phaseIndex) { _, _ in
                 selected = nil
-                if game.phase != .discussion {
+                if !game.isNight && game.phase != .discussion {
                     showingChat = false
                     chatInputFocused = false
                     readingOlderChat = false
@@ -2026,36 +2026,33 @@ private struct LocalTableView: View {
 
     @ViewBuilder
     private func tableCenter(_ game: ClassicGame) -> some View {
-        GeometryReader { centerGeometry in
+        if game.winner == nil && (game.isNight || game.phase == .discussion) {
+            VStack(spacing: 8) {
+                compositionPanel(game)
+                phaseSummaryPanel(game)
+                tableConversationPanel(game)
+                    .frame(maxHeight: .infinity)
+            }
+            .padding(.vertical, 5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
-                    if let winner = game.winner {
-                        resultPanel(game, winner: winner)
-                    } else {
+                    if let winner = game.winner { resultPanel(game, winner: winner) }
+                    else {
                         compositionPanel(game)
                         phaseSummaryPanel(game)
-                        if game.isNight {
-                            nightPanel(game)
-                                .frame(minHeight: max(285, centerGeometry.size.height - 115))
-                        } else if game.phase == .discussion {
-                            debatePanel(game)
-                                .frame(minHeight: max(285, centerGeometry.size.height - 115))
-                        } else if game.phase == .voteCount {
-                            votePanel(game)
-                        } else if game.phase == .result {
-                            publicResultPanel(game)
-                        } else if !game.legalTargets(for: 0).isEmpty {
-                            targetPrompt(game)
-                        } else {
-                            phasePanel(game)
-                        }
+                        if game.phase == .voteCount { votePanel(game) }
+                        else if game.phase == .result { publicResultPanel(game) }
+                        else if !game.legalTargets(for: 0).isEmpty { targetPrompt(game) }
+                        else { phasePanel(game) }
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 5)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func compositionPanel(_ game: ClassicGame) -> some View {
@@ -2094,41 +2091,69 @@ private struct LocalTableView: View {
             game.isNight ? phaseAccent(game.phase).opacity(0.75) : TraidoresTheme.border))
     }
 
-    private func nightPanel(_ game: ClassicGame) -> some View {
-        let traitorChat = [.assassin, .mercenary, .spy].contains(game.human.role)
-        return VStack(spacing: 10) {
-            Text(traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
-                .font(TraidoresTheme.title(12))
-                .foregroundStyle(phaseAccent(game.phase))
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func tableConversationPanel(_ game: ClassicGame) -> some View {
+        let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
+        let title = game.isNight
+            ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
+            : "CHAT DEL PUEBLO"
+        let accent = game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold)).tracking(0.8)
+                .foregroundStyle(accent)
             HStack(spacing: 5) {
-                Rectangle().fill(phaseAccent(game.phase).opacity(0.5)).frame(height: 1)
-                Text("◆").font(.system(size: 8)).foregroundStyle(phaseAccent(game.phase))
-                Rectangle().fill(phaseAccent(game.phase).opacity(0.5)).frame(height: 1)
+                Rectangle().fill(accent.opacity(0.5)).frame(height: 1)
+                Text("◆").font(.system(size: 8)).foregroundStyle(accent)
+                Rectangle().fill(accent.opacity(0.5)).frame(height: 1)
             }
-            Label("Noche \(game.round): comienza la noche.", systemImage: "moon.stars.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(phaseAccent(game.phase).opacity(0.16),
-                            in: RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(phaseAccent(game.phase).opacity(0.35)))
-            Spacer(minLength: 28)
-            Label(traitorChat ? "Hablen bajo. El pueblo no debe oírlos." :
-                  "El pueblo duerme. Esperá el amanecer.",
-                  systemImage: traitorChat ? "person.wave.2.fill" : "moon.fill")
-                .font(.system(size: 10))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(TraidoresTheme.ink.opacity(0.75),
-                            in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 7) {
+                        ForEach(game.messages.filter { $0.round == game.round }) { message in
+                            chatMessage(message, game: game).id(message.id)
+                        }
+                        Color.clear.frame(height: 1).id("table.chatBottom")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { openChat(focus: false) }
+                .onAppear { proxy.scrollTo("table.chatBottom", anchor: .bottom) }
+                .onChange(of: game.messages.last?.id) { _, _ in
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        proxy.scrollTo("table.chatBottom", anchor: .bottom)
+                    }
+                }
+            }
+            if game.phase == .discussion {
+                Button { openChat(focus: game.human.alive && game.silencedPlayer != 0) } label: {
+                    Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
+                          "Escribí tu primera sospecha…", systemImage: "person.wave.2.fill")
+                        .font(.system(size: 11))
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(9)
+                        .background(TraidoresTheme.ink.opacity(0.83), in: Capsule())
+                        .overlay(Capsule().stroke(TraidoresTheme.border))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("table.openChat")
+            } else {
+                Label(traitorChat ? "Hablen bajo. El pueblo no debe oírlos." :
+                      "El pueblo duerme. Esperá el amanecer.",
+                      systemImage: traitorChat ? "person.wave.2.fill" : "moon.fill")
+                    .font(.system(size: 10))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(TraidoresTheme.ink.opacity(0.75),
+                                in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
+            }
         }
         .padding(9)
         .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
-        .background(TraidoresTheme.panel.opacity(0.95),
-                    in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(phaseAccent(game.phase).opacity(0.72)))
+        .background { chatSurface(game.map, accent: accent) }
+        .accessibilityIdentifier("table.conversation")
     }
 
     private func targetPrompt(_ game: ClassicGame) -> some View {
@@ -2419,56 +2444,6 @@ private struct LocalTableView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
     }
 
-    private func debatePanel(_ game: ClassicGame) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CHAT DEL PUEBLO")
-                .font(.caption.weight(.bold)).tracking(1.2)
-                .foregroundStyle(TraidoresTheme.gold)
-            HStack(spacing: 5) {
-                Rectangle().fill(TraidoresTheme.border).frame(height: 1)
-                Text("◆").font(.system(size: 8)).foregroundStyle(TraidoresTheme.gold)
-                Rectangle().fill(TraidoresTheme.border).frame(height: 1)
-            }
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(game.messages.filter { $0.round == game.round }.suffix(4)) { message in
-                    if let speaker = message.speaker {
-                        (Text(game.name(speaker) + ": ").foregroundColor(playerNameColor(speaker))
-                         + Text(message.text).foregroundColor(TraidoresTheme.text))
-                            .font(.system(size: 11))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Label(message.text, systemImage: "moon.stars.fill")
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(7)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(TraidoresTheme.ink.opacity(0.8),
-                                        in: RoundedRectangle(cornerRadius: 6))
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { openChat(focus: false) }
-            Spacer(minLength: 8)
-            Button {
-                openChat(focus: true)
-            } label: {
-                Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
-                      "Escribí tu primera sospecha…", systemImage: "person.wave.2.fill")
-                    .font(.system(size: 11))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(9)
-                    .background(TraidoresTheme.ink.opacity(0.83), in: Capsule())
-                    .overlay(Capsule().stroke(TraidoresTheme.border))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("table.openChat")
-        }
-        .padding(9)
-        .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
-        .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
-    }
-
     private func openChat(focus: Bool) {
         showingChat = true
         readingOlderChat = false
@@ -2490,12 +2465,14 @@ private struct LocalTableView: View {
     }
 
     private func chatPanel(_ game: ClassicGame) -> some View {
-        let canWrite = game.human.alive && game.silencedPlayer != 0
+        let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
+        let canWrite = game.phase == .discussion && game.human.alive && game.silencedPlayer != 0
         return VStack(spacing: 5) {
             HStack {
-                Text("CHAT DEL PUEBLO")
+                Text(game.isNight ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
+                                  : "CHAT DEL PUEBLO")
                     .font(.caption.bold()).tracking(0.6)
-                    .foregroundStyle(TraidoresTheme.gold)
+                    .foregroundStyle(game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold)
                 Spacer()
                 Button {
                     chatInputFocused = false
@@ -2615,23 +2592,26 @@ private struct LocalTableView: View {
             }
         }
         .padding(9)
-        .background {
-            GeometryReader { panel in
-                ZStack {
-                    Color(red: 0.14, green: 0.11, blue: 0.08)
-                    Image(game.map.chatLogAsset)
-                        .resizable()
-                        .frame(width: panel.size.width, height: panel.size.height)
-                        .opacity(0.48)
-                    Color.black.opacity(0.48)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16)
-                    .stroke(TraidoresTheme.gold.opacity(0.9), lineWidth: 2))
-            }
-        }
+        .background { chatSurface(game.map,
+                                  accent: game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold) }
         .shadow(color: .black.opacity(0.68), radius: 13, y: 6)
         .accessibilityIdentifier("table.chatPanel")
+    }
+
+    private func chatSurface(_ map: GameMap, accent: Color) -> some View {
+        GeometryReader { panel in
+            ZStack {
+                Color(red: 0.14, green: 0.11, blue: 0.08)
+                Image(map.chatLogAsset)
+                    .resizable()
+                    .frame(width: panel.size.width, height: panel.size.height)
+                    .opacity(0.48)
+                Color.black.opacity(0.48)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .stroke(accent.opacity(0.9), lineWidth: 1.5))
+        }
     }
 
     @ViewBuilder
