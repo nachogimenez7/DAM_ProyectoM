@@ -199,11 +199,6 @@ final class LocalLobbyUITests: XCTestCase {
             XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
         }
         app.buttons["table.primaryAction"].tap()
-        let openChat = app.buttons["table.openChat"]
-        XCTAssertTrue(openChat.waitForExistence(timeout: 3))
-        openChat.tap()
-        XCTAssertTrue(app.buttons["table.closeChat"].waitForExistence(timeout: 3))
-
         let input = app.textFields["chat.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 3))
         input.tap()
@@ -211,6 +206,53 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Sospecho de Mora"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¿Qué prueba tenés contra mí? Escuchemos a los demás."].exists)
+    }
+
+    func testChatBackgroundPreviewForEveryMap() throws {
+        for map in ["pampa", "grecia", "medieval"] {
+            let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
+            app.buttons["lobby.map.\(map)"].tap()
+            app.buttons["local.startGame"].tap()
+
+            let roleStart = app.buttons["role.start"]
+            XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+            roleStart.tap()
+            if !roleStart.waitForNonExistence(timeout: 2) {
+                roleStart.tap()
+                XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
+            }
+
+            let nightTransition = app.descendants(matching: .any)
+                .matching(identifier: "table.dayNightTransition").firstMatch
+            if nightTransition.waitForExistence(timeout: 1) {
+                XCTAssertTrue(nightTransition.waitForNonExistence(timeout: 3))
+            }
+            let night = XCTAttachment(screenshot: app.screenshot())
+            night.name = "Chat \(map) noche"
+            night.lifetime = .keepAlways
+            add(night)
+
+            app.buttons["table.player.1"].tap()
+            app.buttons["table.primaryAction"].tap()
+            app.buttons["table.dismissPrivateFeedback"].tap()
+            let dayTransition = app.descendants(matching: .any)
+                .matching(identifier: "table.dayNightTransition").firstMatch
+            if dayTransition.waitForExistence(timeout: 1) {
+                XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 3))
+            }
+            app.buttons["table.primaryAction"].tap()
+            XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+            let dawnAnnouncement = app.descendants(matching: .any)
+                .matching(identifier: "table.dawnAnnouncement").firstMatch
+            if dawnAnnouncement.exists {
+                XCTAssertTrue(dawnAnnouncement.waitForNonExistence(timeout: 6))
+            }
+            let day = XCTAttachment(screenshot: app.screenshot())
+            day.name = "Chat \(map) debate"
+            day.lifetime = .keepAlways
+            add(day)
+            app.terminate()
+        }
     }
 
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {

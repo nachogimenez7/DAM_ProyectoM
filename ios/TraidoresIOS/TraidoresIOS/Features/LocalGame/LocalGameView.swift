@@ -456,6 +456,8 @@ struct LocalLobbyView: View {
         let arguments = ProcessInfo.processInfo.arguments
         let trainingRole: RoleKey? = if arguments.contains("-ui-testing-medic") {
             .medic
+        } else if arguments.contains("-ui-testing-assassin") {
+            .assassin
         } else if arguments.contains("-ui-testing-detective") {
             .detective
         } else {
@@ -1395,9 +1397,9 @@ private extension GameMap {
     }
     var chatLogAsset: String {
         switch self {
-        case .pampa: "chat_log_pampa"
-        case .greece: "chat_log_greece"
-        case .medieval: "chat_log_medieval"
+        case .pampa: "chat_panel_preview_pampa"
+        case .greece: "chat_panel_preview_greece"
+        case .medieval: "chat_panel_preview_medieval"
         }
     }
 
@@ -2027,14 +2029,18 @@ private struct LocalTableView: View {
     @ViewBuilder
     private func tableCenter(_ game: ClassicGame) -> some View {
         if game.winner == nil && (game.isNight || game.phase == .discussion) {
-            VStack(spacing: 8) {
+            VStack(spacing: 7) {
                 compositionPanel(game)
                 phaseSummaryPanel(game)
                 tableConversationPanel(game)
                     .frame(maxHeight: .infinity)
             }
-            .padding(.vertical, 5)
+            .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                chatSurface(game.map,
+                            accent: game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold)
+            }
         } else {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
@@ -2093,14 +2099,25 @@ private struct LocalTableView: View {
 
     private func tableConversationPanel(_ game: ClassicGame) -> some View {
         let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
+        let canWrite = game.phase == .discussion && game.human.alive && game.silencedPlayer != 0
         let title = game.isNight
             ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
             : "CHAT DEL PUEBLO"
         let accent = game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold
         return VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.bold)).tracking(0.8)
-                .foregroundStyle(accent)
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption.weight(.bold)).tracking(0.8)
+                    .foregroundStyle(accent)
+                Spacer(minLength: 0)
+                Button { openChat(focus: false) } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(accent)
+                        .frame(width: 25, height: 25)
+                }
+                .accessibilityLabel("Ampliar chat")
+            }
             HStack(spacing: 5) {
                 Rectangle().fill(accent.opacity(0.5)).frame(height: 1)
                 Text("◆").font(.system(size: 8)).foregroundStyle(accent)
@@ -2109,35 +2126,60 @@ private struct LocalTableView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 7) {
-                        ForEach(game.messages.filter { $0.round == game.round }) { message in
+                        // The initial composition is already pinned above the feed.
+                        ForEach(game.messages.filter { $0.round == game.round && $0.id != 1 }) { message in
                             chatMessage(message, game: game).id(message.id)
                         }
                         Color.clear.frame(height: 1).id("table.chatBottom")
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { openChat(focus: false) }
                 .onAppear { proxy.scrollTo("table.chatBottom", anchor: .bottom) }
                 .onChange(of: game.messages.last?.id) { _, _ in
                     withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo("table.chatBottom", anchor: .bottom)
                     }
                 }
-            }
-            if game.phase == .discussion {
-                Button { openChat(focus: game.human.alive && game.silencedPlayer != 0) } label: {
-                    Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
-                          "Escribí tu primera sospecha…", systemImage: "person.wave.2.fill")
-                        .font(.system(size: 11))
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(9)
-                        .background(TraidoresTheme.ink.opacity(0.83), in: Capsule())
-                        .overlay(Capsule().stroke(TraidoresTheme.border))
+                .onChange(of: chatInputFocused) { _, focused in
+                    if focused { proxy.scrollTo("table.chatBottom", anchor: .bottom) }
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("table.openChat")
+            }
+            if canWrite {
+                HStack(spacing: 4) {
+                    Image(systemName: "person.wave.2.fill")
+                        .foregroundStyle(accent)
+                    TextField("Escribí tu primera sospecha…", text: $chatDraft)
+                        .textInputAutocapitalization(.sentences)
+                        .submitLabel(.send)
+                        .focused($chatInputFocused)
+                        .onSubmit { sendChat(game) }
+                        .onChange(of: chatDraft) { _, value in
+                            if value.count > 140 { chatDraft = String(value.prefix(140)) }
+                        }
+                        .accessibilityIdentifier("chat.input")
+                    if !chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button { sendChat(game) } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(accent)
+                        }
+                        .accessibilityLabel("Enviar mensaje")
+                        .accessibilityIdentifier("chat.send")
+                    }
+                }
+                .font(.system(size: 11))
+                .padding(9)
+                .background(TraidoresTheme.ink.opacity(0.83), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
+            } else if game.phase == .discussion {
+                Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
+                      "No podés hablar ahora.", systemImage: "person.wave.2.fill")
+                    .font(.system(size: 10))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(TraidoresTheme.ink.opacity(0.75),
+                                in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
             } else {
                 Label(traitorChat ? "Hablen bajo. El pueblo no debe oírlos." :
                       "El pueblo duerme. Esperá el amanecer.",
@@ -2150,9 +2192,9 @@ private struct LocalTableView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
             }
         }
-        .padding(9)
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
         .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
-        .background { chatSurface(game.map, accent: accent) }
         .accessibilityIdentifier("table.conversation")
     }
 
@@ -2492,7 +2534,7 @@ private struct LocalTableView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 7) {
-                        ForEach(game.messages.suffix(100)) { message in
+                        ForEach(game.messages.suffix(100).filter { $0.id != 1 }) { message in
                             chatMessage(message, game: game)
                                 .id(message.id)
                         }
@@ -2605,8 +2647,8 @@ private struct LocalTableView: View {
                 Image(map.chatLogAsset)
                     .resizable()
                     .frame(width: panel.size.width, height: panel.size.height)
-                    .opacity(0.48)
-                Color.black.opacity(0.48)
+                    .opacity(0.95)
+                Color.black.opacity(0.10)
             }
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12)
