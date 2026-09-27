@@ -44,6 +44,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var tieCandidates: [Int] = []
     public internal(set) var eliminationTarget: Int?
     public internal(set) var messages: [TableMessage] = []
+    /// Optional so matches saved before private chat was introduced still decode.
+    public internal(set) var traitorMessages: [TableMessage]?
     public internal(set) var suspicion: [Int: Int] = [:]
     public internal(set) var declaredDetectives: [Int] = []
     public internal(set) var humanSpoke = false
@@ -63,6 +65,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public var human: ClassicPlayer { players[0] }
     public var living: [ClassicPlayer] { players.filter(\.alive) }
     public var humanInvestigations: [Investigation] { investigations.filter { $0.investigator == 0 } }
+    public var privateChatMessages: [TableMessage] { traitorMessages ?? [] }
     public var map: GameMap { mapConfig ?? .pampa }
     public var timing: GameTimingConfig { (timingConfig ?? .normal).normalized }
     public var advanced: AdvancedGameConfig { (advancedConfig ?? .standard).normalized }
@@ -193,14 +196,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
             transition(.voting)
             append("Comienza la votación. No se permite votar por uno mismo.")
         case .voting, .tieVote:
-            var ballot: [Int: Int] = [:]
-            // Decisions use the same pre-ballot knowledge; bots cannot read the human's vote.
-            for player in living {
-                if player.id == 0 {
-                    if let target, targets.contains(target) { ballot[0] = target }
-                } else if let choice = botChoice(actor: player.id) { ballot[player.id] = choice }
-            }
-            recordVotes(forcedTieBallot(from: ballot) ?? ballot)
+            closeVoting(humanTarget: target)
         case .voteCount:
             if voteRound == 1 && tieCandidates.count > 1 {
                 votes = [:]
@@ -230,6 +226,31 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         guard phaseIndex == expectedPhaseIndex, winner == nil, isNight else { return false }
         advanceThroughPassiveNight()
         return true
+    }
+
+    /// The clock may close a ballot without a human vote. Bots still cast their
+    /// votes; no choice is silently invented for the player.
+    @discardableResult
+    public mutating func expireVoting(expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, winner == nil,
+              phase == .voting || phase == .tieVote else { return false }
+        closeVoting(humanTarget: nil)
+        return true
+    }
+
+    private mutating func closeVoting(humanTarget: Int?) {
+        var ballot: [Int: Int] = [:]
+        // Decisions use the same pre-ballot knowledge; bots cannot read the human's vote.
+        for player in living {
+            if player.id == 0 {
+                if let humanTarget, legalTargets(for: 0).contains(humanTarget) {
+                    ballot[0] = humanTarget
+                }
+            } else if let choice = botChoice(actor: player.id) {
+                ballot[player.id] = choice
+            }
+        }
+        recordVotes(forcedTieBallot(from: ballot) ?? ballot)
     }
 
     /// Android's SALTAR NOCHE skips only passive phases, stopping before any
@@ -295,6 +316,21 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                 : "Antes de votar, comparemos las versiones de todos."
             append(answer, speaker: responder.id)
         }
+        return true
+    }
+
+    /// Private night chat is stored separately from public debate. Bot replies
+    /// can be added later without ever exposing this channel to the town.
+    @discardableResult
+    public mutating func sendTraitorMessage(_ text: String, expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, isNight, winner == nil,
+              human.alive, [.assassin, .mercenary, .spy].contains(human.role) else { return false }
+        let clean = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(140))
+        guard !clean.isEmpty else { return false }
+        messageSequence += 1
+        var channel = traitorMessages ?? []
+        channel.append(.init(id: messageSequence, round: round, speaker: 0, text: clean))
+        traitorMessages = Array(channel.suffix(100))
         return true
     }
 

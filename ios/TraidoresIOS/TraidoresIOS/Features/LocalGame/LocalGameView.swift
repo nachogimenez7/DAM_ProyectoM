@@ -1569,6 +1569,12 @@ private struct LocalTableView: View {
     @Bindable var store: LocalGameStore
     let dismissMatch: () -> Void
 
+    init(store: LocalGameStore, dismissMatch: @escaping () -> Void) {
+        self.store = store
+        self.dismissMatch = dismissMatch
+        _transitionCurtain = State(initialValue: store.game?.phase != .assignment)
+    }
+
     @Environment(\.scenePhase) private var scenePhase
     @State private var selected: Int?
     @State private var showingRole = false
@@ -1582,11 +1588,14 @@ private struct LocalTableView: View {
     @State private var dawnAnnouncements: [DawnAnnouncement] = []
     @State private var pendingTransition: DayNightTransition?
     @State private var activeTransition: DayNightTransition?
+    @State private var transitionCurtain: Bool
     @State private var lastTransitionKey: String?
     @State private var transitionTask: Task<Void, Never>?
     @State private var nightCountdownTask: Task<Void, Never>?
+    @State private var phaseCountdownTask: Task<Void, Never>?
     @State private var nightSkipTask: Task<Void, Never>?
     @State private var remainingNightSeconds: Int?
+    @State private var remainingPhaseSeconds: Int?
     @State private var nightSkipReady = false
 
     var body: some View {
@@ -1671,6 +1680,12 @@ private struct LocalTableView: View {
                         .zIndex(3)
                 }
 
+                if transitionCurtain {
+                    Color.black.ignoresSafeArea()
+                        .accessibilityHidden(true)
+                        .zIndex(2.5)
+                }
+
                 if let activeTransition {
                     dayNightTransitionOverlay(activeTransition, game: game)
                         .transition(.opacity)
@@ -1691,12 +1706,17 @@ private struct LocalTableView: View {
                     readingOlderChat = false
                 }
                 nightCountdownTask?.cancel()
+                phaseCountdownTask?.cancel()
                 nightSkipTask?.cancel()
                 remainingNightSeconds = nil
+                remainingPhaseSeconds = nil
                 nightSkipReady = false
                 Task { @MainActor in
                     await Task.yield()
-                    if let current = store.game { armNightPhaseIfReady(current) }
+                    if let current = store.game {
+                        armNightPhaseIfReady(current)
+                        armTimedPhaseIfReady(current)
+                    }
                 }
             }
             .onChange(of: transitionSpec(for: game).key) { _, _ in
@@ -1706,12 +1726,19 @@ private struct LocalTableView: View {
                 if feedback == nil {
                     presentPendingTransition(using: game)
                     armNightPhaseIfReady(game)
+                    armTimedPhaseIfReady(game)
+                }
+            }
+            .onChange(of: dawnAnnouncements) { _, announcements in
+                if announcements.isEmpty, let current = store.game {
+                    armTimedPhaseIfReady(current)
                 }
             }
             .onAppear { queueTransition(for: game) }
             .onDisappear {
                 transitionTask?.cancel()
                 nightCountdownTask?.cancel()
+                phaseCountdownTask?.cancel()
                 nightSkipTask?.cancel()
             }
             .confirmationDialog("La partida queda guardada para continuar después.",
@@ -1764,16 +1791,24 @@ private struct LocalTableView: View {
         pendingTransition = nil
         lastTransitionKey = spec.key
         withAnimation(.easeInOut(duration: 0.24)) { activeTransition = spec }
+        transitionCurtain = false
         transitionTask?.cancel()
         let nanoseconds = UInt64(transitionDuration(for: game) * 1_000_000_000)
         transitionTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled else { return }
+            if let current = store.game, current.phase == .dawn {
+                // Resolve dawn while the animated cover is still visible, so
+                // there is no flash of the intermediate phase or faded cards.
+                performPrimaryAction(current)
+            }
             withAnimation(.easeInOut(duration: 0.32)) { activeTransition = nil }
             try? await Task.sleep(nanoseconds: 340_000_000)
             guard !Task.isCancelled else { return }
             if let current = store.game, current.isNight {
                 startNightCountdown(for: current)
+            } else if let current = store.game {
+                armTimedPhaseIfReady(current)
             }
             presentPendingTransition(using: game)
         }
@@ -1793,7 +1828,9 @@ private struct LocalTableView: View {
                       current.phaseIndex == phaseIndex, current.isNight,
                       current.legalTargets(for: 0).isEmpty else { return }
                 if current.testOptions.quickMatch {
+                    transitionCurtain = true
                     store.skipPassiveNight(revision: phaseIndex)
+                    clearCurtainIfPeriodUnchanged(from: current)
                 } else {
                     nightSkipReady = true
                 }
@@ -1806,7 +1843,10 @@ private struct LocalTableView: View {
                       current.phaseIndex == phaseIndex else { return }
                 remainingNightSeconds = remaining
             }
+            guard let current = store.game, current.phaseIndex == phaseIndex else { return }
+            transitionCurtain = true
             store.expireNight(revision: phaseIndex)
+            clearCurtainIfPeriodUnchanged(from: current)
         }
     }
 
@@ -1816,6 +1856,33 @@ private struct LocalTableView: View {
               lastTransitionKey == transitionSpec(for: game).key,
               remainingNightSeconds == nil else { return }
         startNightCountdown(for: game)
+    }
+
+    private func armTimedPhaseIfReady(_ game: ClassicGame) {
+        guard game.phase == .discussion || game.phase == .voting || game.phase == .tieVote,
+              activeTransition == nil, pendingTransition == nil,
+              privateFeedback == nil, dawnAnnouncements.isEmpty,
+              lastTransitionKey == transitionSpec(for: game).key,
+              remainingPhaseSeconds == nil else { return }
+        let phaseIndex = game.phaseIndex
+        let phase = game.phase
+        let duration = phase == .discussion
+            ? game.effectiveTiming.discussionSeconds : game.effectiveTiming.votingSeconds
+        remainingPhaseSeconds = duration
+        phaseCountdownTask?.cancel()
+        phaseCountdownTask = Task { @MainActor in
+            for remaining in stride(from: duration - 1, through: 0, by: -1) {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let current = store.game,
+                      current.phaseIndex == phaseIndex, current.phase == phase else { return }
+                remainingPhaseSeconds = remaining
+            }
+            if phase == .discussion {
+                store.advance(target: nil, revision: phaseIndex)
+            } else {
+                store.expireVoting(revision: phaseIndex)
+            }
+        }
     }
 
     private func transitionDuration(for game: ClassicGame) -> TimeInterval {
@@ -1860,8 +1927,8 @@ private struct LocalTableView: View {
                         .accessibilityIdentifier("table.mapName")
                 }
                 Spacer(minLength: 2)
-                if game.isNight, let remainingNightSeconds {
-                    Text("\(remainingNightSeconds)")
+                if let seconds = game.isNight ? remainingNightSeconds : remainingPhaseSeconds {
+                    Text("\(seconds)")
                         .font(.caption.bold()).monospacedDigit()
                         .frame(minWidth: 30, minHeight: 30)
                         .background(TraidoresTheme.ink.opacity(0.84),
@@ -1931,14 +1998,15 @@ private struct LocalTableView: View {
                         .frame(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
                         .clipShape(RoundedRectangle(cornerRadius: 5))
                         .overlay {
-                            if actionable && game.isNight {
+                            if actionable && (game.isNight || game.phase == .voting || game.phase == .tieVote) {
                                 RoundedRectangle(cornerRadius: 5)
                                     .stroke(phaseAccent(game.phase).opacity(0.9), lineWidth: 1.5)
                             }
                         }
                         .overlay(alignment: .bottom) {
-                            if actionable && game.isNight {
-                                Text(game.phase == .assassinNight ? "MATAR" :
+                            if actionable && (game.isNight || game.phase == .voting || game.phase == .tieVote) {
+                                Text(game.phase == .voting || game.phase == .tieVote ? "VOTAR" :
+                                     game.phase == .assassinNight ? "MATAR" :
                                      game.phase == .mercenaryNight ? "SILENCIAR" :
                                      game.phase == .medicNight ? "SALVAR" : "INVESTIGAR")
                                     .font(.system(size: 8, weight: .heavy))
@@ -1990,7 +2058,9 @@ private struct LocalTableView: View {
                 }
             }
         }
-        .buttonStyle(.plain).disabled(!actionable)
+        // A disabled Button dims its entire label in SwiftUI. Living players
+        // must remain fully visible even when this phase has no target action.
+        .buttonStyle(.plain).allowsHitTesting(actionable)
         .opacity(player.alive ? 1 : 0.72)
         .accessibilityIdentifier("table.player.\(player.id)")
     }
@@ -2029,18 +2099,36 @@ private struct LocalTableView: View {
     @ViewBuilder
     private func tableCenter(_ game: ClassicGame) -> some View {
         if game.winner == nil && (game.isNight || game.phase == .discussion) {
-            VStack(spacing: 7) {
-                compositionPanel(game)
-                phaseSummaryPanel(game)
+            let accent = game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold
+            VStack(spacing: 0) {
+                compositionPanel(game, integrated: true)
+                Rectangle().fill(accent.opacity(0.55)).frame(height: 1)
+                    .padding(.horizontal, 8)
+                phaseSummaryPanel(game, integrated: true)
+                Rectangle().fill(accent.opacity(0.55)).frame(height: 1)
+                    .padding(.horizontal, 8)
                 tableConversationPanel(game)
                     .frame(maxHeight: .infinity)
             }
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                chatSurface(game.map,
-                            accent: game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold)
+                chatSurface(game.map, accent: accent)
             }
+        } else if game.winner == nil && (game.phase == .voting || game.phase == .tieVote) {
+            VStack(spacing: 0) {
+                compositionPanel(game, integrated: true)
+                Rectangle().fill(TraidoresTheme.gold.opacity(0.55)).frame(height: 1)
+                    .padding(.horizontal, 8)
+                phaseSummaryPanel(game, integrated: true)
+                Rectangle().fill(TraidoresTheme.gold.opacity(0.55)).frame(height: 1)
+                    .padding(.horizontal, 8)
+                votingPrompt(game)
+                    .frame(maxHeight: .infinity)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background { chatSurface(game.map, accent: TraidoresTheme.gold) }
         } else {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
@@ -2061,7 +2149,7 @@ private struct LocalTableView: View {
         }
     }
 
-    private func compositionPanel(_ game: ClassicGame) -> some View {
+    private func compositionPanel(_ game: ClassicGame, integrated: Bool = false) -> some View {
         let counts = Dictionary(grouping: game.players, by: \.role).mapValues(\.count)
         let ordered: [RoleKey] = [.villager, .detective, .medic, .mayor, .assassin, .mercenary, .spy, .deserter, .payador, .jester, .oracle]
         let summary = ordered.compactMap { role -> String? in
@@ -2070,12 +2158,14 @@ private struct LocalTableView: View {
         }.joined(separator: " · ")
         return Text("PARTIDA · \(summary)")
             .font(.system(size: 9, weight: .bold)).multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity).padding(.horizontal, 5).padding(.vertical, 6)
-            .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.border))
+            .frame(maxWidth: .infinity).padding(.horizontal, 5).padding(.vertical, 8)
+            .background(integrated ? Color.clear : TraidoresTheme.panel.opacity(0.95),
+                        in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6)
+                .stroke(integrated ? Color.clear : TraidoresTheme.border))
     }
 
-    private func phaseSummaryPanel(_ game: ClassicGame) -> some View {
+    private func phaseSummaryPanel(_ game: ClassicGame, integrated: Bool = false) -> some View {
         let events = game.messages.filter { $0.round == game.round && $0.speaker == nil }
         let event = game.phase == .discussion
             ? events.first(where: { $0.text.contains("murió durante") || $0.text.contains("Amanece sin") })?.text
@@ -2089,17 +2179,19 @@ private struct LocalTableView: View {
                 .font(.system(size: 10, weight: .semibold)).multilineTextAlignment(.center)
                 .lineLimit(2).minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 7).padding(.horizontal, 6)
-        .background(game.isNight ? TraidoresTheme.ink.opacity(0.96)
+        .frame(maxWidth: .infinity).padding(.vertical, 10).padding(.horizontal, 6)
+        .background(integrated ? Color.clear : game.isNight ? TraidoresTheme.ink.opacity(0.96)
                                  : TraidoresTheme.panel.opacity(0.95),
                     in: RoundedRectangle(cornerRadius: 7))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(
-            game.isNight ? phaseAccent(game.phase).opacity(0.75) : TraidoresTheme.border))
+            integrated ? Color.clear : game.isNight ? phaseAccent(game.phase).opacity(0.75) : TraidoresTheme.border))
     }
 
     private func tableConversationPanel(_ game: ClassicGame) -> some View {
         let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
-        let canWrite = game.phase == .discussion && game.human.alive && game.silencedPlayer != 0
+        let canWrite = game.human.alive && (
+            game.phase == .discussion && game.silencedPlayer != 0 || traitorChat)
+        let visibleMessages = visibleConversationMessages(game)
         let title = game.isNight
             ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
             : "CHAT DEL PUEBLO"
@@ -2127,7 +2219,7 @@ private struct LocalTableView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 7) {
                         // The initial composition is already pinned above the feed.
-                        ForEach(game.messages.filter { $0.round == game.round && $0.id != 1 }) { message in
+                        ForEach(visibleMessages) { message in
                             chatMessage(message, game: game).id(message.id)
                         }
                         Color.clear.frame(height: 1).id("table.chatBottom")
@@ -2135,7 +2227,7 @@ private struct LocalTableView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .onAppear { proxy.scrollTo("table.chatBottom", anchor: .bottom) }
-                .onChange(of: game.messages.last?.id) { _, _ in
+                .onChange(of: visibleMessages.last?.id) { _, _ in
                     withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo("table.chatBottom", anchor: .bottom)
                     }
@@ -2148,7 +2240,13 @@ private struct LocalTableView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "person.wave.2.fill")
                         .foregroundStyle(accent)
-                    TextField("Escribí tu primera sospecha…", text: $chatDraft)
+                    TextField("", text: $chatDraft,
+                              prompt: Text(traitorChat ? "Escribí a tus aliados…" :
+                                           "Escribí tu primera sospecha…")
+                                .foregroundStyle(TraidoresTheme.secondary))
+                        .foregroundStyle(TraidoresTheme.text)
+                        .tint(TraidoresTheme.gold)
+                        .frame(maxWidth: .infinity, minHeight: 30)
                         .textInputAutocapitalization(.sentences)
                         .submitLabel(.send)
                         .focused($chatInputFocused)
@@ -2157,20 +2255,20 @@ private struct LocalTableView: View {
                             if value.count > 140 { chatDraft = String(value.prefix(140)) }
                         }
                         .accessibilityIdentifier("chat.input")
-                    if !chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button { sendChat(game) } label: {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundStyle(accent)
-                        }
-                        .accessibilityLabel("Enviar mensaje")
-                        .accessibilityIdentifier("chat.send")
+                    Button { sendChat(game) } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(accent)
                     }
+                    .disabled(chatDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Enviar mensaje")
+                    .accessibilityIdentifier("chat.send")
                 }
-                .font(.system(size: 11))
-                .padding(9)
-                .background(TraidoresTheme.ink.opacity(0.83), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
+                .font(.system(size: 12))
+                .padding(7)
+                .background(TraidoresTheme.ink.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.8)))
+                .contentShape(RoundedRectangle(cornerRadius: 12))
             } else if game.phase == .discussion {
                 Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
                       "No podés hablar ahora.", systemImage: "person.wave.2.fill")
@@ -2198,6 +2296,15 @@ private struct LocalTableView: View {
         .accessibilityIdentifier("table.conversation")
     }
 
+    private func visibleConversationMessages(_ game: ClassicGame) -> [TableMessage] {
+        let publicMessages = game.messages.filter { $0.round == game.round && $0.id != 1 }
+        guard game.isNight else { return publicMessages }
+        let nightEvents = publicMessages.filter { $0.speaker == nil }
+        guard [.assassin, .mercenary, .spy].contains(game.human.role) else { return nightEvents }
+        return (nightEvents + game.privateChatMessages.filter { $0.round == game.round })
+            .sorted { $0.id < $1.id }
+    }
+
     private func targetPrompt(_ game: ClassicGame) -> some View {
         VStack(spacing: 7) {
             Image(systemName: selected == nil ? "hand.tap" : "checkmark.circle.fill")
@@ -2210,6 +2317,35 @@ private struct LocalTableView: View {
         .frame(maxWidth: .infinity).padding(12)
         .background(TraidoresTheme.panel.opacity(0.93), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+    }
+
+    private func votingPrompt(_ game: ClassicGame) -> some View {
+        VStack(spacing: 13) {
+            Image(systemName: selected == nil ? "hand.tap.fill" : "checkmark.seal.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(TraidoresTheme.gold)
+            Text(selected.map { game.name($0).uppercased() } ?? "TOCÁ UNA CARTA PARA VOTAR")
+                .font(TraidoresTheme.title(18))
+                .foregroundStyle(TraidoresTheme.gold)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.8)
+            Text(selected == nil
+                 ? "Elegí a quién expulsar. Después confirmá tu voto abajo."
+                 : "Tu voto está preparado. Tocá VOTAR para confirmarlo.")
+                .font(.system(size: 12, weight: .medium))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(TraidoresTheme.text)
+            if let remainingPhaseSeconds {
+                Text("CIERRA EN \(remainingPhaseSeconds) S")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .tracking(1)
+                    .foregroundStyle(TraidoresTheme.secondary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("table.votingPrompt")
     }
 
     private func publicResultPanel(_ game: ClassicGame) -> some View {
@@ -2288,7 +2424,9 @@ private struct LocalTableView: View {
         if game.isNight && game.legalTargets(for: 0).isEmpty {
             guard nightSkipReady else { return }
             nightSkipReady = false
+            transitionCurtain = true
             store.skipPassiveNight(revision: game.phaseIndex)
+            clearCurtainIfPeriodUnchanged(from: game)
             return
         }
         let target = selected
@@ -2323,7 +2461,9 @@ private struct LocalTableView: View {
         default:
             nil
         }
+        if game.isNight || game.phase == .result { transitionCurtain = true }
         store.advance(target: target, revision: game.phaseIndex)
+        clearCurtainIfPeriodUnchanged(from: game)
         privateFeedback = feedback
         if game.phase == .dawn, let updated = store.game, updated.phaseIndex != game.phaseIndex {
             if let victim = game.nightTarget,
@@ -2336,6 +2476,13 @@ private struct LocalTableView: View {
             if let silenced = game.silencedPlayer, updated.players[silenced].alive {
                 dawnAnnouncements.append(.silence(updated.name(silenced)))
             }
+        }
+    }
+
+    private func clearCurtainIfPeriodUnchanged(from previous: ClassicGame) {
+        guard let current = store.game else { transitionCurtain = false; return }
+        if transitionSpec(for: current).key == transitionSpec(for: previous).key {
+            transitionCurtain = false
         }
     }
 
@@ -2500,15 +2647,24 @@ private struct LocalTableView: View {
     private func sendChat(_ game: ClassicGame) {
         let message = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
-        store.sendPublicMessage(message, revision: game.phaseIndex)
+        if game.isNight {
+            store.sendTraitorMessage(message, revision: game.phaseIndex)
+        } else {
+            store.sendPublicMessage(message, revision: game.phaseIndex)
+        }
         chatDraft = ""
         readingOlderChat = false
-        chatInputFocused = true
+        Task { @MainActor in
+            await Task.yield()
+            chatInputFocused = true
+        }
     }
 
     private func chatPanel(_ game: ClassicGame) -> some View {
         let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
-        let canWrite = game.phase == .discussion && game.human.alive && game.silencedPlayer != 0
+        let canWrite = game.human.alive && (
+            game.phase == .discussion && game.silencedPlayer != 0 || traitorChat)
+        let visibleMessages = visibleConversationMessages(game)
         return VStack(spacing: 5) {
             HStack {
                 Text(game.isNight ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
@@ -2534,7 +2690,7 @@ private struct LocalTableView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 7) {
-                        ForEach(game.messages.suffix(100).filter { $0.id != 1 }) { message in
+                        ForEach(visibleMessages.suffix(100)) { message in
                             chatMessage(message, game: game)
                                 .id(message.id)
                         }
@@ -2546,7 +2702,7 @@ private struct LocalTableView: View {
                     if value.translation.height > 24 { readingOlderChat = true }
                 })
                 .onAppear { proxy.scrollTo("chat.bottom", anchor: .bottom) }
-                .onChange(of: game.messages.last?.id) { _, _ in
+                .onChange(of: visibleMessages.last?.id) { _, _ in
                     if !readingOlderChat {
                         withAnimation(.easeOut(duration: 0.18)) {
                             proxy.scrollTo("chat.bottom", anchor: .bottom)
@@ -2790,9 +2946,9 @@ private struct LocalTableView: View {
         case .detectiveNight: "Elegí a quién investigar. El resultado será privado."
         case .medicNight: "Elegí a quién proteger. También podés protegerte."
         case .dawn: "La noche terminó. Continuá para conocer lo ocurrido."
-        case .discussion: "Escuchá a la mesa, compartí información o marcá una sospecha."
-        case .voting: "Elegí a quién expulsar. No podés votarte a vos mismo."
-        case .tieVote: "Votá entre los jugadores empatados."
+        case .discussion: "Debatan, comparen versiones y preparen la votación."
+        case .voting: "Tocá una carta para elegir a quién expulsar y confirmá tu voto."
+        case .tieVote: "Tocá una carta empatada y confirmá tu voto antes del cierre."
         case .voteCount: game.advanced.showIndividualVotes
             ? "Revisá cómo votó cada participante."
             : "Revisá el total de votos recibido por cada participante."

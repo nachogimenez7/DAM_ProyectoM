@@ -50,6 +50,43 @@ struct ClassicGameTests {
         #expect(!votingSent)
     }
 
+    @Test func traitorNightChatIsWritablePrivateAndSaved() throws {
+        var game = ClassicGame(name: "Humano", seed: 1, trainingRole: .assassin,
+                               botNames: Array(ClassicGame.defaultBotNames.prefix(6)))
+        game.phase = .assassinNight
+        let publicBefore = game.messages
+        let revision = game.phaseIndex
+        let sent = game.sendTraitorMessage("Hablemos bajo", expectedPhaseIndex: revision)
+        #expect(sent)
+        #expect(game.messages == publicBefore)
+        #expect(game.privateChatMessages.last?.text == "Hablemos bajo")
+        #expect(game.privateChatMessages.last?.speaker == 0)
+        let blankSent = game.sendTraitorMessage(" ", expectedPhaseIndex: revision)
+        let staleSent = game.sendTraitorMessage("Tarde", expectedPhaseIndex: revision + 1)
+        #expect(!blankSent)
+        #expect(!staleSent)
+        #expect(try ClassicSave.decode(ClassicSave.encode(game)).privateChatMessages == game.privateChatMessages)
+
+        game.phase = .discussion
+        let daySent = game.sendTraitorMessage("Público", expectedPhaseIndex: revision)
+        #expect(!daySent)
+        game.phase = .assassinNight
+        game.players[0] = .init(id: 0, name: "Humano", role: .villager)
+        let villagerSent = game.sendTraitorMessage("Ajeno", expectedPhaseIndex: revision)
+        #expect(!villagerSent)
+    }
+
+    @Test func votingClockClosesWithoutInventingAHumanVote() {
+        var game = fixed(.voting)
+        let revision = game.phaseIndex
+        let expired = game.expireVoting(expectedPhaseIndex: revision)
+        #expect(expired)
+        #expect(game.phase == .voteCount)
+        #expect(game.votes[0] == nil)
+        let expiredAgain = game.expireVoting(expectedPhaseIndex: revision)
+        #expect(!expiredAgain)
+    }
+
     @Test func lobbyMapDifficultyAndAndroidBotNamesReachTheMatch() throws {
         let game = ClassicGame(name: "Humano", seed: 17, map: .greece, difficulty: .hard)
         #expect(game.map == .greece)

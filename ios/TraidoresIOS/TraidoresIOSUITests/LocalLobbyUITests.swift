@@ -148,10 +148,12 @@ final class LocalLobbyUITests: XCTestCase {
         if dayTransition.waitForExistence(timeout: 1) {
             XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 2))
         }
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
-
-        primaryAction.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+        let dawnAnnouncement = app.descendants(matching: .any)
+            .matching(identifier: "table.dawnAnnouncement").firstMatch
+        if dawnAnnouncement.exists {
+            XCTAssertTrue(dawnAnnouncement.waitForNonExistence(timeout: 6))
+        }
 
         primaryAction.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
@@ -180,7 +182,12 @@ final class LocalLobbyUITests: XCTestCase {
         let dismiss = app.buttons["table.dismissPrivateFeedback"]
         XCTAssertTrue(dismiss.isHittable)
         dismiss.tap()
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("AMANECE"))
+        let dayTransition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if dayTransition.waitForExistence(timeout: 1) {
+            XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 3))
+        }
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
     }
 
     func testPublicChatKeepsNewMessagesVisible() throws {
@@ -198,11 +205,16 @@ final class LocalLobbyUITests: XCTestCase {
         if transition.waitForExistence(timeout: 1) {
             XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
         }
-        app.buttons["table.primaryAction"].tap()
+        let dawnAnnouncement = app.descendants(matching: .any)
+            .matching(identifier: "table.dawnAnnouncement").firstMatch
+        if dawnAnnouncement.exists {
+            XCTAssertTrue(dawnAnnouncement.waitForNonExistence(timeout: 6))
+        }
         let input = app.textFields["chat.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 3))
         input.tap()
         input.typeText("Sospecho de Mora")
+        XCTAssertEqual(input.value as? String, "Sospecho de Mora")
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Sospecho de Mora"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¿Qué prueba tenés contra mí? Escuchemos a los demás."].exists)
@@ -240,7 +252,6 @@ final class LocalLobbyUITests: XCTestCase {
             if dayTransition.waitForExistence(timeout: 1) {
                 XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 3))
             }
-            app.buttons["table.primaryAction"].tap()
             XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
             let dawnAnnouncement = app.descendants(matching: .any)
                 .matching(identifier: "table.dawnAnnouncement").firstMatch
