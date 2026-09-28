@@ -1921,6 +1921,7 @@ private struct LocalTableView: View {
                     Text(phaseTitle(for: game).uppercased())
                         .font(TraidoresTheme.title(16)).foregroundStyle(TraidoresTheme.gold)
                         .lineLimit(1).minimumScaleFactor(0.7)
+                        .accessibilityLabel(game.phase == .discussion ? game.phase.classicTitle.uppercased() : phaseTitle(for: game).uppercased())
                         .accessibilityIdentifier("table.phaseTitle")
                     Text("Ronda \(game.round) · \(game.map.title)")
                         .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
@@ -1930,6 +1931,7 @@ private struct LocalTableView: View {
                 if let seconds = game.isNight ? remainingNightSeconds : remainingPhaseSeconds {
                     Text("\(seconds)")
                         .font(.caption.bold()).monospacedDigit()
+                        .accessibilityIdentifier("table.phaseTimer")
                         .frame(minWidth: 30, minHeight: 30)
                         .background(TraidoresTheme.ink.opacity(0.84),
                                     in: RoundedRectangle(cornerRadius: 7))
@@ -1990,7 +1992,11 @@ private struct LocalTableView: View {
     ) -> some View {
         let actionable = game.legalTargets(for: 0).contains(player.id)
         return Button {
-            if actionable { selected = player.id }
+            guard actionable else { return }
+            selected = player.id
+            if game.phase == .voting || game.phase == .tieVote {
+                performPrimaryAction(game)
+            }
         } label: {
             VStack(spacing: 0) {
                 ZStack {
@@ -2209,6 +2215,7 @@ private struct LocalTableView: View {
                         .frame(width: 25, height: 25)
                 }
                 .accessibilityLabel("Ampliar chat")
+                .accessibilityIdentifier("chat.expand")
             }
             HStack(spacing: 5) {
                 Rectangle().fill(accent.opacity(0.5)).frame(height: 1)
@@ -2242,7 +2249,7 @@ private struct LocalTableView: View {
                         .foregroundStyle(accent)
                     TextField("", text: $chatDraft,
                               prompt: Text(traitorChat ? "Escribí a tus aliados…" :
-                                           "Escribí tu primera sospecha…")
+                                           "Escribí una sospecha…")
                                 .foregroundStyle(TraidoresTheme.secondary))
                         .foregroundStyle(TraidoresTheme.text)
                         .tint(TraidoresTheme.gold)
@@ -2293,7 +2300,7 @@ private struct LocalTableView: View {
         .padding(.horizontal, 4)
         .padding(.bottom, 4)
         .frame(maxWidth: .infinity, minHeight: 285, alignment: .top)
-        .accessibilityIdentifier("table.conversation")
+        .accessibilityElement(children: .contain)
     }
 
     private func visibleConversationMessages(_ game: ClassicGame) -> [TableMessage] {
@@ -2329,9 +2336,7 @@ private struct LocalTableView: View {
                 .foregroundStyle(TraidoresTheme.gold)
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.8)
-            Text(selected == nil
-                 ? "Elegí a quién expulsar. Después confirmá tu voto abajo."
-                 : "Tu voto está preparado. Tocá VOTAR para confirmarlo.")
+            Text("Elegí a quién expulsar. Al tocar su carta, tu voto se registra automáticamente.")
                 .font(.system(size: 12, weight: .medium))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(TraidoresTheme.text)
@@ -2369,18 +2374,40 @@ private struct LocalTableView: View {
     private func humanPanel(_ game: ClassicGame) -> some View {
         let targets = game.legalTargets(for: 0)
         let canChooseSelf = targets.contains(0)
-        let canAdvance = game.isNight && targets.isEmpty
-            ? nightSkipReady : (targets.isEmpty || targets.contains(selected ?? -1))
+        let votesByCard = (game.phase == .voting || game.phase == .tieVote) && !targets.isEmpty
+        let canAdvance = !votesByCard && (game.isNight && targets.isEmpty
+            ? nightSkipReady : (targets.isEmpty || targets.contains(selected ?? -1)))
         return VStack(spacing: 5) {
             HStack(spacing: 8) {
-                Button { humanCardRevealed.toggle() } label: {
+                Button {
+                    if canChooseSelf { selected = 0 }
+                    else { humanCardRevealed.toggle() }
+                } label: {
                     Image(humanCardRevealed ? game.human.role.classicImage : "card_back_traidores")
                         .resizable().scaledToFill()
                         .frame(width: 48, height: 76).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.border))
+                        .overlay {
+                            if canChooseSelf {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(phaseAccent(game.phase), lineWidth: selected == 0 ? 3 : 1.5)
+                            }
+                        }
+                        .overlay(alignment: .bottom) {
+                            if canChooseSelf {
+                                Text("SALVARME")
+                                    .font(.system(size: 7, weight: .heavy))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 3)
+                                    .background(phaseAccent(game.phase))
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(canChooseSelf ? "Elegirme para protegerme" : "Ver mi carta")
+                .accessibilityIdentifier("table.player.0")
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
@@ -2402,9 +2429,13 @@ private struct LocalTableView: View {
                     .frame(maxWidth: .infinity, minHeight: 32)
                     .background(TraidoresTheme.ink.opacity(0.88), in: RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
-                Button(actionTitle(game)) {
+                Button {
                     performPrimaryAction(game)
+                } label: {
+                    Text(actionTitle(game))
+                        .id(actionTitle(game))
                 }
+                .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .heavy)).tracking(0.45)
                 .foregroundStyle(game.isNight && !targets.isEmpty ? Color.white : TraidoresTheme.ink)
                 .lineLimit(1).minimumScaleFactor(0.75)
@@ -2413,6 +2444,8 @@ private struct LocalTableView: View {
                             in: RoundedRectangle(cornerRadius: 7))
                 .disabled(!canAdvance).opacity(canAdvance ? 1 : 0.52)
                 .accessibilityIdentifier("table.primaryAction")
+                .id(game.phase)
+                .transaction { $0.animation = nil }
             }
         }
                 .padding(6).frame(height: 132)
@@ -2793,7 +2826,7 @@ private struct LocalTableView: View {
         .background { chatSurface(game.map,
                                   accent: game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold) }
         .shadow(color: .black.opacity(0.68), radius: 13, y: 6)
-        .accessibilityIdentifier("table.chatPanel")
+        .accessibilityElement(children: .contain)
     }
 
     private func chatSurface(_ map: GameMap, accent: Color) -> some View {
@@ -2947,8 +2980,8 @@ private struct LocalTableView: View {
         case .medicNight: "Elegí a quién proteger. También podés protegerte."
         case .dawn: "La noche terminó. Continuá para conocer lo ocurrido."
         case .discussion: "Debatan, comparen versiones y preparen la votación."
-        case .voting: "Tocá una carta para elegir a quién expulsar y confirmá tu voto."
-        case .tieVote: "Tocá una carta empatada y confirmá tu voto antes del cierre."
+        case .voting: "Tocá una carta para votar a quién expulsar."
+        case .tieVote: "Tocá una carta empatada para votar antes del cierre."
         case .voteCount: game.advanced.showIndividualVotes
             ? "Revisá cómo votó cada participante."
             : "Revisá el total de votos recibido por cada participante."
@@ -2960,6 +2993,7 @@ private struct LocalTableView: View {
     private func phaseTitle(for game: ClassicGame) -> String {
         if game.isNight { return "Noche \(game.round)" }
         if game.phase == .dawn { return "Amanece en \(game.map.title)" }
+        if game.phase == .discussion { return "Día \(game.round)" }
         return game.phase.classicTitle
     }
 
@@ -2980,7 +3014,7 @@ private struct LocalTableView: View {
             case .mercenaryNight: selected == nil ? "ELEGIR OBJETIVO" : "SILENCIAR"
             case .detectiveNight: "INVESTIGAR"
             case .medicNight: selected == 0 ? "SALVARME" : "SALVAR"
-            case .voting, .tieVote: "VOTAR"
+            case .voting, .tieVote: "TOCÁ UNA CARTA"
             default: "CONFIRMAR"
             }
         }

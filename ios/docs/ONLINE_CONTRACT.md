@@ -11,3 +11,9 @@ Referencia: Android `32e4fc09dfb726d5264b27804bb4f8c1f5ae1a21`. La etapa actual 
 - El futuro codec debe preservar `versionEstado = 2`, protocolo de voto 2 y compatibilidad legacy donde corresponda; `authorityEpoch`, `stateSequence`, el checkpoint antes de RTDB, UUID v3 para acciones, identificador literal de voto y datos privados separados.
 
 Al iniciar online, cotejar la build Android vigente y las reglas desplegadas. Estos valores no son una afirmación de lo que hoy está publicado en Firebase.
+
+## Interacción de voto solicitada para iOS
+
+- Contra IA, tocar una carta válida registra el voto y abre el recuento, sin una segunda confirmación. También aplica al desempate.
+- Para online, el usuario solicita voto al primer toque y un margen de 5 segundos para cambiarlo. No está implementado todavía: requiere sincronización y cierre autorizados por el servidor, no resolver la fase desde un temporizador de la vista.
+- La fuente Android local consultada usa `DIRECT_VOTE_CLOSING_GRACE_MS = 3_000L` y abre el margen online cuando todos confirmaron. Al implementar online, conciliar esta diferencia con la regla solicitada de 5 segundos y mantener el mismo cierre para ambos clientes.

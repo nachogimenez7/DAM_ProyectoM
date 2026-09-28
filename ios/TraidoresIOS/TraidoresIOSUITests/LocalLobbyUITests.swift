@@ -161,7 +161,6 @@ final class LocalLobbyUITests: XCTestCase {
             .map { app.buttons["table.player.\($0)"] }
             .first { $0.exists && $0.isEnabled && $0.isHittable })
         target.tap()
-        primaryAction.tap()
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
     }
 
@@ -191,13 +190,24 @@ final class LocalLobbyUITests: XCTestCase {
     }
 
     func testPublicChatKeepsNewMessagesVisible() throws {
-        let app = launchLobby(extraArguments: ["-ui-testing-medic"])
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
         roleStart.tap()
+        if !roleStart.waitForNonExistence(timeout: 2) {
+            XCTAssertTrue(roleStart.isHittable)
+            roleStart.tap()
+            XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
+        }
 
-        app.buttons["table.player.0"].tap()
+        let nightTransition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if nightTransition.exists {
+            XCTAssertTrue(nightTransition.waitForNonExistence(timeout: 3))
+        }
+
+        app.buttons["table.player.1"].tap()
         app.buttons["table.primaryAction"].tap()
         app.buttons["table.dismissPrivateFeedback"].tap()
         let transition = app.descendants(matching: .any)
@@ -215,9 +225,17 @@ final class LocalLobbyUITests: XCTestCase {
         input.tap()
         input.typeText("Sospecho de Mora")
         XCTAssertEqual(input.value as? String, "Sospecho de Mora")
+        let typingScreenshot = XCTAttachment(screenshot: app.screenshot())
+        typingScreenshot.name = "Chat escritura completa"
+        typingScreenshot.lifetime = .keepAlways
+        add(typingScreenshot)
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Sospecho de Mora"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¿Qué prueba tenés contra mí? Escuchemos a los demás."].exists)
+        let sentScreenshot = XCTAttachment(screenshot: app.screenshot())
+        sentScreenshot.name = "Chat mensaje enviado"
+        sentScreenshot.lifetime = .keepAlways
+        add(sentScreenshot)
     }
 
     func testChatBackgroundPreviewForEveryMap() throws {
@@ -264,6 +282,45 @@ final class LocalLobbyUITests: XCTestCase {
             add(day)
             app.terminate()
         }
+    }
+
+    func testVotingReviewSnapshotAndRecount() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        roleStart.tap()
+        if !roleStart.waitForNonExistence(timeout: 2) {
+            roleStart.tap()
+            XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
+        }
+        let transition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if transition.exists { XCTAssertTrue(transition.waitForNonExistence(timeout: 3)) }
+        app.buttons["table.player.1"].tap()
+        app.buttons["table.primaryAction"].tap()
+        app.buttons["table.dismissPrivateFeedback"].tap()
+        if transition.waitForExistence(timeout: 1) {
+            XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
+        }
+        let announcement = app.descendants(matching: .any)
+            .matching(identifier: "table.dawnAnnouncement").firstMatch
+        if announcement.exists { XCTAssertTrue(announcement.waitForNonExistence(timeout: 6)) }
+        XCTAssertTrue(app.staticTexts["table.phaseTimer"].exists)
+        app.buttons["table.primaryAction"].tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
+        XCTAssertTrue(app.staticTexts["table.phaseTimer"].exists)
+        let voting = XCTAttachment(screenshot: app.screenshot())
+        voting.name = "Pampa votación"
+        voting.lifetime = .keepAlways
+        add(voting)
+        XCTAssertFalse(app.buttons["table.primaryAction"].isEnabled)
+        app.buttons["table.player.2"].tap()
+        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
+        let recount = XCTAttachment(screenshot: app.screenshot())
+        recount.name = "Pampa recuento"
+        recount.lifetime = .keepAlways
+        add(recount)
     }
 
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {
