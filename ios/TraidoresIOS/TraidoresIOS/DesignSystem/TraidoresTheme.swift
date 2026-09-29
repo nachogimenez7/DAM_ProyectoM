@@ -55,14 +55,27 @@ struct TraidoresButtonStyle: ButtonStyle {
 
 struct MenuPage<Content: View>: View {
     let title: String
+    var backgroundAsset: String? = nil
+    var headerTint: Color = TraidoresTheme.text
+    var headerSurface: Color = TraidoresTheme.panel
     @ViewBuilder let content: () -> Content
     @Environment(\.dismiss) private var dismiss
+    @Environment(MenuPreferences.self) private var preferences
+    @Environment(\.dynamicTypeSize) private var systemTextSize
 
     var body: some View {
         ZStack {
-            MenuBackground()
+            if let backgroundAsset {
+                GeometryReader { geometry in
+                    Image(backgroundAsset).resizable().scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped().overlay(.black.opacity(0.25))
+                }.ignoresSafeArea().accessibilityHidden(true)
+            } else {
+                MenuBackground()
+            }
             VStack(spacing: 0) {
-                MenuHeader(title: title, back: dismiss.callAsFunction)
+                MenuHeader(title: title, back: dismiss.callAsFunction, tint: headerTint, surface: headerSurface)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
                 ScrollView {
@@ -76,24 +89,30 @@ struct MenuPage<Content: View>: View {
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
+        .dynamicTypeSize(preferences.textSize == .system ? systemTextSize :
+                            preferences.textSize == .large ? .xLarge : .xxxLarge)
     }
 }
 
 struct MenuHeader: View {
     let title: String
     let back: () -> Void
+    var tint: Color = TraidoresTheme.text
+    var surface: Color = TraidoresTheme.panel
 
     var body: some View {
         ZStack {
-            Text(title).font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.text)
+            Text(title).font(TraidoresTheme.title(19)).foregroundStyle(tint)
             HStack {
                 Button(action: back) {
                     Image(systemName: "chevron.left").font(.headline)
                         .frame(width: 44, height: 44)
-                        .background(TraidoresTheme.panel.opacity(0.94), in: Circle())
-                        .overlay(Circle().stroke(TraidoresTheme.border))
+                        .background(surface.opacity(0.94), in: Circle())
+                        .overlay(Circle().stroke(tint.opacity(0.45)))
                 }
-                .foregroundStyle(TraidoresTheme.text)
+                .foregroundStyle(tint)
+                .accessibilityLabel("Volver")
+                .accessibilityIdentifier("menu.back")
                 Spacer()
             }
         }

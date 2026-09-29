@@ -1,11 +1,13 @@
 import SwiftUI
 
 private enum MenuRoute: Hashable {
-    case play, roles, help, options, profile, about
+    case play, roles, help, options, profile, about, feedback
 }
 
 struct MenuView: View {
+    @AppStorage("menu.localProfile.v1") private var localProfileData = Data()
     @Environment(MenuPreferences.self) private var preferences
+    @Environment(\.dynamicTypeSize) private var systemTextSize
 
     var body: some View {
         NavigationStack {
@@ -34,6 +36,8 @@ struct MenuView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
+                .dynamicTypeSize(preferences.textSize == .system ? systemTextSize :
+                                    preferences.textSize == .large ? .xLarge : .xxxLarge)
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: MenuRoute.self) { route in
@@ -44,15 +48,10 @@ struct MenuView: View {
                     case .help: HelpView()
                     case .options: OptionsView()
                     case .profile:
-                        MenuPage(title: "Perfil") {
-                            InformationCard(title: "Tu identidad en la mesa", message: "El perfil llegará con las primeras partidas. Por ahora podés explorar los roles, las reglas y las opciones del menú.")
-                        }
+                        ProfileView()
                     case .about:
-                        MenuPage(title: "Bandido Games") {
-                            Image("bandido_menu_medallion").resizable().scaledToFit()
-                                .frame(height: 130).frame(maxWidth: .infinity).accessibilityHidden(true)
-                            InformationCard(title: "Traidores", message: "Un juego de deducción social. Observá, escuchá y elegí en quién confiar.\n\nDesconfía de todos.")
-                        }
+                        AboutView()
+                    case .feedback: SupportMessageView(feedback: true)
                     }
                 }
                 .toolbar(.hidden, for: .navigationBar)
@@ -72,13 +71,16 @@ struct MenuView: View {
                 .frame(minHeight: 44)
             }
             .accessibilityLabel("Acerca de Bandido Games")
+            .accessibilityIdentifier("menu.about")
             Spacer(minLength: 0)
             NavigationLink(value: MenuRoute.profile) {
-                Image(systemName: "person.crop.circle")
-                    .font(.title2).frame(width: 44, height: 44)
-                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                let profile = LocalMenuProfile.load(localProfileData)
+                ProfilePortrait(image: profile.avatar, photoData: profile.photoData)
+                    .frame(width: 44, height: 44)
+                    .overlay(Circle().stroke(TraidoresTheme.gold, lineWidth: 1.5))
             }
             .accessibilityLabel("Abrir perfil")
+            .accessibilityIdentifier("menu.profile")
         }
     }
 
@@ -115,9 +117,12 @@ struct MenuView: View {
             }
             .accessibilityLabel(preferences.musicEnabled ? "Silenciar música" : "Activar música")
             .accessibilityValue(preferences.musicEnabled ? "Activada" : "Silenciada")
+            .accessibilityIdentifier("menu.music")
             Spacer()
-            Text("Bandido Games · iOS")
-                .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+            NavigationLink("COMENTARIOS / ERRORES", value: MenuRoute.feedback)
+                .font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("menu.feedback")
         }
     }
 

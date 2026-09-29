@@ -5,6 +5,195 @@ final class LocalLobbyUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testProfileStylesEmotesAndAchievementCatalog() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.profile"].tap()
+        app.buttons["profile.edit"].tap()
+        let style = app.buttons["profile.style"]
+        for _ in 0..<5 where !style.isHittable { app.swipeUp() }
+        style.tap()
+        XCTAssertTrue(app.buttons["profile.style.sea"].waitForExistence(timeout: 3))
+        app.buttons["profile.style.sea"].tap()
+        let equip = app.buttons["profile.style.equip"]
+        for _ in 0..<4 where !equip.isHittable { app.swipeUp() }
+        equip.tap()
+        let styleChanged = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "ABISMO REAL"), object: app.buttons["profile.style"])
+        XCTAssertEqual(XCTWaiter.wait(for: [styleChanged], timeout: 3), .completed)
+        let editEmotes = app.buttons["profile.emotes"]
+        for _ in 0..<5 where !editEmotes.isHittable { app.swipeUp() }
+        editEmotes.tap()
+        XCTAssertTrue(app.staticTexts["profile.emotes.count"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["profile.emotes.count"].label.contains("4/4"))
+        app.buttons["profile.emote.griego_enojado"].tap()
+        XCTAssertTrue(app.staticTexts["profile.emotes.count"].label.contains("3/4"))
+        app.buttons["profile.emote.griego_enojado"].tap()
+        let apply = app.buttons["profile.emotes.apply"]
+        for _ in 0..<8 where !apply.isHittable { app.swipeUp() }
+        XCTAssertTrue(apply.isEnabled)
+        apply.tap()
+        let achievements = app.buttons["profile.achievements"]
+        for _ in 0..<5 where !achievements.isHittable { app.swipeUp() }
+        achievements.tap()
+        let first = app.buttons["profile.achievement.profile_created"]
+        XCTAssertTrue(first.waitForExistence(timeout: 3))
+        first.tap()
+        XCTAssertTrue(app.alerts["Te agradezco infinitamente"].waitForExistence(timeout: 3))
+        app.alerts.buttons["ENTENDIDO"].tap()
+        app.buttons["menu.back"].firstMatch.tap()
+        app.buttons["profile.edit"].tap()
+        app.swipeDown(); app.swipeDown(); app.swipeDown()
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = "Perfil completo - Abismo Real"
+        snapshot.lifetime = .keepAlways
+        add(snapshot)
+    }
+
+    func testLocalProfileSavesNameAvatarBannerAndFavorite() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.profile"].tap()
+        app.buttons["profile.edit"].tap()
+        let name = app.textFields["profile.name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        name.tap()
+        let current = name.value as? String ?? ""
+        let testName = "Ignacio " + String(UUID().uuidString.prefix(4))
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + testName + "\n")
+        let avatar = app.buttons["profile.avatar"]
+        for _ in 0..<4 where !avatar.isHittable { app.swipeUp() }
+        avatar.tap()
+        XCTAssertTrue(app.buttons["profile.map.medieval"].waitForExistence(timeout: 3))
+        app.buttons["profile.map.medieval"].tap()
+        XCTAssertTrue(app.buttons["profile.choice.medieval.aldeano"].waitForExistence(timeout: 3))
+        app.buttons["profile.choice.medieval.aldeano"].tap()
+        app.buttons["profile.banner"].tap()
+        app.buttons["profile.banner.grecia"].tap()
+        app.buttons["profile.favorite"].tap()
+        app.buttons["profile.map.medieval"].tap()
+        app.buttons["profile.choice.medieval.policia"].tap()
+        let save = app.buttons["profile.save"]
+        for _ in 0..<4 where !save.isHittable { app.swipeUp() }
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertEqual(app.buttons["profile.edit"].label, "Editar perfil")
+        app.terminate()
+        app.launch()
+        app.buttons["menu.profile"].tap()
+        XCTAssertEqual(app.staticTexts["profile.displayName"].label, testName)
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = "Perfil local con banner griego"
+        snapshot.lifetime = .keepAlways
+        add(snapshot)
+        app.buttons["profile.edit"].tap()
+        for _ in 0..<4 where !app.buttons["profile.save"].isHittable { app.swipeUp() }
+        XCTAssertFalse(app.buttons["profile.save"].isEnabled)
+        for _ in 0..<5 where !app.buttons["profile.avatar"].isHittable { app.swipeDown() }
+        app.buttons["profile.avatar"].tap()
+        XCTAssertEqual(app.buttons["profile.choice.medieval.aldeano"].value as? String, "Seleccionado")
+        app.buttons["profile.choice.medieval.aldeano"].tap()
+        app.buttons["profile.banner"].tap()
+        XCTAssertEqual(app.buttons["profile.banner.grecia"].value as? String, "Seleccionado")
+        app.buttons["profile.banner.grecia"].tap()
+        app.buttons["profile.favorite"].tap()
+        XCTAssertEqual(app.buttons["profile.choice.medieval.policia"].value as? String, "Seleccionado")
+    }
+
+    func testMenuVolumePersistsAndResetRestoresDefaults() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.opciones"].tap()
+        let slider = app.sliders["options.volume"]
+        XCTAssertTrue(slider.waitForExistence(timeout: 3))
+        if !slider.isEnabled { app.switches["options.music"].tap() }
+        slider.adjust(toNormalizedSliderPosition: 0.25)
+        let selectedVolume = app.staticTexts["options.volumeLabel"].label
+        XCTAssertNotEqual(selectedVolume, "Música: 80%")
+        app.terminate()
+        app.launch()
+        app.buttons["menu.opciones"].tap()
+        XCTAssertEqual(app.staticTexts["options.volumeLabel"].label, selectedVolume)
+        let reset = app.buttons["options.reset"]
+        for _ in 0..<4 where !reset.isHittable { app.swipeUp() }
+        reset.tap()
+        app.alerts.buttons["RESTABLECER"].tap()
+        app.swipeDown()
+        XCTAssertEqual(app.staticTexts["options.volumeLabel"].label, "Música: 80%")
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = "Opciones del menú"
+        snapshot.lifetime = .keepAlways
+        add(snapshot)
+    }
+
+    func testAboutAndFeedbackDraft() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.about"].tap()
+        XCTAssertTrue(app.staticTexts["about.version"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["about.privacy"].exists)
+        app.buttons["menu.back"].tap()
+        app.buttons["menu.feedback"].tap()
+        let editor = app.textViews["support.message"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["support.openMail"].isEnabled)
+        editor.tap()
+        editor.typeText("Prueba del menu")
+        XCTAssertEqual(editor.value as? String, "Prueba del menu")
+        XCTAssertTrue(app.buttons["support.openMail"].isEnabled)
+    }
+
+    func testRoleCatalogChangesMapAndOpensFullCard() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.roles"].tap()
+        XCTAssertTrue(app.staticTexts["roles.mapTitle"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.staticTexts["roles.mapTitle"].label, "Feudo de Hierro")
+        app.buttons["roles.card.aldeano"].tap()
+        XCTAssertTrue(app.staticTexts["Su historia"].waitForExistence(timeout: 3))
+        app.swipeUp()
+        app.buttons["roles.close"].tap()
+        let pampa = app.buttons["roles.map.pampa"]
+        if !pampa.isHittable { app.buttons["roles.map.grecia"].swipeLeft() }
+        pampa.tap()
+        XCTAssertEqual(app.staticTexts["roles.mapTitle"].label, "Pueblo del Interior - 1915")
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = "Catálogo por mapa - Pampa"
+        snapshot.lifetime = .keepAlways
+        add(snapshot)
+    }
+
+    func testHelpAccordionAndRepeatableTutorial() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        app.buttons["menu.ayuda"].tap()
+        XCTAssertTrue(app.buttons["help.tutorial"].waitForExistence(timeout: 3))
+        app.buttons["help.section.About"].tap()
+        XCTAssertTrue(app.staticTexts["help.body.About"].exists)
+        if !app.buttons["help.section.How"].isHittable { app.swipeUp() }
+        app.buttons["help.section.How"].tap()
+        XCTAssertTrue(app.staticTexts["help.body.How"].exists)
+        XCTAssertFalse(app.staticTexts["help.body.About"].exists)
+        app.buttons["help.section.How"].tap()
+        if !app.buttons["help.tutorial"].isHittable { app.swipeDown() }
+        app.buttons["help.tutorial"].tap()
+        XCTAssertTrue(app.staticTexts["tutorial.progress"].waitForExistence(timeout: 3))
+        for step in 1...4 {
+            XCTAssertEqual(app.staticTexts["tutorial.progress"].label, "\(step) DE 4")
+            app.buttons["tutorial.next"].tap()
+        }
+        XCTAssertTrue(app.buttons["help.tutorial"].waitForExistence(timeout: 3))
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = "Ayuda desplegable"
+        snapshot.lifetime = .keepAlways
+        add(snapshot)
+    }
+
     func testStartGameOpensRoleAssignment() throws {
         let app = launchLobby()
 

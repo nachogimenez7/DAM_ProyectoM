@@ -16,11 +16,13 @@ struct TraidoresApp: App {
                     updateAudio()
                 }
                 .onChange(of: preferences.gameplayActive) { _, _ in updateAudio() }
+                .onChange(of: preferences.musicVolume) { _, _ in updateAudio() }
                 .onChange(of: scenePhase) { _, _ in updateAudio() }
         }
     }
 
     private func updateAudio() {
-        audio.setPlaying(preferences.musicEnabled && !preferences.gameplayActive && scenePhase == .active)
+        audio.setPlaying(preferences.musicEnabled && !preferences.gameplayActive && scenePhase == .active,
+                         volume: preferences.musicVolume)
     }
 }
