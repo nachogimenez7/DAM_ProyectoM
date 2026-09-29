@@ -8,6 +8,19 @@ class OnlineRoomRetentionPolicyTest {
     private val now = 10L * OnlineRoomRetentionPolicy.STALE_AFTER_MS
 
     @Test
+    fun roomWithNobodyConnectedOnlyKeepsRecoveryDuringBriefReconnectGrace() {
+        val grace = OnlineRoomRetentionPolicy.EMPTY_ROOM_RECOVERY_GRACE_MS
+        fun available(presence: List<RealtimePresenceState>, roomAt: Long = now - grace) =
+            OnlineRoomRetentionPolicy.hasRecoverableParticipants(presence, roomAt, now)
+        assertFalse(available(emptyList()))
+        assertFalse(available(listOf(RealtimePresenceState(false, now - grace))))
+        assertTrue(available(listOf(RealtimePresenceState(false, now - grace + 1))))
+        assertTrue(available(emptyList(), roomAt = now - 1))
+        assertTrue(available(listOf(RealtimePresenceState(true, 1L))))
+        assertTrue(available(listOf(RealtimePresenceState(false, 0L))))
+    }
+
+    @Test
     fun roomBecomesStaleAtTwentyFourHours() {
         assertFalse(
             OnlineRoomRetentionPolicy.isStale(
@@ -105,5 +118,22 @@ class OnlineRoomRetentionPolicyTest {
                 OnlineRoomFirestore.STATE_WAITING, now + 2_000L, now
             )
         )
+    }
+
+    @Test
+    fun abandonedInGameRoomCannotOfferRecoveryForever() {
+        val state = OnlineRoomFirestore.STATE_IN_GAME
+        assertTrue(OnlineRoomRetentionPolicy.isRecoveryAvailable(state, now - 60_000L, now))
+        assertTrue(OnlineRoomRetentionPolicy.isRecoveryAvailable(
+            state, now - OnlineRoomRetentionPolicy.STALE_AFTER_MS + 1L, now
+        ))
+        assertFalse(OnlineRoomRetentionPolicy.isRecoveryAvailable(
+            state, now - OnlineRoomRetentionPolicy.STALE_AFTER_MS, now
+        ))
+        assertFalse(OnlineRoomRetentionPolicy.isRecoveryAvailable(
+            state, now - 7L * OnlineRoomRetentionPolicy.STALE_AFTER_MS, now
+        ))
+        assertFalse(OnlineRoomRetentionPolicy.isRecoveryAvailable(state, 0L, now))
+        assertTrue(OnlineRoomRetentionPolicy.isRecoveryAvailable(state, now + 2_000L, now))
     }
 }

@@ -2,7 +2,7 @@
 
 Juego móvil de deducción social para Android, desarrollado en Kotlin. Incluye partidas locales contra IA y partidas online de 5 a 15 jugadores sobre Firebase Firestore y Realtime Database.
 
-Versión actual de pruebas: **0.1.34** (`versionCode 35`).
+Versión actual de pruebas: **0.1.35** (`versionCode 36`).
 
 ## Abrir y compilar
 

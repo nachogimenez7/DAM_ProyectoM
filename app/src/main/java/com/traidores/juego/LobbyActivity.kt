@@ -208,6 +208,9 @@ class LobbyActivity : BaseActivity() {
     private var realtimePresenceStates = emptyMap<String, RealtimePresenceState>()
     private var realtimePresenceBaselineReady = false
     private var lobbyRealtimeAccessReady = false
+    private var realtimeLobbyMembersSynced = false
+    private var realtimeLobbyHostReturnKey = ""
+    private var realtimeLobbyAccessRetryRunnable: Runnable? = null
     private var onlineTempUid = ""
     private var onlinePlayerName = ""
     private var practiceRoleIndex = 0
@@ -489,6 +492,8 @@ class LobbyActivity : BaseActivity() {
         onlineLobbyGeneration++
         lobbyPlayersServerBaselineReady = false
         if (isFirestoreOnlineLobby()) {
+            realtimeLobbyMembersSynced = false
+            realtimeLobbyHostReturnKey = ""
             if (enteringOnlineMatch) {
                 returnedFromOnlineMatch = true
                 onlineRematchReactivationCompleted = false
@@ -545,6 +550,7 @@ class LobbyActivity : BaseActivity() {
             lobbyReconnectGraceRefreshRunnable?.let(startButton::removeCallbacks)
             pendingOnlineRolePresetRunnable?.let(startButton::removeCallbacks)
             onlineRematchResetRunnable?.let(startButton::removeCallbacks)
+            realtimeLobbyAccessRetryRunnable?.let(startButton::removeCallbacks)
         }
         onlineEntryAckRunnable = null
         onlineEntryAckInProgress = false
@@ -561,6 +567,7 @@ class LobbyActivity : BaseActivity() {
         lobbyReconnectGraceRefreshRunnable = null
         pendingOnlineRolePresetRunnable = null
         onlineRematchResetRunnable = null
+        realtimeLobbyAccessRetryRunnable = null
         pendingOnlineRolePreset = null
         onlineEntryReleaseTimeoutScheduled = false
         roomListener = null
@@ -2645,6 +2652,7 @@ class LobbyActivity : BaseActivity() {
         val members = pendingRealtimeLobbyMembers ?: return
         pendingRealtimeLobbyMembers = null
         realtimeLobbyAccessSyncInProgress = true
+        val hostVersion = onlineHostVersion
         OnlineDebugLog.i(
             "rtdb_lobby_access_sync_requested roomId=$onlinePartidaId " +
                 "host=$onlineTempUid members=${members.size}"
@@ -2657,6 +2665,11 @@ class LobbyActivity : BaseActivity() {
             members = members,
             onComplete = {
                 realtimeLobbyAccessSyncInProgress = false
+                if (onlineLobbyStarted && currentUserIsOnlineHost() &&
+                    onlineRoomState == ONLINE_ROOM_STATE_WAITING && onlineHostVersion == hostVersion) {
+                    realtimeLobbyMembersSynced = true
+                    maybeContinuePendingOnlineCleanup()
+                }
                 OnlineDebugLog.i(
                     "rtdb_lobby_access_sync_success roomId=$onlinePartidaId " +
                         "host=$onlineTempUid members=${members.size}"
@@ -2669,9 +2682,49 @@ class LobbyActivity : BaseActivity() {
                     "rtdb_lobby_access_sync_failure roomId=$onlinePartidaId host=$onlineTempUid",
                     error
                 )
-                if (!isFinishing && !isDestroyed) drainRealtimeLobbyAccessSync()
+                if (!isFinishing && !isDestroyed && onlineLobbyStarted && onlineCleanupPending &&
+                    realtimeLobbyAccessRetryRunnable == null) {
+                    pendingRealtimeLobbyMembers = pendingRealtimeLobbyMembers ?: members
+                    realtimeLobbyAccessRetryRunnable = Runnable {
+                        realtimeLobbyAccessRetryRunnable = null
+                        drainRealtimeLobbyAccessSync()
+                    }.also { startButton.postDelayed(it, CLEANUP_RETRY_DELAY_MS) }
+                } else if (!isFinishing && !isDestroyed) {
+                    drainRealtimeLobbyAccessSync()
+                }
             }
         )
+    }
+
+    private fun returnRealtimeAuthorityToLobbyHost() {
+        if (onlineRoomState != ONLINE_ROOM_STATE_WAITING || onlineActiveHostId.isBlank() ||
+            onlineTempUid.isBlank() || currentUserIsOnlineHost()) return
+        val nextHostId = onlineActiveHostId
+        val key = "$onlineHostVersion:$nextHostId"
+        if (key == realtimeLobbyHostReturnKey) return
+        realtimeLobbyHostReturnKey = key
+        // Only the actual RTDB coordinator can read this control field and transfer it.
+        // Other participants get no access; they must never grant themselves authority.
+        FirebaseDatabase.getInstance().getReference("salas/$onlinePartidaId/control/hostUid")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (!onlineLobbyStarted || onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
+                    onlineActiveHostId != nextHostId || snapshot.getValue(String::class.java) != onlineTempUid) {
+                    return@addOnSuccessListener
+                }
+                RealtimeRoomAccess.transferHost(
+                    database = FirebaseDatabase.getInstance(), roomId = onlinePartidaId,
+                    nextHostUid = nextHostId,
+                    onComplete = {
+                        OnlineDebugLog.i("rtdb_lobby_host_return_success roomId=$onlinePartidaId")
+                    },
+                    onFailure = { error ->
+                        realtimeLobbyHostReturnKey = ""
+                        OnlineDebugLog.e("rtdb_lobby_host_return_failure roomId=$onlinePartidaId", error)
+                    }
+                )
+            }
+            .addOnFailureListener { /* Not the RTDB coordinator: nothing to transfer. */ }
     }
 
     private fun refreshOnlinePlayersFromServer(
@@ -2872,6 +2925,9 @@ class LobbyActivity : BaseActivity() {
             ?.takeIf { it.isNotBlank() }
             ?: onlineHostId
         onlineHostVersion = snapshot.getLong(FIELD_HOST_VERSION)?.toInt() ?: 0
+        if (previousRoomState != onlineRoomState || previousActiveHostId != onlineActiveHostId) {
+            realtimeLobbyMembersSynced = false
+        }
         onlineRoomCode = snapshot.getString(FIELD_ROOM_CODE).orEmpty()
         onlineInitialMatchCreated = snapshot.getBoolean(FIELD_INITIAL_MATCH_CREATED) == true
         onlineCleanupPending = snapshot.getBoolean(FIELD_CLEANUP_PENDING) == true
@@ -2970,6 +3026,7 @@ class LobbyActivity : BaseActivity() {
                 "lobby_unexpected_gameplay_return roomId=$onlinePartidaId uid=$onlineTempUid"
             )
         }
+        returnRealtimeAuthorityToLobbyHost()
         maybeResetFinishedOnlineRoomForRematch()
         maybeContinuePendingOnlineCleanup()
 
@@ -5225,7 +5282,8 @@ class LobbyActivity : BaseActivity() {
                 roomState = onlineRoomState,
                 hasAuthoritativeState = onlineMatchState != null,
                 winner = (onlineMatchState?.get("ganador") as? String).orEmpty(),
-                isHost = currentUserIsOnlineHost(),
+                playerId = onlineTempUid,
+                creatorHostId = onlineHostId,
                 resetInProgress = onlineRematchResetInProgress,
                 cleanupPending = onlineCleanupPending,
                 playerCount = onlinePlayers.size
@@ -5271,7 +5329,8 @@ class LobbyActivity : BaseActivity() {
             }
             val stableHostId = room.getString(FIELD_HOST_ID).orEmpty()
             if (stableHostId != onlineTempUid) {
-                throw IllegalStateException("Solo el anfitrion puede preparar la revancha.")
+                // A concurrent room-host transfer makes this attempt obsolete.
+                return@runTransaction false
             }
             transaction.update(
                 roomReference,
@@ -5380,18 +5439,19 @@ class LobbyActivity : BaseActivity() {
             !onlineCleanupPending ||
             onlineCleanupInProgress ||
             onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
-            !currentUserIsOnlineHost()
+            !currentUserIsOnlineHost() ||
+            !realtimeLobbyMembersSynced
         ) {
             return
         }
         onlineCleanupInProgress = true
-        // Chat is best effort; durable roles/checkpoints must be cleared before rematch.
+        // Restore RTDB ownership and clear old content before admitting a rematch.
         // A surviving checkpoint from the old match would reject every new publication.
         cleanupRealtimeChatNodes(
             onComplete = { cleanupOnlineActionsThenFinish() },
             onFailure = { error ->
                 OnlineDebugLog.e("rtdb_chat_cleanup_failure roomId=$onlinePartidaId hostId=$onlineTempUid", error)
-                cleanupOnlineActionsThenFinish()
+                handleOnlineCleanupFailure(error)
             }
         )
     }

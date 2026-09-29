@@ -62,6 +62,51 @@ class OnlinePhaseGateTest {
     }
 
     @Test
+    fun recoveryReappliesAnUnchangedPhaseToRestoreControlsWithoutWaitingForAPublication() {
+        assertEquals(
+            OnlinePhaseDecision.APPLY,
+            OnlinePhaseGate.evaluateIncomingState(
+                isHost = false,
+                currentPhaseIndex = 21,
+                incomingPhaseIndex = 21,
+                incomingStateKey = "night-three",
+                lastAppliedStateKey = "night-three",
+                recoveryRefresh = true
+            )
+        )
+    }
+
+    @Test
+    fun recoveryStillRejectsAnOlderVoteResultAfterTheNightHasStarted() {
+        assertEquals(
+            OnlinePhaseDecision.IGNORE_OLD,
+            OnlinePhaseGate.evaluateIncomingState(
+                isHost = false,
+                currentPhaseIndex = 21,
+                incomingPhaseIndex = 19,
+                incomingStateKey = "vote-two",
+                lastAppliedStateKey = "night-three",
+                recoveryRefresh = true
+            )
+        )
+    }
+
+    @Test
+    fun recoveryDoesNotReplaceTheActiveHostsState() {
+        assertEquals(
+            OnlinePhaseDecision.HOST_IGNORES,
+            OnlinePhaseGate.evaluateIncomingState(
+                isHost = true,
+                currentPhaseIndex = 21,
+                incomingPhaseIndex = 22,
+                incomingStateKey = "guest-snapshot",
+                lastAppliedStateKey = "night-three",
+                recoveryRefresh = true
+            )
+        )
+    }
+
+    @Test
     fun newAuthoritativeStateIsApplied() {
         val decision = OnlinePhaseGate.evaluateIncomingState(
             isHost = false,

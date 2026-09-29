@@ -174,7 +174,11 @@ class LobbyBrowserActivity : BaseActivity() {
             updatedAtMs = updatedAtMs,
             limit = limit,
             mapName = "Mapa $mapName",
-            status = if (players >= limit) "Llena" else "Esperando",
+            status = when {
+                returningMember -> "Tu sala"
+                players >= limit -> "Llena"
+                else -> "Esperando"
+            },
             mapKey = mapKey,
             canJoin = players < limit || returningMember,
             returningMember = returningMember

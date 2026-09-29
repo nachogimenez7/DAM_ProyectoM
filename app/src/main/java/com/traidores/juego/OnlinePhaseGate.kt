@@ -29,7 +29,8 @@ object OnlinePhaseGate {
         currentPhaseIndex: Int,
         incomingPhaseIndex: Int,
         incomingStateKey: String,
-        lastAppliedStateKey: String
+        lastAppliedStateKey: String,
+        recoveryRefresh: Boolean = false
     ): OnlinePhaseDecision {
         return when {
             isHost -> OnlinePhaseDecision.HOST_IGNORES
@@ -38,7 +39,8 @@ object OnlinePhaseGate {
             // a la partida anterior y nunca debe dejar al invitado congelado en esa pantalla.
             lastAppliedStateKey.isBlank() -> OnlinePhaseDecision.APPLY
             incomingPhaseIndex < currentPhaseIndex -> OnlinePhaseDecision.IGNORE_OLD
-            incomingStateKey == lastAppliedStateKey -> OnlinePhaseDecision.IGNORE_DUPLICATE
+            incomingStateKey == lastAppliedStateKey && !recoveryRefresh ->
+                OnlinePhaseDecision.IGNORE_DUPLICATE
             else -> OnlinePhaseDecision.APPLY
         }
     }
