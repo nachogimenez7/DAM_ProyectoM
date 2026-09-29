@@ -171,13 +171,16 @@ object OnlineLobbyRules {
         roomState: String,
         hasAuthoritativeState: Boolean,
         winner: String,
-        isHost: Boolean,
+        playerId: String,
+        creatorHostId: String,
         resetInProgress: Boolean,
         cleanupPending: Boolean,
         playerCount: Int
     ): Boolean {
         return isRematchableRoom(roomState, hasAuthoritativeState, winner) &&
-            isHost &&
+            // Gameplay may have a temporary coordinator after a disconnect. Rematch
+            // restores authority to the room creator, as required by Firestore rules.
+            playerId.isNotBlank() && playerId == creatorHostId &&
             !resetInProgress &&
             !cleanupPending &&
             playerCount > 0

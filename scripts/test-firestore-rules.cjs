@@ -995,7 +995,8 @@ async function main() {
       ultimaActividadOnline: serverTimestamp(),
       actualizadaEn: serverTimestamp(),
     }));
-    await assertSucceeds(updateDoc(doc(oldHost, "partidas", "room_handoff"), {
+    await assertSucceeds(runTransaction(oldHost, async (transaction) => {
+      transaction.update(doc(oldHost, "partidas", "room_handoff"), {
       estado: "esperando",
       hostActivoId: "old_host_uid",
       hostVersion: increment(1),
@@ -1008,6 +1009,19 @@ async function main() {
       jugadoresActuales: 2,
       ultimaActividadOnline: serverTimestamp(),
       actualizadaEn: serverTimestamp(),
+      });
+      // The returning creator resets every player's readiness in the same transaction,
+      // even while the previous active coordinator is another participant.
+      for (const uid of ["old_host_uid", "guest_uid"]) {
+        transaction.update(doc(oldHost, "partidas", "room_handoff", "jugadores", uid), {
+          listo: false,
+          esHost: uid === "old_host_uid",
+          votoMapa: deleteField(),
+          listoParaVotar: false,
+          listoParaVotarRonda: 0,
+          listoParaVotarPhaseIndex: 0,
+        });
+      }
     }));
 
     await seedRoom(testEnv, "room_stable_transfer", "host_uid");

@@ -505,7 +505,8 @@ class OnlineLobbyRulesTest {
             roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
             hasAuthoritativeState = true,
             winner = "Traidores",
-            isHost = true,
+            playerId = "creator",
+            creatorHostId = "creator",
             resetInProgress = false,
             cleanupPending = false,
             playerCount = 5
@@ -514,7 +515,8 @@ class OnlineLobbyRulesTest {
             roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
             hasAuthoritativeState = true,
             winner = "Traidores",
-            isHost = false,
+            playerId = "guest",
+            creatorHostId = "creator",
             resetInProgress = false,
             cleanupPending = false,
             playerCount = 5
@@ -523,7 +525,8 @@ class OnlineLobbyRulesTest {
             roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
             hasAuthoritativeState = true,
             winner = "Traidores",
-            isHost = true,
+            playerId = "creator",
+            creatorHostId = "creator",
             resetInProgress = false,
             cleanupPending = true,
             playerCount = 5
@@ -532,6 +535,25 @@ class OnlineLobbyRulesTest {
         assertTrue(ready)
         assertFalse(guest)
         assertFalse(cleaning)
+    }
+
+    @Test
+    fun returningCreatorPreparesRematchAfterTemporaryGameplayHostHandoff() {
+        fun lobbyHost(uid: String) = OnlineLobbyRules.isAuthoritativeLobbyHost(
+            playerId = uid, activeHostId = "temporary", creatorHostId = "creator",
+            creatingRoomBeforeFirstSnapshot = false
+        )
+        fun canReset(uid: String) = OnlineLobbyRules.canPrepareRematch(
+            roomState = OnlineLobbyRules.ROOM_STATE_FINISHED,
+            hasAuthoritativeState = true, winner = "Pueblo",
+            playerId = uid, creatorHostId = "creator", resetInProgress = false,
+            cleanupPending = false, playerCount = 5
+        )
+        assertTrue(lobbyHost("temporary"))
+        assertFalse(canReset("temporary"))
+        assertFalse(lobbyHost("creator"))
+        assertTrue(canReset("creator"))
+        assertFalse(canReset(""))
     }
 
     private fun participant(

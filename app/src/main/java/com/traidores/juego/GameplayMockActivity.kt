@@ -1767,6 +1767,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun handleCurrentPhase() {
+        if (isRecoveringOnlineState()) return
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         if (localPhaseResolutionInProgress) return
         if (countdown.isTransitionLocked(session.phaseIndex)) {
@@ -2739,7 +2740,20 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ::session.isInitialized && isOnlineGameplay() && onlineIsHost && !isOnlineStartupPhase() &&
             onlinePublicationGate.isPending(session, onlineVotePresentation)
 
+    private fun isRecoveringOnlineState(): Boolean =
+        isOnlineGameplay() && !onlineIsHost && awaitingFreshOnlineStateAfterResume
+
     private fun renderGame() {
+        if (isRecoveringOnlineState()) {
+            clearCountdown()
+            autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
+            currentPlayerHint.text = "Recuperando la partida…"
+            btnAction.text = "RECUPERANDO PARTIDA..."
+            btnAction.isEnabled = false
+            btnReadyToVote.isEnabled = false
+            renderPlayerColumns()
+            return
+        }
         if (isAwaitingOnlinePublication()) {
             // Keep the current presentation visible while publishing; never cover a cinematic.
             clearCountdown()
@@ -3701,7 +3715,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 currentPhaseIndex = session.phaseIndex,
                 incomingPhaseIndex = phaseIndex,
                 incomingStateKey = stateKey,
-                lastAppliedStateKey = lastAppliedAuthoritativeOnlineStateKey
+                lastAppliedStateKey = lastAppliedAuthoritativeOnlineStateKey,
+                recoveryRefresh = skipHistoricalPresentationOnNextState
             )
         ) {
             OnlinePhaseDecision.HOST_IGNORES -> return
@@ -3832,8 +3847,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun resumeInterruptedPresentationAfterSyncTimeout() {
         if (!awaitingFreshOnlineStateAfterResume) return
-        awaitingFreshOnlineStateAfterResume = false
         if (!gameplayResumed || !::session.isInitialized || isFinishing || isDestroyed) return
+        if (!onlineIsHost) {
+            recoverOnlineGuestState("foreground_timeout")
+            renderGame()
+            return
+        }
+        awaitingFreshOnlineStateAfterResume = false
         // Si la red todavía no respondió, no revivir una expulsión o transición tomada antes
         // del bloqueo. La siguiente publicación autoritativa reconstruirá la fase vigente.
         replayInterruptedVote = false
@@ -4414,6 +4434,27 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         ensureRealtimeAuthoritativeState()?.start()
     }
 
+    private fun recoverOnlineGuestState(reason: String) {
+        if (!onlineScreenStarted || !isOnlineGameplay() || onlineIsHost) return
+        awaitingFreshOnlineStateAfterResume = true
+        onlineRecoveryInProgress = true
+        setOnlineAwaitingHostAdvance(true)
+        onlineStateInbox.clear()
+        replayInterruptedVote = false
+        replayInterruptedTransition = false
+        pendingDeathReveals.clear()
+        pendingSilenceReveals.clear()
+        pendingNoDeathReveal = false
+        cancelVoteResult()
+        clearOnlinePresentationGate()
+        // Reattaching emits the current snapshot even if the host doesn't publish a new phase.
+        realtimeAuthoritativeState?.stop()
+        startRealtimeAuthoritativeState()
+        OnlineDebugLog.i(
+            "guest_live_state_refresh roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason"
+        )
+    }
+
     private fun startRealtimeGameplayPresence() {
         if (!isOnlineGameplay() || realtimePresence != null) return
         if (onlineIsHost) syncRealtimeGameplayAccess()
@@ -4699,8 +4740,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
         }
         if (decision.shouldForceSyncing) {
-            onlineRecoveryInProgress = true
-            setOnlineAwaitingHostAdvance(true, now)
+            recoverOnlineGuestState("missing_authoritative_state")
             lastPublishedOnlineStateKey = ""
             if (!onlineRecoveryNoticeShown) {
                 onlineRecoveryNoticeShown = true
@@ -4728,6 +4768,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (decision.shouldReportLongWait && !onlineSyncDelayReported) {
             onlineSyncDelayReported = true
             realtimePresence?.refresh()
+            recoverOnlineGuestState("watchdog_timeout")
+            renderGame()
             OnlineDiagnostics.recordSyncDelay(
                 context = this,
                 session = session,
@@ -4741,8 +4783,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             )
             GameNotice.show(
                 activity = this,
-                message = "La sincronización está demorando. Reintentamos la conexión; " +
-                    "si continúa, vuelve al lobby y reingresa a la sala.",
+                message = "Estamos recuperando la partida. Esperá un momento…",
                 duration = GameNotice.Duration.LONG
             )
         }
@@ -5440,6 +5481,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         OnlineDebugLog.w(
             "host_demoted roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason activeHost=$onlineActiveHostId phase=${session.phase.name} round=${session.round}"
         )
+        if (onlineScreenStarted) {
+            // RTDB can deliver the new host's state before Firestore confirms the handoff.
+            // That snapshot was ignored while this client still thought it was the host.
+            // Reattach now to receive the current state without waiting for another phase.
+            autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
+            autoAdvanceHandler.postDelayed(
+                resumeInterruptedPresentationRunnable,
+                FOREGROUND_STATE_REFRESH_WAIT_MS
+            )
+            recoverOnlineGuestState("host_demoted")
+        }
         restartOnlineActionsListenerForAuthority()
         refreshOnlinePresentationGate()
         renderGame()
@@ -5530,6 +5582,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun canActOnTarget(targetName: String): Boolean {
+        if (isRecoveringOnlineState()) return false
         if (!DirectVotePolicy.isEnabled(session.phase) && onlineDeferredActionSubmitted()) return false
         if (
             isOnlinePayadorSelectionWindow() &&
@@ -8320,10 +8373,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun isOnlinePlayerReconnecting(player: GamePlayer): Boolean {
-        if (!isOnlineGameplay() || !realtimePresenceBaselineReady) return false
+        if (!isOnlineGameplay()) return false
         val playerIndex = session.players.indexOfFirst { it.name == player.name }
         val uid = session.onlinePlayerUids.getOrNull(playerIndex).orEmpty()
-        if (uid.isBlank() || uid == onlinePlayerId) return false
+        if (uid.isBlank()) return false
+        if (uid == onlinePlayerId) return isRecoveringOnlineState()
+        if (!realtimePresenceBaselineReady) return false
         val presence = realtimePresenceStates[uid]
         if (presence?.connected == false) return true
         val heartbeatAtMs = realtimeClientHeartbeatAtMs[uid]

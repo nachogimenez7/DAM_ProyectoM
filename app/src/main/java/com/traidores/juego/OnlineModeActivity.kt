@@ -825,7 +825,7 @@ class OnlineModeActivity : BaseActivity() {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: recovered.mapKey
                         )
-                        showRecoveredRoom(resolved)
+                        verifyRecoveredRoomPresence(snapshot) { showRecoveredRoom(resolved) }
                     }
                     .addOnFailureListener { error ->
                         OnlineDebugLog.e(
@@ -845,6 +845,40 @@ class OnlineModeActivity : BaseActivity() {
         if (room != null) {
             btnRecoverRoom.text = "REINGRESAR ${room.roomCode.ifBlank { room.roomId.take(6) }}"
         }
+    }
+
+    private fun verifyRecoveredRoomPresence(
+        room: DocumentSnapshot,
+        onAvailable: () -> Unit
+    ) {
+        FirebaseDatabase.getInstance().getReference("salas/${room.id}/presencia")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (isFinishing || isDestroyed || OnlineRoomRecovery.load(this)?.roomId != room.id) {
+                    return@addOnSuccessListener
+                }
+                val nowMs = recoveryServerClock.nowMs() ?: return@addOnSuccessListener
+                val presence = snapshot.children.map { child ->
+                    RealtimePresenceState(
+                        connected = child.child("estado").getValue(String::class.java) == "conectado",
+                        changedAtMs = child.child("ts").getValue(Long::class.java) ?: 0L
+                    )
+                }
+                val updatedAtMs = room.getTimestamp(OnlineRoomFirestore.FIELD_UPDATED_AT)
+                    ?.toDate()?.time ?: 0L
+                if (!OnlineRoomRetentionPolicy.hasRecoverableParticipants(presence, updatedAtMs, nowMs)) {
+                    OnlineRoomRecovery.clearIf(this, room.id)
+                    showRecoveredRoom(null)
+                    OnlineDebugLog.i("recover_room_empty_expired roomId=${room.id}")
+                    return@addOnSuccessListener
+                }
+                onAvailable()
+            }
+            .addOnFailureListener { error ->
+                // A failed read cannot prove a room empty. Keep its saved membership for retry.
+                showRecoveredRoom(null)
+                OnlineDebugLog.e("recover_room_presence_check_failure roomId=${room.id}", error)
+            }
     }
 
     private fun openRecoveredRoom(room: OnlineRecoveredRoom) {
@@ -874,12 +908,22 @@ class OnlineModeActivity : BaseActivity() {
                             return@roomSnapshot
                         }
                         val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
+                        val serverNowMs = recoveryServerClock.nowMs()
+                        if (serverNowMs == null) {
+                            showRecoveredRoom(null)
+                            return@roomSnapshot
+                        }
+                        val updatedAtMs = snapshot.getTimestamp(OnlineRoomFirestore.FIELD_UPDATED_AT)
+                            ?.toDate()?.time ?: 0L
                         if (snapshot.getString("cleanupState") == "deleting" ||
-                            OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR) {
+                            OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
+                            !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)) {
                             clearUnavailableRecoveredRoom("La sala ya termino o fue abandonada.")
                             return@roomSnapshot
                         }
-                        verifyRecoveredMembershipAndOpen(room, snapshot, state)
+                        verifyRecoveredRoomPresence(snapshot) {
+                            verifyRecoveredMembershipAndOpen(room, snapshot, state)
+                        }
                     }
                     .addOnFailureListener { error ->
                         btnRecoverRoom.isEnabled = true

@@ -536,6 +536,30 @@ async function main() {
     }));
     await assertFails(guest.ref(`salas/${roomId}`).remove());
 
+    // A temporary gameplay coordinator must hand RTDB ownership back when Firestore
+    // restores the creator for a rematch. The creator cannot take it from a live socket.
+    const returningRoomId = "returning-lobby-host";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref(`salas/${returningRoomId}`).set({
+        control: {hostUid: "bob", creatorUid: "alice", matchId},
+        miembros: {alice: member("Alice"), bob: member("Bob")},
+        presencia: {bob: {estado: "conectado", ts: Date.now()}},
+        chat: {previousMatch: {mensaje: "old"}},
+      });
+    });
+    await assertFails(alice.ref(`salas/${returningRoomId}/control/hostUid`).set("alice"));
+    await assertFails(outsider.ref(`salas/${returningRoomId}/control/hostUid`).get());
+    await assertSucceeds(bob.ref(`salas/${returningRoomId}/control/hostUid`).get());
+    await assertSucceeds(bob.ref(`salas/${returningRoomId}/control/hostUid`).set("alice"));
+    await assertSucceeds(alice.ref(`salas/${returningRoomId}`).update({
+      "control/matchId": "",
+      "control/actualizadaEn": Date.now(),
+      "miembros/alice": member("Alice", {lobby: true}),
+      "miembros/bob": member("Bob", {lobby: true}),
+    }));
+    await assertSucceeds(alice.ref(`salas/${returningRoomId}/chat`).remove());
+    await assertFails(bob.ref(`salas/${returningRoomId}/chat`).remove());
+
     // Si el host activo cambió, el creador original solo puede retirar la sala cuando el
     // timestamp del servidor lleva al menos 24 horas vencido.
     const staleRoomId = "stale-room";
