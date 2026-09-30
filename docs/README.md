@@ -8,6 +8,9 @@ Este directorio conserva documentación que todavía sirve para desarrollar, pub
 - [Esquema de Firebase](firebase-online-schema.md)
 - [Medición de consumo](medicion-firebase-2026-09-13.md)
 - [Plantilla de medición](plantilla-medicion-online.csv)
+- [Mediciones recientes desde el juego](medicion-online-desde-opciones.md)
+- [Capacidad Firebase para la beta](capacidad-firebase-beta-2026-09-29.md)
+- [Cierre de pruebas y próximos pasos](cierre-beta-2026-09-30.md)
 
 ## Producto y contenido
 

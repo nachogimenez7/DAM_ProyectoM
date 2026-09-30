@@ -16,6 +16,15 @@ object OnlineLobbyRules {
     const val ROOM_STATE_WAITING = "esperando"
     const val ROOM_STATE_IN_GAME = "en_juego"
     const val ROOM_STATE_FINISHED = "finalizada"
+    const val LOBBY_HOST_RECONNECT_GRACE_MS = 3 * 60_000L
+
+    fun keepsLobbyHostDuringReconnect(
+        connected: Boolean,
+        activeInMatch: Boolean,
+        lastSeenMs: Long,
+        nowMs: Long
+    ): Boolean = activeInMatch && (connected || lastSeenMs <= 0L ||
+        (nowMs - lastSeenMs).coerceAtLeast(0L) < LOBBY_HOST_RECONNECT_GRACE_MS)
 
     /**
      * UI and RTDB writes must follow the host committed by the room document. A locally sorted

@@ -7,6 +7,10 @@ package com.traidores.juego
 object OnlineFirestorePolicy {
     const val HOST_LEASE_REFRESH_MS = 30_000L
 
+    // Una caché vacía al recuperar conexión no confirma que el servidor borró la sala.
+    fun isConfirmedMissingRoom(exists: Boolean, fromCache: Boolean, pendingWrites: Boolean): Boolean =
+        !exists && !fromCache && !pendingWrites
+
     fun shouldListenForPrivateClue(roleKey: String?): Boolean =
         roleKey == RoleCatalog.POLICIA
 

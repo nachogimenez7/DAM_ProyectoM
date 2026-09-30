@@ -50,6 +50,7 @@ class OnlineRoomRetentionPolicyTest {
         assertFalse(visible(players = 4))
         assertFalse(visible(players = 5))
         assertFalse(visible(players = -1))
+        assertFalse(visible(players = 0))
         assertFalse(visible(deleting = true))
         assertFalse(visible(updatedAt = 0L))
         assertTrue(visible(updatedAt = now + 1L))

@@ -41,7 +41,7 @@ object OnlineRoomRetentionPolicy {
         playerLimit: Int,
         deleting: Boolean,
         allowFullForReturningMember: Boolean = false
-    ): Boolean = !deleting && currentPlayers >= 0 && playerLimit > 0 &&
+    ): Boolean = !deleting && currentPlayers > 0 && playerLimit > 0 &&
         (currentPlayers < playerLimit ||
             (allowFullForReturningMember && currentPlayers == playerLimit)) &&
         updatedAtMs > 0L &&

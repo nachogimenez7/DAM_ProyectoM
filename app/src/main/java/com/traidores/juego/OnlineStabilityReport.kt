@@ -40,6 +40,13 @@ object OnlineStabilityReport {
         val matchChanged = match.isNotBlank() && prefs.getString(KEY_MATCH, "") != match
         prefs.edit().apply {
             if (roomChanged) remove(KEY_EVENTS)
+            if (shouldResetMatchContext(roomChanged, matchChanged)) {
+                remove(KEY_MATCH)
+                remove(KEY_PHASE)
+                remove(KEY_PHASE_INDEX)
+                remove(KEY_ROUND)
+                remove(KEY_CONNECTED)
+            }
             if (room.isNotBlank()) putString(KEY_ROOM, room)
             if (match.isNotBlank()) putString(KEY_MATCH, match)
             putBoolean(KEY_HOST, isHost)
@@ -71,13 +78,21 @@ object OnlineStabilityReport {
         prefs.edit()
             .putString(KEY_MATCH, shortToken(session.onlineMatchId))
             .putBoolean(KEY_HOST, isHost)
-            .putString(KEY_PHASE, session.phase.name)
+            .putString(KEY_PHASE, if (session.winner.isNotBlank()) GamePhase.RESULTADO.name else session.phase.name)
             .putInt(KEY_PHASE_INDEX, session.phaseIndex)
             .putInt(KEY_ROUND, session.round)
             .putInt(KEY_CONNECTED, connectedPlayers ?: prefs.getInt(KEY_CONNECTED, -1))
             .putInt(KEY_EXPECTED, expectedPlayers)
             .apply()
         recordEvent(context, event, reason)
+    }
+
+    fun recordConnections(context: Context, connectedPlayers: Int, expectedPlayers: Int) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getInt(KEY_CONNECTED, -1) == connectedPlayers &&
+            prefs.getInt(KEY_EXPECTED, -1) == expectedPlayers) return
+        prefs.edit().putInt(KEY_CONNECTED, connectedPlayers)
+            .putInt(KEY_EXPECTED, expectedPlayers).apply()
     }
 
     @Synchronized
@@ -129,6 +144,7 @@ object OnlineStabilityReport {
             appendLine("Eventos recientes:")
             if (events.isEmpty()) appendLine("- sin eventos") else events.forEach { appendLine("- $it") }
             appendLine(OnlineNetworkMetrics.summary())
+            appendLine(OnlineFirestoreUsageMetrics.snapshot().reportText())
             append("No incluye nombres, mensajes, correos ni UID completos.")
         }
     }
@@ -140,7 +156,8 @@ object OnlineStabilityReport {
             activity = context as android.app.Activity,
             title = "REPORTE COPIADO",
             message = "Pegalo junto con una breve explicación de lo que viste. No contiene " +
-                "nombres, mensajes, correos ni identificadores completos.",
+                "nombres, mensajes, correos ni identificadores completos. Las lecturas son una " +
+                "estimación parcial de este dispositivo, no la factura de Firebase.",
             positiveLabel = "ENTENDIDO"
         )
     }
@@ -152,6 +169,10 @@ object OnlineStabilityReport {
     }
 
     internal fun shortToken(value: String): String = safeToken(value).takeLast(8)
+
+    // Volver al mismo lobby conserva el resultado para copiarlo; una sala/partida nueva no.
+    internal fun shouldResetMatchContext(roomChanged: Boolean, matchChanged: Boolean): Boolean =
+        roomChanged || matchChanged
 
     private fun safeToken(value: String): String = value
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' }

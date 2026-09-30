@@ -7,6 +7,24 @@ import org.junit.Test
 class OnlineFirestorePolicyTest {
 
     @Test
+    fun emptyCacheOnUnlockDoesNotCloseTheLobby() {
+        assertFalse(OnlineFirestorePolicy.isConfirmedMissingRoom(false, true, false))
+        assertFalse(OnlineFirestorePolicy.isConfirmedMissingRoom(false, true, true))
+    }
+
+    @Test
+    fun localPendingDeletionDoesNotCloseTheLobbyBeforeServerConfirmation() {
+        assertFalse(OnlineFirestorePolicy.isConfirmedMissingRoom(false, false, true))
+    }
+
+    @Test
+    fun confirmedServerDeletionClosesTheLobbyButAnExistingRoomDoesNot() {
+        assertTrue(OnlineFirestorePolicy.isConfirmedMissingRoom(false, false, false))
+        assertFalse(OnlineFirestorePolicy.isConfirmedMissingRoom(true, false, false))
+        assertFalse(OnlineFirestorePolicy.isConfirmedMissingRoom(true, true, false))
+    }
+
+    @Test
     fun onlyPoliceListensForPrivateInvestigationClue() {
         assertTrue(OnlineFirestorePolicy.shouldListenForPrivateClue(RoleCatalog.POLICIA))
         assertFalse(OnlineFirestorePolicy.shouldListenForPrivateClue(RoleCatalog.MEDICO))

@@ -1083,6 +1083,49 @@ async function main() {
       });
     }));
 
+    // Relevo automático tras tres minutos: cambia la autoridad y conserva la membresía
+    // y el lugar del anfitrión desconectado. Puede recuperar su presencia al volver.
+    await seedRoom(testEnv, "room_reconnect_transfer", "host_uid");
+    await assertSucceeds(setDoc(
+      doc(guest, "partidas", "room_reconnect_transfer", "jugadores", "guest_uid"),
+      playerData("guest_uid", "Guest", 1)
+    ));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await updateDoc(doc(db, "partidas", "room_reconnect_transfer"), { jugadoresActuales: 2 });
+      await updateDoc(doc(db, "partidas", "room_reconnect_transfer", "jugadores", "host_uid"), {
+        estado: "desconectado",
+        ultimaConexion: Timestamp.fromMillis(Date.now() - 181_000),
+      });
+    });
+    await assertSucceeds(runTransaction(guest, async (transaction) => {
+      transaction.update(doc(guest, "partidas", "room_reconnect_transfer"), {
+        hostId: "guest_uid", hostNombre: "Guest", hostActivoId: "guest_uid",
+        hostVersion: increment(1), jugadoresActuales: 2, actualizadaEn: serverTimestamp(),
+      });
+      transaction.update(doc(guest, "partidas", "room_reconnect_transfer", "jugadores", "host_uid"), {
+        esHost: false, listo: false,
+      });
+      transaction.update(doc(guest, "partidas", "room_reconnect_transfer", "jugadores", "guest_uid"), {
+        esHost: true,
+      });
+    }));
+    const retainedHost = await assertSucceeds(getDoc(
+      doc(host, "partidas", "room_reconnect_transfer", "jugadores", "host_uid")
+    ));
+    if (retainedHost.data().activoEnPartida !== true || retainedHost.data().esHost !== false) {
+      throw new Error("El relevo por desconexión debe conservar al anfitrión anterior como jugador activo");
+    }
+    const retainedRoom = await assertSucceeds(getDoc(doc(host, "partidas", "room_reconnect_transfer")));
+    if (retainedRoom.data().jugadoresActuales !== 2) {
+      throw new Error("El relevo por desconexión no debe liberar el lugar reservado");
+    }
+    await assertSucceeds(updateDoc(
+      doc(host, "partidas", "room_reconnect_transfer", "jugadores", "host_uid"),
+      { estado: "conectado", ultimaConexion: serverTimestamp(), ultimaConexionLocal: Date.now() }
+    ));
+    await assertSucceeds(getDocs(collection(host, "partidas", "room_reconnect_transfer", "jugadores")));
+
     // Si no hay otra cuenta registrada, el anfitrión cierra la sala de forma autoritativa.
     // No borra los documentos de los invitados: así sus clientes leen "abandonada" y no
     // confunden la desaparición de su membresía con una expulsión.

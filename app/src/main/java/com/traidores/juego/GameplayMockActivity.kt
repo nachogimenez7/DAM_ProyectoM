@@ -313,7 +313,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
     private var lastLegacyPresenceWriteAtElapsedMs = 0L
-    private val firestoreUsage = OnlineFirestoreUsageCounter()
+    private val firestoreUsage = OnlineFirestoreUsageMetrics.counter("partida")
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineNightActionsServerConfirmed = false
     private var onlineMayorRevealSent = false
@@ -10414,6 +10414,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun privateHintText(): String {
+        val human = GameEngine.humanPlayer(session)
+        if (!human.alive) {
+            return if (session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == human.name) {
+                "El Oráculo te dio voz."
+            } else {
+                "Observá la partida."
+            }
+        }
         if (DirectVotePolicy.isEnabled(session.phase) && selectedTarget.isNotBlank()) {
             val progressSuffix = if (isOnlineGameplay()) {
                 val progress = onlineDirectVoteReadyProgress()
@@ -10473,8 +10482,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         eliminatedStatePanel.visibility = if (eliminated) View.VISIBLE else View.GONE
         currentPlayerHint.maxLines = if (eliminated) 1 else 2
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            currentPlayerHint,
+            if (eliminated) 13 else 9,
+            if (eliminated) 15 else 13,
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
         if (eliminated) {
-            currentPlayerHint.text = "Observando la partida."
+            currentPlayerHint.text = privateHintText()
         }
         currentPlayerStatus.visibility =
             if (status == null || eliminated) View.GONE else View.VISIBLE
