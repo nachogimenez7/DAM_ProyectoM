@@ -2704,6 +2704,7 @@ class LobbyActivity : BaseActivity() {
             hostUid = onlineTempUid,
             matchId = "",
             members = members,
+            claimHost = !onlineCleanupPending,
             onComplete = {
                 realtimeLobbyAccessSyncInProgress = false
                 if (onlineLobbyStarted && currentUserIsOnlineHost() &&
@@ -3083,6 +3084,11 @@ class LobbyActivity : BaseActivity() {
         }
         returnRealtimeAuthorityToLobbyHost()
         maybeResetFinishedOnlineRoomForRematch()
+        // La lista de jugadores puede llegar antes que el cambio a sala en espera.
+        // Sin este disparador la limpieza espera al siguiente pulso de presencia.
+        if (previousRoomState != onlineRoomState || previousActiveHostId != onlineActiveHostId) {
+            syncRealtimeLobbyAccess()
+        }
         maybeContinuePendingOnlineCleanup()
 
         if (

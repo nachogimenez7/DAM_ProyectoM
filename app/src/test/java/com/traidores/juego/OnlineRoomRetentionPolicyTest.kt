@@ -18,6 +18,8 @@ class OnlineRoomRetentionPolicyTest {
         assertTrue(available(emptyList(), roomAt = now - 1))
         assertTrue(available(listOf(RealtimePresenceState(true, 1L))))
         assertTrue(available(listOf(RealtimePresenceState(false, 0L))))
+        assertFalse(available(listOf(RealtimePresenceState(false, now - grace)), roomAt = now))
+        assertTrue(available(listOf(RealtimePresenceState(false, now - grace + 1)), roomAt = now))
     }
 
     @Test

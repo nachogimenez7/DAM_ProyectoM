@@ -4,7 +4,7 @@ package com.traidores.juego
 object OnlineRoomRetentionPolicy {
     const val STALE_AFTER_MS = 24L * 60L * 60L * 1000L
     const val BROWSER_FRESH_FOR_MS = 30L * 60L * 1000L
-    const val EMPTY_ROOM_RECOVERY_GRACE_MS = 2L * 60L * 1000L
+    const val EMPTY_ROOM_RECOVERY_GRACE_MS = OnlineLobbyRules.LOBBY_HOST_RECONNECT_GRACE_MS
 
     fun hasRecoverableParticipants(
         presence: Collection<RealtimePresenceState>,
@@ -14,7 +14,9 @@ object OnlineRoomRetentionPolicy {
         // Connected sockets do not need periodic heartbeat writes. Their timestamp may
         // be old; never mistake that for an empty room. Unknown timestamps are conservative.
         if (presence.any { it.connected || it.changedAtMs <= 0L }) return true
-        val latestActivityMs = maxOf(updatedAtMs, presence.maxOfOrNull { it.changedAtMs } ?: 0L)
+        // Una renovación de la sala no equivale a un jugador conectado. Cuando sabemos
+        // que todos salieron, la gracia parte de la última desconexión, no del lease.
+        val latestActivityMs = presence.maxOfOrNull { it.changedAtMs } ?: updatedAtMs
         return latestActivityMs > 0L && nowMs - latestActivityMs < EMPTY_ROOM_RECOVERY_GRACE_MS
     }
 
