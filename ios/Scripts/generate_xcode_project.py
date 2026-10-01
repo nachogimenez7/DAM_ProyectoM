@@ -34,6 +34,7 @@ resources = [ref(p, kind) for p, kind in [
     ("TraidoresIOS/Resources/Assets.xcassets", "folder.assetcatalog"),
     ("TraidoresIOS/Resources/bree_serif.ttf", "file"),
     ("TraidoresIOS/Resources/menu_music.mp3", "audio.mp3"),
+    ("TraidoresIOS/Resources/sfx_bandido_bark.wav", "audio.wav"),
     ("TraidoresIOS/PrivacyInfo.xcprivacy", "text.xml"),
 ]]
 info = ref("TraidoresIOS/Info.plist", "text.plist.xml")

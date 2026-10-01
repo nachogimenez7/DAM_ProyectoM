@@ -9,6 +9,7 @@ final class LocalLobbyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
         app.buttons["menu.profile"].tap()
         app.buttons["profile.edit"].tap()
         let style = app.buttons["profile.style"]
@@ -16,9 +17,7 @@ final class LocalLobbyUITests: XCTestCase {
         style.tap()
         XCTAssertTrue(app.buttons["profile.style.sea"].waitForExistence(timeout: 3))
         app.buttons["profile.style.sea"].tap()
-        let equip = app.buttons["profile.style.equip"]
-        for _ in 0..<4 where !equip.isHittable { app.swipeUp() }
-        equip.tap()
+        app.buttons["menu.back"].firstMatch.tap()
         let styleChanged = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "ABISMO REAL"), object: app.buttons["profile.style"])
         XCTAssertEqual(XCTWaiter.wait(for: [styleChanged], timeout: 3), .completed)
         let editEmotes = app.buttons["profile.emotes"]
@@ -29,10 +28,7 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["profile.emote.griego_enojado"].tap()
         XCTAssertTrue(app.staticTexts["profile.emotes.count"].label.contains("3/4"))
         app.buttons["profile.emote.griego_enojado"].tap()
-        let apply = app.buttons["profile.emotes.apply"]
-        for _ in 0..<8 where !apply.isHittable { app.swipeUp() }
-        XCTAssertTrue(apply.isEnabled)
-        apply.tap()
+        app.buttons["menu.back"].firstMatch.tap()
         let achievements = app.buttons["profile.achievements"]
         for _ in 0..<5 where !achievements.isHittable { app.swipeUp() }
         achievements.tap()
@@ -54,6 +50,7 @@ final class LocalLobbyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
         app.buttons["menu.profile"].tap()
         app.buttons["profile.edit"].tap()
         let name = app.textFields["profile.name"]
@@ -74,13 +71,11 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["profile.favorite"].tap()
         app.buttons["profile.map.medieval"].tap()
         app.buttons["profile.choice.medieval.policia"].tap()
-        let save = app.buttons["profile.save"]
-        for _ in 0..<4 where !save.isHittable { app.swipeUp() }
-        XCTAssertTrue(save.isEnabled)
-        save.tap()
-        XCTAssertEqual(app.buttons["profile.edit"].label, "Editar perfil")
+        // Leave while still editing, without any save/confirmation action.
+        app.buttons["menu.back"].firstMatch.tap()
         app.terminate()
         app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
         app.buttons["menu.profile"].tap()
         XCTAssertEqual(app.staticTexts["profile.displayName"].label, testName)
         let snapshot = XCTAttachment(screenshot: app.screenshot())
@@ -88,8 +83,7 @@ final class LocalLobbyUITests: XCTestCase {
         snapshot.lifetime = .keepAlways
         add(snapshot)
         app.buttons["profile.edit"].tap()
-        for _ in 0..<4 where !app.buttons["profile.save"].isHittable { app.swipeUp() }
-        XCTAssertFalse(app.buttons["profile.save"].isEnabled)
+        XCTAssertFalse(app.buttons["profile.save"].exists)
         for _ in 0..<5 where !app.buttons["profile.avatar"].isHittable { app.swipeDown() }
         app.buttons["profile.avatar"].tap()
         XCTAssertEqual(app.buttons["profile.choice.medieval.aldeano"].value as? String, "Seleccionado")
@@ -101,10 +95,28 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertEqual(app.buttons["profile.choice.medieval.policia"].value as? String, "Seleccionado")
     }
 
+    func testEmptyNameKeepsLastValidProfileWhenLeaving() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
+        app.buttons["menu.profile"].tap()
+        let previous = app.staticTexts["profile.displayName"].label
+        app.buttons["profile.edit"].tap()
+        let name = app.textFields["profile.name"]
+        name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+        name.typeText("\n")
+        app.buttons["menu.back"].firstMatch.tap()
+        app.buttons["menu.profile"].tap()
+        XCTAssertEqual(app.staticTexts["profile.displayName"].label, previous)
+    }
+
     func testMenuVolumePersistsAndResetRestoresDefaults() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        XCTAssertTrue(app.buttons["menu.opciones"].waitForExistence(timeout: 5))
         app.buttons["menu.opciones"].tap()
         let slider = app.sliders["options.volume"]
         XCTAssertTrue(slider.waitForExistence(timeout: 3))
@@ -114,6 +126,7 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertNotEqual(selectedVolume, "Música: 80%")
         app.terminate()
         app.launch()
+        XCTAssertTrue(app.buttons["menu.opciones"].waitForExistence(timeout: 5))
         app.buttons["menu.opciones"].tap()
         XCTAssertEqual(app.staticTexts["options.volumeLabel"].label, selectedVolume)
         let reset = app.buttons["options.reset"]

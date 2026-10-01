@@ -108,6 +108,7 @@ struct ProfileView: View {
     @AppStorage("menu.profileEmotes") private var emoteIDs = "griego_enojado,griego_triste,griego_contento,griego_sospechoso"
     @State private var draft = LocalMenuProfile()
     @State private var saved = LocalMenuProfile()
+    @State private var nameBeforeEditing = "Jugador"
     @State private var selection: ProfileSelection?
     @State private var initialized = false
     @State private var saveError = false
@@ -127,7 +128,6 @@ struct ProfileView: View {
         AndroidMenuReference.content.maps.flatMap(\.roles).first { $0.image == draft.favorite }
     }
     private var validName: Bool { !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var changed: Bool { draft != saved }
     private var accent: Color {
         switch profileTheme {
         case "sea": Color(red: 61/255, green: 230/255, blue: 224/255)
@@ -154,11 +154,14 @@ struct ProfileView: View {
     }
 
     private func saveProfile() {
-        guard validName else { return }
-        editingText = false
-        draft.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        draft.bio = draft.bio.trimmingCharacters(in: .whitespacesAndNewlines)
-        do { storedProfile = try JSONEncoder().encode(draft); saved = draft; isEditing = false }
+        guard initialized else { return }
+        var profile = draft
+        profile.name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.bio = profile.bio.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Keep the last valid name while the player clears the field to type another.
+        if profile.name.isEmpty { profile.name = nameBeforeEditing }
+        guard profile != saved else { return }
+        do { storedProfile = try JSONEncoder().encode(profile); saved = profile }
         catch { saveError = true }
     }
 
@@ -291,14 +294,9 @@ struct ProfileView: View {
             Text("Guardado en este dispositivo. El acceso, la recuperación y la sincronización online todavía no están disponibles en esta versión.")
                 .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             if isEditing {
-            Button("GUARDAR PERFIL", action: saveProfile)
-            .buttonStyle(TraidoresButtonStyle(prominent: true))
-            .disabled(!validName || !changed).accessibilityIdentifier("profile.save")
-            Text(!validName ? "Escribí un nombre para guardar." : changed ? "Tenés cambios sin guardar." : "Perfil guardado en este dispositivo.")
+            Text(!validName ? "Escribí tu nombre. Si lo dejás vacío, se conserva el anterior." : "Tus cambios se guardan automáticamente.")
                 .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 .accessibilityIdentifier("profile.status")
-            Button("DESCARTAR CAMBIOS") { draft = saved; isEditing = false; editingText = false }
-                .frame(maxWidth: .infinity).accessibilityIdentifier("profile.discard")
             }
           }
           .padding(16).frame(maxWidth: .infinity)
@@ -307,7 +305,12 @@ struct ProfileView: View {
         }
         .overlay(alignment: .topTrailing) {
             Button {
-                if isEditing { saveProfile() } else { isEditing = true }
+                if isEditing {
+                    saveProfile(); draft = saved; editingText = false
+                } else {
+                    nameBeforeEditing = saved.name
+                }
+                isEditing.toggle()
             } label: {
                 Image(systemName: isEditing ? "checkmark" : "pencil")
                     .font(.headline).frame(width: 44, height: 44).background(surface, in: Circle())
@@ -321,20 +324,23 @@ struct ProfileView: View {
             guard !initialized else { return }
             draft = LocalMenuProfile.load(storedProfile)
             saved = draft
+            nameBeforeEditing = draft.name
             initialized = true
         }
+        .onChange(of: draft) { _, _ in saveProfile() }
+        .onDisappear { saveProfile() }
         .sheet(item: $selection) { selected in
             MenuPage(title: selected.title) {
-                Text("Tocá una opción para elegirla. Después guardá el perfil.")
+                Text("Tus elecciones se guardan automáticamente al salir.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 if selected == .style {
                     ProfileStyleSelector(theme: profileTheme, name: draft.name, bio: draft.bio, avatar: draft.avatar, photo: draft.photoData) { theme in
-                        profileTheme = theme; selection = nil
+                        profileTheme = theme
                     }
                     Text("El estilo se equipa en este perfil; el gameplay permanece sin cambios.").font(.footnote)
                 } else if selected == .emotes {
                     ProfileEmoteSelector(ids: emoteIDs.split(separator: ",").map(String.init)) { ids in
-                        emoteIDs = ids.joined(separator: ","); selection = nil
+                        emoteIDs = ids.joined(separator: ",")
                     }
                 } else if selected == .achievements {
                     Text("Estos son los diez logros de Android. Se desbloquearán con progreso real; todavía no se pueden equipar en iOS.")
@@ -362,7 +368,7 @@ struct ProfileView: View {
                             Label("ELEGIR FOTO DEL IPHONE", systemImage: "photo")
                         }.buttonStyle(TraidoresButtonStyle()).disabled(loadingPhoto)
                             .accessibilityIdentifier("profile.photoPicker")
-                        Text("La foto se recorta al círculo del avatar. Solo se guarda al guardar el perfil; no se sube a ningún servidor.")
+                        Text("La foto se recorta al círculo del avatar y se guarda automáticamente en este iPhone.")
                             .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                         if loadingPhoto { ProgressView("Cargando foto…") }
                     }
@@ -462,7 +468,7 @@ private struct ProfileStyleSelector: View {
             }.frame(height: 250).clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(color))
             ForEach(themes, id: \.0) { theme in
-                Button { preview = theme.0 } label: {
+                Button { preview = theme.0; equip(preview) } label: {
                     HStack { Text(theme.1).font(.headline); Spacer(); if preview == theme.0 { Image(systemName: "checkmark.circle.fill") } }
                         .frame(maxWidth: .infinity, minHeight: 44).padding(.horizontal, 14)
                         .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
@@ -471,8 +477,6 @@ private struct ProfileStyleSelector: View {
                 }.buttonStyle(.plain).accessibilityIdentifier("profile.style.\(theme.0)")
                     .accessibilityValue(preview == theme.0 ? "Seleccionado" : "")
             }
-            Button("EQUIPAR") { equip(preview) }.buttonStyle(TraidoresButtonStyle(prominent: true))
-                .accessibilityIdentifier("profile.style.equip")
         }
     }
 }
@@ -516,10 +520,12 @@ private struct ProfileEmoteSelector: View {
                         .accessibilityValue(selectedEmotes.contains(emote.id) ? "Seleccionado" : "")
                 }
             }
-            Button("APLICAR EMOTES") { apply(selectedEmotes) }
-                .buttonStyle(TraidoresButtonStyle(prominent: true)).disabled(selectedEmotes.count != 4)
-                .accessibilityIdentifier("profile.emotes.apply")
+            Text(selectedEmotes.count == 4 ? "Selección guardada automáticamente." : "Completá los 4 emotes para guardar. Hasta entonces se conserva tu selección anterior.")
+                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             Text("Los 20 emotes del catálogo de Android están disponibles para este perfil local. El envío en partidas se integrará al retomar el gameplay.").font(.footnote)
+        }
+        .onChange(of: selectedEmotes) { _, ids in
+            if ids.count == 4 { apply(ids) }
         }
     }
 }
@@ -686,6 +692,18 @@ struct OptionsView: View {
                     .accessibilityIdentifier("options.volume")
                 Text("La música respeta el modo silencio del iPhone y se pausa al salir de la app.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                Divider()
+                Toggle("Sonido de inicio", isOn: $preferences.effectsEnabled)
+                    .font(.headline).tint(TraidoresTheme.gold)
+                    .accessibilityIdentifier("options.effects")
+                Text("Ladrido de Bandido Games: \(Int((preferences.effectsVolume * 100).rounded()))%")
+                    .font(.subheadline.bold()).monospacedDigit()
+                Slider(value: $preferences.effectsVolume, in: 0...1, step: 0.05)
+                    .tint(TraidoresTheme.gold).disabled(!preferences.effectsEnabled)
+                    .accessibilityLabel("Volumen del sonido de inicio")
+                    .accessibilityIdentifier("options.effectsVolume")
+                Text("Se reproduce al abrir el juego y también respeta el modo silencio.")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             }
             .padding(20)
             .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 14))
@@ -710,14 +728,14 @@ struct OptionsView: View {
             Button("RESTABLECER OPCIONES") { confirmingReset = true }
                 .buttonStyle(TraidoresButtonStyle())
                 .accessibilityIdentifier("options.reset")
-            Text("Efectos, vibración de partida, notificaciones e idiomas se integrarán en sus respectivas etapas.")
+            Text("Efectos y vibración de partida, notificaciones e idiomas se integrarán en sus respectivas etapas.")
                 .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
         }
         .alert("¿Restablecer las opciones del menú?", isPresented: $confirmingReset) {
             Button("CANCELAR", role: .cancel) {}
             Button("RESTABLECER") { preferences.resetMenuOptions() }
         } message: {
-            Text("Se restauran música, volumen y lectura. No se borran perfiles ni partidas.")
+            Text("Se restauran música, sonido de inicio, volúmenes y lectura. No se borran perfiles ni partidas.")
         }
     }
 }
