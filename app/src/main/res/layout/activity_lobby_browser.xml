@@ -34,22 +34,57 @@
         android:paddingHorizontal="12dp"
         android:paddingVertical="8dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/bree_serif"
-            android:text="BUSCAR PARTIDA"
-            android:textColor="@color/accent_gold"
-            android:textSize="22sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/bree_serif"
+                    android:text="BUSCAR PARTIDA"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:text="Salas disponibles en Argentina"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnRefreshLobbies"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_btn_dark"
+                android:contentDescription="@string/lobby_refresh_action"
+                android:padding="12dp"
+                android:src="@drawable/ic_refresh_lobbies"
+                app:tint="@color/accent_gold" />
+        </LinearLayout>
 
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/lobbyRefreshStatus"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="sans-serif"
-            android:text="Salas disponibles en Argentina"
+            android:layout_marginTop="4dp"
+            android:accessibilityLiveRegion="polite"
             android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
+            android:textSize="12sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <ScrollView

@@ -5,7 +5,9 @@ package com.traidores.juego
  * permite atribuir el consumo a cada flujo y agrega por separado las lecturas dependientes
  * conocidas de las reglas actuales.
  */
-internal class OnlineFirestoreUsageCounter {
+internal class OnlineFirestoreUsageCounter(
+    private val recordUsage: ((String, FirestoreUsageDelta) -> Unit)? = null
+) {
     private data class Entry(
         var listenerStarts: Int = 0,
         var serverSnapshots: Int = 0,
@@ -22,6 +24,7 @@ internal class OnlineFirestoreUsageCounter {
     fun listenerStarted(name: String) {
         entries.getOrPut(name) { Entry() }.listenerStarts += 1
         listenersWithServerBaseline.remove(name)
+        recordUsage?.invoke(name, FirestoreUsageDelta(listenerStarts = 1))
     }
 
     @Synchronized
@@ -46,6 +49,11 @@ internal class OnlineFirestoreUsageCounter {
         if (visibleReads > 0) {
             entry.dependentRuleReads += dependentDocuments
         }
+        recordUsage?.invoke(name, FirestoreUsageDelta(
+            serverSnapshots = 1,
+            documentReads = visibleReads.toLong(),
+            ruleReads = if (visibleReads > 0) dependentDocuments.toLong() else 0
+        ))
     }
 
     @Synchronized
@@ -53,11 +61,16 @@ internal class OnlineFirestoreUsageCounter {
         val entry = entries.getOrPut(name) { Entry() }
         entry.forcedQueryReads += resultDocuments.coerceAtLeast(1)
         entry.dependentRuleReads += dependentDocuments
+        recordUsage?.invoke(name, FirestoreUsageDelta(
+            queryReads = resultDocuments.coerceAtLeast(1).toLong(),
+            ruleReads = dependentDocuments.toLong()
+        ))
     }
 
     @Synchronized
     fun write(name: String) {
         entries.getOrPut(name) { Entry() }.writes += 1
+        recordUsage?.invoke(name, FirestoreUsageDelta(writeAttempts = 1))
     }
 
     @Synchronized

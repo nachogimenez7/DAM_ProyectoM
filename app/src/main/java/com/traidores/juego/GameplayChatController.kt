@@ -53,6 +53,7 @@ class GameplayChatController(
         val onlinePlayerUid: String
 
         fun isOnlineGameplay(): Boolean
+        fun hasOnlineSpectatorChatAccess(): Boolean
         fun isPresentationPending(): Boolean = false
         fun canOpenExpandedChat(): Boolean
         fun dp(value: Int): Int
@@ -3475,6 +3476,7 @@ class GameplayChatController(
     private fun startOnlineSpectatorChatListener() {
         if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineSpectatorChatListener != null) return
         if (GameEngine.humanPlayer(host.currentSession).alive) return
+        if (!host.hasOnlineSpectatorChatAccess()) return
         OnlineDebugLog.i("spectator_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
         val query = FirebaseDatabase.getInstance()
             .getReference("salas/${host.onlineRoomId}/$RTDB_SPECTATOR_CHAT_NODE")

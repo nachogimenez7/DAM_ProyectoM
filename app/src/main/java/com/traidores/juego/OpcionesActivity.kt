@@ -52,6 +52,7 @@ class OpcionesActivity : BaseActivity() {
     private lateinit var spinnerLanguage: Spinner
     private lateinit var btnAbout: Button
     private lateinit var btnResetOptions: Button
+    private lateinit var onlineMeasurementSummary: TextView
 
     private var currentLanguage = LANGUAGE_SPANISH
     private var updatingControls = false
@@ -87,6 +88,7 @@ class OpcionesActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::onlineMeasurementSummary.isInitialized) refreshOnlineMeasurement()
         if (!::switchNotifications.isInitialized) return
         val available = NotificationPreferences.canPostNotifications(this)
         val enabled = NotificationPreferences.isEnabled(this) && available
@@ -128,6 +130,26 @@ class OpcionesActivity : BaseActivity() {
         spinnerLanguage = findViewById(R.id.spinnerLanguage)
         btnAbout = findViewById(R.id.btnAbout)
         btnResetOptions = findViewById(R.id.btnResetOptions)
+        onlineMeasurementSummary = findViewById(R.id.onlineMeasurementSummary)
+        findViewById<Button>(R.id.btnCopyBetaReport).setOnClickListener {
+            refreshOnlineMeasurement()
+            OnlineStabilityReport.copyToClipboard(this)
+        }
+        findViewById<Button>(R.id.btnResetOnlineMeasurement).setOnClickListener {
+            OnlineFirestoreUsageMetrics.reset()
+            refreshOnlineMeasurement()
+            Toast.makeText(this, R.string.online_measurement_reset_done, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun refreshOnlineMeasurement() {
+        val snapshot = OnlineFirestoreUsageMetrics.snapshot()
+        onlineMeasurementSummary.text = if (snapshot.rows.isEmpty()) {
+            getString(R.string.online_measurement_empty)
+        } else {
+            getString(R.string.online_measurement_summary,
+                snapshot.total.observedReads, snapshot.total.writeAttempts, snapshot.elapsedSeconds)
+        }
     }
 
     private fun configureControls() {

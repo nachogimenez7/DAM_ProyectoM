@@ -18,6 +18,8 @@ class OnlineRoomRetentionPolicyTest {
         assertTrue(available(emptyList(), roomAt = now - 1))
         assertTrue(available(listOf(RealtimePresenceState(true, 1L))))
         assertTrue(available(listOf(RealtimePresenceState(false, 0L))))
+        assertFalse(available(listOf(RealtimePresenceState(false, now - grace)), roomAt = now))
+        assertTrue(available(listOf(RealtimePresenceState(false, now - grace + 1)), roomAt = now))
     }
 
     @Test
@@ -50,6 +52,7 @@ class OnlineRoomRetentionPolicyTest {
         assertFalse(visible(players = 4))
         assertFalse(visible(players = 5))
         assertFalse(visible(players = -1))
+        assertFalse(visible(players = 0))
         assertFalse(visible(deleting = true))
         assertFalse(visible(updatedAt = 0L))
         assertTrue(visible(updatedAt = now + 1L))

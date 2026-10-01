@@ -6,6 +6,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnlineLobbyRulesTest {
+    @Test
+    fun lobbyHostKeepsAuthorityForThreeMinutesOfDisconnection() {
+        val lastSeen = 1_000L
+        for (elapsed in listOf(30_000L, 60_000L, 120_000L, 179_999L)) {
+            assertTrue(OnlineLobbyRules.keepsLobbyHostDuringReconnect(false, true, lastSeen, lastSeen + elapsed))
+        }
+        assertFalse(OnlineLobbyRules.keepsLobbyHostDuringReconnect(false, true, lastSeen, lastSeen + 180_000L))
+    }
+
+    @Test
+    fun connectedOrUnknownPresenceHostIsProtectedButInactiveHostIsNot() {
+        assertTrue(OnlineLobbyRules.keepsLobbyHostDuringReconnect(true, true, 1L, 900_000L))
+        assertTrue(OnlineLobbyRules.keepsLobbyHostDuringReconnect(false, true, 0L, 900_000L))
+        assertFalse(OnlineLobbyRules.keepsLobbyHostDuringReconnect(false, false, 0L, 1L))
+    }
 
     @Test
     fun cachedGuestRosterNeverGrantsHostAuthorityBeforeServerHandoff() {

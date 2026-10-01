@@ -255,6 +255,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var onlinePartidaId = ""
     private var onlinePlayerId = ""
     private var onlineIsHost = false
+    private var realtimeNoticeAuthorityReady = false
     private var lastPublishedOnlineStateKey = ""
     private var lastPublishedAuthoritativeOnlineStateKey = ""
     private var lastAppliedAuthoritativeOnlineStateKey = ""
@@ -313,7 +314,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var realtimePresenceBaselineReady = false
     private var lastLegacyPresenceState = ""
     private var lastLegacyPresenceWriteAtElapsedMs = 0L
-    private val firestoreUsage = OnlineFirestoreUsageCounter()
+    private val firestoreUsage = OnlineFirestoreUsageMetrics.counter("partida")
     private var onlineNightActionRecords = emptyList<OnlineActionRecord>()
     private var onlineNightActionsServerConfirmed = false
     private var onlineMayorRevealSent = false
@@ -1512,6 +1513,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             return
         }
         if (::session.isInitialized && awaitingFreshOnlineStateAfterResume) {
+            if (!onlineIsHost) recoverOnlineGuestState("foreground_resume")
             autoAdvanceHandler.removeCallbacks(resumeInterruptedPresentationRunnable)
             autoAdvanceHandler.postDelayed(
                 resumeInterruptedPresentationRunnable,
@@ -3810,6 +3812,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             val liveTransition = GameplayTableUi.transitionSpec(session)
             lastPresentedTransitionKey = liveTransition.key
             presentedPeriod = liveTransition.period
+            renderThemedBackground(liveTransition.period)
         }
         OnlineDiagnostics.recordPhase(this, session, onlineIsHost, event = "guest_apply")
         // El pedido ya llego a la mesa: se libera el candado local del dialogo para que la
@@ -4399,6 +4402,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         realtimePresence?.refresh()
     }
 
+    override fun hasOnlineSpectatorChatAccess(): Boolean =
+        realtimePresence?.spectatorChatGranted == true
+
     private fun ensureRealtimeAuthoritativeState(): RealtimeAuthoritativeState? {
         if (!isOnlineGameplay() || session.onlineMatchId.isBlank()) return null
         realtimeAuthoritativeState?.let { return it }
@@ -4448,8 +4454,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         cancelVoteResult()
         clearOnlinePresentationGate()
         // Reattaching emits the current snapshot even if the host doesn't publish a new phase.
-        realtimeAuthoritativeState?.stop()
         startRealtimeAuthoritativeState()
+        realtimeAuthoritativeState?.refresh()
         OnlineDebugLog.i(
             "guest_live_state_refresh roomId=$onlinePartidaId uid=$onlinePlayerId reason=$reason"
         )
@@ -4530,6 +4536,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun syncRealtimeGameplayAccess() {
         if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        val accessMatchId = session.onlineMatchId
         val members = session.players.mapIndexedNotNull { index, player ->
             val uid = session.onlinePlayerUids.getOrNull(index)
                 ?.takeIf { it.isNotBlank() }
@@ -4551,6 +4558,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             hostUid = onlinePlayerId,
             matchId = session.onlineMatchId,
             members = members,
+            onComplete = {
+                if (onlineScreenStarted && onlineIsHost && onlineActiveHostId == onlinePlayerId &&
+                    session.onlineMatchId == accessMatchId && !isFinishing && !isDestroyed) {
+                    realtimeNoticeAuthorityReady = true
+                    publishTraitorPlanNotices()
+                }
+            },
             onFailure = { error ->
                 OnlineDebugLog.e(
                     "rtdb_gameplay_access_sync_failure roomId=$onlinePartidaId host=$onlinePlayerId",
@@ -5417,6 +5431,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun finishOnlineHostPromotion(reason: String) {
         if (onlineIsHost || onlineActiveHostId != onlinePlayerId) return
+        realtimeNoticeAuthorityReady = false
         onlineIsHost = true
         onlineActiveHostId = onlinePlayerId
         lastLegacyPresenceState = ""
@@ -5474,6 +5489,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         onlineHostPromotionInProgress = false
         autoAdvanceHandler.removeCallbacks(onlineHostPromotionRetryRunnable)
         onlineIsHost = false
+        realtimeNoticeAuthorityReady = false
         invalidateOnlineResolutionRead()
         lastLegacyPresenceState = ""
         setOnlineAwaitingHostAdvance(true)
@@ -10414,6 +10430,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun privateHintText(): String {
+        val human = GameEngine.humanPlayer(session)
+        if (!human.alive) {
+            return if (session.phase == GamePhase.DIA_DEBATE &&
+                session.oracleInvitedPlayer == human.name) {
+                "El Oráculo te dio voz."
+            } else {
+                "Observá la partida."
+            }
+        }
         if (DirectVotePolicy.isEnabled(session.phase) && selectedTarget.isNotBlank()) {
             val progressSuffix = if (isOnlineGameplay()) {
                 val progress = onlineDirectVoteReadyProgress()
@@ -10473,8 +10498,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         eliminatedStatePanel.visibility = if (eliminated) View.VISIBLE else View.GONE
         currentPlayerHint.maxLines = if (eliminated) 1 else 2
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+            currentPlayerHint,
+            if (eliminated) 13 else 9,
+            if (eliminated) 15 else 13,
+            1,
+            TypedValue.COMPLEX_UNIT_SP
+        )
         if (eliminated) {
-            currentPlayerHint.text = "Observando la partida."
+            currentPlayerHint.text = privateHintText()
         }
         currentPlayerStatus.visibility =
             if (status == null || eliminated) View.GONE else View.VISIBLE
@@ -12932,7 +12964,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
      * quién, incluida su propia decisión, sin abrir la colección completa de acciones.
      */
     private fun publishTraitorPlanNotices() {
-        if (!isOnlineGameplay() || !onlineIsHost || !::session.isInitialized) return
+        if (!isOnlineGameplay() || !onlineIsHost || !realtimeNoticeAuthorityReady || !::session.isInitialized) return
         val notices = TraitorKillNotices.confirmedNotices(session, onlineNightActionRecords)
         if (notices.isEmpty()) return
 
@@ -12942,9 +12974,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             val remoteNoticeId =
                 "plan_${session.onlineMatchId.hashCode().toUInt().toString(16)}_${notice.id}"
             if (!publishedTraitorPlanNoticeIds.add(remoteNoticeId)) return@forEach
-            planReference.child(remoteNoticeId)
-                .setValue(
-                    mapOf(
+            val noticeValue = mapOf(
                         "matchId" to session.onlineMatchId,
                         "actorId" to onlinePlayerId,
                         "speaker" to TraitorKillNotices.SPEAKER,
@@ -12960,13 +12990,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                         "faseIndice" to session.phaseIndex,
                         "ts" to ServerValue.TIMESTAMP
                     )
-                )
-                .addOnFailureListener { error ->
-                    publishedTraitorPlanNoticeIds.remove(remoteNoticeId)
-                    OnlineDebugLog.w(
-                        "traitor_plan_notice_write_skipped roomId=$onlinePartidaId id=$remoteNoticeId reason=${error.message.orEmpty()}"
-                    )
-                }
+            // Los avisos son inmutables. Un relevo conserva lo publicado por el host anterior.
+            planReference.child(remoteNoticeId).runTransaction(
+                object : com.google.firebase.database.Transaction.Handler {
+                    override fun doTransaction(data: com.google.firebase.database.MutableData):
+                        com.google.firebase.database.Transaction.Result {
+                        if (data.value != null) return com.google.firebase.database.Transaction.abort()
+                        data.value = noticeValue
+                        return com.google.firebase.database.Transaction.success(data)
+                    }
+
+                    override fun onComplete(
+                        error: com.google.firebase.database.DatabaseError?,
+                        committed: Boolean,
+                        snapshot: com.google.firebase.database.DataSnapshot?
+                    ) {
+                        if (error == null) return
+                        publishedTraitorPlanNoticeIds.remove(remoteNoticeId)
+                        OnlineDebugLog.w(
+                            "traitor_plan_notice_write_skipped roomId=$onlinePartidaId id=$remoteNoticeId reason=${error.message}"
+                        )
+                    }
+                },
+                false
+            )
         }
     }
 

@@ -301,7 +301,8 @@ class VoteResultAnimator(
 
     fun hide() {
         cancelAnimations()
-        applyPanelMode(expulsion = false)
+        // No reducir las columnas mientras la grilla aún conserva tarjetas del recuento.
+        // Cada show vacía y configura la grilla antes de construir la presentación siguiente.
         overlay.visibility = View.GONE
         overlay.alpha = 1f
         continueButton.isEnabled = false
@@ -804,7 +805,13 @@ class VoteResultAnimator(
             }
             tied -> {
                 title.text = "EL EMPATE SE REPITIÓ"
-                setNotice("El Alcalde podrá intervenir. Sin su decisión, nadie será expulsado.")
+                val revealedMayorAlive = session.alcaldeRevealed &&
+                    session.players.any { it.alive && it.role?.key == RoleCatalog.ALCALDE }
+                setNotice(if (revealedMayorAlive) {
+                    "El Alcalde podrá intervenir. Sin su decisión, nadie será expulsado."
+                } else {
+                    "El pueblo no alcanzó una mayoría. Se resolverá el empate."
+                })
                 setContinueReady("RESOLVER EMPATE")
             }
             session.dayEliminationTarget.isNotBlank() -> {

@@ -157,4 +157,16 @@
     <string name="notification_permission_denied">No se activaron. Podés habilitarlas más tarde desde Opciones.</string>
     <string name="first_beta_notification_title">Primera notificación, que emoción!!!!</string>
     <string name="first_beta_notification_body">Hemos añadido mejoras gracias a sus feedback en el modo vs IA. Están invitados a probarlas.</string>
+    <string name="online_measurement_title">PRUEBAS ONLINE</string>
+    <string name="online_measurement_empty">Sin operaciones medidas todavía.</string>
+    <string name="online_measurement_summary">Lecturas estimadas: %1$d\nEscrituras intentadas: %2$d\nMedición: %3$d segundos</string>
+    <string name="online_measurement_description">Estimación parcial de este dispositivo, no la factura del servidor. El reporte no contiene nombres ni mensajes. Reiniciar la medición no cambia tu cuenta ni tus estadísticas.</string>
+    <string name="online_measurement_copy">COPIAR REPORTE BETA</string>
+    <string name="online_measurement_reset">REINICIAR MEDICIÓN</string>
+    <string name="online_measurement_reset_done">Medición reiniciada.</string>
+    <string name="lobby_refresh_action">Actualizar salas</string>
+    <string name="lobby_refresh_loading">Actualizando salas…</string>
+    <string name="lobby_refresh_done">Salas actualizadas.</string>
+    <string name="lobby_refresh_failed">No se pudo actualizar. Revisá tu conexión e intentá nuevamente.</string>
+    <string name="lobby_refresh_wait">Esperá unos segundos para actualizar otra vez.</string>
 </resources>

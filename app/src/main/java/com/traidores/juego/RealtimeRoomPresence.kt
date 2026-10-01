@@ -38,6 +38,8 @@ class RealtimeRoomPresence(
     private var started = false
     private var socketConnected = false
     private var membershipGranted = false
+    var spectatorChatGranted = false
+        private set
     private var membershipAccessKey = ""
     private var presenceListenerAttached = false
     private val publisher = OnlinePresencePublisher(
@@ -64,6 +66,9 @@ class RealtimeRoomPresence(
             val nextAccessKey = if (granted) membershipAccessKey(snapshot) else ""
             val accessChanged = granted && nextAccessKey != membershipAccessKey
             membershipGranted = granted
+            spectatorChatGranted = granted &&
+                snapshot.child("enLobby").getValue(Boolean::class.java) == false &&
+                snapshot.child("vivo").getValue(Boolean::class.java) == false
             membershipAccessKey = nextAccessKey
             if (!granted) {
                 detachPresenceListener()
@@ -82,6 +87,7 @@ class RealtimeRoomPresence(
         override fun onCancelled(error: DatabaseError) {
             if (!started) return
             membershipGranted = false
+            spectatorChatGranted = false
             detachPresenceListener()
             markOwnPresenceUnavailable()
             onError(error.toException())
@@ -167,6 +173,7 @@ class RealtimeRoomPresence(
         desiredConnected = false
         socketConnected = false
         membershipGranted = false
+        spectatorChatGranted = false
         membershipAccessKey = ""
         markOwnPresenceUnavailable()
         ownMembership.removeEventListener(membershipListener)

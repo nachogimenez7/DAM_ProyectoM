@@ -21,6 +21,8 @@ class RealtimeAuthoritativeState(
 ) {
     private val reference = database.getReference("salas/$roomId/$NODE")
     private var started = false
+    private var generation = 0L
+    private var refreshInProgress = false
 
     private val listener = object : ValueEventListener {
         override fun onDataChange(snapshot: DataSnapshot) {
@@ -34,6 +36,8 @@ class RealtimeAuthoritativeState(
 
         override fun onCancelled(error: DatabaseError) {
             if (!started) return
+            generation++
+            refreshInProgress = false
             started = false
             onError(error.toException())
         }
@@ -46,9 +50,29 @@ class RealtimeAuthoritativeState(
     }
 
     fun stop() {
+        generation++
+        refreshInProgress = false
         if (!started) return
         reference.removeEventListener(listener)
         started = false
+    }
+
+    /** Lectura bajo demanda al recuperar, con una sola solicitud simultánea. */
+    fun refresh() {
+        if (!started || refreshInProgress) return
+        refreshInProgress = true
+        val requestGeneration = generation
+        reference.get()
+            .addOnSuccessListener { snapshot ->
+                if (!started || generation != requestGeneration) return@addOnSuccessListener
+                refreshInProgress = false
+                listener.onDataChange(snapshot)
+            }
+            .addOnFailureListener { error ->
+                if (!started || generation != requestGeneration) return@addOnFailureListener
+                refreshInProgress = false
+                onError(error)
+            }
     }
 
     fun publish(state: Map<String, Any?>): Task<Void> {

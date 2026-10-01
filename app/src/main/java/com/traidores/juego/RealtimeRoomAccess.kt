@@ -60,14 +60,13 @@ object RealtimeRoomAccess {
         creatorUid: String? = null,
         matchId: String,
         members: Map<String, RealtimeRoomMemberAccess>,
+        claimHost: Boolean = true,
         onComplete: () -> Unit = {},
         onFailure: (Exception) -> Unit = {}
     ) {
         if (roomId.isBlank() || hostUid.isBlank()) return
         val room = database.getReference("salas/$roomId")
-        room.child("$NODE_CONTROL/$FIELD_HOST_UID")
-            .setValue(hostUid)
-            .addOnSuccessListener {
+        fun synchronizeMembers() {
                 val continueSync = {
                     room.child(NODE_MEMBERS).get()
                         .addOnSuccessListener { snapshot ->
@@ -93,8 +92,22 @@ object RealtimeRoomAccess {
                         .addOnSuccessListener { continueSync() }
                         .addOnFailureListener(onFailure)
                 }
-            }
-            .addOnFailureListener(onFailure)
+        }
+        val authority = room.child("$NODE_CONTROL/$FIELD_HOST_UID")
+        if (claimHost) {
+            authority.setValue(hostUid)
+                .addOnSuccessListener { synchronizeMembers() }
+                .addOnFailureListener(onFailure)
+        } else {
+            // El lobby espera el relevo oficial; no intenta recuperarlo mientras otro
+            // coordinador sigue conectado. Solo el host actual puede leer este nodo.
+            authority.get()
+                .addOnSuccessListener { snapshot ->
+                    if (snapshot.getValue(String::class.java) == hostUid) synchronizeMembers()
+                    else onFailure(IllegalStateException("Lobby authority transfer pending"))
+                }
+                .addOnFailureListener(onFailure)
+        }
     }
 
     fun transferHost(

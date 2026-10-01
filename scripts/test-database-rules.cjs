@@ -497,6 +497,32 @@ async function main() {
     assert.equal(candidates.filter((result) => result.status === "rejected").length, 1);
     await assertFails(alice.ref(`salas/${migrationRoom}/miembros/bob`).remove());
 
+    // Un nuevo coordinador conserva avisos inmutables y crea los pendientes sin duplicarlos.
+    const noticeRoom = "notice-host-recovery";
+    const originalNotice = chatMessage("alice", "Plan", {
+      canal: "traidores", tipo: "accion", isGod: true,
+      actorNombre: "Carol", objetivoNombre: "Bob", accionRol: "espia", faseIndice: 3,
+    });
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref(`salas/${noticeRoom}`).set({
+        control: { hostUid: "alice", matchId },
+        miembros: { alice: member("Alice"), bob: member("Bob") },
+        presencia: { alice: { estado: "desconectado", ts: serverTimestamp } },
+        chat_traidores: { existing: { ...originalNotice, ts: Date.now() } },
+      });
+    });
+    await assertSucceeds(bob.ref(`salas/${noticeRoom}/control/hostUid`).set("bob"));
+    const replacement = { ...originalNotice, actorId: "bob" };
+    const createOnce = (key) => bob.ref(`salas/${noticeRoom}/chat_traidores/${key}`)
+      .transaction((value) => value === null ? replacement : undefined, undefined, false);
+    assert.equal((await assertSucceeds(createOnce("existing"))).committed, false);
+    assert.equal((await assertSucceeds(createOnce("pending"))).committed, true);
+    assert.equal((await assertSucceeds(createOnce("pending"))).committed, false);
+    const saved = await bob.ref(`salas/${noticeRoom}/chat_traidores`).once("value");
+    assert.equal(saved.child("existing/actorId").val(), "alice");
+    assert.equal(saved.child("pending/actorId").val(), "bob");
+    assert.equal(saved.numChildren(), 2);
+
     // El backend congela la sala antes de limpiar. Ni el host ni un participante
     // pueden quitar el tombstone, reactivar permisos o resucitar el espejo.
     const deletingRoom = "room-backend-deleting";
