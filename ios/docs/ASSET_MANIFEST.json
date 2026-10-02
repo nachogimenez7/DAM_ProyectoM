@@ -2,9 +2,9 @@
   {
     "source": "app/src/main/res/drawable/rol_aldeano_gaucho.webp",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_aldeano_gaucho.imageset/rol_aldeano_gaucho.png",
-    "sourceSHA256": "7055b3fc3dd1038a34e59871c535961950d70c9805288103d0b38ba1b10a9015",
-    "destinationSHA256": "c46326496ff994349cdc3ac578d758a155f1e7337f482a77db0e1a5129384f2d",
-    "operation": "WebP to PNG; no resize"
+    "sourceSHA256": "763b68098d815550f54648ef66596789f9136a0fd64c17c5401b88465797ac83",
+    "destinationSHA256": "128eace78e8c505e347189a0e3e05911854cc50735506fd04268975fd8dd30fa",
+    "operation": "Updated approved role artwork; PNG master to lossless WebP; iOS PNG copied without resize"
   },
   {
     "source": "app/src/main/res/drawable/rol_asesino_gaucho.webp",
