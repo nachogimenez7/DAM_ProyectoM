@@ -9,7 +9,7 @@ Abrir `TraidoresIOS/TraidoresIOS.xcodeproj` con Xcode. Scheme: **TraidoresIOS**.
 - Proyecto Xcode y package Swift `TraidoresCore`, aislados de Android.
 - Menú con fondo, logo, medallón, fuente Bree Serif y música originales.
 - Navegación a selección de modos, guía de 11 roles, ayuda, opciones, perfil pendiente y acerca de.
-- Música activable, preferencia persistente, pausa al salir y respeto del modo silencio.
+- Música activable, preferencia persistente, pausa al salir y volumen multimedia como Android.
 - Los modos de juego se anuncian como próximos: **todavía no hay partida local ni online**.
 - Catálogo de mapas, roles/equipos y fases con identificadores conservados de Kotlin. Sin motor ni Firebase.
 

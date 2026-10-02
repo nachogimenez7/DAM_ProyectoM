@@ -89,5 +89,12 @@
     "sourceSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
     "destinationSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
     "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/bandido_splash_medallion.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/bandido_splash_medallion.imageset/bandido_splash_medallion@3x.png",
+    "sourceSHA256": "d24059f3d7f69e309cf091d30e095e59c7d36e74cef4302059cd5a804916d2ce",
+    "destinationSHA256": "b64dc2a464f4d7e11637621709b95ce8b51b205ff4fc5c2ef3c63f229a79f13f",
+    "operation": "resize 700→576 px (192 pt @3x, Android splash icon size) with sips"
   }
 ]

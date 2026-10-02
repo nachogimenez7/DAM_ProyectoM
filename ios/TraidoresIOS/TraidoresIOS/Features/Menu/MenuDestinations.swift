@@ -846,7 +846,7 @@ struct OptionsView: View {
                     .disabled(!preferences.musicEnabled)
                     .accessibilityLabel("Volumen de música")
                     .accessibilityIdentifier("options.volume")
-                Text("La música respeta el modo silencio del iPhone y se pausa al salir de la app.")
+                Text("Usa el volumen multimedia del iPhone y se pausa al salir de la app.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 Divider()
                 Toggle("Sonido de inicio", isOn: $preferences.effectsEnabled)
@@ -858,7 +858,7 @@ struct OptionsView: View {
                     .tint(TraidoresTheme.gold).disabled(!preferences.effectsEnabled)
                     .accessibilityLabel("Volumen del sonido de inicio")
                     .accessibilityIdentifier("options.effectsVolume")
-                Text("Se reproduce al abrir el juego y también respeta el modo silencio.")
+                Text("Se reproduce al abrir el juego con el volumen multimedia.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             }
             .padding(20)

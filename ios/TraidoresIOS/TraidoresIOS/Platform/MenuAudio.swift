@@ -29,7 +29,7 @@ private final class MenuAudioPlayback: @unchecked Sendable {
     private func prepareIntroOnQueue() {
         do {
             guard let url = Bundle.main.url(forResource: "sfx_bandido_bark", withExtension: "wav") else { return }
-            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+            try Self.configureSession()
             try AVAudioSession.sharedInstance().setActive(true)
             barkPlayer = try AVAudioPlayer(contentsOf: url)
             barkPlayer?.prepareToPlay()
@@ -66,6 +66,13 @@ private final class MenuAudioPlayback: @unchecked Sendable {
 
     func stopIntroBark() { queue.async { [self] in barkPlayer?.stop() } }
 
+    /// Like Android's media stream: the bark and menu music play with the media volume
+    /// even when the ringer switch is silent, mixing with other apps' audio. No
+    /// background-audio entitlement, so everything stops when the app leaves.
+    private static func configureSession() throws {
+        try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+    }
+
     func setPlaying(_ shouldPlay: Bool, volume: Double = 0.8) {
         queue.async { [self] in setPlayingOnQueue(shouldPlay, volume: volume) }
     }
@@ -84,8 +91,7 @@ private final class MenuAudioPlayback: @unchecked Sendable {
                     logger.error("No se encontró la música del menú.")
                     return
                 }
-                // Respect silent mode and other apps' audio; no background audio entitlement.
-                try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+                try Self.configureSession()
                 let newPlayer = try AVAudioPlayer(contentsOf: url)
                 newPlayer.numberOfLoops = -1
                 newPlayer.volume = Float(min(max(volume, 0), 1))

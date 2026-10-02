@@ -19,7 +19,7 @@ Objetivo solicitado: cubrir las pantallas y comportamientos completos de Android
 
 Estilos, avatar, banner y rol favorito se guardan al elegirlos, sin confirmación adicional. Los campos de texto se guardan mientras se editan y al salir.
 
-- Inicio Bandido Games en cada arranque real: tres fotogramas originales, entrada de 420 ms, ladrido a los 620 ms, destello dorado y salida al menú a los 2,2 s. Volver desde una pantalla o reactivar la app no repite el inicio. Música del menú después de la presentación; ladrido con interruptor/volumen independiente, respeta silencio y Reducir movimiento.
+- Inicio Bandido Games en cada arranque real: tres fotogramas originales, entrada de 420 ms, ladrido a los 620 ms, destello dorado y salida al menú a los 2,2 s. Volver desde una pantalla o reactivar la app no repite el inicio. Música del menú después de la presentación; ladrido con interruptor/volumen independiente y volumen multimedia como Android (suena aunque el iPhone esté en silencio); respeta Reducir movimiento. Pantalla de arranque con el medallón de Bandido sobre #090909, igual al splash de Android.
 
 ## Diferencias pendientes: NO considerar el port terminado
 

@@ -18,7 +18,7 @@ No se necesita Firebase, GoogleService-Info.plist, cuenta de Google, App Check n
 - Jugar abre dos tarjetas que indican «Próximamente», sin simular una partida.
 - Roles, ayuda, opciones y regreso funcionan.
 - Música se silencia desde el menú y opciones, y la preferencia sobrevive al cierre.
-- El interruptor físico de silencio se respeta; la música se pausa al salir. Revisar también una interrupción de audio real.
+- Como en Android, la intro y la música usan el volumen multimedia (suenan con el interruptor de silencio activado); la música se pausa al salir. Revisar también una interrupción de audio real.
 - Texto grande y VoiceOver permiten desplazarse y llegar a todos los botones.
 - La app abre y funciona en modo avión.
 
