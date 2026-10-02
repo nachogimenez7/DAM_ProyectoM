@@ -3153,6 +3153,7 @@ private extension RoleKey {
         case .assassin: "Asesino"
         case .mercenary: "Mercenario"
         case .medic: "Médico"
+        case .spy: "Espía"
         default: "Aldeano"
         }
     }
@@ -3163,6 +3164,7 @@ private extension RoleKey {
         case .assassin: "rol_asesino_gaucho"
         case .mercenary: "rol_mercenario_gaucho"
         case .medic: "rol_medico_gaucho"
+        case .spy: "rol_espia_gaucho"
         default: "rol_aldeano_gaucho"
         }
     }
@@ -3173,6 +3175,7 @@ private extension RoleKey {
         case .mercenary: "Elegí bien a quién silenciar: durante el día no podrá hablar ni votar."
         case .detective: "Protegé tus investigaciones. Revelarte demasiado pronto puede convertirte en el próximo objetivo."
         case .medic: "Buscá a los roles valiosos y variá tus protecciones para que los Traidores no puedan anticiparte."
+        case .spy: "El investigador te verá como inocente. Participa en la elección de víctima y usa esa apariencia para proteger a los Traidores."
         default: "Escuchá las contradicciones y observá los votos. Tu información se construye durante el debate."
         }
     }
