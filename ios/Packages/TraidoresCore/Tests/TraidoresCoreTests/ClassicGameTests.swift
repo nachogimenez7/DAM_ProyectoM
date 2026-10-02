@@ -109,12 +109,13 @@ struct ClassicGameTests {
             let bots = Array(ClassicGame.defaultBotNames.prefix(count - 1))
             let game = ClassicGame(name: "Humano", seed: UInt64(count), botNames: bots)
             #expect(game.players.count == count)
-            #expect(game.players.filter { $0.role == .assassin }.count == 1)
+            #expect(game.players.filter { $0.role == .assassin }.count == (count >= 13 ? 2 : 1))
             #expect(game.players.filter { $0.role == .detective }.count == 1)
             #expect(game.players.filter { $0.role == .medic }.count == 1)
             #expect(game.players.filter { $0.role == .mercenary }.count == (count >= 7 ? 1 : 0))
             #expect(game.players.filter { $0.role == .villager }.count ==
-                    count - (3 + (count >= 7 ? 1 : 0) + (count >= 10 ? 1 : 0)))
+                    count - (3 + (count >= 13 ? 1 : 0) +
+                             (count >= 7 ? 1 : 0) + (count >= 10 ? 1 : 0)))
             #expect(try ClassicSave.decode(ClassicSave.encode(game)) == game)
         }
     }

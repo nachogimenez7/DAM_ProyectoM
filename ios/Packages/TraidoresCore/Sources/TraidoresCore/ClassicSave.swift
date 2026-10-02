@@ -15,24 +15,32 @@ public enum ClassicSave {
         let phases: [GamePhase] = [.assignment, .assassinNight, .mercenaryNight, .detectiveNight, .medicNight,
                                    .dawn, .discussion, .voting, .voteCount, .tieVote, .result]
         let playerCount = game.players.count
-        var expectedRoles = ClassicGame.roles(for: playerCount)
-        if let trainingRole = game.trainingRoleConfig,
-           ClassicGame.supportedTrainingRoles.contains(trainingRole),
-           !expectedRoles.contains(trainingRole),
-           let villager = expectedRoles.firstIndex(of: .villager) {
-            expectedRoles[villager] = trainingRole
+        let currentRoles = ClassicGame.roles(for: playerCount)
+        // Older decks may lack the second assassin (13+) or the spy (10+).
+        // Apply training after each historical deck is built: training can itself
+        // introduce a spy into a deck that predates the default spy slot.
+        let roleDecks: [[RoleKey]] = [false, true].flatMap { oldAssassinCount in
+            [false, true].map { oldSpyCount in
+                var deck = currentRoles
+                if oldAssassinCount && playerCount >= 13,
+                   let extra = deck.lastIndex(of: .assassin) { deck[extra] = .villager }
+                if oldSpyCount && playerCount >= 10,
+                   let spy = deck.firstIndex(of: .spy) { deck[spy] = .villager }
+                if let trainingRole = game.trainingRoleConfig,
+                   ClassicGame.supportedTrainingRoles.contains(trainingRole),
+                   !deck.contains(trainingRole),
+                   let villager = deck.firstIndex(of: .villager) {
+                    deck[villager] = trainingRole
+                }
+                return deck
+            }
         }
-        // Saves created before the Espía joined the 10+ player deck contain
-        // one additional villager. Keep those local games loadable.
-        var previousRoles = expectedRoles
-        if let spy = previousRoles.firstIndex(of: .spy) { previousRoles[spy] = .villager }
         let savedRoles = game.players.map(\.role.rawValue).sorted()
         func valid(_ id: Int) -> Bool { (0..<playerCount).contains(id) }
         guard envelope.version == 1,
               (ClassicGame.minimumPlayers...ClassicGame.maximumPlayers).contains(playerCount),
               game.players.map(\.id) == Array(0..<playerCount),
-              (savedRoles == expectedRoles.map(\.rawValue).sorted() ||
-               savedRoles == previousRoles.map(\.rawValue).sorted()),
+              roleDecks.contains(where: { savedRoles == $0.map(\.rawValue).sorted() }),
               game.players.allSatisfy({ !$0.name.isEmpty && $0.name.count <= 18 }),
               phases.contains(game.phase), game.round > 0, game.phaseIndex >= 0,
               game.winner == ClassicGame.winner(for: game.players),

@@ -126,6 +126,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public static func roles(for playerCount: Int) -> [RoleKey] {
         let count = min(max(playerCount, minimumPlayers), maximumPlayers)
         var special: [RoleKey] = [.assassin, .detective, .medic]
+        // Android's recommended local composition adds a second assassin at 13.
+        if count >= 13 { special.append(.assassin) }
         if count >= 7 { special.append(.mercenary) }
         if count >= 10 { special.append(.spy) }
         return special + Array(repeating: .villager, count: count - special.count)
@@ -551,7 +553,7 @@ internal struct ClassicBotPerception: Equatable {
             if role == .detective, let read = reads.last(where: { $0.target == target }) {
                 return read.suspicious ? 100 : -100
             }
-            // The single assassin can sow doubt about the detective, using public claims only.
+            // Assassins can sow doubt about the detective, using public claims only.
             if role == .assassin && declaredDetectives.contains(target) { return 10 }
             return suspicion[target] ?? 0
         }
