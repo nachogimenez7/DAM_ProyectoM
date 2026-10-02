@@ -86,7 +86,9 @@ private struct BandidoIntroView: View {
                 }
                 withAnimation(.spring(duration: 0.42, bounce: 0.12)) { logoOpacity = 1; scale = 1 }
                 try await wait(620)
-                if preferences.effectsEnabled && scenePhase == .active {
+                // Read the live app state: `scenePhase` captured by this task still holds the
+                // launch value (.inactive), which silently skipped the bark on every launch.
+                if preferences.effectsEnabled && UIApplication.shared.applicationState != .background {
                     audio.playIntroBark(volume: preferences.effectsVolume)
                 }
                 withAnimation(.easeOut(duration: 0.115)) { scale = 1.045; offset = -24; rotation = -1.2 }
