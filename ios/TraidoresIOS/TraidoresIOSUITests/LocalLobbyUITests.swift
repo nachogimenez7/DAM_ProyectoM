@@ -145,6 +145,8 @@ final class LocalLobbyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        // The Bandido Games intro covers the menu for about two seconds.
+        XCTAssertTrue(app.buttons["menu.about"].waitForExistence(timeout: 5))
         app.buttons["menu.about"].tap()
         XCTAssertTrue(app.staticTexts["about.version"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any)["about.privacy"].exists)
@@ -163,6 +165,8 @@ final class LocalLobbyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        // The Bandido Games intro covers the menu for about two seconds.
+        XCTAssertTrue(app.buttons["menu.roles"].waitForExistence(timeout: 5))
         app.buttons["menu.roles"].tap()
         XCTAssertTrue(app.staticTexts["roles.mapTitle"].waitForExistence(timeout: 3))
         XCTAssertEqual(app.staticTexts["roles.mapTitle"].label, "Feudo de Hierro")
@@ -184,6 +188,8 @@ final class LocalLobbyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing"]
         app.launch()
+        // The Bandido Games intro covers the menu for about two seconds.
+        XCTAssertTrue(app.buttons["menu.ayuda"].waitForExistence(timeout: 5))
         app.buttons["menu.ayuda"].tap()
         XCTAssertTrue(app.buttons["help.tutorial"].waitForExistence(timeout: 3))
         app.buttons["help.section.About"].tap()
@@ -227,7 +233,7 @@ final class LocalLobbyUITests: XCTestCase {
         roleScreenshot.lifetime = .keepAlways
         add(roleScreenshot)
 
-        roleStart.tap()
+        startMatch(app, roleStart)
         XCTAssertTrue(app.staticTexts["table.phaseTitle"].waitForExistence(timeout: 3))
         let tableScreenshot = XCTAttachment(screenshot: app.screenshot())
         tableScreenshot.name = "Primera fase de juego"
@@ -276,7 +282,7 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
 
         let tableMapName = app.staticTexts["table.mapName"]
         XCTAssertTrue(tableMapName.waitForExistence(timeout: 3))
@@ -332,11 +338,12 @@ final class LocalLobbyUITests: XCTestCase {
 
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
+        skipToHumanNightTurn(app)
 
         let ownCard = app.buttons["table.player.0"]
-        XCTAssertTrue(ownCard.waitForExistence(timeout: 3))
-        XCTAssertTrue(ownCard.isHittable, "El Médico debe poder elegirse a sí mismo como en Android")
+        // The table ignores touches while the NOCHE 1 transition covers it.
+        XCTAssertTrue(waitUntilHittable(ownCard, timeout: 6), "El Médico debe poder elegirse a sí mismo como en Android")
         ownCard.tap()
 
         let primaryAction = app.buttons["table.primaryAction"]
@@ -350,7 +357,7 @@ final class LocalLobbyUITests: XCTestCase {
         if dayTransition.waitForExistence(timeout: 1) {
             XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 2))
         }
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+        XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
         let dawnAnnouncement = app.descendants(matching: .any)
             .matching(identifier: "table.dawnAnnouncement").firstMatch
         if dawnAnnouncement.exists {
@@ -358,12 +365,12 @@ final class LocalLobbyUITests: XCTestCase {
         }
 
         primaryAction.tap()
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
+        XCTAssertTrue(waitForPhase(app, containing: "VOTACIÓN"))
         let target = try XCTUnwrap((1...4)
             .map { app.buttons["table.player.\($0)"] }
             .first { $0.exists && $0.isEnabled && $0.isHittable })
         target.tap()
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
+        XCTAssertTrue(waitForPhase(app, containing: "RECUENTO"))
     }
 
     func testDetectiveReceivesPrivateInvestigationResult() throws {
@@ -372,10 +379,11 @@ final class LocalLobbyUITests: XCTestCase {
 
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
+        skipToHumanNightTurn(app)
 
         let target = app.buttons["table.player.1"]
-        XCTAssertTrue(target.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntilHittable(target, timeout: 6))
         target.tap()
         app.buttons["table.primaryAction"].tap()
 
@@ -388,7 +396,7 @@ final class LocalLobbyUITests: XCTestCase {
         if dayTransition.waitForExistence(timeout: 1) {
             XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 3))
         }
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+        XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
     }
 
     func testPublicChatKeepsNewMessagesVisible() throws {
@@ -396,10 +404,10 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
         if !roleStart.waitForNonExistence(timeout: 2) {
             XCTAssertTrue(roleStart.isHittable)
-            roleStart.tap()
+            startMatch(app, roleStart)
             XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
         }
 
@@ -431,6 +439,13 @@ final class LocalLobbyUITests: XCTestCase {
         typingScreenshot.name = "Chat escritura completa"
         typingScreenshot.lifetime = .keepAlways
         add(typingScreenshot)
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 2))
+        // A card tap while typing dismisses the keyboard without losing the draft.
+        app.buttons["table.player.1"].tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 3))
+        XCTAssertEqual(input.value as? String, "Sospecho de Mora")
+        input.tap()
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Sospecho de Mora"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["¿Qué prueba tenés contra mí? Escuchemos a los demás."].exists)
@@ -448,9 +463,9 @@ final class LocalLobbyUITests: XCTestCase {
 
             let roleStart = app.buttons["role.start"]
             XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-            roleStart.tap()
+            startMatch(app, roleStart)
             if !roleStart.waitForNonExistence(timeout: 2) {
-                roleStart.tap()
+                startMatch(app, roleStart)
                 XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
             }
 
@@ -472,7 +487,7 @@ final class LocalLobbyUITests: XCTestCase {
             if dayTransition.waitForExistence(timeout: 1) {
                 XCTAssertTrue(dayTransition.waitForNonExistence(timeout: 3))
             }
-            XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("DEBATE"))
+            XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
             let dawnAnnouncement = app.descendants(matching: .any)
                 .matching(identifier: "table.dawnAnnouncement").firstMatch
             if dawnAnnouncement.exists {
@@ -491,9 +506,9 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
         if !roleStart.waitForNonExistence(timeout: 2) {
-            roleStart.tap()
+            startMatch(app, roleStart)
             XCTAssertTrue(roleStart.waitForNonExistence(timeout: 3))
         }
         let transition = app.descendants(matching: .any)
@@ -510,7 +525,7 @@ final class LocalLobbyUITests: XCTestCase {
         if announcement.exists { XCTAssertTrue(announcement.waitForNonExistence(timeout: 6)) }
         XCTAssertTrue(app.staticTexts["table.phaseTimer"].exists)
         app.buttons["table.primaryAction"].tap()
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"))
+        XCTAssertTrue(waitForPhase(app, containing: "VOTACIÓN"))
         XCTAssertTrue(app.staticTexts["table.phaseTimer"].exists)
         let voting = XCTAttachment(screenshot: app.screenshot())
         voting.name = "Pampa votación"
@@ -518,7 +533,7 @@ final class LocalLobbyUITests: XCTestCase {
         add(voting)
         XCTAssertFalse(app.buttons["table.primaryAction"].isEnabled)
         app.buttons["table.player.2"].tap()
-        XCTAssertTrue(app.staticTexts["table.phaseTitle"].label.contains("RECUENTO"))
+        XCTAssertTrue(waitForPhase(app, containing: "RECUENTO"))
         let recount = XCTAttachment(screenshot: app.screenshot())
         recount.name = "Pampa recuento"
         recount.lifetime = .keepAlways
@@ -531,14 +546,14 @@ final class LocalLobbyUITests: XCTestCase {
 
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
 
         let transition = app.descendants(matching: .any)
             .matching(identifier: "table.dayNightTransition").firstMatch
-        XCTAssertTrue(transition.waitForExistence(timeout: 2))
+        XCTAssertTrue(transition.waitForExistence(timeout: 4))
         XCTAssertEqual(transition.label, "NOCHE 1")
-        XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["table.player.0"].isHittable)
+        XCTAssertTrue(transition.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(waitUntilHittable(app.buttons["table.player.0"], timeout: 3))
     }
 
     func testFifteenPlayerTableKeepsEveryCompanionVisibleAndUniform() throws {
@@ -557,7 +572,7 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
-        roleStart.tap()
+        startMatch(app, roleStart)
 
         var frames: [CGRect] = []
         for id in 1...14 {
@@ -572,6 +587,48 @@ final class LocalLobbyUITests: XCTestCase {
         screenshot.name = "Mesa responsive de 15 jugadores"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+    }
+
+    /// Night 1 opens on the Assassin's turn. Like Android, other roles wait ("ESPERAR")
+    /// and can skip after a few seconds ("SALTAR NOCHE"), which advances to their own turn.
+    private func skipToHumanNightTurn(_ app: XCUIApplication) {
+        // Depending on the deal the human's turn can also arrive directly.
+        let primary = app.buttons["table.primaryAction"]
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == true AND (label == 'SALTAR NOCHE' AND enabled == true OR NOT (label IN {'ESPERAR', 'CONTINUAR', ''}))"),
+            object: primary)
+        if XCTWaiter.wait(for: [ready], timeout: 12) != .completed {
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "Noche sin turno propio"; shot.lifetime = .keepAlways; add(shot)
+            XCTFail("La noche debe llegar al turno propio; botón: '\(primary.label)' habilitado=\(primary.isEnabled) tocable=\(primary.isHittable), fase: '\(app.staticTexts["table.phaseTitle"].label)'")
+        }
+        if primary.label == "SALTAR NOCHE" { primary.tap() }
+    }
+
+    /// Taps EMPEZAR once it accepts touches and checks that the match really left the
+    /// role reveal; retries once if SwiftUI swallowed the tap during the panel transition.
+    private func startMatch(_ app: XCUIApplication, _ roleStart: XCUIElement) {
+        XCTAssertTrue(waitUntilHittable(roleStart, timeout: 8))
+        for _ in 0..<2 {
+            roleStart.tap()
+            if roleStart.waitForNonExistence(timeout: 3) { return }
+        }
+        XCTFail("EMPEZAR no inició la partida")
+    }
+
+    /// Phase changes can land a moment after the tap (animations, bot resolution).
+    private func waitForPhase(_ app: XCUIApplication, containing text: String, timeout: TimeInterval = 5) -> Bool {
+        let phase = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", text),
+                                              object: app.staticTexts["table.phaseTitle"])
+        return XCTWaiter.wait(for: [phase], timeout: timeout) == .completed
+    }
+
+    /// Existence is not enough on the table: cards stay in the hierarchy while a
+    /// transition hides them, so wait until they can actually receive a tap.
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"),
+                                                 object: element)
+        return XCTWaiter.wait(for: [hittable], timeout: timeout) == .completed
     }
 
     private func launchLobby(extraArguments: [String] = []) -> XCUIApplication {

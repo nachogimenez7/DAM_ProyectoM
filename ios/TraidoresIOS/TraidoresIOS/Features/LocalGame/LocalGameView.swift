@@ -912,6 +912,7 @@ private struct LocalRoleAssignmentView: View {
     let onExit: () -> Void
 
     @State private var stage = AssignmentStage.dealing
+    @State private var roleRevealSettled = false
     @State private var tableOpacity = 0.0
     @State private var vignetteOpacity = 0.0
     @State private var candleOpacity = 0.0
@@ -1109,6 +1110,10 @@ private struct LocalRoleAssignmentView: View {
             stage = .role
             backOpacity = 1
         }
+        // A tap during the panel's scale-in transition can be swallowed by SwiftUI;
+        // only accept EMPEZAR once the reveal has settled.
+        try? await Task.sleep(for: .seconds(0.3))
+        roleRevealSettled = true
     }
 
     private var dealingStage: some View {
@@ -1253,6 +1258,7 @@ private struct LocalRoleAssignmentView: View {
             if remainingReading == 0 {
                 Button("EMPEZAR") { beginMatch() }
                     .buttonStyle(TraidoresButtonStyle(prominent: true)).frame(maxWidth: 190)
+                    .allowsHitTesting(roleRevealSettled)
                     .accessibilityIdentifier("role.start")
             } else {
                 Text("EMPEZAR (\(remainingReading))").font(.caption.bold())
@@ -1466,6 +1472,7 @@ private struct DayNightTransitionView: View {
     let transition: DayNightTransition
     let duration: TimeInterval
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progress: CGFloat = 0
     @State private var revealBackground = false
     @State private var showTitle = false
@@ -1512,11 +1519,12 @@ private struct DayNightTransitionView: View {
                     .resizable().scaledToFit()
                     .frame(width: artworkSize, height: artworkSize)
                     .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
+                    // Reduce Motion: no arc travel; the artwork cross-fades in place.
                     .modifier(QuadraticTransitionMotion(
                         progress: progress,
                         start: leavingStart,
-                        control: leavingControl,
-                        end: leavingEnd
+                        control: reduceMotion ? leavingStart : leavingControl,
+                        end: reduceMotion ? leavingStart : leavingEnd
                     ))
                     .opacity(1 - progress)
 
@@ -1526,8 +1534,8 @@ private struct DayNightTransitionView: View {
                     .shadow(color: .black.opacity(0.68), radius: 18, y: 8)
                     .modifier(QuadraticTransitionMotion(
                         progress: progress,
-                        start: enteringStart,
-                        control: enteringControl,
+                        start: reduceMotion ? enteringEnd : enteringStart,
+                        control: reduceMotion ? enteringEnd : enteringControl,
                         end: enteringEnd
                     ))
                     .opacity(progress)
@@ -1537,7 +1545,7 @@ private struct DayNightTransitionView: View {
                     .tracking(2)
                     .foregroundStyle(TraidoresTheme.gold)
                     .shadow(color: .black, radius: 10, y: 4)
-                    .scaleEffect(showTitle ? 1 : 0.86)
+                    .scaleEffect(showTitle || reduceMotion ? 1 : 0.86)
                     .opacity(showTitle ? 1 : 0)
             }
             .frame(width: width, height: height)
@@ -1576,6 +1584,7 @@ private struct LocalTableView: View {
     }
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selected: Int?
     @State private var showingRole = false
     @State private var showingChat = false
@@ -1602,6 +1611,7 @@ private struct LocalTableView: View {
         if let game = store.game {
             ZStack {
                 tableBackground(game)
+                    .onTapGesture { chatInputFocused = false }
                 GeometryReader { geometry in
                     let availableSideWidth = min(
                         max(Int((geometry.size.width - 8 - 8 - 220) / 2), 54),
@@ -1661,6 +1671,12 @@ private struct LocalTableView: View {
                         }
                     }
                 }
+                // Gate the controls from the same period key used by the map.
+                // This applies on the first render, before onChange queues the
+                // animation, so night actions cannot appear over the day map.
+                .opacity(tableControlsHidden(game) ? 0 : 1)
+                .allowsHitTesting(!tableControlsHidden(game))
+                .transaction { $0.animation = nil }
 
                 if showingRole {
                     roleOverlay(game.human.role)
@@ -1746,6 +1762,14 @@ private struct LocalTableView: View {
                 Button("Volver al menú") { dismissMatch() }
             }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
+            // Native haptics, absent on the Android build: picking a target, each new
+            // period, the last seconds of a timer and the end of the match.
+            .sensoryFeedback(.selection, trigger: selected) { _, new in new != nil }
+            .sensoryFeedback(.impact(weight: .medium), trigger: activeTransition?.key) { _, new in new != nil }
+            .sensoryFeedback(.impact(weight: .light), trigger: remainingNightSeconds ?? remainingPhaseSeconds) { _, new in
+                (1...5).contains(new ?? 0)
+            }
+            .sensoryFeedback(.impact(weight: .heavy, intensity: 1), trigger: game.winner != nil) { _, ended in ended }
         }
     }
 
@@ -1774,6 +1798,12 @@ private struct LocalTableView: View {
 
     private func transitionSpec(for game: ClassicGame) -> DayNightTransition {
         .init(period: game.isNight ? .night : .day, round: game.round, map: game.map)
+    }
+
+    private func tableControlsHidden(_ game: ClassicGame) -> Bool {
+        guard game.phase != .assignment else { return false }
+        return transitionCurtain || activeTransition != nil || pendingTransition != nil
+            || lastTransitionKey != transitionSpec(for: game).key
     }
 
     private func queueTransition(for game: ClassicGame) {
@@ -1887,7 +1917,8 @@ private struct LocalTableView: View {
 
     private func transitionDuration(for game: ClassicGame) -> TimeInterval {
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-ui-testing-transition") { return 1.5 }
+        // Long enough to survive XCTest waiting for the app to go idle after a tap.
+        if arguments.contains("-ui-testing-transition") { return 4 }
         if arguments.contains("-ui-testing") { return 0.08 }
         return TimeInterval(game.effectiveTiming.transitionSeconds)
     }
@@ -1911,10 +1942,13 @@ private struct LocalTableView: View {
 
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Button { leaving = true } label: {
+                Button {
+                    if !dismissChatKeyboard() { leaving = true }
+                } label: {
                     Image(systemName: "chevron.left").font(.caption.bold()).frame(width: 30, height: 30)
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("Salir de la partida")
                 VStack(alignment: .leading, spacing: 1) {
@@ -1929,31 +1963,72 @@ private struct LocalTableView: View {
                 }
                 Spacer(minLength: 2)
                 if let seconds = game.isNight ? remainingNightSeconds : remainingPhaseSeconds {
-                    Text("\(seconds)")
-                        .font(.caption.bold()).monospacedDigit()
-                        .accessibilityIdentifier("table.phaseTimer")
-                        .frame(minWidth: 30, minHeight: 30)
-                        .background(TraidoresTheme.ink.opacity(0.84),
-                                    in: RoundedRectangle(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                    timerBadge(seconds)
                 }
-                Button { showingRole = true } label: {
+                Button {
+                    if !dismissChatKeyboard() { showingRole = true }
+                } label: {
                     Image(systemName: "person.text.rectangle").font(.caption).frame(width: 30, height: 30)
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .accessibilityLabel("Ver mi rol")
             }
             .frame(height: rowHeight).padding(.horizontal, 6)
-            Rectangle().fill(TraidoresTheme.border.opacity(0.82)).frame(height: 1)
+            timerBar(game)
             Text(instructions(game))
                 .font(.caption2.weight(.semibold)).lineLimit(2).minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, minHeight: subtitleHeight, alignment: .leading)
                 .padding(.horizontal, 7)
         }
         .frame(height: headerHeight)
+        .contentShape(Rectangle())
+        .onTapGesture { chatInputFocused = false }
         .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+    }
+
+    /// Countdown badge: rolling digits, red and pulsing during the last five seconds.
+    private func timerBadge(_ seconds: Int) -> some View {
+        let urgent = seconds <= 5
+        let tone: Color = urgent ? Color(hex: "#FF8A80") : TraidoresTheme.text
+        let pulse: CGFloat = urgent && !reduceMotion && seconds % 2 == 0 ? 1.12 : 1
+        return Text("\(seconds)")
+            .font(.caption.bold()).monospacedDigit()
+            .contentTransition(.numericText(countsDown: true))
+            .foregroundStyle(tone)
+            .scaleEffect(pulse)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: seconds)
+            .accessibilityIdentifier("table.phaseTimer")
+            .accessibilityLabel("\(seconds) segundos")
+            .frame(minWidth: 30, minHeight: 30)
+            .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7)
+                .stroke((urgent ? Color(hex: "#FF8A80") : TraidoresTheme.gold).opacity(0.75)))
+    }
+
+    /// Draining bar under the header, like Android's phase progress line.
+    private func timerBar(_ game: ClassicGame) -> some View {
+        let remaining = game.isNight ? remainingNightSeconds : remainingPhaseSeconds
+        let total = game.isNight ? game.effectiveTiming.nightSeconds
+            : game.phase == .discussion ? game.effectiveTiming.discussionSeconds : game.effectiveTiming.votingSeconds
+        // Between phases `remaining` is briefly nil: treat it as a full, hidden bar so a
+        // new phase never animates up from empty (only real decreases animate).
+        let fraction = remaining.map { CGFloat($0) / CGFloat(max(total, 1)) } ?? 1
+        let urgent = (remaining ?? 99) <= 5
+        return ZStack(alignment: .leading) {
+            Rectangle().fill(TraidoresTheme.border.opacity(0.82))
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(urgent ? Color(hex: "#FF8A80") : phaseAccent(game.phase))
+                    .frame(width: geometry.size.width * fraction)
+                    .opacity(remaining == nil ? 0 : 1)
+                    .animation(reduceMotion ? nil : .linear(duration: 1), value: fraction)
+            }
+        }
+        .frame(height: remaining == nil ? 1 : 3)
+        .accessibilityHidden(true)
     }
 
     private func sidePlayers(_ game: ClassicGame) -> (left: [ClassicPlayer], right: [ClassicPlayer]) {
@@ -1992,6 +2067,7 @@ private struct LocalTableView: View {
     ) -> some View {
         let actionable = game.legalTargets(for: 0).contains(player.id)
         return Button {
+            if dismissChatKeyboard() { return }
             guard actionable else { return }
             selected = player.id
             if game.phase == .voting || game.phase == .tieVote {
@@ -2059,14 +2135,19 @@ private struct LocalTableView: View {
                 if selected == player.id {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(TraidoresTheme.gold, lineWidth: 2)
+                        .shadow(color: TraidoresTheme.gold.opacity(0.7), radius: 5)
                         .frame(width: CGFloat(metrics.cardWidth + 4), height: CGFloat(metrics.cardHeight + 4))
                         .frame(maxHeight: .infinity, alignment: .top)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 1.25).combined(with: .opacity))
                 }
             }
+            .scaleEffect(selected == player.id && !reduceMotion ? 1.04 : 1)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.6),
+                       value: selected == player.id)
         }
         // A disabled Button dims its entire label in SwiftUI. Living players
         // must remain fully visible even when this phase has no target action.
-        .buttonStyle(.plain).allowsHitTesting(actionable)
+        .buttonStyle(.plain).allowsHitTesting(actionable || chatInputFocused)
         .opacity(player.alive ? 1 : 0.72)
         .accessibilityIdentifier("table.player.\(player.id)")
     }
@@ -2165,6 +2246,8 @@ private struct LocalTableView: View {
         return Text("PARTIDA · \(summary)")
             .font(.system(size: 9, weight: .bold)).multilineTextAlignment(.center)
             .frame(maxWidth: .infinity).padding(.horizontal, 5).padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { chatInputFocused = false }
             .background(integrated ? Color.clear : TraidoresTheme.panel.opacity(0.95),
                         in: RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6)
@@ -2186,6 +2269,8 @@ private struct LocalTableView: View {
                 .lineLimit(2).minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 10).padding(.horizontal, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { chatInputFocused = false }
         .background(integrated ? Color.clear : game.isNight ? TraidoresTheme.ink.opacity(0.96)
                                  : TraidoresTheme.panel.opacity(0.95),
                     in: RoundedRectangle(cornerRadius: 7))
@@ -2217,6 +2302,8 @@ private struct LocalTableView: View {
                 .accessibilityLabel("Ampliar chat")
                 .accessibilityIdentifier("chat.expand")
             }
+            .contentShape(Rectangle())
+            .onTapGesture { chatInputFocused = false }
             HStack(spacing: 5) {
                 Rectangle().fill(accent.opacity(0.5)).frame(height: 1)
                 Text("◆").font(.system(size: 8)).foregroundStyle(accent)
@@ -2234,6 +2321,8 @@ private struct LocalTableView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .onAppear { proxy.scrollTo("table.chatBottom", anchor: .bottom) }
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture { chatInputFocused = false }
                 .onChange(of: visibleMessages.last?.id) { _, _ in
                     withAnimation(.easeOut(duration: 0.18)) {
                         proxy.scrollTo("table.chatBottom", anchor: .bottom)
@@ -2380,6 +2469,7 @@ private struct LocalTableView: View {
         return VStack(spacing: 5) {
             HStack(spacing: 8) {
                 Button {
+                    if dismissChatKeyboard() { return }
                     if canChooseSelf { selected = 0 }
                     else { humanCardRevealed.toggle() }
                 } label: {
@@ -2423,14 +2513,16 @@ private struct LocalTableView: View {
             }
 
             HStack(spacing: 5) {
-                Button(humanCardRevealed ? "OCULTAR CARTA" : "VER CARTA") { humanCardRevealed.toggle() }
+                Button(humanCardRevealed ? "OCULTAR CARTA" : "VER CARTA") {
+                    if !dismissChatKeyboard() { humanCardRevealed.toggle() }
+                }
                     .font(.system(size: 10, weight: .bold)).tracking(0.5)
                     .foregroundStyle(TraidoresTheme.text)
                     .frame(maxWidth: .infinity, minHeight: 32)
                     .background(TraidoresTheme.ink.opacity(0.88), in: RoundedRectangle(cornerRadius: 7))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.border))
                 Button {
-                    performPrimaryAction(game)
+                    if !dismissChatKeyboard() { performPrimaryAction(game) }
                 } label: {
                     Text(actionTitle(game))
                         .id(actionTitle(game))
@@ -2454,6 +2546,7 @@ private struct LocalTableView: View {
     }
 
     private func performPrimaryAction(_ game: ClassicGame) {
+        chatInputFocused = false
         if game.isNight && game.legalTargets(for: 0).isEmpty {
             guard nightSkipReady else { return }
             nightSkipReady = false
@@ -2666,6 +2759,13 @@ private struct LocalTableView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
     }
 
+    @discardableResult
+    private func dismissChatKeyboard() -> Bool {
+        guard chatInputFocused else { return false }
+        chatInputFocused = false
+        return true
+    }
+
     private func openChat(focus: Bool) {
         showingChat = true
         readingOlderChat = false
@@ -2734,6 +2834,8 @@ private struct LocalTableView: View {
                 .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
                     if value.translation.height > 24 { readingOlderChat = true }
                 })
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture { chatInputFocused = false }
                 .onAppear { proxy.scrollTo("chat.bottom", anchor: .bottom) }
                 .onChange(of: visibleMessages.last?.id) { _, _ in
                     if !readingOlderChat {

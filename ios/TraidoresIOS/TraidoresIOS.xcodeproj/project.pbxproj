@@ -156,6 +156,16 @@
 			"path" = "LocalLobbyUITests.swift";
 			"sourceTree" = "<group>";
 		};
+		"A10000000000000000000011" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "MenuAccessibilityUITests.swift";
+			"sourceTree" = "<group>";
+		};
+		"A10000000000000000000012" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "A10000000000000000000011";
+		};
 		"A10000000000000000000002" = {
 			"isa" = "PBXFileReference";
 			"explicitFileType" = "wrapper.cfbundle";
@@ -176,7 +186,7 @@
 		};
 		"A10000000000000000000004" = {
 			"isa" = "PBXGroup";
-			"children" = ("A10000000000000000000001");
+			"children" = ("A10000000000000000000001", "A10000000000000000000011");
 			"path" = "TraidoresIOSUITests";
 			"sourceTree" = "<group>";
 		};
@@ -244,7 +254,7 @@
 		"A10000000000000000000005" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = 2147483647;
-			"files" = ("A10000000000000000000003");
+			"files" = ("A10000000000000000000003", "A10000000000000000000012");
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
 		"A10000000000000000000006" = {
