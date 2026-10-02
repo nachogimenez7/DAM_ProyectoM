@@ -119,34 +119,35 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         self.random = random
         let villagers = players.filter { $0.role == .villager }.count
         let mercenary = players.contains { $0.role == .mercenary } ? "1 Mercenario, " : ""
-        append("\(map.title): 1 Asesino, \(mercenary)1 Comisario, 1 Médico y \(villagers) Aldeanos.")
+        let spy = players.contains { $0.role == .spy } ? "1 Espía, " : ""
+        append("\(map.title): 1 Asesino, \(mercenary)\(spy)1 Comisario, 1 Médico y \(villagers) Aldeanos.")
     }
 
     public static func roles(for playerCount: Int) -> [RoleKey] {
         let count = min(max(playerCount, minimumPlayers), maximumPlayers)
-        let special: [RoleKey] = count >= 7
-            ? [.assassin, .mercenary, .detective, .medic]
-            : [.assassin, .detective, .medic]
+        var special: [RoleKey] = [.assassin, .detective, .medic]
+        if count >= 7 { special.append(.mercenary) }
+        if count >= 10 { special.append(.spy) }
         return special + Array(repeating: .villager, count: count - special.count)
     }
 
     public static let supportedTrainingRoles: [RoleKey] =
-        [.villager, .detective, .medic, .assassin, .mercenary]
+        [.villager, .detective, .medic, .assassin, .mercenary, .spy]
 
     /// Android GameRules.winnerFor for the roles currently supported by the local port.
     public static func winner(for players: [ClassicPlayer]) -> RoleTeam? {
         let alive = players.filter(\.alive)
         guard !alive.isEmpty else { return nil }
-        guard alive.contains(where: { $0.role == .assassin }) else { return .town }
-        let traitors = alive.filter { $0.role == .assassin || $0.role == .mercenary }.count
+        guard alive.contains(where: { $0.role == .assassin || $0.role == .spy }) else { return .town }
+        let traitors = alive.filter { [.assassin, .mercenary, .spy].contains($0.role) }.count
         return traitors >= alive.count - traitors ? .traitors : nil
     }
 
     public func legalTargets(for actor: Int) -> [Int] {
         guard winner == nil, let player = living.first(where: { $0.id == actor }) else { return [] }
         switch phase {
-        case .assassinNight where player.role == .assassin:
-            return living.filter { $0.id != actor && $0.role != .mercenary && $0.role != .assassin }
+        case .assassinNight where player.role == .assassin || player.role == .spy:
+            return living.filter { $0.id != actor && ![.assassin, .mercenary, .spy].contains($0.role) }
                 .filter { !(actor != 0 && testOptions.botsNeverKillHuman && $0.id == 0) }
                 .map(\.id)
         case .mercenaryNight where player.role == .mercenary,
@@ -393,8 +394,15 @@ public struct ClassicGame: Codable, Equatable, Sendable {
 
     private mutating func resolveBotNight() {
         guard isNight else { return }
+        if phase == .assassinNight {
+            // Android collects a vote from every living killer. A human choice
+            // coordinates the bot killers' votes in its local resolution path.
+            if !living.contains(where: { $0.id == 0 && [.assassin, .spy].contains($0.role) }) {
+                resolveKillVotes(humanTarget: nil)
+            }
+            return
+        }
         let role: RoleKey = switch phase {
-        case .assassinNight: .assassin
         case .mercenaryNight: .mercenary
         case .detectiveNight: .detective
         default: .medic
@@ -407,7 +415,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
 
     private mutating func performNightAction(actor: Int, target: Int) {
         switch phase {
-        case .assassinNight: nightTarget = target
+        case .assassinNight: resolveKillVotes(humanTarget: target)
         case .mercenaryNight: silencedPlayer = target
         case .detectiveNight:
             investigations.append(.init(round: round, investigator: actor, target: target,
@@ -415,6 +423,21 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         case .medicNight: protectedPlayer = target
         default: break
         }
+    }
+
+    private mutating func resolveKillVotes(humanTarget: Int?) {
+        let killers = living.filter { [.assassin, .spy].contains($0.role) }
+        let choices = killers.compactMap { killer -> Int? in
+            if killer.id == 0 { return humanTarget }
+            if let humanTarget, legalTargets(for: killer.id).contains(humanTarget) {
+                return humanTarget
+            }
+            return botChoice(actor: killer.id)
+        }
+        let counts = Dictionary(grouping: choices, by: { $0 }).mapValues(\.count)
+        let highest = counts.values.max() ?? 0
+        let tied = counts.keys.filter { counts[$0] == highest }.sorted()
+        nightTarget = tied.randomElement(using: &random)
     }
 
     private mutating func declare(_ read: Investigation) {

@@ -22,11 +22,17 @@ public enum ClassicSave {
            let villager = expectedRoles.firstIndex(of: .villager) {
             expectedRoles[villager] = trainingRole
         }
+        // Saves created before the Espía joined the 10+ player deck contain
+        // one additional villager. Keep those local games loadable.
+        var previousRoles = expectedRoles
+        if let spy = previousRoles.firstIndex(of: .spy) { previousRoles[spy] = .villager }
+        let savedRoles = game.players.map(\.role.rawValue).sorted()
         func valid(_ id: Int) -> Bool { (0..<playerCount).contains(id) }
         guard envelope.version == 1,
               (ClassicGame.minimumPlayers...ClassicGame.maximumPlayers).contains(playerCount),
               game.players.map(\.id) == Array(0..<playerCount),
-              game.players.map({ $0.role.rawValue }).sorted() == expectedRoles.map(\.rawValue).sorted(),
+              (savedRoles == expectedRoles.map(\.rawValue).sorted() ||
+               savedRoles == previousRoles.map(\.rawValue).sorted()),
               game.players.allSatisfy({ !$0.name.isEmpty && $0.name.count <= 18 }),
               phases.contains(game.phase), game.round > 0, game.phaseIndex >= 0,
               game.winner == ClassicGame.winner(for: game.players),
