@@ -1469,6 +1469,10 @@ private struct QuadraticTransitionMotion: AnimatableModifier {
     }
 }
 
+/// Same choreography as Android's `DayNightTransitionAnimator` (base 2,200 ms, scaled to
+/// the configured duration). Android positions the sun and moon by their top-left corner;
+/// the points below are converted to centers so the moon lands exactly on the moon painted
+/// in the night map and the leaving artwork fully exits the screen.
 private struct DayNightTransitionView: View {
     let transition: DayNightTransition
     let duration: TimeInterval
@@ -1476,35 +1480,41 @@ private struct DayNightTransitionView: View {
     @Environment(\.reduceAnimations) private var reduceMotion
     @State private var progress: CGFloat = 0
     @State private var revealBackground = false
-    @State private var showTitle = false
+    @State private var enteringOpacity = 0.0
+    @State private var leavingOpacity = 1.0
+    @State private var titleOpacity = 0.0
+    @State private var titleScale: CGFloat = 0.86
+
+    /// Android coordinates are top-left corners; add half the size for a center.
+    private static func center(_ x: CGFloat, _ y: CGFloat, _ size: CGFloat) -> CGPoint {
+        CGPoint(x: x + size / 2, y: y + size / 2)
+    }
+
+    private static let sunSize: CGFloat = 116
+    private static let moonSize: CGFloat = 110
 
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
             let height = geometry.size.height
-            let artworkSize = min(max(width * 0.35, 112), 170)
-            let lowerY = height + artworkSize * 0.12
-            let enteringStart = transition.period == .night
-                ? CGPoint(x: -artworkSize, y: lowerY)
-                : CGPoint(x: width + artworkSize * 0.15, y: lowerY)
-            let enteringControl = transition.period == .night
-                ? CGPoint(x: width * 0.05, y: height * 0.42)
-                : CGPoint(x: width * 0.88, y: height * 0.42)
-            let enteringEnd = CGPoint(
-                x: width * (transition.period == .night ? 0.20 : 0.70),
-                y: height * 0.14
-            )
-            let leavingStart = CGPoint(
-                x: width * (transition.period == .night ? 0.70 : 0.20),
-                y: height * 0.14
-            )
-            let leavingControl = CGPoint(
-                x: width * (transition.period == .night ? 0.90 : 0.05),
-                y: height * 0.48
-            )
-            let leavingEnd = transition.period == .night
-                ? CGPoint(x: width + artworkSize * 0.15, y: lowerY)
-                : CGPoint(x: -artworkSize, y: lowerY)
+            let night = transition.period == .night
+            let sun = Self.sunSize, moon = Self.moonSize
+            let topY = height * 0.10
+            let lowerY = height + max(sun, moon) * 0.12
+            let sunTop = Self.center(width * 0.70 - sun / 2, topY, sun)
+            let moonTop = Self.center(width * 0.20 - moon / 2, topY, moon)
+            let leavingSize = night ? sun : moon
+            let enteringSize = night ? moon : sun
+            let leavingStart = night ? sunTop : moonTop
+            let leavingControl = night ? Self.center(width * 0.90, height * 0.48, sun)
+                                       : Self.center(width * 0.05, height * 0.48, moon)
+            let leavingEnd = night ? Self.center(width + sun * 0.15, lowerY, sun)
+                                   : Self.center(-moon, lowerY, moon)
+            let enteringStart = night ? Self.center(-moon, lowerY, moon)
+                                      : Self.center(width + sun * 0.15, lowerY, sun)
+            let enteringControl = night ? Self.center(width * 0.05, height * 0.42, moon)
+                                        : Self.center(width * 0.88, height * 0.42, sun)
+            let enteringEnd = night ? moonTop : sunTop
 
             ZStack {
                 Image(transition.previousBackground)
@@ -1514,40 +1524,38 @@ private struct DayNightTransitionView: View {
                     .resizable().scaledToFill()
                     .frame(width: width, height: height).clipped()
                     .opacity(revealBackground ? 1 : 0)
-                Color.black.opacity(transition.period == .night ? 0.48 : 0.26)
+                Color.black.opacity(night ? 0.48 : 0.26)
 
                 Image(transition.leavingArtwork)
                     .resizable().scaledToFit()
-                    .frame(width: artworkSize, height: artworkSize)
-                    .shadow(color: .black.opacity(0.6), radius: 18, y: 8)
-                    // Reduce Motion: no arc travel; the artwork cross-fades in place.
+                    .frame(width: leavingSize, height: leavingSize)
+                    // Reduce animations: no arc travel; the artwork fades in place.
                     .modifier(QuadraticTransitionMotion(
                         progress: progress,
                         start: leavingStart,
                         control: reduceMotion ? leavingStart : leavingControl,
                         end: reduceMotion ? leavingStart : leavingEnd
                     ))
-                    .opacity(1 - progress)
+                    .opacity(leavingOpacity)
 
                 Image(transition.artwork)
                     .resizable().scaledToFit()
-                    .frame(width: artworkSize, height: artworkSize)
-                    .shadow(color: .black.opacity(0.68), radius: 18, y: 8)
+                    .frame(width: enteringSize, height: enteringSize)
                     .modifier(QuadraticTransitionMotion(
                         progress: progress,
                         start: reduceMotion ? enteringEnd : enteringStart,
                         control: reduceMotion ? enteringEnd : enteringControl,
                         end: enteringEnd
                     ))
-                    .opacity(progress)
+                    .opacity(enteringOpacity)
 
                 Text(transition.title)
                     .font(TraidoresTheme.title(38))
                     .tracking(2)
                     .foregroundStyle(TraidoresTheme.gold)
                     .shadow(color: .black, radius: 10, y: 4)
-                    .scaleEffect(showTitle || reduceMotion ? 1 : 0.86)
-                    .opacity(showTitle ? 1 : 0)
+                    .scaleEffect(reduceMotion ? 1 : titleScale)
+                    .opacity(titleOpacity)
             }
             .frame(width: width, height: height)
         }
@@ -1556,21 +1564,25 @@ private struct DayNightTransitionView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(transition.title)
         .accessibilityIdentifier("table.dayNightTransition")
-        .task {
-            let movementDuration = max(duration * 0.82, 0.05)
-            withAnimation(.easeInOut(duration: movementDuration)) { progress = 1 }
-            withAnimation(.easeInOut(duration: max(duration * 0.66, 0.05))) {
-                revealBackground = true
-            }
-            let titleDelay = UInt64(max(duration * 0.19, 0.01) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: titleDelay)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: max(duration * 0.19, 0.05))) { showTitle = true }
-            let titleHold = UInt64(max(duration * 0.48, 0.01) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: titleHold)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: max(duration * 0.14, 0.05))) { showTitle = false }
-        }
+        .task { await play() }
+    }
+
+    /// Android timeline in ms over a 2,200 ms base: arcs 0–1,800; map cross-fade 0–1,450;
+    /// entering artwork fades in 120–680; leaving fades out 1,180–1,700; title in 480–900,
+    /// out 1,600–1,960.
+    private func play() async {
+        let scale = max(duration, 0.05) / 2.2
+        func seconds(_ ms: Double) -> Double { ms / 1_000 * scale }
+        let curve = { (ms: Double) in Animation.easeInOut(duration: seconds(ms)) }
+
+        withAnimation(curve(1_800)) { progress = 1 }
+        withAnimation(curve(1_450)) { revealBackground = true }
+        withAnimation(curve(560).delay(seconds(120))) { enteringOpacity = 1 }
+        withAnimation(curve(520).delay(seconds(1_180))) { leavingOpacity = 0 }
+        withAnimation(curve(420).delay(seconds(480))) { titleOpacity = 1; titleScale = 1 }
+        try? await Task.sleep(for: .seconds(seconds(1_600)))
+        guard !Task.isCancelled else { return }
+        withAnimation(curve(360)) { titleOpacity = 0 }
     }
 }
 
@@ -1699,14 +1711,18 @@ private struct LocalTableView: View {
                 }
 
                 if transitionCurtain {
-                    Color.black.ignoresSafeArea()
+                    // Hides the next period until its transition plays. Like Android, what
+                    // stays visible (e.g. behind a private result) is the map being left,
+                    // never a black screen or a flash of the new period.
+                    curtainBackground(game)
                         .accessibilityHidden(true)
                         .zIndex(2.5)
                 }
 
                 if let activeTransition {
                     dayNightTransitionOverlay(activeTransition, game: game)
-                        .transition(.opacity)
+                        // Opaque from its first frame, like Android; it only fades out.
+                        .transition(.asymmetric(insertion: .identity, removal: .opacity))
                         .zIndex(4)
                 }
 
@@ -1802,6 +1818,19 @@ private struct LocalTableView: View {
         .ignoresSafeArea().accessibilityHidden(true)
     }
 
+    /// The map of the period that is ending, dimmed like the table.
+    private func curtainBackground(_ game: ClassicGame) -> some View {
+        let spec = transitionSpec(for: game)
+        let leavingNight = lastTransitionKey == spec.key ? game.isNight : spec.period == .day
+        return GeometryReader { geometry in
+            Image(leavingNight ? game.map.nightBackgroundAsset : game.map.dayBackgroundAsset)
+                .resizable().scaledToFill()
+                .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                .overlay(Color.black.opacity(leavingNight ? 0.48 : 0.26))
+        }
+        .ignoresSafeArea()
+    }
+
     private func transitionSpec(for game: ClassicGame) -> DayNightTransition {
         .init(period: game.isNight ? .night : .day, round: game.round, map: game.map)
     }
@@ -1826,8 +1855,11 @@ private struct LocalTableView: View {
         guard privateFeedback == nil, activeTransition == nil, let spec = pendingTransition else { return }
         pendingTransition = nil
         lastTransitionKey = spec.key
-        withAnimation(.easeInOut(duration: 0.24)) { activeTransition = spec }
-        transitionCurtain = false
+        var instant = Transaction(); instant.disablesAnimations = true
+        withTransaction(instant) {
+            activeTransition = spec
+            transitionCurtain = false
+        }
         transitionTask?.cancel()
         let nanoseconds = UInt64(transitionDuration(for: game) * 1_000_000_000)
         transitionTask = Task { @MainActor in
