@@ -1232,14 +1232,15 @@ private struct LocalRoleAssignmentView: View {
     }
 
     private func rolePreview(_ role: RoleKey) -> some View {
-        VStack(spacing: 7) {
+        let map = store.game?.map ?? .pampa
+        return VStack(spacing: 7) {
             Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
-            Text(role.classicTitle.uppercased()).font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
+            Text(role.classicTitle(on: map).uppercased()).font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
             Text([RoleKey.assassin, .mercenary, .spy].contains(role) ? "TRAIDORES" : "PUEBLO")
                 .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
             Divider().overlay(TraidoresTheme.border)
             HStack(alignment: .top, spacing: 12) {
-                Image(role.classicImage).resizable().scaledToFill()
+                Image(role.classicImage(on: map)).resizable().scaledToFill()
                     .frame(width: 100, height: 150).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.gold))
@@ -1295,7 +1296,7 @@ private struct LocalRoleAssignmentView: View {
                 HStack(spacing: 12) {
                     ForEach(teammates) { teammate in
                         VStack(spacing: 3) {
-                            Image(teammate.role.classicImage)
+                            Image(teammate.role.classicImage(on: game.map))
                                 .resizable().scaledToFill()
                                 .frame(width: teammates.count > 2 ? 68 : 92,
                                        height: teammates.count > 2 ? 96 : 124)
@@ -1303,7 +1304,7 @@ private struct LocalRoleAssignmentView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.gold))
                             Text(teammate.name).font(.caption.bold()).lineLimit(1)
-                            Text(teammate.role.classicTitle.uppercased())
+                            Text(teammate.role.classicTitle(on: game.map).uppercased())
                                 .font(.system(size: 10)).foregroundStyle(TraidoresTheme.secondary)
                         }
                     }
@@ -2158,7 +2159,7 @@ private struct LocalTableView: View {
     }
 
     private func publicCardImage(_ player: ClassicPlayer, game: ClassicGame) -> String {
-        !player.alive && game.advanced.revealRolesOnDeath ? player.role.classicImage : "card_back_traidores"
+        !player.alive && game.advanced.revealRolesOnDeath ? player.role.classicImage(on: game.map) : "card_back_traidores"
     }
 
     private func playerNameColor(_ id: Int) -> Color {
@@ -2478,7 +2479,7 @@ private struct LocalTableView: View {
                     if canChooseSelf { selected = 0 }
                     else { humanCardRevealed.toggle() }
                 } label: {
-                    Image(humanCardRevealed ? game.human.role.classicImage : "card_back_traidores")
+                    Image(humanCardRevealed ? game.human.role.classicImage(on: game.map) : "card_back_traidores")
                         .resizable().scaledToFill()
                         .frame(width: 48, height: 76).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -2507,7 +2508,7 @@ private struct LocalTableView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
                             .lineLimit(1)
-                        Text(humanCardRevealed ? game.human.role.classicTitle.uppercased() : "CARTA OCULTA")
+                        Text(humanCardRevealed ? game.human.role.classicTitle(on: game.map).uppercased() : "CARTA OCULTA")
                             .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
                         Text(humanHint(game, canChooseSelf: canChooseSelf))
                             .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
@@ -3021,7 +3022,7 @@ private struct LocalTableView: View {
                 HStack {
                     Text(player.name + (player.id == 0 ? " · VOS" : ""))
                     Spacer()
-                    Text(player.role.classicTitle).foregroundStyle(TraidoresTheme.gold)
+                    Text(player.role.classicTitle(on: game.map)).foregroundStyle(TraidoresTheme.gold)
                 }
             }
             Button("VOLVER AL LOBBY") { dismissMatch() }
@@ -3033,17 +3034,18 @@ private struct LocalTableView: View {
     }
 
     private func roleOverlay(_ role: RoleKey) -> some View {
-        ZStack {
+        let map = store.game?.map ?? .pampa
+        return ZStack {
             Color.black.opacity(0.82).ignoresSafeArea()
             VStack(spacing: 7) {
                 Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
-                Text(role.classicTitle.uppercased())
+                Text(role.classicTitle(on: map).uppercased())
                     .font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
                 Text([RoleKey.assassin, .mercenary, .spy].contains(role) ? "TRAIDORES" : "PUEBLO")
                     .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Divider().overlay(TraidoresTheme.border)
                 HStack(alignment: .top, spacing: 11) {
-                    Image(role.classicImage).resizable().scaledToFill()
+                    Image(role.classicImage(on: map)).resizable().scaledToFill()
                         .frame(width: 92, height: 138).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.gold))
@@ -3107,7 +3109,7 @@ private struct LocalTableView: View {
     private func playerStatus(_ player: ClassicPlayer, game: ClassicGame) -> String {
         if player.alive { return "EN LA MESA" }
         return game.advanced.revealRolesOnDeath
-            ? "ELIMINADO · \(player.role.classicTitle.uppercased())"
+            ? "ELIMINADO · \(player.role.classicTitle(on: game.map).uppercased())"
             : "ELIMINADO"
     }
 
@@ -3147,6 +3149,14 @@ private struct LocalTableView: View {
 }
 
 private extension RoleKey {
+    /// The card and name this role has on the map (e.g. «Aldeana» with the medieval card),
+    /// taken from the Android role catalog used by the Roles screen.
+    private func guideRole(on map: GameMap) -> GuideRole? {
+        AndroidMenuReference.content.maps.first { $0.id == map.rawValue }?.roles.first { $0.id == rawValue }
+    }
+    func classicImage(on map: GameMap) -> String { guideRole(on: map)?.image ?? classicImage }
+    func classicTitle(on map: GameMap) -> String { guideRole(on: map)?.title ?? classicTitle }
+
     var classicTitle: String {
         switch self {
         case .detective: "Comisario"

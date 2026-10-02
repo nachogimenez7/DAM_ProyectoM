@@ -282,6 +282,10 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons["local.startGame"].tap()
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        let roleCard = XCTAttachment(screenshot: app.screenshot())
+        roleCard.name = "Carta del rol en Grecia"
+        roleCard.lifetime = .keepAlways
+        add(roleCard)
         startMatch(app, roleStart)
 
         let tableMapName = app.staticTexts["table.mapName"]
