@@ -19,6 +19,14 @@ Referencia Android: build `0.1.49` (`83318f3`) en emulador Pixel; capturas de lo
 | 9 | `LocalGameView.swift` concentra todo en un archivo; el compilador ya no puede inferir tipos en la cabecera sin dividirla. | Media (deuda técnica) |
 | 10 | `LocalGameStore` guarda en `UserDefaults.standard` incluso en pruebas UI. | Baja |
 
+## Pedido del usuario sobre la IA (1/10)
+
+Prioridad del rediseño de bots: **conversación normal y fluida**. Lo que más molesta (en Android) es que los bots se pregunten a sí mismos o digan cosas sin sentido; en iOS los bots repiten la misma frase todos a la vez. No portar la IA de Android tal cual: diseñar primero ritmo, turnos, a quién le habla cada bot (nunca a sí mismo), memoria de lo dicho y respuestas coherentes al humano; después implementar y probar con partidas simuladas.
+
+## Avance de roles
+
+Espía (desde 10 jugadores) y segundo Asesino (desde 13, preset recomendado de Android) en el motor y la partida; cartas y nombres según el mapa. Faltan Alcalde, Desertor y los exclusivos de mapa (Payador, Oráculo, Bufón).
+
 ## Bloques
 
 1. **Hecho:** hápticos nativos (`sensoryFeedback`: objetivo elegido, cambio de período, últimos 5 s, fin de partida), Reducir movimiento en la transición, temporizador con barra y dígitos `numericText`, anillo de selección con resorte, zonas táctiles de 44 pt.
