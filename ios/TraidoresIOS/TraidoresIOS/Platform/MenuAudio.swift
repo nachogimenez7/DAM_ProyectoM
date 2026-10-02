@@ -39,16 +39,22 @@ private final class MenuAudioPlayback: @unchecked Sendable {
     }
 
     func playIntroBark(volume: Double) {
-        let deadline = DispatchTime.now() + .milliseconds(150)
+        // On a real iPhone, activating the audio session cold at launch can take well
+        // over 150 ms, which used to drop the bark. Allow it while the intro (2.2 s) is
+        // still on screen; only skip it if it would land over the menu.
+        let deadline = DispatchTime.now() + .milliseconds(1_200)
         queue.async { [self] in
-            // Do not play a delayed bark over the menu if the audio device was slow.
-            guard DispatchTime.now() <= deadline else { return }
+            guard DispatchTime.now() <= deadline else {
+                logger.notice("Ladrido omitido: el audio tardó demasiado en estar listo.")
+                return
+            }
             playIntroBarkOnQueue(volume: volume)
         }
     }
 
     private func playIntroBarkOnQueue(volume: Double) {
         guard volume > 0 else { return }
+        if barkPlayer == nil { prepareIntroOnQueue() }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
             barkPlayer?.volume = Float(min(max(volume, 0), 1))
