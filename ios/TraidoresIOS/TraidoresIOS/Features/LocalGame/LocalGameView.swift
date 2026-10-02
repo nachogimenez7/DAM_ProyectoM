@@ -1477,7 +1477,10 @@ private struct DayNightTransitionView: View {
     let transition: DayNightTransition
     let duration: TimeInterval
 
-    @Environment(\.reduceAnimations) private var reduceMotion
+    // Like Android, only the game's own "Reducir animaciones" option simplifies this
+    // transition; iOS Reduce Motion alone keeps the full sun/moon arcs.
+    @Environment(MenuPreferences.self) private var preferences
+    private var reduceMotion: Bool { preferences.reduceAnimations }
     @State private var progress: CGFloat = 0
     @State private var revealBackground = false
     @State private var enteringOpacity = 0.0
