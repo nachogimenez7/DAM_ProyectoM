@@ -1,15 +1,20 @@
 import Foundation
 import Observation
 
+/// Android's "Tamaño del texto": Compacto, Normal (default) and Grande.
+/// `normal` keeps the stored raw value "system" from earlier versions.
 enum MenuTextSize: String, CaseIterable, Identifiable {
-    case system, large, extraLarge
+    case compact, system, large
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .system: "Según el iPhone"
+        case .compact: "Compacto"
+        case .system: "Normal"
         case .large: "Grande"
-        case .extraLarge: "Muy grande"
         }
+    }
+    init?(stored: String) {
+        if stored == "extraLarge" { self = .large } else { self.init(rawValue: stored) }
     }
 }
 
@@ -47,12 +52,24 @@ final class MenuPreferences {
         didSet { defaults.set(textSize.rawValue, forKey: "menu.textSize") }
     }
 
+    /// Android: "Vibración al interactuar", off by default.
+    var vibrationEnabled: Bool {
+        didSet { defaults.set(vibrationEnabled, forKey: "menu.vibrationEnabled") }
+    }
+
+    /// Android: "Reducir animaciones". Combined with the system's Reduce Motion.
+    var reduceAnimations: Bool {
+        didSet { defaults.set(reduceAnimations, forKey: "menu.reduceAnimations") }
+    }
+
     func resetMenuOptions() {
         musicEnabled = true
         musicVolume = 0.8
         effectsEnabled = true
         effectsVolume = 0.8
         textSize = .system
+        vibrationEnabled = false
+        reduceAnimations = false
     }
 
     init(defaults: UserDefaults = .menuStore) {
@@ -61,6 +78,8 @@ final class MenuPreferences {
         effectsVolume = min(max(defaults.object(forKey: "menu.effectsVolume") as? Double ?? 0.8, 0), 1)
         musicEnabled = defaults.object(forKey: "menu.musicEnabled") as? Bool ?? true
         musicVolume = min(max(defaults.object(forKey: "menu.musicVolume") as? Double ?? 0.8, 0), 1)
-        textSize = MenuTextSize(rawValue: defaults.string(forKey: "menu.textSize") ?? "") ?? .system
+        textSize = MenuTextSize(stored: defaults.string(forKey: "menu.textSize") ?? "") ?? .system
+        vibrationEnabled = defaults.object(forKey: "menu.vibrationEnabled") as? Bool ?? false
+        reduceAnimations = defaults.object(forKey: "menu.reduceAnimations") as? Bool ?? false
     }
 }

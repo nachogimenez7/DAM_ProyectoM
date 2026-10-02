@@ -790,7 +790,7 @@ struct ProfilePortrait: View {
 
 private struct ProfileEmoteImage: View {
     let emote: ProfileEmoteContent
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reduceAnimations) private var reduceMotion
     @State private var frame = "a"
     var body: some View {
         if emote.animated {
@@ -824,20 +824,25 @@ private enum ProfileSelection: String, Identifiable {
     }
 }
 
+/// Same sections and copy as Android's `OpcionesActivity`. Notifications and the online
+/// measurement need the online stage and are added with it; the language picker is hidden
+/// on Android too.
 struct OptionsView: View {
     @Environment(MenuPreferences.self) private var preferences
-    @State private var confirmingReset = false
+    @State private var resetDone = false
 
     var body: some View {
         @Bindable var preferences = preferences
         MenuPage(title: "OPCIONES") {
-            Text("Ajustá el menú para que sea cómodo de leer y escuchar.")
+            Text("Ajusta el juego para que sea cómodo de leer y escuchar.")
                 .foregroundStyle(TraidoresTheme.text).readableOnArtwork()
             VStack(alignment: .leading, spacing: 12) {
                 optionsHeading("SONIDO Y RESPUESTA")
-                Toggle("Música del menú", isOn: $preferences.musicEnabled)
+                Toggle("Música", isOn: $preferences.musicEnabled)
                     .font(.headline).tint(TraidoresTheme.gold)
                     .accessibilityIdentifier("options.music")
+                Text("Controla por separado la música y los efectos del juego.")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 Text("Música: \(Int((preferences.musicVolume * 100).rounded()))%")
                     .font(.subheadline.bold()).monospacedDigit()
                     .accessibilityIdentifier("options.volumeLabel")
@@ -846,38 +851,49 @@ struct OptionsView: View {
                     .disabled(!preferences.musicEnabled)
                     .accessibilityLabel("Volumen de música")
                     .accessibilityIdentifier("options.volume")
-                Text("Usa el volumen multimedia del iPhone y se pausa al salir de la app.")
-                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 Divider()
-                Toggle("Sonido de inicio", isOn: $preferences.effectsEnabled)
+                Toggle("Efectos de sonido", isOn: $preferences.effectsEnabled)
                     .font(.headline).tint(TraidoresTheme.gold)
                     .accessibilityIdentifier("options.effects")
-                Text("Ladrido de Bandido Games: \(Int((preferences.effectsVolume * 100).rounded()))%")
+                Text("Efectos: \(Int((preferences.effectsVolume * 100).rounded()))%")
                     .font(.subheadline.bold()).monospacedDigit()
                 Slider(value: $preferences.effectsVolume, in: 0...1, step: 0.05)
                     .tint(TraidoresTheme.gold).disabled(!preferences.effectsEnabled)
-                    .accessibilityLabel("Volumen del sonido de inicio")
+                    .accessibilityLabel("Volumen de efectos")
                     .accessibilityIdentifier("options.effectsVolume")
-                Text("Se reproduce al abrir el juego con el volumen multimedia.")
-                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                Divider()
+                Toggle("Vibración al interactuar", isOn: $preferences.vibrationEnabled)
+                    .font(.headline).tint(TraidoresTheme.gold)
+                    .accessibilityIdentifier("options.vibration")
             }
             .padding(20)
             .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 14))
+            .sensoryFeedback(.success, trigger: preferences.vibrationEnabled) { _, enabled in enabled }
             VStack(alignment: .leading, spacing: 12) {
                 optionsHeading("LECTURA Y ACCESIBILIDAD")
                 HStack {
-                    Text("Texto del menú y las guías").font(.headline)
+                    Text("Tamaño del texto").font(.headline)
                     Spacer(minLength: 8)
-                    Picker("Texto del menú y las guías", selection: $preferences.textSize) {
+                    Picker("Tamaño del texto", selection: $preferences.textSize) {
                         ForEach(MenuTextSize.allCases) { size in Text(size.title).tag(size) }
                     }
                     .labelsHidden()
                     .tint(TraidoresTheme.gold)
                     .accessibilityIdentifier("options.textSize")
                 }
-                Text("Cada carta esconde una intención. Leé, preguntá y descubrí en quién confiar.")
+                Text("Se aplica a mensajes, botones y datos durante la partida.")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                Text("El pueblo despierta. Escucha, debate y decide.")
                     .font(.body).accessibilityIdentifier("options.textPreview")
-                Text("Según el iPhone respeta el tamaño configurado en Accesibilidad. Este ajuste todavía no modifica el gameplay.")
+            }
+            .padding(20)
+            .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 12) {
+                optionsHeading("EFECTOS VISUALES")
+                Toggle("Reducir animaciones", isOn: $preferences.reduceAnimations)
+                    .font(.headline).tint(TraidoresTheme.gold)
+                    .accessibilityIdentifier("options.reduceAnimations")
+                Text("Quita partículas y simplifica transiciones para una experiencia más tranquila.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             }
             .padding(20)
@@ -885,18 +901,31 @@ struct OptionsView: View {
             NavigationLink { AboutView() } label: { Text("ACERCA DE TRAIDORES") }
                 .buttonStyle(TraidoresButtonStyle())
                 .accessibilityIdentifier("options.about")
-            Button("RESTABLECER OPCIONES") { confirmingReset = true }
+            // Like Android: resets at once and confirms with a brief message.
+            Button("RESTABLECER OPCIONES") {
+                preferences.resetMenuOptions()
+                resetDone = true
+            }
                 .buttonStyle(TraidoresButtonStyle())
                 .accessibilityIdentifier("options.reset")
-            Text("Efectos y vibración de partida, notificaciones e idiomas llegarán en próximas versiones.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
         }
-        .alert("¿Restablecer las opciones del menú?", isPresented: $confirmingReset) {
-            Button("CANCELAR", role: .cancel) {}
-            Button("RESTABLECER") { preferences.resetMenuOptions() }
-        } message: {
-            Text("Se restauran música, sonido de inicio, volúmenes y lectura. No se borran perfiles ni partidas.")
+        .overlay(alignment: .bottom) {
+            if resetDone {
+                Text("Opciones restablecidas.")
+                    .font(.subheadline.bold()).foregroundStyle(TraidoresTheme.text)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(TraidoresTheme.ink, in: Capsule())
+                    .overlay(Capsule().stroke(TraidoresTheme.gold.opacity(0.7)))
+                    .padding(.bottom, 24)
+                    .transition(.opacity)
+                    .accessibilityIdentifier("options.resetDone")
+                    .task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation { resetDone = false }
+                    }
+            }
         }
+        .animation(.easeOut(duration: 0.2), value: resetDone)
     }
 }
 

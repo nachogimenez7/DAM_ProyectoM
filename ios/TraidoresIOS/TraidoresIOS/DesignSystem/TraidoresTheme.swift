@@ -73,13 +73,42 @@ private struct TraidoresButtonBody: View {
 }
 
 extension MenuTextSize {
-    /// The menu option can enlarge text but never shrinks a larger size chosen in iOS Settings.
+    /// Normal follows iOS; Grande enlarges without ever shrinking an accessibility size;
+    /// Compacto is one step smaller, as the player explicitly asked.
     func resolved(system: DynamicTypeSize) -> DynamicTypeSize {
         switch self {
-        case .system: system
-        case .large: max(system, .xLarge)
-        case .extraLarge: max(system, .xxxLarge)
+        case .system: return system
+        case .large: return max(system, .xLarge)
+        case .compact:
+            let sizes = DynamicTypeSize.allCases
+            guard let index = sizes.firstIndex(of: system), index > 0 else { return system }
+            return sizes[index - 1]
         }
+    }
+}
+
+private struct ReduceAnimationsKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// iOS Reduce Motion or the game's "Reducir animaciones" option. Read this instead of
+    /// `accessibilityReduceMotion`, which cannot be overridden.
+    var reduceAnimations: Bool {
+        get { self[ReduceAnimationsKey.self] }
+        set { self[ReduceAnimationsKey.self] = newValue }
+    }
+}
+
+/// Applied once at the root: text size and reduced animations reach every screen,
+/// sheets and the match.
+struct GamePreferencesBridge: ViewModifier {
+    let preferences: MenuPreferences
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.dynamicTypeSize) private var systemTextSize
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.reduceAnimations, systemReduceMotion || preferences.reduceAnimations)
+            .dynamicTypeSize(preferences.textSize.resolved(system: systemTextSize))
     }
 }
 
@@ -90,9 +119,6 @@ struct MenuPage<Content: View>: View {
     var headerSurface: Color = TraidoresTheme.panel
     @ViewBuilder let content: () -> Content
     @Environment(\.dismiss) private var dismiss
-    @Environment(MenuPreferences.self) private var preferences
-    @Environment(\.dynamicTypeSize) private var systemTextSize
-
     var body: some View {
         ZStack {
             if let backgroundAsset {
@@ -122,7 +148,6 @@ struct MenuPage<Content: View>: View {
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
-        .dynamicTypeSize(preferences.textSize.resolved(system: systemTextSize))
     }
 }
 

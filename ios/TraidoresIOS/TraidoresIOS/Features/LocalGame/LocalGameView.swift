@@ -1472,7 +1472,7 @@ private struct DayNightTransitionView: View {
     let transition: DayNightTransition
     let duration: TimeInterval
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reduceAnimations) private var reduceMotion
     @State private var progress: CGFloat = 0
     @State private var revealBackground = false
     @State private var showTitle = false
@@ -1584,7 +1584,8 @@ private struct LocalTableView: View {
     }
 
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reduceAnimations) private var reduceMotion
+    @Environment(MenuPreferences.self) private var preferences
     @State private var selected: Int?
     @State private var showingRole = false
     @State private var showingChat = false
@@ -1762,14 +1763,18 @@ private struct LocalTableView: View {
                 Button("Volver al menú") { dismissMatch() }
             }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
-            // Native haptics, absent on the Android build: picking a target, each new
-            // period, the last seconds of a timer and the end of the match.
-            .sensoryFeedback(.selection, trigger: selected) { _, new in new != nil }
-            .sensoryFeedback(.impact(weight: .medium), trigger: activeTransition?.key) { _, new in new != nil }
-            .sensoryFeedback(.impact(weight: .light), trigger: remainingNightSeconds ?? remainingPhaseSeconds) { _, new in
-                (1...5).contains(new ?? 0)
+            // Haptics follow Android's "Vibración al interactuar" (off by default): picking a
+            // target, each new period, the last seconds of a timer and the end of the match.
+            .sensoryFeedback(.selection, trigger: selected) { _, new in preferences.vibrationEnabled && new != nil }
+            .sensoryFeedback(.impact(weight: .medium), trigger: activeTransition?.key) { _, new in
+                preferences.vibrationEnabled && new != nil
             }
-            .sensoryFeedback(.impact(weight: .heavy, intensity: 1), trigger: game.winner != nil) { _, ended in ended }
+            .sensoryFeedback(.impact(weight: .light), trigger: remainingNightSeconds ?? remainingPhaseSeconds) { _, new in
+                preferences.vibrationEnabled && (1...5).contains(new ?? 0)
+            }
+            .sensoryFeedback(.impact(weight: .heavy, intensity: 1), trigger: game.winner != nil) { _, ended in
+                preferences.vibrationEnabled && ended
+            }
         }
     }
 

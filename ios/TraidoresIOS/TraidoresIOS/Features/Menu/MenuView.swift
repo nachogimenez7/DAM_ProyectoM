@@ -7,9 +7,8 @@ private enum MenuRoute: Hashable {
 struct MenuView: View {
     @AppStorage("menu.localProfile.v1") private var localProfileData = Data()
     @Environment(MenuPreferences.self) private var preferences
-    @Environment(\.dynamicTypeSize) private var systemTextSize
-
-    private var textSize: DynamicTypeSize { preferences.textSize.resolved(system: systemTextSize) }
+    /// Already resolved by `GamePreferencesBridge` at the root.
+    @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
         NavigationStack {
@@ -45,7 +44,6 @@ struct MenuView: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
-                .dynamicTypeSize(textSize)
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: MenuRoute.self) { route in

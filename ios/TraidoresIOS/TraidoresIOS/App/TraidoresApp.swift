@@ -16,6 +16,7 @@ struct TraidoresApp: App {
                     BandidoIntroView(audio: audio) { introFinished = true }
                 }
             }
+                .modifier(GamePreferencesBridge(preferences: preferences))
                 .environment(preferences)
                 .defaultAppStorage(.menuStore)
                 .preferredColorScheme(.dark)
@@ -43,7 +44,7 @@ private struct BandidoIntroView: View {
     let finished: () -> Void
     @Environment(MenuPreferences.self) private var preferences
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.reduceAnimations) private var reduceMotion
     @State private var frame = "idle"
     @State private var logoOpacity = 0.0
     @State private var scale = 0.88

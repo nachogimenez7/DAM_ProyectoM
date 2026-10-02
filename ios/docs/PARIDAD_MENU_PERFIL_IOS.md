@@ -7,7 +7,7 @@ Objetivo solicitado: cubrir las pantallas y comportamientos completos de Android
 - Menú con navegación a modos, roles, ayuda, opciones, perfil, Acerca de y comentarios; avatar del perfil reflejado en la cabecera.
 - Roles: tres mapas, nueve personajes por mapa, imágenes, historias, funciones, mínimos de jugadores, equipo y detalle completo.
 - Ayuda: diez secciones desplegables, consejos por rol y tutorial de cuatro pasos repetible.
-- Opciones: música, sonido de inicio Bandido, volúmenes persistentes e independientes, tamaño de lectura del menú/guías, vista previa, restablecimiento con confirmación y enlaces de soporte/privacidad.
+- Opciones con las secciones y textos de Android: música y efectos con volúmenes independientes, vibración al interactuar (controla los hápticos de la partida), tamaño del texto Compacto/Normal/Grande con vista previa, reducir animaciones (se suma a Reducir movimiento de iOS), Acerca de y restablecer inmediato. Notificaciones y «Pruebas online» llegan con la etapa online; el idioma también está oculto en Android.
 - Perfil: banner de 112 puntos con avatar superpuesto de 112 puntos; nombre, estado de identidad, frase, estadísticas, rol favorito, cuatro emotes, logros destacados, última partida y cuenta.
 - Modo de edición separado, botón superior editar/terminar y límites Android (20 para nombre, 40 para frase). Guardado automático, incluso al volver al menú sin terminar la edición; un nombre vacío conserva el nombre anterior a la edición.
 - Avatar y rol favorito: selector filtrado por mapa, 27 retratos y selección señalada; ampliación del avatar y ficha del rol fuera de edición.

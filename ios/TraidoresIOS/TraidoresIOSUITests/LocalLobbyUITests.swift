@@ -132,7 +132,7 @@ final class LocalLobbyUITests: XCTestCase {
         let reset = app.buttons["options.reset"]
         for _ in 0..<4 where !reset.isHittable { app.swipeUp() }
         reset.tap()
-        app.alerts.buttons["RESTABLECER"].tap()
+        XCTAssertTrue(app.staticTexts["options.resetDone"].waitForExistence(timeout: 2))
         app.swipeDown()
         XCTAssertEqual(app.staticTexts["options.volumeLabel"].label, "Música: 80%")
         let snapshot = XCTAttachment(screenshot: app.screenshot())
