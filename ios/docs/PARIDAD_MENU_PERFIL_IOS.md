@@ -1,6 +1,6 @@
 # Paridad de menú y perfil — Android → iOS
 
-Objetivo solicitado: cubrir las pantallas y comportamientos completos de Android, sin versiones resumidas. Gameplay se mantiene fuera de este bloque. Base Android: `origin/main` integrado hasta `966c7e6`.
+Objetivo solicitado: cubrir las pantallas y comportamientos completos de Android, sin versiones resumidas. Gameplay se mantiene fuera de este bloque. Base Android: `origin/main` integrado hasta `83318f3` (0.1.49).
 
 ## Implementado y comprobable sin servicios online
 
@@ -35,6 +35,8 @@ Estilos, avatar, banner y rol favorito se guardan al elegirlos, sin confirmació
 | Notificaciones | Permiso iOS, política y entrega real. No crear avisos periódicos ni activar permisos durante las pruebas sin una acción del usuario. |
 | Idioma | Android actualmente fuerza español y oculta el selector hasta completar traducciones. No añadir un selector inglés incompleto. |
 | Online previo al juego | Crear/buscar sala, ingresar código, lobby y recuperación compatibles con el backend, sin adelantar gameplay online. |
+| Opciones · Pruebas online (0.1.45) | Android agrega a Opciones la medición local de lecturas/escrituras Firestore con «Copiar reporte beta» y «Reiniciar medición». Depende de Firebase: se porta en la etapa online, no se muestra vacía antes. |
+| Buscador de salas (0.1.45) | Botón «Actualizar salas» con espera entre intentos y mensajes de carga/error en `activity_lobby_browser.xml`. Incluir en el recorrido previo a la partida online. |
 
 ## Verificación
 

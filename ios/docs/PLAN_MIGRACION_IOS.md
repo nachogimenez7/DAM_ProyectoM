@@ -9,7 +9,9 @@ Por decisión del usuario, se pospone **todo** el gameplay, tanto lógica como p
 3. Retomar y terminar gameplay contra IA.
 4. Solo después, gameplay online.
 
-Se integró `origin/main` hasta `966c7e6` en `ios-port`. Las secciones históricas siguientes siguen siendo referencia técnica, no autorización para adelantar gameplay.
+Actualización 1 de octubre de 2026: el usuario pidió retomar el pulido visual y de fluidez del gameplay contra IA antes de terminar el recorrido online previo; el plan está en [GAMEPLAY_PULIDO_IOS.md](GAMEPLAY_PULIDO_IOS.md). El gameplay online sigue al final.
+
+Se integró `origin/main` hasta `83318f3` (Android 0.1.49, 1 de octubre de 2026) en `ios-port`. Las secciones históricas siguientes siguen siendo referencia técnica, no autorización para adelantar gameplay.
 
 Avance del menú: catálogo por mapa con las 27 entradas de Android, ayuda desplegable y tutorial repetible; opciones persistentes de música/volumen y lectura del menú; pantalla Acerca de con versión y enlaces; redacción de comentarios que abre el correo sin enviar automáticamente. Efectos, vibración, notificaciones e idiomas no se presentan como implementados. Perfil y acceso/cuentas online siguen pendientes.
 
