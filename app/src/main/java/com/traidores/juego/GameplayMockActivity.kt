@@ -1227,12 +1227,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             GameplayEffects.play(this, GameplayEffect.PANEL)
             AccessibilityOptionsDialog.show(
                 activity = this,
-                reportLabel = if (isOnlineGameplay()) "COPIAR REPORTE BETA" else null,
-                onReportRequested = if (isOnlineGameplay()) {
-                    { OnlineStabilityReport.copyToClipboard(this) }
-                } else {
-                    null
-                },
+                reportLabel = "REPORTAR UN PROBLEMA",
+                onReportRequested = { FeedbackDialog.show(this, includeMatchContext = isOnlineGameplay(), reportProblem = true) },
                 exitLabel = gameplayExitLabel(),
                 onExitRequested = ::requestIntentionalGameExit
             ) {

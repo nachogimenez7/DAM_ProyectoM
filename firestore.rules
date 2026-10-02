@@ -803,9 +803,42 @@ service cloud.firestore {
     // Comentarios enviados desde el formulario interno. Son inmutables y nunca se pueden
     // consultar desde la app: solo el desarrollador los ve desde Firebase. La lista cerrada
     // de campos evita usar este buzón como almacenamiento arbitrario.
+    // Counter and message must be written atomically; clients cannot bypass the quota
+    // by writing a message directly or resetting their local preferences.
+    function validFeedbackQuota(uid) {
+      let data = request.resource.data;
+      let message = getAfter(/databases/$(database)/documents/comentarios/$(data.lastReportId)).data;
+      return hasOnly(data, ['count', 'windowStart', 'lastSentAt', 'lastReportId'])
+        && data.count is int && data.count >= 1 && data.count <= 3
+        && data.windowStart is timestamp
+        && data.lastSentAt == request.time
+        && isString(data.lastReportId, 1, 128)
+        && message.uid == uid && message.creadaEn == request.time;
+    }
+
+    match /limitesComentarios/{uid} {
+      allow get: if isSelf(uid);
+      allow list, delete: if false;
+      allow create: if isSelf(uid) && validFeedbackQuota(uid)
+        && request.resource.data.count == 1
+        && request.resource.data.windowStart == request.time;
+      allow update: if isSelf(uid) && validFeedbackQuota(uid)
+        && request.time >= resource.data.lastSentAt + duration.value(5, 'm')
+        && (
+          (request.time >= resource.data.windowStart + duration.value(24, 'h')
+            && request.resource.data.windowStart == request.time
+            && request.resource.data.count == 1)
+          || (request.time < resource.data.windowStart + duration.value(24, 'h')
+            && request.resource.data.windowStart == resource.data.windowStart
+            && request.resource.data.count == resource.data.count + 1)
+        );
+    }
+
     match /comentarios/{comentarioId} {
       allow read, update, delete: if false;
       allow create: if signedIn()
+        && getAfter(/databases/$(database)/documents/limitesComentarios/$(request.auth.uid)).data.lastReportId == comentarioId
+        && getAfter(/databases/$(database)/documents/limitesComentarios/$(request.auth.uid)).data.lastSentAt == request.time
         && hasOnly(request.resource.data, [
           'uid',
           'nombre',

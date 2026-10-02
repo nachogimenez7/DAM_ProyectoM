@@ -90,3 +90,13 @@ Lectura administrativa de presencia RTDB, sin alterar Firebase: cinco participan
 El menú mostró Buscar partida, Unirse por código y Crear partida, sin botón Reingresar. Las preferencias del A56 ya no contenían el identificador ni el código de recuperación. La prueba de vencimiento del reingreso a una sala vacía pasa en Android 0.1.49.
 
 Esto verifica ocultamiento y limpieza del recuerdo local, no eliminación física de la sala ni desaparición inmediata del buscador. El cambio posterior del texto del Alcalde no estaba incluido en ese APK. Sigue pendiente la comprobación de la distribución final desde Google Play.
+
+## Distribución Google Play: validación del 2 de octubre
+
+El usuario confirmó instalación del A56 desde Google Play, versión 0.1.49, partida de cinco participantes y regreso de todos al lobby con LISTO disponible. Sala ***S62, partida dc80484b: ambos reportes terminaron en RESULTADO:10, ronda 1, con 5/5 conectados. Un emulador tardó en iniciar y se sincronizó correctamente según la observación del usuario.
+
+El invitado registró 49 lecturas observadas estimadas, 25 dependientes de reglas y 5 escrituras intentadas en 197 segundos. El anfitrión registró 85, 50 y 20 respectivamente en 248 segundos. Sus ocho publicaciones confirmadas tuvieron p50 de 586 ms y p95 estimado de 773 ms. Estos contadores son parciales por dispositivo y no representan la factura ni el total de la sala. Los eventos recientes no contienen sync_delay; el reporte no permite medir cuánto tardó el arranque del emulador.
+
+Se da por completada la comprobación pendiente desde Google Play y el conjunto de casos online validados para esta candidata a beta. No implica garantía de ausencia de errores ni una prueba de capacidad con muchas salas simultáneas.
+
+Revisión de presentación pública: las herramientas de forzar empates y alterar bots ya están restringidas a compilaciones depurables; el registro OnlineDebugLog también. En release siguen visibles PRUEBAS ONLINE, los contadores, REINICIAR MEDICIÓN y COPIAR REPORTE BETA. Conviene conservar una vía de soporte para copiar diagnósticos y reservar los controles de medición para debug. El modo local también muestra una explicación sobre herramientas debug que resulta innecesaria para jugadores públicos. Esta revisión no modifica todavía esas pantallas.

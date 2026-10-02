@@ -1565,6 +1565,12 @@ class ProfileActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(2), 0, dp(2), dp(4))
             addView(TextView(this@ProfileActivity).apply {
+                text = getString(R.string.beta_cosmetics_notice)
+                setTextColor(getColor(R.color.text_secondary))
+                textSize = 13f
+                setPadding(0, 0, 0, dp(12))
+            })
+            addView(TextView(this@ProfileActivity).apply {
                 text = "VISTA PREVIA"
                 setTextColor(getColor(R.color.accent_gold))
                 textSize = 13f

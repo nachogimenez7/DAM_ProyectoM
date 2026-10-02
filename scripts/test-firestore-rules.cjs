@@ -1493,6 +1493,63 @@ async function main() {
       estadisticasPerfil: { partidas: 5, victorias: 5 },
     }));
 
+    // Feedback quotas are enforced even if a modified client skips the form.
+    const feedback = testEnv.authenticatedContext("feedback_uid").firestore();
+    const feedbackQuota = doc(feedback, "limitesComentarios", "feedback_uid");
+    const feedbackPayload = () => ({
+      uid: "feedback_uid", nombre: "Jugador", asunto: "Problema de prueba",
+      mensaje: "Descripcion de prueba del formulario", destino: "bandidogamesestudio@gmail.com",
+      estado: "pendiente", origen: "formulario_app", version: "0.1.50",
+      dispositivo: "Test", android: "16", fechaLocal: Date.now(), creadaEn: serverTimestamp(),
+    });
+    const feedbackSend = (id, count, windowStart = serverTimestamp()) => {
+      const batch = writeBatch(feedback);
+      batch.set(doc(feedback, "comentarios", id), feedbackPayload());
+      batch.set(feedbackQuota, { count, windowStart, lastSentAt: serverTimestamp(), lastReportId: id });
+      return batch.commit();
+    };
+    const feedbackWindow = Timestamp.fromMillis(Date.now() - 60 * 60 * 1000);
+    const seedFeedbackQuota = async (count, windowStart = feedbackWindow, lastSentAt = Timestamp.fromMillis(Date.now() - 6 * 60 * 1000)) => {
+      await testEnv.withSecurityRulesDisabled(async context => {
+        await setDoc(doc(context.firestore(), "limitesComentarios", "feedback_uid"), {
+          count, windowStart, lastSentAt, lastReportId: "previous_feedback",
+        });
+      });
+    };
+    await assertFails(setDoc(doc(feedback, "comentarios", "feedback_without_quota"), feedbackPayload()));
+    await assertSucceeds(feedbackSend("feedback_first", 1));
+    const firstQuota = (await getDoc(feedbackQuota)).data();
+    await assertFails(feedbackSend("feedback_too_soon", 2, firstQuota.windowStart));
+    await assertFails(setDoc(feedbackQuota, { count: 1, windowStart: serverTimestamp(), lastSentAt: serverTimestamp(), lastReportId: "feedback_first" }));
+    await assertFails(getDoc(doc(intruder, "limitesComentarios", "feedback_uid")));
+    await assertFails(getDocs(collection(feedback, "limitesComentarios")));
+    await seedFeedbackQuota(1);
+    await assertSucceeds(feedbackSend("feedback_second", 2, feedbackWindow));
+    await seedFeedbackQuota(2);
+    await assertSucceeds(feedbackSend("feedback_third", 3, feedbackWindow));
+    await seedFeedbackQuota(3);
+    await assertFails(feedbackSend("feedback_fourth", 4, feedbackWindow));
+    await assertFails(feedbackSend("feedback_reset_early", 1));
+    await seedFeedbackQuota(3, Timestamp.fromMillis(Date.now() - 25 * 60 * 60 * 1000));
+    await assertSucceeds(feedbackSend("feedback_new_window", 1));
+    await assertFails(deleteDoc(feedbackQuota));
+    await assertFails(updateDoc(doc(feedback, "comentarios", "feedback_first"), { mensaje: "Mensaje cambiado" }));
+    await assertFails(getDoc(doc(feedback, "comentarios", "feedback_first")));
+    await seedFeedbackQuota(1);
+    const manyFeedback = writeBatch(feedback);
+    manyFeedback.set(doc(feedback, "comentarios", "feedback_batch_one"), feedbackPayload());
+    manyFeedback.set(doc(feedback, "comentarios", "feedback_batch_two"), feedbackPayload());
+    manyFeedback.set(feedbackQuota, { count: 2, windowStart: feedbackWindow, lastSentAt: serverTimestamp(), lastReportId: "feedback_batch_two" });
+    await assertFails(manyFeedback.commit());
+    await seedFeedbackQuota(1);
+    const concurrentFeedback = await Promise.allSettled([
+      feedbackSend("feedback_concurrent_one", 2, feedbackWindow),
+      feedbackSend("feedback_concurrent_two", 2, feedbackWindow),
+    ]);
+    if (concurrentFeedback.filter(result => result.status === "fulfilled").length !== 1) {
+      throw new Error("Concurrent feedback must accept exactly one report");
+    }
+
     const rollbackBatch = writeBatch(host);
     rollbackBatch.delete(doc(host, "partidas", "room_atomic_create", "jugadores", "host_uid"));
     rollbackBatch.delete(doc(host, "codigosSala", "QWE234"));
