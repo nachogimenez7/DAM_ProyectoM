@@ -2,9 +2,9 @@
 """Mechanically port Android's read-only menu content and missing role artwork."""
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 IOS = ROOT / "ios/TraidoresIOS/TraidoresIOS"
@@ -69,9 +69,10 @@ emotes = []
 for block in re.findall(r'        emote\((.*?)\n        \)', emote_source, re.S):
     values = dict(re.findall(r'(id|label|description|themeLabel) = "([^"]*)"', block))
     asset = re.search(r'imageRes = R.drawable.(\w+)', block).group(1)
+    tone = re.search(r'toneHex = "(#[0-9A-Fa-f]{6})"', block).group(1)
     category = re.search(r'category = EmoteCategory\.(\w+)', block)
     emotes.append(dict(id=values['id'], title=values['label'], description=values['description'],
-        theme=values['themeLabel'], image=asset, category=category.group(1) if category else 'CLASSIC',
+        theme=values['themeLabel'], image=asset, tone=tone, category=category.group(1) if category else 'CLASSIC',
         premium='isPremium = true' in block, animated='isAnimated = true' in block))
 assert len(achievements) == 10 and len(emotes) == 20
 payload = json.dumps(dict(maps=maps, help=help_sections, tutorial=tutorial,
@@ -97,7 +98,7 @@ struct ProfileAchievementContent: Codable, Identifiable, Sendable {
     let id, title, shortTitle, description, rarity: String
 }
 struct ProfileEmoteContent: Codable, Identifiable, Sendable {
-    let id, title, description, theme, image, category: String
+    let id, title, description, theme, image, category, tone: String
     let premium, animated: Bool
 }
 enum AndroidMenuReference {
@@ -112,6 +113,9 @@ enum AndroidMenuReference {
     private static let json = #"""
 ''' + payload + '\n"""#\n}\n'
 (IOS / 'Features/Menu/AndroidMenuReference.swift').write_text(swift)
+if '--content-only' in sys.argv:
+    sys.exit(0)  # Regenerate text content without re-converting artwork (no Pillow needed).
+from PIL import Image
 imported = []
 for role in [role for m in maps for role in m['roles']]:
     name = role['image']

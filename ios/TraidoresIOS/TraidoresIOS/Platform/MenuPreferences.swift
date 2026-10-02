@@ -13,6 +13,14 @@ enum MenuTextSize: String, CaseIterable, Identifiable {
     }
 }
 
+extension UserDefaults {
+    /// UI tests use their own suite so they never touch the player's real menu, profile or options.
+    @MainActor static let menuStore: UserDefaults = {
+        guard ProcessInfo.processInfo.arguments.contains("-ui-testing") else { return .standard }
+        return UserDefaults(suiteName: "com.traidores.juego.ios.ui-testing") ?? .standard
+    }()
+}
+
 @MainActor @Observable
 final class MenuPreferences {
     private let defaults: UserDefaults
@@ -47,7 +55,7 @@ final class MenuPreferences {
         textSize = .system
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .menuStore) {
         self.defaults = defaults
         effectsEnabled = defaults.object(forKey: "menu.effectsEnabled") as? Bool ?? true
         effectsVolume = min(max(defaults.object(forKey: "menu.effectsVolume") as? Double ?? 0.8, 0), 1)

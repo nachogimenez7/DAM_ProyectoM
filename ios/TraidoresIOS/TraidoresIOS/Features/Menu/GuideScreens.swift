@@ -31,15 +31,12 @@ struct RolesGuideView: View {
                                 Text(item.shortTitle).font(.subheadline.bold())
                             }
                             .padding(8)
-                            .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(
-                                selectedMap == item.id ? TraidoresTheme.gold : TraidoresTheme.border,
-                                lineWidth: selectedMap == item.id ? 2 : 1))
+                            .selectionFrame(selectedMap == item.id, cornerRadius: 10)
+                            .padding(.vertical, 6)
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("roles.map.\(item.id)")
                         .id(item.id)
-                        .accessibilityAddTraits(selectedMap == item.id ? .isSelected : [])
                     }
                 }
             }
@@ -49,14 +46,21 @@ struct RolesGuideView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(map.title).font(TraidoresTheme.title(24)).foregroundStyle(TraidoresTheme.gold)
+                    .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("roles.mapTitle")
                 Text(map.era).font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Text(map.description).font(.subheadline)
                 Text("Rol exclusivo: \(map.exclusive)").font(.subheadline.bold())
                     .foregroundStyle(TraidoresTheme.gold)
             }
-            Text("ROLES DEL MAPA").font(.caption.bold()).tracking(1)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
+            Text("ROLES DEL MAPA").font(TraidoresTheme.title(17, relativeTo: .headline))
                 .foregroundStyle(TraidoresTheme.gold)
+                .accessibilityAddTraits(.isHeader)
+                .readableOnArtwork()
             ForEach(map.roles) { role in
                 Button { selectedRole = role } label: {
                     HStack(alignment: .top, spacing: 12) {
@@ -72,7 +76,7 @@ struct RolesGuideView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(12)
-                    .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
                 }
                 .buttonStyle(.plain)
@@ -104,19 +108,19 @@ struct HelpView: View {
     var body: some View {
         MenuPage(title: "AYUDA") {
             Text("Todo lo necesario para entrar al pueblo y sobrevivir a sus sospechas.")
-                .foregroundStyle(TraidoresTheme.secondary)
+                .foregroundStyle(TraidoresTheme.text).readableOnArtwork()
             Button("VER TUTORIAL") { showingTutorial = true }
                 .buttonStyle(TraidoresButtonStyle(prominent: true))
                 .accessibilityIdentifier("help.tutorial")
-            Text("Guía de las reglas de Android. El online y algunos roles todavía están pendientes en iOS.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            Text("El modo online y algunos roles todavía no están disponibles en esta versión.")
+                .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
             ForEach(AndroidMenuReference.content.help) { section in
                 VStack(alignment: .leading, spacing: 12) {
                     Button {
                         expanded = expanded == section.id ? nil : section.id
                     } label: {
                         HStack {
-                            Text(section.title).font(TraidoresTheme.title(17))
+                            Text(section.title).font(TraidoresTheme.title(17, relativeTo: .headline))
                             Spacer()
                             Image(systemName: expanded == section.id ? "minus" : "plus")
                         }
@@ -137,7 +141,7 @@ struct HelpView: View {
                     }
                 }
                 .padding(14)
-                .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
+                .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border))
             }
         }
@@ -189,7 +193,7 @@ private struct MenuTutorialView: View {
             Image(systemName: icons[index]).font(.system(size: 54)).foregroundStyle(TraidoresTheme.gold)
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
             InformationCard(title: page.title, message: page.body)
-            Text(page.hint).foregroundStyle(TraidoresTheme.secondary)
+            Text(page.hint).foregroundStyle(TraidoresTheme.text).readableOnArtwork()
             HStack {
                 Button("ANTERIOR") { index -= 1 }.disabled(index == 0)
                     .buttonStyle(TraidoresButtonStyle(prominent: false))
@@ -199,7 +203,7 @@ private struct MenuTutorialView: View {
                 .buttonStyle(TraidoresButtonStyle(prominent: true))
                 .accessibilityIdentifier("tutorial.next")
             }
-            Button("SALTAR") { dismiss() }.frame(maxWidth: .infinity)
+            Button("SALTAR") { dismiss() }.font(.headline).frame(maxWidth: .infinity, minHeight: 44)
         }
     }
 }

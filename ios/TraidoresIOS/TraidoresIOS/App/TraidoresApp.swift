@@ -17,6 +17,7 @@ struct TraidoresApp: App {
                 }
             }
                 .environment(preferences)
+                .defaultAppStorage(.menuStore)
                 .preferredColorScheme(.dark)
                 .tint(TraidoresTheme.gold)
                 .statusBarHidden(!introFinished)

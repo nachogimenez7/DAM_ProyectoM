@@ -22,6 +22,7 @@ struct MenuBackground: View {
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
                 .overlay(.black.opacity(0.18))
+
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
@@ -30,8 +31,24 @@ struct MenuBackground: View {
 
 struct TraidoresButtonStyle: ButtonStyle {
     var prominent = false
+    /// Profile styles pass their own colors so buttons do not fall back to the classic brown.
+    var accent: Color? = nil
+    var surface: Color? = nil
 
     func makeBody(configuration: Configuration) -> some View {
+        TraidoresButtonBody(configuration: configuration, prominent: prominent, accent: accent, surface: surface)
+    }
+}
+
+private struct TraidoresButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let prominent: Bool
+    let accent: Color?
+    let surface: Color?
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let fill = surface ?? TraidoresTheme.panel
         configuration.label
             .font(TraidoresTheme.title(19, relativeTo: .headline))
             .tracking(1)
@@ -43,13 +60,26 @@ struct TraidoresButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(prominent
                           ? LinearGradient(colors: [Color(red: 232 / 255, green: 184 / 255, blue: 75 / 255), TraidoresTheme.gold], startPoint: .top, endPoint: .bottom)
-                          : LinearGradient(colors: [TraidoresTheme.panel, TraidoresTheme.panel], startPoint: .top, endPoint: .bottom))
+                          : LinearGradient(colors: [fill, fill], startPoint: .top, endPoint: .bottom))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(prominent ? TraidoresTheme.gold : TraidoresTheme.border, lineWidth: 1)
+                    .stroke(prominent ? TraidoresTheme.gold : accent?.opacity(0.6) ?? TraidoresTheme.border, lineWidth: 1)
             }
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            // A custom style must show the disabled state itself; SwiftUI only blocks the tap.
+            .opacity(!isEnabled ? 0.45 : configuration.isPressed ? 0.72 : 1)
+            .saturation(isEnabled ? 1 : 0.4)
+    }
+}
+
+extension MenuTextSize {
+    /// The menu option can enlarge text but never shrinks a larger size chosen in iOS Settings.
+    func resolved(system: DynamicTypeSize) -> DynamicTypeSize {
+        switch self {
+        case .system: system
+        case .large: max(system, .xLarge)
+        case .extraLarge: max(system, .xxxLarge)
+        }
     }
 }
 
@@ -69,7 +99,10 @@ struct MenuPage<Content: View>: View {
                 GeometryReader { geometry in
                     Image(backgroundAsset).resizable().scaledToFill()
                         .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped().overlay(.black.opacity(0.25))
+                        .clipped()
+                        // Darker toward the bottom where most reading text sits.
+                        .overlay(LinearGradient(colors: [.black.opacity(0.35), .black.opacity(0.6)],
+                                                startPoint: .top, endPoint: .bottom))
                 }.ignoresSafeArea().accessibilityHidden(true)
             } else {
                 MenuBackground()
@@ -89,8 +122,7 @@ struct MenuPage<Content: View>: View {
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
-        .dynamicTypeSize(preferences.textSize == .system ? systemTextSize :
-                            preferences.textSize == .large ? .xLarge : .xxxLarge)
+        .dynamicTypeSize(preferences.textSize.resolved(system: systemTextSize))
     }
 }
 
@@ -103,20 +135,27 @@ struct MenuHeader: View {
     var body: some View {
         ZStack {
             Text(title).font(TraidoresTheme.title(19)).foregroundStyle(tint)
+                .lineLimit(2).minimumScaleFactor(0.7).multilineTextAlignment(.center)
+                // Leave room for the 44 pt buttons on both sides.
+                .padding(.horizontal, 52)
+                .accessibilityAddTraits(.isHeader)
             HStack {
                 Button(action: back) {
-                    Image(systemName: "chevron.left").font(.headline)
+                    // Like the system navigation bar, the icon keeps its size;
+                    // the Large Content Viewer covers accessibility text sizes.
+                    Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
                         .frame(width: 44, height: 44)
                         .background(surface.opacity(0.94), in: Circle())
                         .overlay(Circle().stroke(tint.opacity(0.45)))
                 }
                 .foregroundStyle(tint)
                 .accessibilityLabel("Volver")
+                .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("menu.back")
                 Spacer()
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 44)
     }
 }
 
@@ -133,5 +172,158 @@ struct InformationCard: View {
         .padding(20)
         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border, lineWidth: 1))
+    }
+}
+
+extension Color {
+    /// `#RRGGBB` or `#AARRGGBB`, the formats used by the Android sources.
+    init(hex: String) {
+        var value: UInt64 = 0
+        Scanner(string: hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))).scanHexInt64(&value)
+        let hasAlpha = hex.count > 7
+        self.init(.sRGB,
+                  red: Double((value >> 16) & 0xFF) / 255,
+                  green: Double((value >> 8) & 0xFF) / 255,
+                  blue: Double(value & 0xFF) / 255,
+                  opacity: hasAlpha ? Double((value >> 24) & 0xFF) / 255 : 1)
+    }
+}
+
+/// Profile styles, with the colors of Android's `CosmeticPilot` palettes.
+enum ProfileStyle: String, CaseIterable, Identifiable {
+    case classic, space, sea, fire
+    var id: String { rawValue }
+
+    var name: String {
+        switch self { case .classic: "Clásico"; case .space: "Espacial"; case .sea: "Abismo Real"; case .fire: "Forja Infernal" }
+    }
+    /// Same wording as Android's style picker.
+    var pickerTitle: String {
+        switch self {
+        case .classic: "CLÁSICO · sin decoración"
+        case .space: "ESPACIAL · Órbita violeta"
+        case .sea: "MAR · Abismo Real"
+        case .fire: "LAVA · Forja Infernal"
+        }
+    }
+    var primary: Color {
+        switch self { case .classic: TraidoresTheme.gold; case .space: Color(hex: "#62E9FF"); case .sea: Color(hex: "#3DE6E0"); case .fire: Color(hex: "#FF6A32") }
+    }
+    var secondary: Color {
+        switch self { case .classic: Color(hex: "#E8B84B"); case .space: Color(hex: "#965CFF"); case .sea: Color(hex: "#D6BD76"); case .fire: Color(hex: "#F2C15D") }
+    }
+    var text: Color {
+        switch self { case .classic: TraidoresTheme.text; case .space: Color(hex: "#C9F7FF"); case .sea: Color(hex: "#C9FBF5"); case .fire: Color(hex: "#FFE0B2") }
+    }
+    /// Flat surface used by profile cards.
+    var surface: Color {
+        switch self {
+        case .classic: TraidoresTheme.panel
+        case .space: Color(red: 12 / 255, green: 19 / 255, blue: 43 / 255)
+        case .sea: Color(red: 7 / 255, green: 26 / 255, blue: 36 / 255)
+        case .fire: Color(red: 30 / 255, green: 10 / 255, blue: 7 / 255)
+        }
+    }
+    /// Android `outer` frame gradient.
+    var frame: [Color] {
+        switch self {
+        case .classic: [TraidoresTheme.gold, Color(hex: "#F3D58A"), TraidoresTheme.gold]
+        case .space: [Color(hex: "#965CFF"), Color(hex: "#62E9FF"), Color(hex: "#965CFF")]
+        case .sea: [Color(hex: "#3DE6E0"), Color(hex: "#D6BD76"), Color(hex: "#58AFC0")]
+        case .fire: [Color(hex: "#B92A1D"), Color(hex: "#F2C15D"), Color(hex: "#FF6A32")]
+        }
+    }
+    /// Android `surface` gradient.
+    var fill: [Color] {
+        switch self {
+        case .classic: [Color(hex: "#3A2E1C"), TraidoresTheme.panel, Color(hex: "#30261A")]
+        case .space: [Color(hex: "#E51B2343"), Color(hex: "#EB0C132B"), Color(hex: "#E526153E")]
+        case .sea: [Color(hex: "#ED0B3440"), Color(hex: "#F0071A24"), Color(hex: "#ED092A35")]
+        case .fire: [Color(hex: "#F035110D"), Color(hex: "#F00E0B0A"), Color(hex: "#ED250906")]
+        }
+    }
+    var backgroundAsset: String? { self == .classic ? nil : "profile_background_\(rawValue)" }
+}
+
+/// Decorated frame for anything the player picks (emotes, avatars, banners, styles).
+/// Selected: tinted fill, gradient double border, small diamond ornaments and a soft glow.
+struct SelectionFrame: ViewModifier {
+    let selected: Bool
+    var tone: Color = TraidoresTheme.gold
+    var accent: Color = Color(hex: "#F3D58A")
+    var cornerRadius: CGFloat = 12
+    var fill: Color = TraidoresTheme.panel
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        content
+            .background {
+                shape.fill(fill.opacity(0.94))
+                    .overlay { if selected { shape.fill(tone.opacity(0.12)) } }
+            }
+            .overlay {
+                if selected {
+                    ZStack {
+                        shape.strokeBorder(LinearGradient(colors: [tone, accent, tone],
+                                                          startPoint: .topLeading, endPoint: .bottomTrailing),
+                                           lineWidth: 2.5)
+                        shape.inset(by: 4).strokeBorder(tone.opacity(0.45), lineWidth: 1)
+                        VStack {
+                            ornament
+                            Spacer()
+                            ornament
+                        }
+                        .padding(.vertical, -4)
+                    }
+                    .shadow(color: tone.opacity(0.55), radius: 6)
+                } else {
+                    shape.strokeBorder(TraidoresTheme.border, lineWidth: 1)
+                }
+            }
+            .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var ornament: some View {
+        Rectangle().fill(LinearGradient(colors: [accent, tone], startPoint: .top, endPoint: .bottom))
+            .frame(width: 8, height: 8).rotationEffect(.degrees(45))
+            .overlay(Rectangle().stroke(TraidoresTheme.ink, lineWidth: 1).rotationEffect(.degrees(45)))
+            .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    func selectionFrame(_ selected: Bool, tone: Color = TraidoresTheme.gold,
+                        accent: Color = Color(hex: "#F3D58A"), cornerRadius: CGFloat = 12,
+                        fill: Color = TraidoresTheme.panel) -> some View {
+        modifier(SelectionFrame(selected: selected, tone: tone, accent: accent,
+                                cornerRadius: cornerRadius, fill: fill))
+    }
+
+    /// Text that sits on illustrated backgrounds gets its own readable surface.
+    func readableOnArtwork() -> some View {
+        self.padding(.horizontal, 12).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(TraidoresTheme.ink, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border.opacity(0.6)))
+    }
+}
+
+/// Gold medallion with the pick order (Android `bg_emote_order_badge`) or a check mark.
+struct SelectionBadge: View {
+    var number: Int? = nil
+    var tone: Color = TraidoresTheme.gold
+
+    var body: some View {
+        Group {
+            if let number { Text("\(number)").font(.system(size: 13, weight: .heavy)).monospacedDigit() }
+            else { Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)) }
+        }
+        .foregroundStyle(TraidoresTheme.ink)
+        .frame(width: 24, height: 24)
+        .background(Circle().fill(LinearGradient(colors: [Color(hex: "#F3D58A"), tone],
+                                                 startPoint: .top, endPoint: .bottom)))
+        .overlay(Circle().stroke(TraidoresTheme.ink, lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+        .accessibilityHidden(true)
     }
 }

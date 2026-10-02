@@ -19,7 +19,7 @@ struct ProfileAchievementContent: Codable, Identifiable, Sendable {
     let id, title, shortTitle, description, rarity: String
 }
 struct ProfileEmoteContent: Codable, Identifiable, Sendable {
-    let id, title, description, theme, image, category: String
+    let id, title, description, theme, image, category, tone: String
     let premium, animated: Bool
 }
 enum AndroidMenuReference {
@@ -495,6 +495,7 @@ enum AndroidMenuReference {
       "description": "Cuando la mesa te saca de quicio.",
       "theme": "Aldeano griego",
       "image": "reaction_angry",
+      "tone": "#C7442E",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -505,6 +506,7 @@ enum AndroidMenuReference {
       "description": "Para una traición que dolió.",
       "theme": "Aldeano griego",
       "image": "reaction_sad",
+      "tone": "#5486B7",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -515,6 +517,7 @@ enum AndroidMenuReference {
       "description": "Todo salió demasiado bien.",
       "theme": "Aldeano griego",
       "image": "reaction_happy",
+      "tone": "#D9A53A",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -525,6 +528,7 @@ enum AndroidMenuReference {
       "description": "Algo acá no cierra.",
       "theme": "Aldeano griego",
       "image": "reaction_suspicious",
+      "tone": "#8D6B33",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -535,6 +539,7 @@ enum AndroidMenuReference {
       "description": "Cuando la mesa te saca de quicio.",
       "theme": "Asesino medieval",
       "image": "reaction_assassin_medieval_angry",
+      "tone": "#C7442E",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -545,6 +550,7 @@ enum AndroidMenuReference {
       "description": "Para una traición que dolió.",
       "theme": "Asesino medieval",
       "image": "reaction_assassin_medieval_sad",
+      "tone": "#5486B7",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -555,6 +561,7 @@ enum AndroidMenuReference {
       "description": "Todo salió demasiado bien.",
       "theme": "Asesino medieval",
       "image": "reaction_assassin_medieval_happy",
+      "tone": "#D9A53A",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -565,6 +572,7 @@ enum AndroidMenuReference {
       "description": "Algo acá no cierra.",
       "theme": "Asesino medieval",
       "image": "reaction_assassin_medieval_suspicious",
+      "tone": "#8D6B33",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -575,6 +583,7 @@ enum AndroidMenuReference {
       "description": "Cuando la mesa te saca de quicio.",
       "theme": "Detective gaucho",
       "image": "reaction_detective_gaucho_angry",
+      "tone": "#C7442E",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -585,6 +594,7 @@ enum AndroidMenuReference {
       "description": "Para una traición que dolió.",
       "theme": "Detective gaucho",
       "image": "reaction_detective_gaucho_sad",
+      "tone": "#5486B7",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -595,6 +605,7 @@ enum AndroidMenuReference {
       "description": "Todo salió demasiado bien.",
       "theme": "Detective gaucho",
       "image": "reaction_detective_gaucho_happy",
+      "tone": "#D9A53A",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -605,6 +616,7 @@ enum AndroidMenuReference {
       "description": "Algo acá no cierra.",
       "theme": "Detective gaucho",
       "image": "reaction_detective_gaucho_suspicious",
+      "tone": "#8D6B33",
       "category": "CLASSIC",
       "premium": false,
       "animated": false
@@ -615,6 +627,7 @@ enum AndroidMenuReference {
       "description": "Un amanecer sospechosamente tranquilo.",
       "theme": "Premium",
       "image": "reaction_premium_hermosa_manana",
+      "tone": "#E8B84B",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -625,6 +638,7 @@ enum AndroidMenuReference {
       "description": "Para mirar el caos con mate en mano.",
       "theme": "Premium",
       "image": "reaction_premium_mate",
+      "tone": "#B87333",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -635,6 +649,7 @@ enum AndroidMenuReference {
       "description": "Cuando el debate no arranca.",
       "theme": "Premium",
       "image": "reaction_premium_dormida",
+      "tone": "#8E7CC3",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -645,6 +660,7 @@ enum AndroidMenuReference {
       "description": "¿Hace falta decirlo?",
       "theme": "Premium",
       "image": "reaction_premium_genio",
+      "tone": "#D49332",
       "category": "LEGENDARY",
       "premium": true,
       "animated": false
@@ -655,6 +671,7 @@ enum AndroidMenuReference {
       "description": "Yo no fui… ¿o sí?",
       "theme": "Premium",
       "image": "reaction_premium_medico_timido",
+      "tone": "#74805C",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -665,6 +682,7 @@ enum AndroidMenuReference {
       "description": "Cuando la partida ya es cualquier cosa.",
       "theme": "Premium",
       "image": "reaction_premium_desertor_lengua",
+      "tone": "#C46F35",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -675,6 +693,7 @@ enum AndroidMenuReference {
       "description": "Una respuesta sin argumentos, pero contundente.",
       "theme": "Premium",
       "image": "reaction_premium_oraculo_mmm_nie",
+      "tone": "#D49B37",
       "category": "MEME",
       "premium": true,
       "animated": false
@@ -685,6 +704,7 @@ enum AndroidMenuReference {
       "description": "Seis, siete. No hace falta entenderlo.",
       "theme": "Premium",
       "image": "reaction_premium_six_seven",
+      "tone": "#B56A3B",
       "category": "LEGENDARY",
       "premium": true,
       "animated": true

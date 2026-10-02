@@ -119,6 +119,7 @@ struct ProfileView: View {
     @State private var photoLoadError = false
     @State private var loadingPhoto = false
     @FocusState private var editingText: Bool
+    @Environment(\.dynamicTypeSize) private var systemTextSize
     private let banners: [(key: String, title: String)] = [
         ("pampa", "Pampa"), ("grecia", "Grecia"), ("medieval", "Medieval"),
         ("asesino_medieval", "Asesino medieval"), ("medico_pampeano", "Médica pampeana"),
@@ -128,25 +129,10 @@ struct ProfileView: View {
         AndroidMenuReference.content.maps.flatMap(\.roles).first { $0.image == draft.favorite }
     }
     private var validName: Bool { !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var accent: Color {
-        switch profileTheme {
-        case "sea": Color(red: 61/255, green: 230/255, blue: 224/255)
-        case "fire": Color(red: 1, green: 106/255, blue: 50/255)
-        case "space": Color(red: 98/255, green: 233/255, blue: 1)
-        default: TraidoresTheme.gold
-        }
-    }
-    private var surface: Color {
-        switch profileTheme {
-        case "sea": Color(red: 7/255, green: 26/255, blue: 36/255)
-        case "fire": Color(red: 30/255, green: 10/255, blue: 7/255)
-        case "space": Color(red: 12/255, green: 19/255, blue: 43/255)
-        default: TraidoresTheme.panel
-        }
-    }
-    private var themeTitle: String {
-        switch profileTheme { case "sea": "Abismo Real"; case "fire": "Forja Infernal"; case "space": "Espacial"; default: "Clásico" }
-    }
+    private var style: ProfileStyle { ProfileStyle(rawValue: profileTheme) ?? .classic }
+    private var accent: Color { style.primary }
+    private var surface: Color { style.surface }
+    private var themeTitle: String { style.name }
 
     private func openSelection(_ value: ProfileSelection) {
         editingText = false
@@ -166,8 +152,8 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        MenuPage(title: "PERFIL", backgroundAsset: profileTheme == "classic" ? nil : "profile_background_\(profileTheme)", headerTint: accent, headerSurface: surface) {
-          VStack(spacing: 16) {
+        MenuPage(title: "PERFIL", backgroundAsset: style.backgroundAsset, headerTint: accent, headerSurface: surface) {
+          VStack(alignment: .leading, spacing: 16) {
             VStack(spacing: 6) {
               ZStack(alignment: .bottom) {
                 VStack {
@@ -185,122 +171,131 @@ struct ProfileView: View {
                         .overlay(Circle().stroke(accent, lineWidth: 4))
                         .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
                         .overlay(alignment: .bottomTrailing) {
-                            if isEditing { Image(systemName: "pencil").padding(8).background(surface, in: Circle()) }
+                            // Fixed badge: at accessibility sizes it must not cover the portrait.
+                            if isEditing { editBadge(size: 34).offset(x: 4, y: 4) }
                         }
                 }.buttonStyle(.plain).accessibilityIdentifier("profile.avatar")
                     .accessibilityLabel(isEditing ? "Editar foto de perfil" : "Ampliar foto de perfil")
                 if isEditing {
                     Button { openSelection(.banner) } label: {
-                        Image(systemName: "pencil").frame(width: 38, height: 38).background(surface, in: Circle())
+                        editBadge(size: 36).frame(width: 44, height: 44).contentShape(Rectangle())
                     }.accessibilityIdentifier("profile.banner").accessibilityLabel("Editar banner del perfil")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(4)
                 }
               }.frame(height: 174)
                 Text(draft.name.isEmpty ? "Tu nombre" : draft.name)
-                    .font(.system(size: 32, weight: .bold)).lineLimit(1).minimumScaleFactor(0.65)
+                    .font(.largeTitle.bold()).lineLimit(2).minimumScaleFactor(0.8)
                     .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                    .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("profile.displayName")
-                Text("PERFIL LOCAL").font(.subheadline.bold()).foregroundStyle(accent)
-                Text("Sin cuenta vinculada").font(.caption).foregroundStyle(TraidoresTheme.secondary)
+                Text("PERFIL LOCAL").font(.subheadline.bold()).tracking(1).foregroundStyle(accent)
+                Text("Sin cuenta vinculada").font(.footnote).foregroundStyle(TraidoresTheme.secondary)
             }
+            .frame(maxWidth: .infinity)
             if isEditing {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("NOMBRE VISIBLE").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
-                TextField("Tu nombre", text: $draft.name)
-                    .textContentType(.nickname).submitLabel(.done).focused($editingText)
-                    .accessibilityIdentifier("profile.name")
-                    .onChange(of: draft.name) { _, value in
-                        if value.count > 20 { draft.name = String(value.prefix(20)) }
-                    }
-                Divider()
-                Text("TU FRASE").font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
-                TextField("Una frase sobre vos", text: $draft.bio, axis: .vertical)
-                    .lineLimit(2...3).focused($editingText)
-                    .accessibilityIdentifier("profile.bio")
-                    .onChange(of: draft.bio) { _, value in
-                        if value.count > 40 { draft.bio = String(value.prefix(40)) }
-                    }
-                Text("Nombre: hasta 20 caracteres. Frase: hasta 40, como en Android.")
-                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            VStack(alignment: .leading, spacing: 14) {
+                editField(title: "NOMBRE VISIBLE", count: draft.name.count, limit: 20) {
+                    TextField("Tu nombre", text: $draft.name)
+                        .textContentType(.nickname).submitLabel(.done).focused($editingText)
+                        .accessibilityIdentifier("profile.name")
+                        .onChange(of: draft.name) { _, value in
+                            if value.count > 20 { draft.name = String(value.prefix(20)) }
+                        }
+                }
+                editField(title: "TU FRASE", count: draft.bio.count, limit: 40) {
+                    TextField("Una frase sobre vos", text: $draft.bio, axis: .vertical)
+                        .lineLimit(2...3).focused($editingText)
+                        .accessibilityIdentifier("profile.bio")
+                        .onChange(of: draft.bio) { _, value in
+                            if value.count > 40 { draft.bio = String(value.prefix(40)) }
+                        }
+                }
             }
-            .padding(20).background(surface, in: RoundedRectangle(cornerRadius: 14))
+            .profileCard(accent: accent, surface: surface)
             Button { openSelection(.style) } label: {
                 HStack { Text("ESTILO DEL PERFIL · \(themeTitle.uppercased())").font(.caption.bold()); Spacer(); Image(systemName: "paintpalette") }
-            }.buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.style")
+            }.buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface)).accessibilityIdentifier("profile.style")
             } else {
                 Text(draft.bio.isEmpty ? "Tu frase, tu manera de jugar." : "“\(draft.bio)”")
                     .font(.title3.italic()).multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity).padding(16)
-                    .background(surface.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
+                    .frame(maxWidth: .infinity)
+                    .profileCard(accent: accent, surface: surface)
             }
             profileHeading("ESTADÍSTICAS")
-            HStack(spacing: 8) {
-                stat("Partidas"); stat("Victorias"); stat("Porcentaje")
-            }
-            Text("Las estadísticas se mostrarán cuando este perfil tenga progreso registrado.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            // Side by side normally; stacked with accessibility text sizes.
+            let statsLayout = systemTextSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            statsLayout { stat("Partidas"); stat("Victorias"); stat("Porcentaje") }
+            note("Las estadísticas se mostrarán cuando este perfil tenga progreso registrado.")
             Button {
                 if isEditing { openSelection(.favorite) } else { roleDetail = true }
             } label: {
-                HStack {
+                HStack(spacing: 14) {
                     Image(draft.favorite).resizable().scaledToFit().frame(width: 70, height: 108)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("ROL FAVORITO").font(.caption.bold())
-                        Text(favorite?.title ?? "Comisario").font(.headline)
-                        Text(isEditing ? "Elegir personaje y mapa" : "Tocá para ver la ficha").font(.footnote)
+                        Text("ROL FAVORITO").font(.caption.bold()).foregroundStyle(accent)
+                        Text(favorite?.title ?? "Comisario").font(TraidoresTheme.title(22, relativeTo: .title2))
+                        Text(isEditing ? "Elegir personaje y mapa" : "Tocá para ver la ficha")
+                            .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                     }
-                    Spacer()
-                    Image(systemName: isEditing ? "pencil" : "chevron.right")
+                    Spacer(minLength: 0)
+                    Image(systemName: isEditing ? "pencil" : "chevron.right").foregroundStyle(accent)
                 }
+                .profileCard(accent: accent, surface: surface, padding: 12)
+                .contentShape(Rectangle())
             }
-            .padding(14).frame(maxWidth: .infinity)
-            .background(surface.opacity(0.95), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.5)))
             .foregroundStyle(TraidoresTheme.text).buttonStyle(.plain).accessibilityIdentifier("profile.favorite")
-            Text("El rol favorito personaliza tu perfil; no cambia el rol que recibís en una partida.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            note("El rol favorito personaliza tu perfil; no cambia el rol que recibís en una partida.")
             profileHeading("EMOTES")
             HStack(spacing: 8) {
                 ForEach(emoteIDs.split(separator: ",").map(String.init), id: \.self) { id in
                     if let emote = AndroidMenuReference.content.emotes.first(where: { $0.id == id }) {
-                        Button { if isEditing { openSelection(.emotes) } } label: {
-                            ProfileEmoteImage(emote: emote).frame(height: 66)
-                                .frame(maxWidth: .infinity).padding(5)
-                                .background(surface, in: RoundedRectangle(cornerRadius: 10))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.6)))
-                        }.buttonStyle(.plain).accessibilityLabel(emote.title)
+                        // Outside edit mode the emotes are only a showcase, not buttons.
+                        if isEditing {
+                            Button { openSelection(.emotes) } label: { emoteTile(emote) }
+                                .buttonStyle(.plain).accessibilityLabel(emote.title)
+                                .accessibilityHint("Cambia tus emotes")
+                        } else {
+                            emoteTile(emote)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(emote.title)
+                        }
                     }
                 }
             }
             if isEditing {
                 Button("EDITAR EMOTES · 4 DE 4") { openSelection(.emotes) }
-                    .buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.emotes")
+                    .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
+                    .accessibilityIdentifier("profile.emotes")
             }
             profileHeading("LOGROS DESTACADOS")
-            Text("Todavía no hay logros obtenidos en este perfil iOS.").font(.subheadline)
+            note("Todavía no obtuviste logros en este perfil.", primary: true)
             Button("VER TODOS LOS LOGROS") { selection = .achievements }
-                .buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.achievements")
+                .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
+                .accessibilityIdentifier("profile.achievements")
             profileHeading("ÚLTIMA PARTIDA")
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "clock.arrow.circlepath").font(.title2).foregroundStyle(accent)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Sin historial conectado").font(.headline)
-                    Text("Las partidas finalizadas aparecerán aquí cuando se integre el historial de iOS.")
+                    Text("Tus partidas terminadas aparecerán aquí cuando el historial esté disponible.")
                         .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
-                .background(surface, in: RoundedRectangle(cornerRadius: 10))
+                Spacer(minLength: 0)
+            }
+            .profileCard(accent: accent, surface: surface)
+            .accessibilityElement(children: .combine)
             profileHeading("CUENTA")
-            Text("Guardado en este dispositivo. El acceso, la recuperación y la sincronización online todavía no están disponibles en esta versión.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            note("Guardado en este dispositivo. El acceso, la recuperación y la sincronización online todavía no están disponibles en esta versión.")
             if isEditing {
-            Text(!validName ? "Escribí tu nombre. Si lo dejás vacío, se conserva el anterior." : "Tus cambios se guardan automáticamente.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
-                .accessibilityIdentifier("profile.status")
+                note(!validName ? "Escribí tu nombre. Si lo dejás vacío, se conserva el anterior." : "Tus cambios se guardan automáticamente.")
+                    .accessibilityIdentifier("profile.status")
             }
           }
           .padding(16).frame(maxWidth: .infinity)
-          .background(surface.opacity(profileTheme == "classic" ? 0.96 : 0.86), in: RoundedRectangle(cornerRadius: 16))
+          .background(surface, in: RoundedRectangle(cornerRadius: 16))
           .overlay(RoundedRectangle(cornerRadius: 16).stroke(accent.opacity(0.65), lineWidth: 1))
         }
         .overlay(alignment: .topTrailing) {
@@ -313,10 +308,11 @@ struct ProfileView: View {
                 isEditing.toggle()
             } label: {
                 Image(systemName: isEditing ? "checkmark" : "pencil")
-                    .font(.headline).frame(width: 44, height: 44).background(surface, in: Circle())
+                    .font(.system(size: 17, weight: .semibold)).frame(width: 44, height: 44).background(surface, in: Circle())
                     .overlay(Circle().stroke(accent.opacity(0.6)))
             }.foregroundStyle(accent).padding(.trailing, 16)
                 .accessibilityLabel(isEditing ? "Terminar de editar el perfil" : "Editar perfil")
+                .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("profile.edit")
         }
         .onSubmit { editingText = false }
@@ -331,34 +327,43 @@ struct ProfileView: View {
         .onDisappear { saveProfile() }
         .sheet(item: $selection) { selected in
             MenuPage(title: selected.title) {
-                Text("Tus elecciones se guardan automáticamente al salir.")
+                Text("Tus elecciones se guardan automáticamente.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    .readableOnArtwork()
                 if selected == .style {
                     ProfileStyleSelector(theme: profileTheme, name: draft.name, bio: draft.bio, avatar: draft.avatar, photo: draft.photoData) { theme in
                         profileTheme = theme
                     }
-                    Text("El estilo se equipa en este perfil; el gameplay permanece sin cambios.").font(.footnote)
+                    Text("El estilo cambia el aspecto de tu perfil; no afecta a las partidas.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
                 } else if selected == .emotes {
                     ProfileEmoteSelector(ids: emoteIDs.split(separator: ",").map(String.init)) { ids in
                         emoteIDs = ids.joined(separator: ",")
                     }
                 } else if selected == .achievements {
-                    Text("Estos son los diez logros de Android. Se desbloquearán con progreso real; todavía no se pueden equipar en iOS.")
-                        .font(.footnote)
+                    Text("Estos son los diez logros del juego. Se desbloquean con progreso real; todavía no se pueden destacar en esta versión.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
                     ProfileAchievementCatalogView()
                 } else if selected == .banner {
                     ForEach(banners, id: \.key) { banner in
                         Button {
                             draft.banner = banner.key; selection = nil
                         } label: {
-                            VStack(alignment: .leading) {
+                            VStack(alignment: .leading, spacing: 0) {
                                 ProfileStripImage(image: "profile_banner_\(banner.key)", height: 95)
-                                Text(banner.title + (draft.banner == banner.key ? " ✓" : ""))
-                                    .font(.headline).padding(12)
+                                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
+                                HStack {
+                                    Text(banner.title).font(.headline)
+                                    Spacer()
+                                    if draft.banner == banner.key {
+                                        Text("EQUIPADO").font(.caption2.bold()).tracking(1).foregroundStyle(TraidoresTheme.gold)
+                                        SelectionBadge()
+                                    }
+                                }.padding(12)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .selectionFrame(draft.banner == banner.key)
+                            .contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("profile.banner.\(banner.key)")
                             .accessibilityValue(draft.banner == banner.key ? "Seleccionado" : "")
                     }
@@ -429,53 +434,139 @@ struct ProfileView: View {
     }
 
     private func profileHeading(_ title: String) -> some View {
-        HStack { Text(title).font(.caption.bold()).tracking(1); Spacer() }.foregroundStyle(accent)
+        HStack(spacing: 10) {
+            // The rule only fills leftover space; the title never wraps to make room for it.
+            Text(title).font(TraidoresTheme.title(19, relativeTo: .title3)).tracking(0.5)
+                .layoutPriority(1)
+                .accessibilityAddTraits(.isHeader)
+            Rectangle().fill(accent.opacity(0.35)).frame(height: 1).accessibilityHidden(true)
+        }
+        .foregroundStyle(accent).padding(.top, 6)
+    }
+    private func note(_ text: String, primary: Bool = false) -> some View {
+        Text(text).font(primary ? .subheadline : .footnote)
+            .foregroundStyle(primary ? TraidoresTheme.text : TraidoresTheme.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
     private func stat(_ label: String) -> some View {
-        VStack(spacing: 6) { Text(label == "Porcentaje" ? "—%" : "—").font(.title2.bold()); Text(label).font(.caption) }
-            .frame(maxWidth: .infinity).padding(.vertical, 16)
+        VStack(spacing: 6) {
+            Text(label == "Porcentaje" ? "--%" : "--").font(.title2.bold())
+            Text(label).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 16).padding(.horizontal, 4)
+        .background(surface, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.3)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): sin datos")
+    }
+    private func editBadge(size: CGFloat) -> some View {
+        Image(systemName: "pencil").font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(accent)
+            .frame(width: size, height: size)
+            .background(surface, in: Circle())
+            .overlay(Circle().stroke(accent.opacity(0.7)))
+    }
+    private func emoteTile(_ emote: ProfileEmoteContent) -> some View {
+        ProfileEmoteImage(emote: emote).frame(height: 66)
+            .frame(maxWidth: .infinity).padding(5)
             .background(surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.3)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.45)))
+    }
+    private func editField<Field: View>(title: String, count: Int, limit: Int,
+                                        @ViewBuilder field: () -> Field) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            let label = Text(title).font(.caption.bold()).tracking(1).foregroundStyle(accent)
+            let counter = Text("\(count)/\(limit)").font(.caption.monospacedDigit())
+                .foregroundStyle(TraidoresTheme.secondary)
+                .accessibilityLabel("\(count) de \(limit) caracteres")
+            // With large text the counter moves below the label instead of hyphenating it.
+            ViewThatFits(in: .horizontal) {
+                HStack { label.fixedSize(); Spacer(); counter.fixedSize() }
+                VStack(alignment: .leading, spacing: 2) { label; counter }
+            }
+            field()
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.45)))
+        }
+    }
+}
+
+private extension View {
+    /// Inner profile card: a faint accent wash and border so it reads against the panel in every style.
+    func profileCard(accent: Color, surface: Color, padding: CGFloat = 16) -> some View {
+        self.padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 12).fill(surface)
+                    .overlay(RoundedRectangle(cornerRadius: 12).fill(accent.opacity(0.07)))
+            }
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.35)))
     }
 }
 
 private struct ProfileStyleSelector: View {
-    @State private var preview: String
+    @State private var preview: ProfileStyle
     let name, bio, avatar: String
     let photo: Data?
     let equip: (String) -> Void
-    private let themes = [("classic", "Clásico"), ("space", "Espacial"), ("sea", "Abismo Real"), ("fire", "Forja Infernal")]
     init(theme: String, name: String, bio: String, avatar: String, photo: Data?, equip: @escaping (String) -> Void) {
-        _preview = State(initialValue: theme)
+        _preview = State(initialValue: ProfileStyle(rawValue: theme) ?? .classic)
         self.name = name; self.bio = bio; self.avatar = avatar; self.photo = photo; self.equip = equip
     }
-    private var color: Color {
-        switch preview { case "sea": .cyan; case "fire": .orange; case "space": Color(red: 98/255, green: 233/255, blue: 1); default: TraidoresTheme.gold }
-    }
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             ZStack {
-                ProfileStripImage(image: preview == "classic" ? "fondo_menu" : "profile_background_\(preview)", height: 250)
+                ProfileStripImage(image: preview.backgroundAsset ?? "fondo_menu", height: 250)
                 VStack(spacing: 10) {
                     ProfilePortrait(image: avatar, photoData: photo).frame(width: 92, height: 92)
-                        .overlay(Circle().stroke(color, lineWidth: 3))
-                    Text(name).font(.title2.bold())
-                    Text(themes.first { $0.0 == preview }!.1.uppercased()).font(.caption.bold()).foregroundStyle(color)
-                    Text(bio.isEmpty ? "Tu frase" : bio).font(.subheadline).padding(12)
-                        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.7)))
+                        .overlay(Circle().strokeBorder(LinearGradient(colors: preview.frame, startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 3))
+                    Text(name).font(.title2.bold()).foregroundStyle(preview.text)
+                    Text(preview.name.uppercased()).font(.caption.bold()).tracking(1).foregroundStyle(preview.primary)
+                    Text(bio.isEmpty ? "Tu frase" : bio).font(.subheadline).foregroundStyle(preview.text).padding(12)
+                        .background(LinearGradient(colors: preview.fill, startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(preview.primary.opacity(0.7)))
                 }.padding(18)
             }.frame(height: 250).clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(color))
-            ForEach(themes, id: \.0) { theme in
-                Button { preview = theme.0; equip(preview) } label: {
-                    HStack { Text(theme.1).font(.headline); Spacer(); if preview == theme.0 { Image(systemName: "checkmark.circle.fill") } }
-                        .frame(maxWidth: .infinity, minHeight: 44).padding(.horizontal, 14)
-                        .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(preview == theme.0 ? color : TraidoresTheme.border))
-                        .contentShape(Rectangle())
-                }.buttonStyle(.plain).accessibilityIdentifier("profile.style.\(theme.0)")
-                    .accessibilityValue(preview == theme.0 ? "Seleccionado" : "")
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(LinearGradient(colors: preview.frame, startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 2))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Vista previa: \(preview.name)")
+            Text("TOCÁ UN ESTILO PARA EQUIPARLO").font(.caption.bold()).tracking(1)
+                .foregroundStyle(TraidoresTheme.secondary).frame(maxWidth: .infinity)
+            ForEach(ProfileStyle.allCases) { style in
+                let selected = preview == style
+                Button { preview = style; equip(style.rawValue) } label: {
+                    HStack(spacing: 12) {
+                        // Each row wears its own palette so the styles can be told apart at a glance.
+                        Circle().fill(LinearGradient(colors: style.frame, startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 22, height: 22)
+                            .overlay(Circle().stroke(TraidoresTheme.ink, lineWidth: 1))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(style.pickerTitle).font(.headline).foregroundStyle(style == .classic ? TraidoresTheme.gold : style.text)
+                            if selected {
+                                Text("EQUIPADO").font(.caption2.bold()).tracking(1).foregroundStyle(style.primary)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        if selected { SelectionBadge(tone: style.primary) }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(LinearGradient(colors: style.fill, startPoint: .leading, endPoint: .trailing),
+                                in: RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        if !selected {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(LinearGradient(colors: style.frame, startPoint: .leading, endPoint: .trailing).opacity(0.55), lineWidth: 1)
+                        }
+                    }
+                    .selectionFrame(selected, tone: style.primary, accent: style.secondary, fill: .clear)
+                    .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityIdentifier("profile.style.\(style.rawValue)")
+                    .accessibilityLabel(style.name)
+                    .accessibilityValue(selected ? "Seleccionado" : "")
             }
         }
     }
@@ -483,50 +574,81 @@ private struct ProfileStyleSelector: View {
 
 private struct ProfileEmoteSelector: View {
     @State private var selectedEmotes: [String]
-    @State private var selectedCategory = "CLASSIC"
+    @State private var limitReached = false
     let apply: ([String]) -> Void
+    private let categories: [(id: String, title: String, subtitle: String)] = [
+        ("CLASSIC", "CLÁSICOS", "Las reacciones originales de Traidores."),
+        ("MEME", "MEMES", "Momentos absurdos para responder sin escribir."),
+        ("LEGENDARY", "LEGENDARIOS", "Los emotes más especiales del juego.")
+    ]
     init(ids: [String], apply: @escaping ([String]) -> Void) {
         _selectedEmotes = State(initialValue: ids)
         self.apply = apply
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Elegí exactamente 4 emotes · \(selectedEmotes.count)/4").font(.headline)
-                .accessibilityIdentifier("profile.emotes.count")
-            HStack {
-                ForEach([("CLASSIC", "Clásicos"), ("MEME", "Memes"), ("LEGENDARY", "Legendarios")], id: \.0) { category in
-                    Button(category.1) { selectedCategory = category.0 }
-                        .font(.caption.bold()).padding(10)
-                        .background(selectedCategory == category.0 ? TraidoresTheme.gold : TraidoresTheme.panel, in: Capsule())
-                        .foregroundStyle(selectedCategory == category.0 ? TraidoresTheme.ink : TraidoresTheme.text)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Elegí exactamente 4 emotes · \(selectedEmotes.count)/4").font(.headline)
+                    .accessibilityIdentifier("profile.emotes.count")
+                Text(limitReached ? "Ya elegiste 4 emotes. Quitá uno para cambiarlo."
+                     : selectedEmotes.count == 4 ? "Selección guardada automáticamente. Mantené pulsado un emote para leer su descripción."
+                     : "Completá los 4 para guardar. Hasta entonces se conserva tu selección anterior.")
+                    .font(.footnote).foregroundStyle(limitReached ? TraidoresTheme.gold : TraidoresTheme.secondary)
+            }
+            .readableOnArtwork()
+            ForEach(categories, id: \.id) { category in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.title).font(TraidoresTheme.title(19, relativeTo: .title3)).foregroundStyle(TraidoresTheme.gold)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(category.subtitle).font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                }
+                .readableOnArtwork()
+                // Three equal columns and fixed card content keep every row aligned, as in Android.
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 18) {
+                    ForEach(AndroidMenuReference.content.emotes.filter { $0.category == category.id }) { emote in
+                        emoteCard(emote)
+                    }
                 }
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(AndroidMenuReference.content.emotes.filter { $0.category == selectedCategory }) { emote in
-                    Button {
-                        if selectedEmotes.contains(emote.id) { selectedEmotes.removeAll { $0 == emote.id } }
-                        else if selectedEmotes.count < 4 { selectedEmotes.append(emote.id) }
-                    } label: {
-                        VStack(spacing: 8) {
-                            ProfileEmoteImage(emote: emote).frame(height: 92)
-                            Text(emote.title).font(.subheadline.bold())
-                            Text(emote.theme).font(.caption)
-                            Text(emote.description).font(.caption).foregroundStyle(TraidoresTheme.secondary)
-                            if emote.premium { Label("Premium", systemImage: "star.fill").font(.caption) }
-                            else if selectedEmotes.contains(emote.id) { Image(systemName: "checkmark.circle.fill").foregroundStyle(TraidoresTheme.gold) }
-                        }.frame(maxWidth: .infinity).padding(10)
-                            .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(.plain).accessibilityIdentifier("profile.emote.\(emote.id)")
-                        .accessibilityValue(selectedEmotes.contains(emote.id) ? "Seleccionado" : "")
-                }
-            }
-            Text(selectedEmotes.count == 4 ? "Selección guardada automáticamente." : "Completá los 4 emotes para guardar. Hasta entonces se conserva tu selección anterior.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
-            Text("Los 20 emotes del catálogo de Android están disponibles para este perfil local. El envío en partidas se integrará al retomar el gameplay.").font(.footnote)
         }
         .onChange(of: selectedEmotes) { _, ids in
             if ids.count == 4 { apply(ids) }
         }
+    }
+
+    private func emoteCard(_ emote: ProfileEmoteContent) -> some View {
+        let order = selectedEmotes.firstIndex(of: emote.id).map { $0 + 1 }
+        let tone = Color(hex: emote.tone)
+        return Button {
+            if let index = selectedEmotes.firstIndex(of: emote.id) { selectedEmotes.remove(at: index); limitReached = false }
+            else if selectedEmotes.count < 4 { selectedEmotes.append(emote.id) }
+            else { limitReached = true }
+        } label: {
+            VStack(spacing: 6) {
+                ProfileEmoteImage(emote: emote).frame(height: 70)
+                Text(emote.title).font(.footnote.bold()).lineLimit(1).minimumScaleFactor(0.75)
+                Text(emote.theme).font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                    .lineLimit(2, reservesSpace: true).multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity).padding(.horizontal, 6).padding(.vertical, 10)
+            .selectionFrame(order != nil, tone: tone, accent: TraidoresTheme.gold)
+            .overlay(alignment: .topTrailing) { if let order { SelectionBadge(number: order).offset(x: 6, y: -6) } }
+            .overlay(alignment: .topLeading) {
+                if emote.animated || emote.premium {
+                    Text(emote.animated ? "ANIMADO" : "PREMIUM").font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(TraidoresTheme.ink).padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(TraidoresTheme.gold, in: Capsule()).padding(6)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu { Text(emote.description) }
+        .accessibilityIdentifier("profile.emote.\(emote.id)")
+        .accessibilityLabel("\(emote.title), \(emote.theme)")
+        .accessibilityValue(order.map { "Seleccionado, \($0) de 4" } ?? "")
+        .accessibilityHint(emote.description)
     }
 }
 
@@ -535,22 +657,51 @@ private struct ProfileAchievementCatalogView: View {
     var body: some View {
         VStack(spacing: 12) {
             ForEach(AndroidMenuReference.content.achievements) { item in
+                let rarity = Rarity(item.rarity)
                 Button { selected = item } label: {
-                    HStack {
-                        Image(systemName: "medal.fill").font(.title2)
-                            .foregroundStyle(item.rarity == "GOLD" ? TraidoresTheme.gold : item.rarity == "SILVER" ? .gray : .brown)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.title).font(.headline)
-                            Text("Pendiente · \(item.rarity == "GOLD" ? "Oro" : item.rarity == "SILVER" ? "Plata" : "Bronce")").font(.caption)
+                    HStack(spacing: 14) {
+                        // Medal in a ringed frame (Android `bg_achievement_medal_frame`), dimmed while locked.
+                        Image(systemName: "medal.fill").font(.system(size: 22))
+                            .foregroundStyle(rarity.border.opacity(0.75))
+                            .frame(width: 48, height: 48)
+                            .background(TraidoresTheme.panel, in: Circle())
+                            .overlay(Circle().strokeBorder(rarity.border, lineWidth: 1.5))
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "lock.fill").font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(TraidoresTheme.ink).frame(width: 18, height: 18)
+                                    .background(TraidoresTheme.secondary, in: Circle())
+                            }
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title).font(.headline).foregroundStyle(rarity.title)
+                            Text("Bloqueado · \(rarity.name)").font(.caption.bold()).foregroundStyle(rarity.border)
                         }
-                        Spacer(); Image(systemName: "lock.fill")
-                    }.padding(12).background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundStyle(rarity.border.opacity(0.8)).accessibilityHidden(true)
+                    }
+                    .padding(12)
+                    .background(rarity.background, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(rarity.border.opacity(0.7), lineWidth: 1.5))
+                    .contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("profile.achievement.\(item.id)")
+                    .accessibilityLabel("\(item.title), logro de \(rarity.name.lowercased()), bloqueado")
             }
         }
         .alert(selected?.title ?? "Logro", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
             Button("ENTENDIDO") { selected = nil }
         } message: { Text(selected?.description ?? "") }
+    }
+
+    /// Colors of Android's `achievementVisualStyle`.
+    private struct Rarity {
+        let name: String, border: Color, title: Color, background: Color
+        init(_ raw: String) {
+            switch raw {
+            case "GOLD": name = "Oro"; border = Color(hex: "#FFF2A3"); title = Color(hex: "#FFF7B2"); background = Color(hex: "#F2140F05")
+            case "SILVER": name = "Plata"; border = Color(hex: "#DCEAFF"); title = Color(hex: "#E7F1FF"); background = Color(hex: "#E6202830")
+            default: name = "Bronce"; border = Color(hex: "#F0A35A"); title = Color(hex: "#FFB56E"); background = Color(hex: "#E6332017")
+            }
+        }
     }
 }
 
@@ -575,21 +726,27 @@ private struct ProfileRoleSelector: View {
                         .background(selectedMap == map.id ? TraidoresTheme.gold : TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 8))
                         .foregroundStyle(selectedMap == map.id ? TraidoresTheme.ink : TraidoresTheme.text)
                         .buttonStyle(.plain).accessibilityIdentifier("profile.map.\(map.id)")
+                        .accessibilityAddTraits(selectedMap == map.id ? .isSelected : [])
                 }
             }
             ForEach(AndroidMenuReference.content.maps.filter { $0.id == selectedMap }) { map in
                 Text(map.title).font(TraidoresTheme.title(20)).foregroundStyle(TraidoresTheme.gold)
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    .readableOnArtwork()
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                     ForEach(map.roles) { role in
+                        let selected = currentImage == role.image
                         Button { choose(role) } label: {
                             VStack(spacing: 8) {
-                                Image(role.image).resizable().scaledToFit().frame(height: 150).accessibilityHidden(true)
+                                Image(role.image).resizable().scaledToFit().frame(height: 150)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
                                 Text(role.title).font(.subheadline.bold()).multilineTextAlignment(.center)
-                                if currentImage == role.image { Image(systemName: "checkmark.circle.fill").foregroundStyle(TraidoresTheme.gold) }
+                                    .lineLimit(2, reservesSpace: true)
                             }.frame(maxWidth: .infinity).padding(10)
-                                .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 12))
+                                .selectionFrame(selected)
+                                .overlay(alignment: .topTrailing) { if selected { SelectionBadge().offset(x: 6, y: -6) } }
+                                .contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityIdentifier("profile.choice.\(map.id).\(role.id)")
-                            .accessibilityValue(currentImage == role.image ? "Seleccionado" : "")
+                            .accessibilityValue(selected ? "Seleccionado" : "")
                     }
                 }
             }
@@ -673,12 +830,11 @@ struct OptionsView: View {
 
     var body: some View {
         @Bindable var preferences = preferences
-        MenuPage(title: "Opciones") {
+        MenuPage(title: "OPCIONES") {
             Text("Ajustá el menú para que sea cómodo de leer y escuchar.")
-                .foregroundStyle(TraidoresTheme.secondary)
-            Text("SONIDO Y RESPUESTA").font(.caption.bold()).tracking(1)
-                .foregroundStyle(TraidoresTheme.gold)
+                .foregroundStyle(TraidoresTheme.text).readableOnArtwork()
             VStack(alignment: .leading, spacing: 12) {
+                optionsHeading("SONIDO Y RESPUESTA")
                 Toggle("Música del menú", isOn: $preferences.musicEnabled)
                     .font(.headline).tint(TraidoresTheme.gold)
                     .accessibilityIdentifier("options.music")
@@ -707,14 +863,18 @@ struct OptionsView: View {
             }
             .padding(20)
             .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 14))
-            Text("LECTURA Y ACCESIBILIDAD").font(.caption.bold()).tracking(1)
-                .foregroundStyle(TraidoresTheme.gold)
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Texto del menú y las guías", selection: $preferences.textSize) {
-                    ForEach(MenuTextSize.allCases) { size in Text(size.title).tag(size) }
+                optionsHeading("LECTURA Y ACCESIBILIDAD")
+                HStack {
+                    Text("Texto del menú y las guías").font(.headline)
+                    Spacer(minLength: 8)
+                    Picker("Texto del menú y las guías", selection: $preferences.textSize) {
+                        ForEach(MenuTextSize.allCases) { size in Text(size.title).tag(size) }
+                    }
+                    .labelsHidden()
+                    .tint(TraidoresTheme.gold)
+                    .accessibilityIdentifier("options.textSize")
                 }
-                .tint(TraidoresTheme.gold)
-                .accessibilityIdentifier("options.textSize")
                 Text("Cada carta esconde una intención. Leé, preguntá y descubrí en quién confiar.")
                     .font(.body).accessibilityIdentifier("options.textPreview")
                 Text("Según el iPhone respeta el tamaño configurado en Accesibilidad. Este ajuste todavía no modifica el gameplay.")
@@ -728,8 +888,8 @@ struct OptionsView: View {
             Button("RESTABLECER OPCIONES") { confirmingReset = true }
                 .buttonStyle(TraidoresButtonStyle())
                 .accessibilityIdentifier("options.reset")
-            Text("Efectos y vibración de partida, notificaciones e idiomas se integrarán en sus respectivas etapas.")
-                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            Text("Efectos y vibración de partida, notificaciones e idiomas llegarán en próximas versiones.")
+                .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
         }
         .alert("¿Restablecer las opciones del menú?", isPresented: $confirmingReset) {
             Button("CANCELAR", role: .cancel) {}
@@ -738,6 +898,12 @@ struct OptionsView: View {
             Text("Se restauran música, sonido de inicio, volúmenes y lectura. No se borran perfiles ni partidas.")
         }
     }
+}
+
+private func optionsHeading(_ title: String) -> some View {
+    Text(title).font(TraidoresTheme.title(17, relativeTo: .headline)).tracking(0.5)
+        .foregroundStyle(TraidoresTheme.gold)
+        .accessibilityAddTraits(.isHeader)
 }
 
 struct AboutView: View {
