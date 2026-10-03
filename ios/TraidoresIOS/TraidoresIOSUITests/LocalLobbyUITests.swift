@@ -336,6 +336,33 @@ final class LocalLobbyUITests: XCTestCase {
             .firstMatch.exists)
     }
 
+    func testTableOptionsChangeTextSizeAndExit() throws {
+        let app = launchLobby()
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        startMatch(app, roleStart)
+
+        let options = app.buttons["table.options"]
+        XCTAssertTrue(options.waitForExistence(timeout: 3))
+        options.tap()
+        XCTAssertTrue(app.staticTexts["ACCESIBILIDAD"].waitForExistence(timeout: 3))
+        let panel = app.scrollViews["table.options.panel"]
+        let large = app.buttons["table.options.textSize.large"]
+        for _ in 0..<3 where !large.isHittable { panel.swipeUp() }
+        XCTAssertTrue(large.isHittable)
+        large.tap()
+        XCTAssertEqual(app.staticTexts["table.options.textSizeLabel"].label, "Tamaño de texto: Grande")
+
+        let exit = app.buttons["table.options.exit"]
+        for _ in 0..<3 where !exit.isHittable { panel.swipeUp() }
+        exit.tap()
+        let confirmation = app.buttons["Volver al menú"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        confirmation.tap()
+        XCTAssertTrue(app.buttons["local.startGame"].waitForExistence(timeout: 3))
+    }
+
     func testMedicCanProtectThemselfAndAdvanceTheNight() throws {
         let app = launchLobby(extraArguments: ["-ui-testing-medic"])
         app.buttons["local.startGame"].tap()
@@ -538,10 +565,30 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["table.primaryAction"].isEnabled)
         app.buttons["table.player.2"].tap()
         XCTAssertTrue(waitForPhase(app, containing: "RECUENTO"))
+
+        // The recount ceremony covers the table and waits for each step's button.
+        let ceremony = app.descendants(matching: .any).matching(identifier: "table.voteCeremony").firstMatch
+        XCTAssertTrue(ceremony.waitForExistence(timeout: 3))
+        let next = app.buttons["table.voteContinue"]
+        XCTAssertTrue(waitUntilHittable(next, timeout: 5))
         let recount = XCTAttachment(screenshot: app.screenshot())
         recount.name = "Pampa recuento"
         recount.lifetime = .keepAlways
         add(recount)
+        let outcome = next.label
+        next.tap()
+        if outcome == "IR AL DESEMPATE" {
+            XCTAssertTrue(waitForPhase(app, containing: "DESEMPATE"))
+            return
+        }
+        XCTAssertTrue(waitUntilHittable(next, timeout: 8))
+        XCTAssertEqual(next.label, "CONTINUAR")
+        let sentence = XCTAttachment(screenshot: app.screenshot())
+        sentence.name = "Pampa expulsión"
+        sentence.lifetime = .keepAlways
+        add(sentence)
+        next.tap()
+        XCTAssertTrue(ceremony.waitForNonExistence(timeout: 5))
     }
 
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {

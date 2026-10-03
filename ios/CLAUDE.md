@@ -4,9 +4,10 @@ Claude es responsable principal del port nativo SwiftUI. Codex (plugin `codex@op
 
 ## Antes de trabajar
 
-- Leer la sección «Prioridad vigente» de `docs/PLAN_MIGRACION_IOS.md`, `docs/PARIDAD_MENU_PERFIL_IOS.md` y la auditoría más reciente (`docs/AUDITORIA_MENU_PERFIL_IOS.md`). Trabajar solo en el bloque vigente: no adelantar gameplay ni Firebase.
+- Leer la sección «Prioridad vigente» de `docs/PLAN_MIGRACION_IOS.md`, `docs/PARIDAD_MENU_PERFIL_IOS.md` y la auditoría más reciente (`docs/AUDITORIA_MENU_PERFIL_IOS.md`). Trabajar solo en el bloque vigente (desde el 1/10/2026, el gameplay local por pedido del usuario); no adelantar Firebase ni el gameplay online.
 - `git status` primero. Puede haber cambios sin confirmar de otras personas o de Codex: conservarlos y no incluirlos en tus commits. Cambios solo bajo `ios/`; `app/`, recursos originales y `sources/` del proyecto ChatGPT son de solo lectura.
 - Comprobar el entorno real (Xcode, simuladores y el iPhone 13 conectado) en lugar de confiar en documentos que pueden describir un entorno anterior.
+- Gameplay: empezar por «Punto de partida para la próxima sesión» en `docs/GAMEPLAY_PULIDO_IOS.md` (estado, pendientes y orden acordado con el usuario).
 
 ## Calidad de interfaz
 
@@ -20,6 +21,7 @@ Claude es responsable principal del port nativo SwiftUI. Codex (plugin `codex@op
 
 - `ios/Scripts/generate_xcode_project.py` está desactualizado (al 1/10/2026 borraría archivos existentes del proyecto): no ejecutarlo hasta actualizarlo. Agregar archivos nuevos a mano en `project.pbxproj` (referencia, build file, grupo y fase) y validar con `plutil -lint`.
 - Núcleo: `bash ios/Scripts/test_core.sh`. App: scheme `TraidoresIOS`; pruebas UI en `TraidoresIOSUITests` (ejecutar las del bloque tocado; la suite `LocalLobbyUITests` completa tarda ~7 min). Con `-ui-testing` el menú y el perfil usan una suite de `UserDefaults` propia; la partida guardada todavía no. En la mesa, esperar a que los elementos sean tocables (`waitUntilHittable`), no solo a que existan.
+- Animaciones: grabar con `xcrun simctl io <UDID> recordVideo --codec h264 <archivo>.mov` y revisar cuadros con `swift Scripts/video_contact_sheet.swift`; una captura suelta no alcanza para juzgar movimiento.
 - Instalar en el iPhone 13: `Configuration/Local.xcconfig` (ignorado por git) fija el equipo; `xcodebuild … -destination 'id=<UDID>' -allowProvisioningUpdates` y `xcrun devicectl device install app`.
 - Commits pequeños con prefijo `ios:`, solo cuando el usuario lo pida.
 

@@ -19,6 +19,53 @@ Referencia Android: build `0.1.49` (`83318f3`) en emulador Pixel; capturas de lo
 | 9 | `LocalGameView.swift` concentra todo en un archivo; el compilador ya no puede inferir tipos en la cabecera sin dividirla. | Media (deuda técnica) |
 | 10 | `LocalGameStore` guarda en `UserDefaults.standard` incluso en pruebas UI. | Baja |
 
+## Comparación con videos de partida (3/10)
+
+El usuario grabó la misma partida en los dos teléfonos (Pampa, 8 jugadores, Asesino). Faltas en iOS, en el orden acordado:
+
+1. **Anuncios de la noche con sonido** (`DeathRevealAnimator`, `NoDeathRevealAnimator`, `SilenceRevealAnimator`, tarjetas narrativas de `ChronicleFeedPresenter` en el chat). iOS muestra carteles simples sin animación ni sonido.
+2. **Recuento de votos** (`VoteResultAnimator`): recuento con un sello por voto → «Mayoría alcanzada» → «Expulsión» → «Sentencia del pueblo» con lacre → «X fue expulsado». iOS muestra solo «El pueblo decidió».
+3. **Sonido de partida** (música de día/noche por mapa, efectos, victoria).
+4. **Rueda de opciones en la cabecera** (`AccessibilityOptionsDialog`: música, efectos, vibración, tamaño de texto, salir de la partida).
+5. Votación con «TU VOTO ✓», «Voto registrado» y «Listos para votar».
+6. Roles que faltan (antes que emotes).
+7. Emotes en partida y pulido del chat (atajos, «N mensajes nuevos», tarjetas de sucesos, «está escribiendo…»). El chat de iOS con burbujas ya es mejor base que el de Android.
+8. Al final: conversación de los bots.
+
+Sin prioridad por ahora: nombre y color de estilo del perfil en el panel inferior.
+
+### Avance (3/10)
+
+- **Marco de eventos**: los paneles de evento usan el 9-patch actual de Android (`ui_frame_event_*`, exportado con `Scripts/export_nine_patch_frames.swift`) dibujado por `RevealPanel` con sus dos bandas elásticas por eje; reemplaza el marco cuadrado anterior.
+- **Anuncios del amanecer** (`DawnRevealViews.swift`): muerte (temblor, destello rojo, manchas, «ROL OCULTO» o volteo de la carta si se revelan roles; CONTINUAR a los 2,9 s y cierre solo a los 9 s más), silencio (jaula y candado dibujados como los vectores de Android) y «El pueblo respira» con el sol. Con VoiceOver no se cierran solos.
+- **Sonido de partida** (`GameAudio.swift`, archivos en `Resources/GameAudio` copiados con `Scripts/prepare_game_audio.py`): música de día por mapa, de noche y de victoria; se pausa en transiciones y anuncios y vuelve a 1,6 s de la transición, como `MusicManager`. Efectos de reparto, anochecer, amanecer, muerte, silencio, nadie murió, voto, desempate y expulsión.
+- **Rueda de opciones** (Codex): engranaje en la cabecera con música, efectos, vibración, tamaño de texto y salir de la partida.
+- **Recuento de votos** (`VoteCeremonyView.swift`): sellos que caen uno a uno, mayoría/empate, expulsión con lacre, bota que patea la carta y resultado; avanza solo a los 8 s.
+- Diferencia deliberada: el texto «No puede hablar ni votar durante el día» usa `secondary` en lugar de `text_muted` de Android, que no alcanza contraste 4,5:1 sobre el panel.
+
+## Punto de partida para la próxima sesión (3/10)
+
+Estado al cerrar el commit `ios: dawn reveals, match audio, vote ceremony and table options`:
+
+**Verificado en simulador (iPhone 17, iOS 27):** anuncio de muerte (grabado cuadro por cuadro), «El pueblo respira», marco 9-patch de Pampa y Grecia, música/efectos (se oyen en el simulador), recuento con sellos y «Mayoría alcanzada», expulsión completa hasta «X FUE EXPULSADO». Suite `LocalLobbyUITests` 20/20 **antes** de agregar `VoteCeremonyView`.
+
+**Pendiente de verificar (primero):**
+1. Correr `LocalLobbyUITests` completa otra vez: `testVotingReviewSnapshotAndRecount` ahora recorre la ceremonia (`table.voteCeremony`, `table.voteContinue`) y no se ejecutó todavía.
+2. Repetir la patada en simulador: tras la última corrección el marco se dibuja como fondo (`RevealPanel`), así que la bota y la carta voladora deben pasar **por encima** del marco, y el hueco de la carta se cierra al terminar. Revisar con `recordVideo` + hoja de cuadros (ver `CLAUDE.md`).
+3. Ver el anuncio de silencio (jaula) con un Mercenario en partida; no salió en las pruebas manuales.
+4. Instalar en el iPhone 13 para oír el audio real (volumen relativo música/efectos, que la música vuelva tras cada anuncio) y confirmar que el ladrido sigue bien.
+5. Accesibilidad de lo nuevo: AX5 en los tres anuncios y en el recuento (hay `ViewThatFits` → `ScrollView`), VoiceOver (con VoiceOver los anuncios y el recuento no avanzan solos), Reducir animaciones de la app.
+
+**Cómo está armado:**
+- `Platform/GameAudio.swift`: `GameAudio` en el entorno desde `LocalMatchFlow`; `LocalTableView.desiredMusic(_:)` decide la pista (nil = pausa con fundido). Efectos con `playEffect(_:)`; el impacto de la expulsión lo dispara `VoteCeremonyView.onImpact`.
+- `Features/LocalGame/DawnRevealViews.swift`: `RevealFrameArt`/`RevealPanel` (marco por mapa, también lo usan `LocalEventCard`, el resultado privado y los compañeros traidores) y las tres vistas de amanecer. `DawnAnnouncement` guarda ids de jugador.
+- `Features/LocalGame/VoteCeremonyView.swift`: cubre las fases `voteCount` y `result` sin ganador; cada botón llama a `performPrimaryAction` de la mesa. Avanza solo a los 8 s salvo con `-ui-testing` o VoiceOver.
+- La rueda de opciones (`TableOptionsPanel` en `LocalGameView.swift`) reemplazó la flecha de salir de la mesa.
+
+**Cambios de Android `main` mergeados en `ios-port` (29c01fe, beta 0.1.50) sin portar todavía:** el engranaje de partida muestra «REPORTAR UN PROBLEMA» (abre el diálogo de comentarios) también en partida local; Opciones oculta la medición online fuera de debug; perfil y selector de emotes muestran el aviso `beta_cosmetics_notice`; el lobby dice «PRACTICAR CONTRA LA IA» en vez de «MODO DE PRUEBA». Revisar `FeedbackDialog.kt`/`FeedbackQuota.kt` antes de portar el reporte.
+
+**Siguiente en el orden acordado con el usuario:** votación con «TU VOTO ✓», «Voto registrado» y «Listos para votar» → roles faltantes (Alcalde, Desertor, Payador, Oráculo, Bufón) → emotes en partida y pulido del chat → al final, conversación de los bots.
+
 ## Pedido del usuario sobre la IA (1/10)
 
 Prioridad del rediseño de bots: **conversación normal y fluida**. Lo que más molesta (en Android) es que los bots se pregunten a sí mismos o digan cosas sin sentido; en iOS los bots repiten la misma frase todos a la vez. No portar la IA de Android tal cual: diseñar primero ritmo, turnos, a quién le habla cada bot (nunca a sí mismo), memoria de lo dicho y respuestas coherentes al humano; después implementar y probar con partidas simuladas.
