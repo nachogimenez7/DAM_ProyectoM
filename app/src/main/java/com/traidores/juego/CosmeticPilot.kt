@@ -14,6 +14,8 @@ import android.graphics.drawable.LayerDrawable
  * normales del perfil; ninguna animación o render genera escrituras adicionales.
  */
 object CosmeticPilot {
+    // Visual local de beta; no es un tema publicable ni una compra.
+    const val THEME_SUPPORT_PREVIEW = "support_preview"
     const val THEME_CLASSIC = "classic"
     const val THEME_SPACE = "space"
     const val THEME_SEA = "sea"
@@ -61,7 +63,7 @@ object CosmeticPilot {
     fun isSpaceTheme(theme: String?): Boolean = normalizeTheme(theme) == THEME_SPACE
 
     fun isDecoratedTheme(theme: String?): Boolean {
-        return normalizeTheme(theme)?.let { it != THEME_CLASSIC } == true
+        return theme == THEME_SUPPORT_PREVIEW || normalizeTheme(theme)?.let { it != THEME_CLASSIC } == true
     }
 
     fun normalizeTheme(theme: String?): String? {
@@ -84,7 +86,8 @@ object CosmeticPilot {
         return if (normalized == THEME_SPACE && !explicitlySelected) DEFAULT_THEME else normalized
     }
 
-    fun displayName(theme: String?): String = when (normalizeTheme(theme)) {
+    fun displayName(theme: String?): String = when (theme) {
+        THEME_SUPPORT_PREVIEW -> "Pack de apoyo · prueba"
         THEME_SPACE -> "Espacial"
         THEME_SEA -> "Abismo Real"
         THEME_FIRE -> "Forja Infernal"
@@ -310,7 +313,19 @@ object CosmeticPilot {
         }
     }
 
-    private fun palette(theme: String?): CosmeticPalette = when (normalizeTheme(theme)) {
+    private fun palette(theme: String?): CosmeticPalette = when (theme) {
+        THEME_SUPPORT_PREVIEW -> CosmeticPalette(
+            primary = Color.parseColor("#E6BF73"),
+            secondary = Color.parseColor("#A33A43"),
+            text = Color.parseColor("#FFF0CC"),
+            outer = colors("#8C2634", "#E6BF73", "#8C2634"),
+            surface = colors("#F037131A", "#F0160D10", "#ED2D1018"),
+            panel = colors("#DF35121B", "#F010090C", "#E2251016"),
+            bubble = colors("#F23A141C", "#F0200D13", "#F012080D"),
+            veil = colors("#6A321018", "#350F080B", "#6A321018"),
+            avatarInner = Color.parseColor("#1C0B10"),
+            softStroke = Color.parseColor("#A0E6BF73")
+        )
         THEME_SEA -> CosmeticPalette(
             primary = Color.parseColor("#3DE6E0"),
             secondary = Color.parseColor("#D6BD76"),

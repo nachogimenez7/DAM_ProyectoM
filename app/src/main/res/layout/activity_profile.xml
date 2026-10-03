@@ -126,6 +126,32 @@
 
             </FrameLayout>
 
+            <LinearLayout
+                android:id="@+id/profileSupportPreviewBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="Insignia del pack de apoyo"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/profile_support_badge" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="PACK DE APOYO · PRUEBA"
+                    android:textColor="#E6BF73"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
             <FrameLayout
                 android:id="@+id/profileNamePlate"
                 android:layout_width="match_parent"
