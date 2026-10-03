@@ -685,8 +685,23 @@ class ProfileActivity : BaseActivity() {
         applyProfileCosmeticTheme()
     }
 
+    private fun localProfileTheme(): String =
+        if (preferences.getBoolean("support_pack_local_preview", false)) {
+            CosmeticPilot.THEME_SUPPORT_PREVIEW
+        } else {
+            CosmeticPilot.selectedTheme(this)
+        }
+
+    private fun applySupportPreview(frame: View, theme: String) {
+        val supportPreview = theme == CosmeticPilot.THEME_SUPPORT_PREVIEW
+        frame.foreground = if (supportPreview) getDrawable(R.drawable.profile_support_frame) else null
+        (frame as? FrameLayout)?.foregroundGravity = Gravity.FILL
+        val inset = dp(if (supportPreview) 11 else if (frame === profileAvatarFrame) 5 else 4)
+        frame.setPadding(inset, inset, inset, inset)
+    }
+
     private fun applyProfileCosmeticTheme() {
-        val theme = CosmeticPilot.selectedTheme(this)
+        val theme = localProfileTheme()
         val decorated = CosmeticPilot.isDecoratedTheme(theme)
         if (decorated) {
             val accent = CosmeticPilot.accentColor(theme)
@@ -739,6 +754,9 @@ class ProfileActivity : BaseActivity() {
                 (icon as? ImageButton)?.setColorFilter(getColor(R.color.accent_gold))
             }
         }
+        applySupportPreview(profileAvatarFrame, theme)
+        findViewById<View>(R.id.profileSupportPreviewBadge).visibility =
+            if (theme == CosmeticPilot.THEME_SUPPORT_PREVIEW) View.VISIBLE else View.GONE
         profileDecorationRow.contentDescription =
             "Elegir decoración. Actual: ${CosmeticPilot.displayName(theme)}"
         profileDecorationButton.contentDescription = profileDecorationRow.contentDescription
@@ -950,7 +968,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun renderEmoteLoadout() {
         val ids = EmoteLoadout.normalizeIds(draftProfile.emoteLoadout)
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         if (draftProfile.emoteLoadout != ids) {
             draftProfile.emoteLoadout = ids
         }
@@ -1436,12 +1454,13 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showCosmeticSelector() {
-        val currentTheme = CosmeticPilot.selectedTheme(this)
+        val currentTheme = localProfileTheme()
         val themes = listOf(
             CosmeticPilot.THEME_CLASSIC to "CLÁSICO · sin decoración",
             CosmeticPilot.THEME_SPACE to "ESPACIAL · Órbita violeta",
             CosmeticPilot.THEME_SEA to "MAR · Abismo Real",
-            CosmeticPilot.THEME_FIRE to "LAVA · Forja Infernal"
+            CosmeticPilot.THEME_FIRE to "LAVA · Forja Infernal",
+            CosmeticPilot.THEME_SUPPORT_PREVIEW to "PACK DE APOYO · prueba local"
         )
         var previewTheme = currentTheme
         val themeButtons = linkedMapOf<String, TextView>()
@@ -1505,6 +1524,13 @@ class ProfileActivity : BaseActivity() {
                 rightMargin = dp(10)
             })
             addView(previewIdentity, LinearLayout.LayoutParams(0, dp(62), 1f))
+            addView(ImageView(this@ProfileActivity).apply {
+                tag = "support_preview_badge"
+                setImageResource(R.drawable.profile_support_badge)
+                contentDescription = "Insignia del pack de apoyo"
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                visibility = View.GONE
+            }, LinearLayout.LayoutParams(dp(42), dp(42)))
         }
         val previewBubble = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1565,7 +1591,8 @@ class ProfileActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(2), 0, dp(2), dp(4))
             addView(TextView(this@ProfileActivity).apply {
-                text = getString(R.string.beta_cosmetics_notice)
+                text = getString(R.string.beta_cosmetics_notice) +
+                    "\nEl pack de apoyo es una prueba visual en este dispositivo. No acredita una compra ni se muestra a otros jugadores."
                 setTextColor(getColor(R.color.text_secondary))
                 textSize = 13f
                 setPadding(0, 0, 0, dp(12))
@@ -1660,8 +1687,12 @@ class ProfileActivity : BaseActivity() {
             negativeLabel = "CANCELAR",
             positiveLabel = "EQUIPAR",
             onPositive = {
-                CosmeticPilot.selectTheme(this, previewTheme)
-                profileCloudSyncPending = true
+                val supportPreview = previewTheme == CosmeticPilot.THEME_SUPPORT_PREVIEW
+                preferences.edit().putBoolean("support_pack_local_preview", supportPreview).apply()
+                if (!supportPreview) {
+                    CosmeticPilot.selectTheme(this, previewTheme)
+                    profileCloudSyncPending = true
+                }
                 renderProfile()
                 Toast.makeText(
                     this,
@@ -1708,6 +1739,10 @@ class ProfileActivity : BaseActivity() {
         } else {
             getDrawable(R.drawable.bg_profile_avatar_frame)
         }
+        applySupportPreview(previewAvatarFrame, selectedTheme)
+        (previewAvatarFrame.parent as? ViewGroup)
+            ?.findViewWithTag<View>("support_preview_badge")?.visibility =
+            if (selectedTheme == CosmeticPilot.THEME_SUPPORT_PREVIEW) View.VISIBLE else View.GONE
         previewName.background = if (decorated) {
             CosmeticPilot.namePlate(this, selectedTheme)
         } else {
@@ -2220,7 +2255,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun applyAchievementBadgeStyle(view: TextView, rarity: AchievementRarity) {
         val visualStyle = achievementVisualStyle(rarity)
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         view.background = if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             CosmeticPilot.achievementFrame(
                 context = this,
@@ -2256,7 +2291,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun achievementDetailBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementFrame(
                 context = this,
@@ -2275,7 +2310,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun achievementMedalFrameBackground(rarity: AchievementRarity): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementMedalFrame(
                 context = this,
@@ -2447,7 +2482,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun emoteOptionBackground(selected: Boolean, spec: EmoteSpec): Drawable {
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.emoteFrame(this, selected, cosmeticTheme)
         }
@@ -2482,7 +2517,7 @@ class ProfileActivity : BaseActivity() {
         rarity: AchievementRarity
     ): Drawable {
         val visualStyle = achievementVisualStyle(rarity)
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
+        val cosmeticTheme = localProfileTheme()
         if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
             return CosmeticPilot.achievementFrame(
                 context = this,
