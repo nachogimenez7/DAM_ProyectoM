@@ -66,6 +66,7 @@ struct VoteCeremonyView: View {
             Text(title)
                 .font(.system(.title3, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .contentTransition(.opacity)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("table.voteCeremony.title")
@@ -84,16 +85,20 @@ struct VoteCeremonyView: View {
                     .font(.system(.caption, weight: .bold)).foregroundStyle(TraidoresTheme.text)
                     .multilineTextAlignment(.center).padding(.top, 6)
             }
-            Button(button ?? "CONTINUAR") { advance() }
-                .font(.system(.caption, weight: .bold))
-                .foregroundStyle(TraidoresTheme.text)
-                .frame(width: 230).frame(minHeight: 34)
-                .background(Color(hex: "#E7221A12"), in: RoundedRectangle(cornerRadius: 7))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.54)))
-                .contentShape(Rectangle())
+            Button { advance() } label: {
+                Text(button ?? "CONTINUAR")
+                    .font(.system(.caption, weight: .bold))
+                    .foregroundStyle(TraidoresTheme.text)
+                    .frame(width: 230).frame(minHeight: 44)
+                    .background(Color(hex: "#E7221A12"), in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.54)))
+                    .contentShape(Rectangle())
+            }
+                .buttonStyle(.plain)
                 .padding(.top, 8)
                 .opacity(button == nil ? 0 : 1)
                 .disabled(button == nil)
+                .accessibilityHidden(button == nil || !panelShown)
                 .accessibilityIdentifier("table.voteContinue")
         }
         .padding(.horizontal, 10).padding(.vertical, 8)

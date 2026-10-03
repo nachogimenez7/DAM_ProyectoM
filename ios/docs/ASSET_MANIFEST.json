@@ -264,5 +264,12 @@
     "sourceSHA256": "774d4a874025d6e3ce4430ce0d1334a54ad2a433d1fb0e16257be689cf1f0374",
     "destinationSHA256": "f5bc26f9acf4725ef4ac109cc7e77509e63c81b32eec0ac8580a2954bbabe1c1",
     "operation": "WebP to PNG; resize 384→192 px (seal stamped at up to 2.1× its 42 dp) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/winner_ceremony_background.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/winner_ceremony_background.imageset/winner_ceremony_background.png",
+    "sourceSHA256": "94e4420eb01477e1b7c7dffbc05dedc09bbc9ecef1e5daeea47e204d90e5669e",
+    "destinationSHA256": "1a1d323f2deec14285a38e34e299bfdfa50f917b9f763fe78913427609d83a43",
+    "operation": "WebP to PNG with sips; no resize; original Android artwork"
   }
 ]

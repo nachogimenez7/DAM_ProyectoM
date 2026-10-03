@@ -21,6 +21,7 @@ SOURCES = {
     "bandido_menu_medallion": "drawable-nodpi/bandido_menu_medallion.png",
     "modo_juego_local_pampa_v3": "drawable/modo_juego_local_pampa_v3.png",
     "modo_jugar_online": "drawable/modo_jugar_online.webp",
+    "winner_ceremony_background": "drawable-nodpi/winner_ceremony_background.webp",
 }
 
 

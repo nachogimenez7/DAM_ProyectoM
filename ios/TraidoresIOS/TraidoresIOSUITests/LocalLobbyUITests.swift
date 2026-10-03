@@ -656,6 +656,134 @@ final class LocalLobbyUITests: XCTestCase {
         if primary.label == "SALTAR NOCHE" { primary.tap() }
     }
 
+    func testCompleteMatchShowsTraitorVictoryAndReturnsToLobby() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin", "-ui-testing-finish-match", "-ui-testing-seed=7"])
+        try completeMatch(app, town: false)
+        XCTAssertTrue(app.staticTexts["table.result.winner"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["table.result.winner"].label, "VICTORIA DE LOS TRAIDORES")
+        XCTAssertTrue(app.staticTexts["table.result.personal"].label.hasSuffix("VICTORIA"))
+        verifyResultAndReturn(app, name: "Pampa victoria de Traidores")
+    }
+
+    func testCompleteMatchShowsTownVictoryAndRevealsTheRoles() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-detective", "-ui-testing-finish-match", "-ui-testing-seed=7"])
+        try completeMatch(app, town: true)
+        XCTAssertTrue(app.staticTexts["table.result.winner"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["table.result.winner"].label, "VICTORIA DEL PUEBLO")
+        XCTAssertTrue(app.staticTexts["table.result.personal"].label.hasSuffix("VICTORIA"))
+        Thread.sleep(forTimeInterval: 2.8)
+        try app.performAccessibilityAudit(for: [.dynamicType, .textClipped, .hitRegion, .elementDetection]) { issue in
+            print("RESULT AUDIT: \(issue.compactDescription), \(issue.element?.label ?? "sin elemento"), \(issue.element?.identifier ?? "")")
+            return false
+        }
+        verifyResultAndReturn(app, name: "Pampa victoria del Pueblo")
+    }
+
+    func testCompleteMatchWithRealAnimationTimingAndSilence() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-mercenary", "-ui-testing-finish-match",
+                                               "-ui-testing-seed=7", "-ui-testing-real-time"])
+        // A Mercenary and Assassin are dealt naturally at seven players.
+        app.buttons["lobby.addPlayer"].tap()
+        app.buttons["lobby.addPlayer"].tap()
+        try completeMatch(app, town: false, realTime: true)
+        XCTAssertTrue(app.staticTexts["table.result.winner"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["table.result.winner"].label, "VICTORIA DEL PUEBLO")
+        XCTAssertTrue(app.staticTexts["table.result.personal"].label.hasSuffix("DERROTA"))
+        verifyResultAndReturn(app, name: "Pampa derrota - animaciones con tiempos reales")
+    }
+
+    /// Plays through the real UI and engine; the test seed only makes the role deal repeatable.
+    private func completeMatch(_ app: XCUIApplication, town: Bool, realTime: Bool = false) throws {
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        let result = app.descendants(matching: .any).matching(identifier: "table.matchResult").firstMatch
+        var accused = false
+        for _ in 0..<30 {
+            if result.exists { return }
+            let transition = app.descendants(matching: .any).matching(identifier: "table.dayNightTransition").firstMatch
+            if transition.exists { XCTAssertTrue(transition.waitForNonExistence(timeout: 6)) }
+            let feedback = app.buttons["table.dismissPrivateFeedback"]
+            if feedback.exists { feedback.tap(); continue }
+            let announcement = app.descendants(matching: .any).matching(identifier: "table.dawnAnnouncement").firstMatch
+            if announcement.exists { XCTAssertTrue(announcement.waitForNonExistence(timeout: realTime ? 24 : 6)); continue }
+            if result.exists { return }
+            let next = app.buttons["table.voteContinue"]
+            let ceremony = app.descendants(matching: .any).matching(identifier: "table.voteCeremony").firstMatch
+            if ceremony.exists {
+                XCTAssertTrue(next.waitForExistence(timeout: realTime ? 14 : 8))
+                XCTAssertTrue(waitUntilHittable(next, timeout: realTime ? 14 : 8))
+                if realTime && app.staticTexts["table.voteCeremony.title"].label.contains("FUE EXPULSADO") {
+                    let shot = XCTAttachment(screenshot: app.screenshot())
+                    shot.name = "Expulsión completa con tiempos reales"
+                    shot.lifetime = .keepAlways
+                    add(shot)
+                }
+                next.tap()
+                continue
+            }
+            let primary = app.buttons["table.primaryAction"]
+            XCTAssertTrue(waitUntilHittable(primary, timeout: 8))
+            if primary.label == "ESPERAR" {
+                let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true AND label != %@", "ESPERAR"), object: primary)
+                XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 8), .completed)
+            }
+            if town && primary.label == "IR A VOTAR" && !accused {
+                // Seed 7 deals the Assassin to Thiago. Coordinate a public accusation before voting.
+                let input = app.textFields["chat.input"]
+                XCTAssertTrue(input.waitForExistence(timeout: 3))
+                input.tap(); input.typeText("Sospecho de Thiago")
+                app.buttons["chat.send"].tap()
+                accused = true
+            }
+            let targets = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                            "table.player.", "Objetivo disponible"))
+                .allElementsBoundByIndex.filter { $0.isHittable }
+            if let target = (town ? targets.first(where: { $0.identifier == "table.player.1" }) : nil) ?? targets.first {
+                let voting = app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN")
+                    || app.staticTexts["table.phaseTitle"].label.contains("DESEMPATE")
+                target.tap()
+                if !voting { primary.tap() }
+            } else {
+                primary.tap()
+            }
+        }
+        XCTFail("La partida completa no llegó a la pantalla de ganadores")
+    }
+
+    private func verifyResultAndReturn(_ app: XCUIApplication, name: String) {
+        // Capture the finished entrance, rather than a translucent frame during the fade.
+        Thread.sleep(forTimeInterval: 2.8)
+        let snapshot = XCTAttachment(screenshot: app.screenshot())
+        snapshot.name = name; snapshot.lifetime = .keepAlways; add(snapshot)
+        let story = app.buttons["table.result.story"]
+        let back = app.buttons["table.result.return"]
+        XCTAssertTrue(story.isHittable)
+        story.tap()
+        XCTAssertTrue(app.staticTexts["CRÓNICA DE LA PARTIDA"].waitForExistence(timeout: 3))
+        let timeline = app.descendants(matching: .any).matching(identifier: "table.result.timeline").firstMatch
+        XCTAssertTrue(timeline.waitForExistence(timeout: 5))
+        XCTAssertTrue(timeline.label.contains("RONDA POR RONDA"))
+        let duration = app.descendants(matching: .any).matching(identifier: "table.result.duration").firstMatch.label
+        XCTAssertTrue(duration.contains(":"))
+        XCTAssertFalse(app.staticTexts["table.result.winner"].exists)
+        let revealed = XCTAttachment(screenshot: app.screenshot())
+        revealed.name = name + " - crónica"; revealed.lifetime = .keepAlways; add(revealed)
+        story.tap()
+        XCTAssertTrue(app.staticTexts["table.result.winner"].waitForExistence(timeout: 3))
+        XCTAssertTrue(back.isHittable)
+        back.tap()
+        XCTAssertTrue(app.buttons["local.startGame"].waitForExistence(timeout: 5))
+        let lastResult = app.buttons["local.lastResult"]
+        XCTAssertTrue(lastResult.exists)
+        lastResult.tap()
+        XCTAssertTrue(app.staticTexts["table.result.personal"].waitForExistence(timeout: 5))
+        app.buttons["table.result.story"].tap()
+        XCTAssertTrue(app.staticTexts["CRÓNICA DE LA PARTIDA"].waitForExistence(timeout: 3))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "table.result.duration").firstMatch.label, duration)
+    }
+
     /// Taps EMPEZAR once it accepts touches and checks that the match really left the
     /// role reveal; retries once if SwiftUI swallowed the tap during the panel transition.
     private func startMatch(_ app: XCUIApplication, _ roleStart: XCUIElement) {

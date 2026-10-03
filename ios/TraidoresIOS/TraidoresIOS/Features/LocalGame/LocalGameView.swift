@@ -233,9 +233,12 @@ struct LocalLobbyView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
 
-            if let game = store.game, game.winner == nil {
-                Button("CONTINUAR PARTIDA · DÍA \(game.round)") { playing = true }
+            if let game = store.game {
+                Button(game.winner == nil ? "CONTINUAR PARTIDA · DÍA \(game.round)" : "VER ÚLTIMO RESULTADO") {
+                    playing = true
+                }
                     .buttonStyle(TraidoresButtonStyle())
+                    .accessibilityIdentifier(game.winner == nil ? "local.resumeGame" : "local.lastResult")
             }
 
             sectionLabel("CONFIGURACIÓN")
@@ -460,17 +463,26 @@ struct LocalLobbyView: View {
             .assassin
         } else if arguments.contains("-ui-testing-detective") {
             .detective
+        } else if arguments.contains("-ui-testing-mercenary") {
+            .mercenary
         } else {
             RoleKey(rawValue: selectedTrainingRoleKey)
         }
         #if DEBUG
-        let appliedTestOptions = testOptions
+        let appliedTestOptions = arguments.contains("-ui-testing") && arguments.contains("-ui-testing-finish-match")
+            ? LocalTestOptions(botsFollowAccusation: true, botsNeverKillHuman: true, botsNeverVoteHuman: true)
+            : testOptions
+        let testSeed = arguments.contains("-ui-testing")
+            ? arguments.first(where: { $0.hasPrefix("-ui-testing-seed=") })
+                .flatMap { UInt64($0.dropFirst("-ui-testing-seed=".count)) }
+            : nil
         #else
         let appliedTestOptions = LocalTestOptions(quickMatch: testOptions.quickMatch)
+        let testSeed: UInt64? = nil
         #endif
         store.start(name: "Vos", map: selectedMap, difficulty: difficulty, botNames: botNames,
                     timing: timing, advanced: advanced, testOptions: appliedTestOptions,
-                    trainingRole: trainingRole)
+                    trainingRole: trainingRole, seed: testSeed ?? .random(in: .min ... .max))
         playing = store.game != nil
     }
 
@@ -1389,7 +1401,7 @@ private enum DawnAnnouncement: Hashable {
     case peaceful
 }
 
-private extension GameMap {
+extension GameMap {
     var landscapeAsset: String { "mapa_\(rawValue)" }
     var dayBackgroundAsset: String { "mapa_\(rawValue)_vertical_dia" }
     var nightBackgroundAsset: String { "mapa_\(rawValue)_vertical_noche" }
@@ -1716,67 +1728,69 @@ private struct LocalTableView: View {
             ZStack {
                 tableBackground(game)
                     .onTapGesture { chatInputFocused = false }
-                GeometryReader { geometry in
-                    let availableSideWidth = min(
-                        max(Int((geometry.size.width - 8 - 8 - 220) / 2), 54),
-                        78
-                    )
-                    let footerInset: CGFloat = game.winner == nil ? 148 : 8
-                    // Leave a visible lane between the last side card and the
-                    // full-width player panel, especially at 13–15 players.
-                    let availableSideHeight = max(
-                        Int(geometry.size.height) - Int(footerInset) - 36,
-                        1
-                    )
-                    let androidMetrics = ClassicCompanionMetrics.androidCompatible(
-                        totalPlayers: game.players.count,
-                        availableHeight: availableSideHeight,
-                        availableWidth: availableSideWidth
-                    )
-                    let metrics = androidMetrics
-                    let sides = sidePlayers(game)
-                    let footerWidth = min(max(geometry.size.width - 24, 244), 372)
+                if game.winner == nil {
+                    GeometryReader { geometry in
+                        let availableSideWidth = min(
+                            max(Int((geometry.size.width - 8 - 8 - 220) / 2), 54),
+                            78
+                        )
+                        let footerInset: CGFloat = game.winner == nil ? 148 : 8
+                        // Leave a visible lane between the last side card and the
+                        // full-width player panel, especially at 13–15 players.
+                        let availableSideHeight = max(
+                            Int(geometry.size.height) - Int(footerInset) - 36,
+                            1
+                        )
+                        let androidMetrics = ClassicCompanionMetrics.androidCompatible(
+                            totalPlayers: game.players.count,
+                            availableHeight: availableSideHeight,
+                            availableWidth: availableSideWidth
+                        )
+                        let metrics = androidMetrics
+                        let sides = sidePlayers(game)
+                        let footerWidth = min(max(geometry.size.width - 24, 244), 372)
 
-                    ZStack(alignment: .bottom) {
-                        HStack(alignment: .top, spacing: 4) {
-                            playerColumn(sides.left, game: game, metrics: metrics)
-                            VStack(spacing: 4) {
-                                tableHeader(game)
-                                tableCenter(game)
+                        ZStack(alignment: .bottom) {
+                            HStack(alignment: .top, spacing: 4) {
+                                playerColumn(sides.left, game: game, metrics: metrics)
+                                VStack(spacing: 4) {
+                                    tableHeader(game)
+                                    tableCenter(game)
+                                }
+                                .padding(4)
+                                .background(TraidoresTheme.ink.opacity(0.42), in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border, lineWidth: 1))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                playerColumn(sides.right, game: game, metrics: metrics)
                             }
-                            .padding(4)
-                            .background(TraidoresTheme.ink.opacity(0.42), in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border, lineWidth: 1))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            playerColumn(sides.right, game: game, metrics: metrics)
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.top, 8)
-                        .padding(.bottom, footerInset)
+                            .padding(.horizontal, 4)
+                            .padding(.top, 8)
+                            .padding(.bottom, footerInset)
 
-                        if game.winner == nil {
-                            humanPanel(game)
-                                .frame(width: footerWidth)
-                                .padding(.bottom, 8)
-                                .zIndex(1)
-                        }
+                            if game.winner == nil {
+                                humanPanel(game)
+                                    .frame(width: footerWidth)
+                                    .padding(.bottom, 8)
+                                    .zIndex(1)
+                            }
 
-                        if showingChat && (game.isNight || game.phase == .discussion) {
-                            chatPanel(game)
-                                .frame(width: min(geometry.size.width - 16, 340),
-                                       height: max(220, geometry.size.height - 92
-                                           - (chatInputFocused ? 8 : footerInset)))
-                                .padding(.bottom, chatInputFocused ? 8 : footerInset)
-                                .zIndex(2)
+                            if showingChat && (game.isNight || game.phase == .discussion) {
+                                chatPanel(game)
+                                    .frame(width: min(geometry.size.width - 16, 340),
+                                           height: max(220, geometry.size.height - 92
+                                               - (chatInputFocused ? 8 : footerInset)))
+                                    .padding(.bottom, chatInputFocused ? 8 : footerInset)
+                                    .zIndex(2)
+                            }
                         }
                     }
+                    // Gate the controls from the same period key used by the map.
+                    // This applies on the first render, before onChange queues the
+                    // animation, so night actions cannot appear over the day map.
+                    .opacity(tableControlsHidden(game) ? 0 : 1)
+                    .allowsHitTesting(!tableControlsHidden(game))
+                    .transaction { $0.animation = nil }
                 }
-                // Gate the controls from the same period key used by the map.
-                // This applies on the first render, before onChange queues the
-                // animation, so night actions cannot appear over the day map.
-                .opacity(tableControlsHidden(game) ? 0 : 1)
-                .allowsHitTesting(!tableControlsHidden(game))
-                .transaction { $0.animation = nil }
 
                 if showingRole {
                     roleOverlay(game.human.role)
@@ -1831,6 +1845,13 @@ private struct LocalTableView: View {
                         // Opaque from its first frame, like Android; it only fades out.
                         .transition(.asymmetric(insertion: .identity, removal: .opacity))
                         .zIndex(4)
+                }
+
+                if let winner = game.winner, dawnAnnouncements.isEmpty, privateFeedback == nil,
+                   activeTransition == nil, pendingTransition == nil, !transitionCurtain {
+                    MatchResultView(game: game, winner: winner, durationLabel: store.durationLabel, onReturn: dismissMatch)
+                        .transition(.opacity)
+                        .zIndex(5)
                 }
 
                 if scenePhase != .active {
@@ -1939,10 +1960,10 @@ private struct LocalTableView: View {
     /// still has an announcement to make.
     private func desiredMusic(_ game: ClassicGame) -> GameAudio.Music? {
         guard scenePhase == .active, preferences.musicEnabled else { return nil }
-        if let winner = game.winner { return .victory(townWon: winner != .traitors) }
         if privateFeedback != nil || !dawnAnnouncements.isEmpty || transitionCurtain
             || pendingTransition != nil { return nil }
         if activeTransition != nil, !musicCueReached || game.phase == .dawn { return nil }
+        if let winner = game.winner { return .victory(townWon: winner != .traitors) }
         return game.isNight ? .night : .day(game.map)
     }
 
@@ -2126,7 +2147,7 @@ private struct LocalTableView: View {
         let arguments = ProcessInfo.processInfo.arguments
         // Long enough to survive XCTest waiting for the app to go idle after a tap.
         if arguments.contains("-ui-testing-transition") { return 4 }
-        if arguments.contains("-ui-testing") { return 0.08 }
+        if arguments.contains("-ui-testing"), !arguments.contains("-ui-testing-real-time") { return 0.08 }
         return TimeInterval(game.effectiveTiming.transitionSeconds)
     }
 
@@ -2357,6 +2378,10 @@ private struct LocalTableView: View {
         // must remain fully visible even when this phase has no target action.
         .buttonStyle(.plain).allowsHitTesting(actionable || chatInputFocused)
         .opacity(player.alive ? 1 : 0.72)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(player.name), \(player.alive ? "en la mesa" : "eliminado")")
+        .accessibilityValue(actionable ? "Objetivo disponible" : "")
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("table.player.\(player.id)")
     }
 
@@ -2427,7 +2452,7 @@ private struct LocalTableView: View {
         } else {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
-                    if let winner = game.winner { resultPanel(game, winner: winner) }
+                    if game.winner != nil { Color.clear.frame(height: 1) }
                     else {
                         compositionPanel(game)
                         phaseSummaryPanel(game)
@@ -3154,25 +3179,6 @@ private struct LocalTableView: View {
         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func resultPanel(_ game: ClassicGame, winner: RoleTeam) -> some View {
-        VStack(spacing: 12) {
-            Text("VICTORIA DE \(winner.rawValue.uppercased())")
-                .font(TraidoresTheme.title(28)).foregroundStyle(TraidoresTheme.gold)
-            ForEach(game.players) { player in
-                HStack {
-                    Text(player.name + (player.id == 0 ? " · VOS" : ""))
-                    Spacer()
-                    Text(player.role.classicTitle(on: game.map)).foregroundStyle(TraidoresTheme.gold)
-                }
-            }
-            Button("VOLVER AL LOBBY") { dismissMatch() }
-                .buttonStyle(TraidoresButtonStyle(prominent: true))
-        }
-        .padding(16)
-        .background(TraidoresTheme.panel.opacity(0.98), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.gold))
-    }
-
     private func roleOverlay(_ role: RoleKey) -> some View {
         let map = store.game?.map ?? .pampa
         return ZStack {
@@ -3288,7 +3294,7 @@ private struct LocalTableView: View {
     }
 }
 
-private extension RoleKey {
+extension RoleKey {
     /// The card and name this role has on the map (e.g. «Aldeana» with the medieval card),
     /// taken from the Android role catalog used by the Roles screen.
     private func guideRole(on map: GameMap) -> GuideRole? {

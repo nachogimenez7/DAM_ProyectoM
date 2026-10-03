@@ -153,7 +153,8 @@ enum RevealTiming {
     static var testing: Bool { ProcessInfo.processInfo.arguments.contains("-ui-testing") }
 
     static func seconds(_ value: Double) -> Duration {
-        .milliseconds(Int((testing ? min(value, 0.05) : value) * 1_000))
+        let accelerated = testing && !ProcessInfo.processInfo.arguments.contains("-ui-testing-real-time")
+        return .milliseconds(Int((accelerated ? min(value, 0.05) : value) * 1_000))
     }
 }
 

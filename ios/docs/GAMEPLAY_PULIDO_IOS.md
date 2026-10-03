@@ -45,21 +45,28 @@ Sin prioridad por ahora: nombre y color de estilo del perfil en el panel inferio
 
 ## Punto de partida para la próxima sesión (3/10)
 
+Continuidad adicional: [CONTINUIDAD_CODEX_2026-10-03.md](CONTINUIDAD_CODEX_2026-10-03.md), con el arreglo del botón, pruebas, ícono e instalación/lanzamiento en el iPhone 13. El audio en el dispositivo aún requiere escucha del usuario.
+
 Estado al cerrar el commit `ios: dawn reveals, match audio, vote ceremony and table options`:
 
 **Verificado en simulador (iPhone 17, iOS 27):** anuncio de muerte (grabado cuadro por cuadro), «El pueblo respira», marco 9-patch de Pampa y Grecia, música/efectos (se oyen en el simulador), recuento con sellos y «Mayoría alcanzada», expulsión completa hasta «X FUE EXPULSADO». Suite `LocalLobbyUITests` 20/20 **antes** de agregar `VoteCeremonyView`.
 
+**Retoma de Codex (3/10):** Xcode 27.0 y el mismo simulador iPhone 17 disponibles. Core: 39/39. La suite completa `LocalLobbyUITests` dio 19/20: el toque en «VER EXPULSIÓN» caía sobre el fondo del botón, fuera del texto, y no avanzaba. Se movieron el marco y `contentShape` dentro de la etiqueta del botón, con estilo `.plain` y altura mínima de 44 pt. La repetición de `testVotingReviewSnapshotAndRecount` pasó y recorrió tanto el recuento como la expulsión (adjunto «Pampa expulsión»); no se repitió la suite completa tras este cambio. Resultados en `/tmp/traidores-codex-verification/`. El guardado de pruebas ya está aislado: `LocalLobbyView` inyecta su suite de `UserDefaults` en `LocalGameStore`, aunque el valor por defecto del store sea `.standard`.
+
+**Estado vigente al entregar a Claude (3/10):** el usuario rechazó el primer diseño de ganadores y pidió que sea exactamente como Android. `MatchResultView` fue reescrita con el arte original de corona/cortinas, títulos originales, solo equipo ganador, crónica, dos botones inferiores y animación escalonada. Bree Serif en títulos/botones y Roboto real en textos secundarios; duración real persistida. Compilación e instalación en iPhone aprobadas; lanzamiento final no confirmado. Traidores y Mercenario con tiempos reales pasaron antes de agregar Roboto. **Pueblo sigue fallando la auditoría de Dynamic Type en «COMISARIO», incluso con Roboto.** AX5 se interrumpió por pedido de cierre; no está validado. Ver el estado vigente y orden inmediato en `CONTINUIDAD_CODEX_2026-10-03.md`; sus notas del diseño inicial están marcadas como reemplazadas. El iconito de foto de perfil de cada jugador es un pedido futuro, todavía no implementado.
+
 **Pendiente de verificar (primero):**
-1. Correr `LocalLobbyUITests` completa otra vez: `testVotingReviewSnapshotAndRecount` ahora recorre la ceremonia (`table.voteCeremony`, `table.voteContinue`) y no se ejecutó todavía.
-2. Repetir la patada en simulador: tras la última corrección el marco se dibuja como fondo (`RevealPanel`), así que la bota y la carta voladora deben pasar **por encima** del marco, y el hueco de la carta se cierra al terminar. Revisar con `recordVideo` + hoja de cuadros (ver `CLAUDE.md`).
-3. Ver el anuncio de silencio (jaula) con un Mercenario en partida; no salió en las pruebas manuales.
-4. Instalar en el iPhone 13 para oír el audio real (volumen relativo música/efectos, que la música vuelva tras cada anuncio) y confirmar que el ladrido sigue bien.
-5. Accesibilidad de lo nuevo: AX5 en los tres anuncios y en el recuento (hay `ViewThatFits` → `ScrollView`), VoiceOver (con VoiceOver los anuncios y el recuento no avanzan solos), Reducir animaciones de la app.
+1. **Comprobado el 3/10:** suite completa y corrección/repetición de la prueba del recuento, según la nota anterior.
+2. **Comprobada con tiempos reales el 3/10:** bota/carta por encima del marco y cierre del hueco. Hoja `evidence/2026-10-03/patada-cuadros.jpg`. Corregido además el título final de expulsión que se truncaba con puntos suspensivos.
+3. **Comprobado el 3/10:** silencio con humano Mercenario en partida de siete jugadores; jaula/candado y nombre del silenciado. Ver la evidencia y la grabación indicadas en la nota de continuidad.
+4. **Instalado y lanzado en el iPhone 13 el 3/10.** Falta oír el audio real (volumen relativo música/efectos, que la música vuelva tras cada anuncio) y confirmar que el ladrido sigue bien.
+5. **Primero corregir Dynamic Type de «COMISARIO» en el cierre y verificar la versión con Roboto;** después accesibilidad de lo nuevo: AX5 en los tres anuncios y en el recuento (hay `ViewThatFits` → `ScrollView`), VoiceOver (con VoiceOver los anuncios y el recuento no avanzan solos), Reducir animaciones de la app.
 
 **Cómo está armado:**
 - `Platform/GameAudio.swift`: `GameAudio` en el entorno desde `LocalMatchFlow`; `LocalTableView.desiredMusic(_:)` decide la pista (nil = pausa con fundido). Efectos con `playEffect(_:)`; el impacto de la expulsión lo dispara `VoteCeremonyView.onImpact`.
 - `Features/LocalGame/DawnRevealViews.swift`: `RevealFrameArt`/`RevealPanel` (marco por mapa, también lo usan `LocalEventCard`, el resultado privado y los compañeros traidores) y las tres vistas de amanecer. `DawnAnnouncement` guarda ids de jugador.
 - `Features/LocalGame/VoteCeremonyView.swift`: cubre las fases `voteCount` y `result` sin ganador; cada botón llama a `performPrimaryAction` de la mesa. Avanza solo a los 8 s salvo con `-ui-testing` o VoiceOver.
+- `Features/LocalGame/MatchResultView.swift`: ceremonia con diseño de Android, cartas del equipo ganador y crónica con estadísticas/historia. La mesa se retira del árbol de vistas cuando hay ganador; el cierre espera a los anuncios y las transiciones pendientes.
 - La rueda de opciones (`TableOptionsPanel` en `LocalGameView.swift`) reemplazó la flecha de salir de la mesa.
 
 **Cambios de Android `main` mergeados en `ios-port` (29c01fe, beta 0.1.50) sin portar todavía:** el engranaje de partida muestra «REPORTAR UN PROBLEMA» (abre el diálogo de comentarios) también en partida local; Opciones oculta la medición online fuera de debug; perfil y selector de emotes muestran el aviso `beta_cosmetics_notice`; el lobby dice «PRACTICAR CONTRA LA IA» en vez de «MODO DE PRUEBA». Revisar `FeedbackDialog.kt`/`FeedbackQuota.kt` antes de portar el reporte.
