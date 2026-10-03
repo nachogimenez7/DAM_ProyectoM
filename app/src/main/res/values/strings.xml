@@ -79,7 +79,8 @@
     <string name="lobby_start_progress_players">%1$d de %2$d jugadores</string>
     <string name="lobby_start_progress_ready">%1$d de %2$d listos</string>
 
-    <string name="lobby_practice_section">MODO DE PRUEBA</string>
+    <string name="lobby_practice_section">PRACTICAR CONTRA LA IA</string>
+    <string name="beta_cosmetics_notice">Durante la beta, algunos cosméticos están disponibles para todos. Su disponibilidad puede cambiar en futuras versiones.</string>
     <string name="lobby_practice_description">Elegí un rol específico para probar sus acciones. Si dejás AZAR, el reparto funciona normalmente; si el rol elegido no está en la composición, reemplaza a un Aldeano.</string>
     <string name="lobby_practice_role">Elegir rol: %1$s%2$s  ▾</string>
     <string name="lobby_practice_minimum"> (%1$d+)</string>

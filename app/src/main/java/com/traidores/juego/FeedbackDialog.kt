@@ -24,18 +24,25 @@ object FeedbackDialog {
     private const val MAX_MESSAGE = 1200
 
     @Suppress("DEPRECATION")
-    fun show(activity: Activity) {
+    fun show(activity: Activity, includeMatchContext: Boolean = false, reportProblem: Boolean = false) {
+        // Capture the phase when the form opens, rather than after the player finishes typing.
+        val matchContext = if (includeMatchContext) {
+            OnlineStabilityReport.reportText(activity).substringBefore("Red de la aplicación")
+                .substringBefore("Firestore ·")
+        } else ""
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(activity.dp(6), 0, activity.dp(6), activity.dp(2))
         }
-        content.addView(label(activity, "ENVIAR COMENTARIO O ERROR", 20f, true).apply {
+        content.addView(label(activity, if (reportProblem) "REPORTAR UN PROBLEMA" else "ENVIAR COMENTARIO O ERROR", 20f, true).apply {
             gravity = Gravity.CENTER
             setTextColor(activity.getColor(R.color.accent_gold))
         })
         content.addView(label(
             activity,
-            "Contanos qué pasó o qué mejorarías. Los datos técnicos se agregan automáticamente.",
+            "Contanos qué pasó o qué mejorarías. Podés enviarlo sin salir del juego. " +
+                "Incluimos la versión y el dispositivo" +
+                if (includeMatchContext) ", y un resumen de la partida sin los chats." else ".",
             13f,
             false
         ).apply {
@@ -49,23 +56,26 @@ object FeedbackDialog {
             title = "NOMBRE",
             hint = "Cómo querés que te llamemos",
             maxLength = MAX_NAME,
-            initialValue = PlayerPublicIdentity.profileName(activity)
+            initialValue = PlayerPublicIdentity.profileName(activity).takeIf { it.length >= 2 } ?: "Jugador"
         )
         val subjectInput = input(
             activity = activity,
             title = "ASUNTO",
             hint = "Ej.: problema en una partida vs IA",
-            maxLength = MAX_SUBJECT
+            maxLength = MAX_SUBJECT,
+            initialValue = if (reportProblem) "Problema en el juego" else ""
         )
         val messageInput = input(
             activity = activity,
             title = "MENSAJE",
             hint = "Describí qué pasó, qué esperabas o qué te gustaría mejorar",
-            maxLength = MAX_MESSAGE,
+            maxLength = if (includeMatchContext) FeedbackSubmission.MAX_DESCRIPTION else MAX_MESSAGE,
             multiline = true
         )
-        content.addView(nameInput.container)
-        content.addView(subjectInput.container, marginTop(activity, 9))
+        if (!reportProblem) {
+            content.addView(nameInput.container)
+            content.addView(subjectInput.container, marginTop(activity, 9))
+        }
         content.addView(messageInput.container, marginTop(activity, 9))
 
         val status = label(activity, "", 12f, false).apply {
@@ -101,7 +111,7 @@ object FeedbackDialog {
                     activity = activity,
                     name = name,
                     subject = subject,
-                    message = message,
+                    message = FeedbackSubmission.message(message, matchContext),
                     sendButton = sendButton,
                     status = status,
                     onSuccess = { dialog.dismiss() }
@@ -147,9 +157,26 @@ object FeedbackDialog {
                     "fechaLocal" to System.currentTimeMillis(),
                     "creadaEn" to FieldValue.serverTimestamp()
                 )
-                FirebaseFirestore.getInstance()
-                    .collection(COLLECTION)
-                    .add(payload)
+                val firestore = FirebaseFirestore.getInstance()
+                val report = firestore.collection(COLLECTION).document()
+                val quota = firestore.collection("limitesComentarios").document(uid)
+                firestore.runTransaction { transaction ->
+                    val previous = transaction.get(quota)
+                    val nowMs = System.currentTimeMillis()
+                    val windowStart = previous.getTimestamp("windowStart")
+                    val lastSent = previous.getTimestamp("lastSentAt")
+                    val count = previous.getLong("count") ?: 0L
+                    FeedbackQuota.rejection(nowMs, windowStart?.toDate()?.time, lastSent?.toDate()?.time, count)
+                        ?.let { throw FeedbackLimitException(it) }
+                    val newWindow = windowStart == null || nowMs - windowStart.toDate().time >= FeedbackQuota.WINDOW_MS
+                    transaction.set(quota, mapOf(
+                        "count" to if (newWindow) 1L else count + 1L,
+                        "windowStart" to if (newWindow) FieldValue.serverTimestamp() else windowStart,
+                        "lastSentAt" to FieldValue.serverTimestamp(),
+                        "lastReportId" to report.id
+                    ))
+                    transaction.set(report, payload)
+                }
                     .addOnSuccessListener {
                         GameNotice.show(
                             activity = activity,
@@ -159,6 +186,14 @@ object FeedbackDialog {
                         onSuccess()
                     }
                     .addOnFailureListener { error ->
+                        val limitError = generateSequence<Throwable>(error) { it.cause }
+                            .filterIsInstance<FeedbackLimitException>().firstOrNull()
+                        if (limitError != null) {
+                            sendButton.isEnabled = true
+                            sendButton.text = "ENVIAR"
+                            status.text = limitError.message
+                            return@addOnFailureListener
+                        }
                         OnlineDebugLog.e("feedback_submit_failure", error)
                         showFailure(activity, sendButton, status)
                     }
@@ -177,6 +212,7 @@ object FeedbackDialog {
     }
 
     private data class InputBlock(val container: LinearLayout, val editText: EditText)
+    private class FeedbackLimitException(message: String) : RuntimeException(message)
 
     private fun input(
         activity: Activity,

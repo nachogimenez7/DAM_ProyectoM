@@ -6100,19 +6100,15 @@ class LobbyActivity : BaseActivity() {
             textSize = 11f
             setPadding(dp(4), 0, dp(4), dp(8))
         })
-        if (isDebugBuild) {
-            content.addView(dialogSectionTitle("HERRAMIENTAS DEBUG"))
-            addTestSwitch("IA obedece votos del chat", botsObeyVotes) { botsObeyVotes = it }
-            addTestSwitch("Forzar empates", forceTies) { forceTies = it }
-            addTestSwitch("Bots no te matan de noche", botsNeverKill) { botsNeverKill = it }
-            addTestSwitch("Bots no te votan", botsNeverVote) { botsNeverVote = it }
-        } else {
-            content.addView(TextView(this).apply {
-                text = "Las herramientas debug solo aparecen en compilaciones de prueba."
-                setTextColor(getColor(R.color.text_secondary))
-                textSize = 11f
-                setPadding(dp(4), dp(4), dp(4), dp(4))
-            })
+        if (!isFirestoreOnlineLobby()) {
+            content.addView(dialogSectionTitle("PRACTICAR CONTRA LA IA"))
+            addTestSwitch("La IA sigue tus votos del chat", botsObeyVotes) { botsObeyVotes = it }
+            addTestSwitch("La IA no te mata de noche", botsNeverKill) { botsNeverKill = it }
+            addTestSwitch("La IA no te vota", botsNeverVote) { botsNeverVote = it }
+            if (isDebugBuild) {
+                content.addView(dialogSectionTitle("HERRAMIENTAS DEBUG"))
+                addTestSwitch("Forzar empates", forceTies) { forceTies = it }
+            }
         }
         val scroll = ScrollView(this).apply { addView(content) }
         GameDialog.custom(
@@ -7054,12 +7050,8 @@ class LobbyActivity : BaseActivity() {
     private fun showLobbyOptionsDialog() {
         AccessibilityOptionsDialog.show(
             activity = this,
-            reportLabel = if (isFirestoreOnlineLobby()) "COPIAR REPORTE BETA" else null,
-            onReportRequested = if (isFirestoreOnlineLobby()) {
-                { OnlineStabilityReport.copyToClipboard(this) }
-            } else {
-                null
-            }
+            reportLabel = "REPORTAR UN PROBLEMA",
+            onReportRequested = { FeedbackDialog.show(this, includeMatchContext = isFirestoreOnlineLobby(), reportProblem = true) }
         )
     }
 

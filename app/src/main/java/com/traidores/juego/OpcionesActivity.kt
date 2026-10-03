@@ -131,9 +131,21 @@ class OpcionesActivity : BaseActivity() {
         btnAbout = findViewById(R.id.btnAbout)
         btnResetOptions = findViewById(R.id.btnResetOptions)
         onlineMeasurementSummary = findViewById(R.id.onlineMeasurementSummary)
+        val measurementVisibility = if (BuildConfig.DEBUG) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.onlineMeasurementTitle).visibility = measurementVisibility
+        onlineMeasurementSummary.visibility = measurementVisibility
+        findViewById<View>(R.id.onlineMeasurementDescription).visibility = measurementVisibility
+        findViewById<View>(R.id.btnResetOnlineMeasurement).visibility = measurementVisibility
+        if (!BuildConfig.DEBUG) {
+            findViewById<Button>(R.id.btnCopyBetaReport).text = "REPORTAR UN PROBLEMA"
+        }
         findViewById<Button>(R.id.btnCopyBetaReport).setOnClickListener {
-            refreshOnlineMeasurement()
-            OnlineStabilityReport.copyToClipboard(this)
+            if (BuildConfig.DEBUG) {
+                refreshOnlineMeasurement()
+                OnlineStabilityReport.copyToClipboard(this)
+            } else {
+                FeedbackDialog.show(this, reportProblem = true)
+            }
         }
         findViewById<Button>(R.id.btnResetOnlineMeasurement).setOnClickListener {
             OnlineFirestoreUsageMetrics.reset()
