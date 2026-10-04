@@ -34,6 +34,7 @@ import java.util.Locale
 import java.util.concurrent.TimeoutException
 
 class ProfileActivity : BaseActivity() {
+    private var stopHistoryObservation: (() -> Unit)? = null
 
     private data class ProfileDraft(
         var name: String,
@@ -190,9 +191,7 @@ class ProfileActivity : BaseActivity() {
             }
         }
         lastMatchCard.setOnClickListener {
-            if (MatchHistoryStore.lastMatch(this) != null) {
-                showMatchHistory()
-            }
+            showMatchHistory()
         }
 
         findViewById<View>(R.id.editAvatar).setOnClickListener { showAvatarSelector() }
@@ -351,8 +350,8 @@ class ProfileActivity : BaseActivity() {
         GameDialog.confirm(
             activity = this,
             title = "Solo con cuenta",
-            message = "$action necesita una cuenta. Es gratis, tarda un minuto y no perdés " +
-                "nada de lo que ya jugaste: se te guarda todo tal cual está.",
+            message = "$action necesita una cuenta. Es gratis y te permite guardar tus próximas partidas " +
+                "para recuperarlas desde otro dispositivo.",
             positiveLabel = "CREAR CUENTA",
             negativeLabel = "AHORA NO"
         ) { showAccountDialog() }
@@ -446,11 +445,12 @@ class ProfileActivity : BaseActivity() {
             }
         ) { result ->
             when (result) {
-                is GoogleAccountResult.Linked -> AccountLinkedDialog.show(this)
+                is GoogleAccountResult.Linked -> {
+                    refreshLinkedProfile()
+                    AccountLinkedDialog.show(this)
+                }
                 is GoogleAccountResult.SignedIn -> {
-                    draftProfile.publicId = result.recoveredPublicId
-                    savedProfile.publicId = result.recoveredPublicId
-                    renderProfile()
+                    refreshLinkedProfile()
                     AccountLinkedDialog.show(
                         activity = this,
                         recoveredPublicId = result.recoveredPublicId
@@ -492,17 +492,16 @@ class ProfileActivity : BaseActivity() {
             if (isFinishing || isDestroyed) return@linkOrSignIn
             when (result) {
                 is AccountLinkResult.Linked -> {
+                    refreshLinkedProfile()
                     AccountLinkedDialog.show(this)
                 }
                 is AccountLinkResult.SignedIn -> {
                     // El uid cambio: el `#` que se muestra es el de la cuenta recuperada.
-                    draftProfile.publicId = result.recoveredPublicId
-                    savedProfile.publicId = result.recoveredPublicId
+                    refreshLinkedProfile()
                     AccountLinkedDialog.show(
                         activity = this,
                         recoveredPublicId = result.recoveredPublicId
                     )
-                    renderProfile()
                 }
                 is AccountLinkResult.Failed -> {
                     GameNotice.show(
@@ -782,10 +781,24 @@ class ProfileActivity : BaseActivity() {
 
     private fun renderMatchProgress() {
         val stats = MatchHistoryStore.stats(this)
+        val registered = AccountMatchHistory.registeredUid().isNotEmpty()
+        val cloud = AccountMatchHistory.snapshot
+        val waiting = registered && cloud.status != AccountMatchHistory.Status.READY
         statMatchesValue.text = stats.matches.toString()
         statWinsValue.text = stats.wins.toString()
         statWinRateValue.text = "${stats.winRatePercent}%"
-        profileStatsHint.text = if (stats.matches == 0) {
+        if (waiting) {
+            statMatchesValue.text = "—"; statWinsValue.text = "—"; statWinRateValue.text = "—"
+        }
+        profileStatsHint.text = if (registered) {
+            when {
+                cloud.status == AccountMatchHistory.Status.ERROR -> "No pudimos cargar tu historial. Tocá la tarjeta para reintentar."
+                waiting -> "Cargando el historial de tu cuenta…"
+                AccountMatchHistory.pendingCount() > 0 -> "Hay una partida pendiente de enviar. Tocá la tarjeta para reintentar."
+                cloud.processing -> "Partida guardada. Actualizando tus estadísticas…"
+                else -> "Historial sincronizado con tu cuenta."
+            }
+        } else if (stats.matches == 0) {
             "Las estadísticas aparecerán cuando termines una partida local."
         } else {
             "Progreso de partidas locales finalizadas."
@@ -793,13 +806,15 @@ class ProfileActivity : BaseActivity() {
 
         val lastMatch = MatchHistoryStore.lastMatch(this)
         if (lastMatch == null) {
-            lastMatchMapRole.text = "Todavía no jugaste ninguna partida."
-            lastMatchResultDate.text = "Las partidas locales finalizadas aparecerán aquí."
+            lastMatchMapRole.text = if (waiting) "Historial de tu cuenta" else "Todavía no jugaste ninguna partida."
+            lastMatchResultDate.text = if (waiting) profileStatsHint.text else
+                if (registered) "Tus próximas partidas aparecerán aquí." else "Las partidas locales finalizadas aparecerán aquí."
             lastMatchResultDate.setTextColor(getColor(R.color.text_secondary))
             lastMatchRoleImage.visibility = View.GONE
             lastMatchCard.background = getDrawable(R.drawable.bg_profile_stat)
             lastMatchCard.contentDescription = "Todavía no hay partidas en el historial"
-            lastMatchCard.isEnabled = false
+            lastMatchCard.isEnabled = registered && (cloud.status == AccountMatchHistory.Status.ERROR || AccountMatchHistory.pendingCount() > 0)
+            if (lastMatchCard.isEnabled) lastMatchCard.contentDescription = "Reintentar cargar y guardar el historial de tu cuenta"
             return
         }
 
@@ -821,9 +836,17 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun showMatchHistory() {
-        val records = MatchHistoryStore.lastMatches(this, 5)
+        if (AccountMatchHistory.registeredUid().isNotEmpty() &&
+            (AccountMatchHistory.snapshot.status == AccountMatchHistory.Status.ERROR || AccountMatchHistory.pendingCount() > 0)) {
+            AccountMatchHistory.retry()
+            return
+        }
+        val records = MatchHistoryStore.lastMatches(this, 50)
         if (records.isEmpty()) return
         val content = layoutInflater.inflate(R.layout.dialog_match_history, null)
+        content.findViewById<TextView>(R.id.matchHistorySubtitle).text =
+            if (AccountMatchHistory.registeredUid().isNotEmpty()) "Hasta 50 partidas de tu cuenta · locales y online"
+            else "Tus últimas partidas locales finalizadas"
         val list: LinearLayout = content.findViewById(R.id.matchHistoryList)
         content.findViewById<View>(R.id.matchHistoryScroll).layoutParams =
             content.findViewById<View>(R.id.matchHistoryScroll).layoutParams.apply {
@@ -879,7 +902,7 @@ class ProfileActivity : BaseActivity() {
                     })
                     addView(TextView(this@ProfileActivity).apply {
                         text = "${if (record.won) "VICTORIA" else "DERROTA"} · " +
-                            formatMatchDate(record.dateEpochMs)
+                            formatMatchDate(record.dateEpochMs) + " · " + if (record.origin == "online") "Online" else "Local"
                         setTextColor(
                             getColor(
                                 if (record.won) R.color.winner_town_accent
@@ -957,6 +980,14 @@ class ProfileActivity : BaseActivity() {
                 OnlineDebugLog.e("public_id_profile_allocate_fallback", error)
             }
         )
+    }
+
+    private fun refreshLinkedProfile() {
+        savedProfile = loadProfile()
+        draftProfile = copyProfile(savedProfile)
+        setEditing(false)
+        renderProfile()
+        ensureNumericPublicId()
     }
 
     private fun validFeaturedAchievements(names: List<String>): List<String> {
@@ -1135,18 +1166,40 @@ class ProfileActivity : BaseActivity() {
 
         if (photoChanged) ProfilePhotoStorage.markChanged(this)
         savedProfile = copyProfile(draftProfile)
+        AccountProfileSync.markChanged(this)
         profileCloudSyncPending = true
+        flushProfileCloudSync()
         return true
     }
 
     private fun flushProfileCloudSync() {
         if (!profileCloudSyncPending || isGuestAccount) return
         profileCloudSyncPending = false
+        AccountProfileSync.markChanged(this)
+        renderProfileSyncStatus()
+        AccountProfileSync.sync(this) { error ->
+            renderProfileSyncStatus(error != null)
+            if (error != null) {
+                profileCloudSyncPending = true
+                OnlineDebugLog.e("profile_firebase_save_failure", error)
+                if (!isFinishing && !isDestroyed) GameNotice.show(this,
+                    "Tu perfil tiene cambios pendientes de enviar. Volvé al Perfil para reintentar.", duration = GameNotice.Duration.LONG)
+            }
+        }
         PlayGamesProgressSync.onProfileSaved(this)
         ProfilePhotoStorage.sync(this) { error ->
             if (error != null && !isFinishing && !isDestroyed) {
                 GameNotice.show(this, "Tu foto quedó guardada en este dispositivo. No pudimos publicarla; volvé al perfil para reintentar.", duration = GameNotice.Duration.LONG)
             }
+        }
+    }
+
+    private fun renderProfileSyncStatus(failed: Boolean = false) {
+        if (isDestroyed) return
+        findViewById<TextView>(R.id.profileCloudStatus).apply {
+            visibility = if (AccountProfileSync.hasPending(this@ProfileActivity)) View.VISIBLE else View.GONE
+            text = if (failed) "Tu perfil está pendiente de sincronizar. Volvé al Perfil para reintentar."
+                else "Guardando el perfil en tu cuenta…"
         }
     }
 
@@ -1156,10 +1209,31 @@ class ProfileActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        stopHistoryObservation = AccountMatchHistory.observe(this) {
+            if (!isFinishing && !isDestroyed) renderMatchProgress()
+        }
+        renderProfileSyncStatus()
+        AccountProfileSync.sync(this) { error ->
+            renderProfileSyncStatus(error != null)
+            if (error == null && !isFinishing && !isDestroyed && !isEditing) {
+                val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                if (user != null && !user.isAnonymous) com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    .collection("perfiles_publicos").document(user.uid).get(com.google.firebase.firestore.Source.SERVER)
+                    .addOnSuccessListener { remote ->
+                        if (!isFinishing && !isDestroyed && !isEditing &&
+                            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid == user.uid) {
+                            AccountProfileSync.restoreConfirmed(this, remote.data.orEmpty())
+                            refreshLinkedProfile()
+                        }
+                    }
+            }
+        }
         ProfilePhotoStorage.sync(this)
     }
 
     override fun onStop() {
+        stopHistoryObservation?.invoke()
+        stopHistoryObservation = null
         if (!isChangingConfigurations) flushProfileCloudSync()
         super.onStop()
     }
@@ -2322,30 +2396,7 @@ class ProfileActivity : BaseActivity() {
     }
 
     private fun alignAvatarToFocus(image: ImageView, verticalFocus: Float) {
-        image.post {
-            val drawable = image.drawable ?: return@post
-            val drawableWidth = drawable.intrinsicWidth.toFloat()
-            val drawableHeight = drawable.intrinsicHeight.toFloat()
-            if (drawableWidth <= 0f || drawableHeight <= 0f) return@post
-
-            // Encuadre tipo retrato: llenar por ancho con un leve zoom y anclar cerca del borde
-            // superior (saltando el aire sobre la cabeza) para mostrar cabeza y hombros, no el
-            // cuerpo entero. Los valores son ajustables si algun rol queda muy alto/bajo.
-            val scale = maxOf(
-                image.width / drawableWidth,
-                image.height / drawableHeight
-            ) * 1.12f
-            val scaledWidth = drawableWidth * scale
-            val scaledHeight = drawableHeight * scale
-            val horizontalOffset = (image.width - scaledWidth) / 2f
-            val focusedY = scaledHeight * verticalFocus.coerceIn(0f, 1f)
-            val verticalOffset = (image.height / 2f - focusedY)
-                .coerceIn(image.height - scaledHeight, 0f)
-            image.imageMatrix = Matrix().apply {
-                setScale(scale, scale)
-                postTranslate(horizontalOffset, verticalOffset)
-            }
-        }
+        ProfilePortraitRenderer.alignArtwork(image, verticalFocus)
     }
 
     private fun alignRoleThumbnailFromTop(image: ImageView) {

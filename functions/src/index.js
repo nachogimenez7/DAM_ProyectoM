@@ -5,7 +5,8 @@ const {getFirestore} = require("firebase-admin/firestore");
 const {getDatabase} = require("firebase-admin/database");
 const {HttpsError, onCall} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onDocumentDeleted, onDocumentWritten} = require("firebase-functions/v2/firestore");
+const {onDocumentDeleted, onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {archiveFinishedRoom, saveRecord} = require("./accountHistoryService");
 const logger = require("firebase-functions/logger");
 const {sweepRooms, observeDeletedRoom, enqueueRoomCleanup} = require("./onlineRoomCleanupService");
 const {OnlineStartError} = require("./onlineStartCore");
@@ -82,6 +83,7 @@ exports.registrarSalaHuerfanaV1 = onDocumentDeleted({
   document: "partidas/{roomId}",
   region: "southamerica-west1",
   retry: true,
+  maxInstances: 2,
 }, (event) => observeDeletedRoom({
   firestore: getFirestore(),
   roomId: event.params.roomId,
@@ -98,3 +100,32 @@ exports.programarLimpiezaSalaV2 = onDocumentWritten({
   if (!event.data?.after.exists) return;
   return enqueueRoomCleanup({firestore: getFirestore(), roomId: event.params.roomId});
 });
+
+exports.guardarHistorialOnlineV1 = onDocumentWritten({
+  document: "partidas/{roomId}", region: "southamerica-west1", retry: true, maxInstances: 2,
+}, (event) => {
+  if (!event.data?.after.exists) return;
+  const room = event.data.after.data();
+  if (!["Pueblo", "Traidores"].includes(room.estadoPartida?.ganador)) return;
+  const before = event.data.before.data();
+  if (before?.partidaInicial?.matchId === room.partidaInicial?.matchId &&
+      ["Pueblo", "Traidores"].includes(before?.estadoPartida?.ganador)) return;
+  return archiveFinishedRoom({firestore: getFirestore(), roomId: event.params.roomId,
+    room, finishedAtMs: event.data.after.updateTime.toMillis()});
+});
+
+exports.contarPartidaLocalV1 = onDocumentCreated({
+  document: "cuentas/{uid}/historial/{recordId}", region: "southamerica-west1", retry: true, maxInstances: 2,
+}, (event) => {
+  const record = event.data?.data();
+  if (record?.origen !== "local") return;
+  return saveRecord({firestore: getFirestore(), uid: event.params.uid, record,
+    recordId: event.params.recordId, existingLocal: true});
+});
+
+// Auth deletion also removes private history; delayed room events require an existing profile.
+exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("southamerica-west1")
+  .runWith({failurePolicy: true, maxInstances: 2}).auth.user().onDelete(async (user) => {
+    await getFirestore().doc(`perfiles_publicos/${user.uid}`).delete();
+    await getFirestore().recursiveDelete(getFirestore().doc(`cuentas/${user.uid}`));
+  });

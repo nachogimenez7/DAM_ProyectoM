@@ -68,6 +68,8 @@ object AccountDeletion {
                     }
                     user.delete()
                         .addOnSuccessListener {
+                            AccountMatchHistory.forget(user.uid)
+                            AccountProfileSync.forget(activity, user.uid)
                             finishLocalDeletion(activity)
                             onResult(AccountDeletionResult.Deleted)
                         }

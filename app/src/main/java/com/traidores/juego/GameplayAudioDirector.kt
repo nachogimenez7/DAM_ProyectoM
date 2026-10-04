@@ -18,18 +18,18 @@ enum class GameSound(
     val haptic: HapticLevel,
     val relativeVolume: Float = 1f
 ) {
-    NIGHT_FALL(R.raw.sfx_night_fall, HapticLevel.LIGHT, 0.85f),
-    DAWN(R.raw.sfx_dawn, HapticLevel.LIGHT, 0.9f),
-    ELIMINATION(R.raw.sfx_death_elevenlabs, HapticLevel.STRONG, 0.78f),
-    EXPULSION(R.raw.sfx_expulsion, HapticLevel.STRONG, 0.82f),
-    SILENCE(R.raw.sfx_elimination, HapticLevel.MEDIUM, 0.9f),
-    NO_DEATH(R.raw.sfx_no_death, HapticLevel.LIGHT, 0.9f),
-    VOTE_CAST(R.raw.sfx_vote_cast, HapticLevel.LIGHT, 0.72f),
-    TIE_BREAK(R.raw.sfx_tie_break, HapticLevel.MEDIUM, 0.82f),
+    NIGHT_FALL(R.raw.sfx_night_fall, HapticLevel.LIGHT),
+    DAWN(R.raw.sfx_dawn, HapticLevel.LIGHT),
+    ELIMINATION(R.raw.sfx_death_elevenlabs, HapticLevel.STRONG),
+    EXPULSION(R.raw.sfx_expulsion, HapticLevel.STRONG),
+    SILENCE(R.raw.sfx_elimination, HapticLevel.MEDIUM),
+    NO_DEATH(R.raw.sfx_no_death, HapticLevel.LIGHT),
+    VOTE_CAST(R.raw.sfx_vote_cast, HapticLevel.LIGHT),
+    TIE_BREAK(R.raw.sfx_tie_break, HapticLevel.MEDIUM),
     CARD_DEAL(R.raw.sfx_card_deal, HapticLevel.LIGHT),
-    ORACLE(R.raw.oracle_ability, HapticLevel.MEDIUM, 0.86f),
-    PAYADOR(R.raw.payador_ability, HapticLevel.MEDIUM, 0.86f),
-    JESTER(R.raw.jester_victory, HapticLevel.MEDIUM, 0.85f)
+    ORACLE(R.raw.oracle_ability, HapticLevel.MEDIUM),
+    PAYADOR(R.raw.payador_ability, HapticLevel.MEDIUM),
+    JESTER(R.raw.jester_victory, HapticLevel.MEDIUM)
 }
 
 enum class GameplayFeedbackCue(val haptic: HapticLevel) {

@@ -4,6 +4,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.auth.FirebaseAuth
 
 internal object FirebaseEmulatorConfig {
     val usesAuthoritativeOnlineStart: Boolean
@@ -14,6 +15,7 @@ internal object FirebaseEmulatorConfig {
         val host = BuildConfig.FIREBASE_EMULATOR_HOST.trim()
         require(host.isNotBlank()) { "FIREBASE_EMULATOR_HOST no puede estar vacio" }
 
+        FirebaseAuth.getInstance().useEmulator(host, 9099)
         FirebaseStorage.getInstance().useEmulator(host, 9199)
         FirebaseFirestore.getInstance().useEmulator(host, FIRESTORE_PORT)
         FirebaseDatabase.getInstance().useEmulator(host, DATABASE_PORT)

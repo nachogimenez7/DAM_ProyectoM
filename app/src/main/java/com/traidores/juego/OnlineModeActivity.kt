@@ -24,6 +24,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
+import com.google.firebase.auth.FirebaseAuth
 
 class OnlineModeActivity : BaseActivity() {
 
@@ -35,6 +36,15 @@ class OnlineModeActivity : BaseActivity() {
     private lateinit var btnJoinCode: Button
     private lateinit var btnRecoverRoom: Button
     private lateinit var onlineAccessStatus: TextView
+    private lateinit var identityCard: OnlineIdentityCardView
+    private val photoStatusListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "profile_photo_status") {
+            identityCard.refreshPhotoStatus()
+            if (identityCard.visibility == View.VISIBLE &&
+                ProfilePhotoStorage.publicationStatus(this) == ProfilePhotoStorage.PublicationStatus.IDLE)
+                confirmIdentity(accessCheckGeneration)
+        }
+    }
     private var pendingRecoveredRoom: OnlineRecoveredRoom? = null
     private var accessCheckInProgress = false
     private var accessCheckGeneration = 0
@@ -56,6 +66,8 @@ class OnlineModeActivity : BaseActivity() {
         btnJoinCode = findViewById(R.id.btnJoinCode)
         btnCreate = findViewById(R.id.btnCreate)
         onlineAccessStatus = findViewById(R.id.onlineAccessStatus)
+        identityCard = OnlineIdentityCardView(this)
+        findViewById<LinearLayout>(R.id.onlineIdentityContainer).addView(identityCard)
 
         btnBack.setOnClickListener { finish() }
 
@@ -110,6 +122,7 @@ class OnlineModeActivity : BaseActivity() {
         super.onStart()
         recoveryServerClock.start()
         accessFailureCount = 0
+        getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE).registerOnSharedPreferenceChangeListener(photoStatusListener)
         verifyOnlineAccess()
     }
 
@@ -118,6 +131,8 @@ class OnlineModeActivity : BaseActivity() {
         accessCheckInProgress = false
         if (::btnCreate.isInitialized) btnCreate.removeCallbacks(onlineAccessRetry)
         recoveryServerClock.stop()
+        identityCard.visibility = View.GONE
+        getSharedPreferences("TraidoresPrefs", Context.MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(photoStatusListener)
         super.onStop()
     }
 
@@ -128,6 +143,8 @@ class OnlineModeActivity : BaseActivity() {
             return generation == accessCheckGeneration && !isFinishing && !isDestroyed
         }
         accessCheckInProgress = true
+        identityCard.visibility = View.GONE
+        showOnlineAccessStatus("Conectando…")
         setOnlineActionsEnabled(false)
         OnlineAccessGate.verify(
             context = this,
@@ -136,9 +153,7 @@ class OnlineModeActivity : BaseActivity() {
                 accessCheckInProgress = false
                 accessFailureCount = 0
                 clearOnlineAccessRetry()
-                showOnlineAccessStatus(null)
-                setOnlineActionsEnabled(true)
-                refreshRecoveredRoomButton()
+                confirmIdentity(generation)
             },
             onBlocked = blocked@{ ban ->
                 if (!isCurrentAttempt()) return@blocked
@@ -171,6 +186,47 @@ class OnlineModeActivity : BaseActivity() {
                 btnCreate.postDelayed(onlineAccessRetry, ONLINE_ACCESS_RETRY_MS)
             }
         )
+    }
+
+    private fun confirmIdentity(generation: Int) {
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+        fun current() = generation == accessCheckGeneration && !isFinishing && !isDestroyed &&
+            FirebaseAuth.getInstance().currentUser?.uid == user.uid
+        fun display(data: Map<String, Any> = emptyMap()) {
+            if (!current()) return
+            val guest = user.isAnonymous
+            if (!guest) AccountProfileSync.restoreConfirmed(this, data)
+            identityCard.bind(OnlineIdentityCardView.Identity(user.uid, guest,
+                if (guest) GuestIdentity.displayName(this) else (data["nombrePerfil"] as? String).orEmpty().ifBlank { "Jugador" },
+                if (guest) "" else (data["publicId"] as? String).orEmpty(),
+                (data["avatarPerfil"] as? String).orEmpty().ifBlank { "aldeana" },
+                if (guest) "" else (data["fotoPerfil"] as? String).orEmpty(),
+                if (guest) "" else (data["bioPerfil"] as? String).orEmpty(),
+                if (guest) "" else (data["bannerPerfil"] as? String).orEmpty()))
+            identityCard.visibility = View.VISIBLE
+            showOnlineAccessStatus(null)
+            setOnlineActionsEnabled(true)
+            refreshRecoveredRoomButton()
+            ProfilePhotoStorage.sync(this)
+        }
+        if (user.isAnonymous) display()
+        else {
+            showOnlineAccessStatus("Sincronizando tu perfil…")
+            AccountProfileSync.sync(this) { error ->
+                if (!current()) return@sync
+                if (error != null) {
+                    showOnlineAccessStatus("No pudimos sincronizar tu perfil. Reintentando…")
+                    btnCreate.postDelayed(onlineAccessRetry, ONLINE_ACCESS_RETRY_MS)
+                } else firestore.collection("perfiles_publicos").document(user.uid).get(Source.SERVER)
+                    .addOnSuccessListener { display(it.data.orEmpty()) }
+                    .addOnFailureListener {
+                        if (current()) {
+                            showOnlineAccessStatus("El servidor no responde. Reintentando...")
+                            btnCreate.postDelayed(onlineAccessRetry, ONLINE_ACCESS_RETRY_MS)
+                        }
+                    }
+            }
+        }
     }
 
     private fun clearOnlineAccessRetry() {
@@ -1612,4 +1668,3 @@ class OnlineModeActivity : BaseActivity() {
         private const val ROOM_CODE_CREATE_ATTEMPTS = 5
     }
 }
-

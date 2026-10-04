@@ -88,7 +88,10 @@ object PlayerProfileStore {
             },
             emoteIds = EmoteLoadout.selectedIds(context),
             stats = MatchHistoryStore.stats(context).let {
-                PlayerStats(matches = it.matches, wins = it.wins, hasProgress = true)
+                PlayerStats(matches = it.matches, wins = it.wins, hasProgress =
+                    AccountMatchHistory.registeredUid().isEmpty() ||
+                        (AccountMatchHistory.snapshot.uid == AccountMatchHistory.registeredUid() &&
+                            AccountMatchHistory.snapshot.status == AccountMatchHistory.Status.READY))
             },
             playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
                 preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
@@ -159,7 +162,7 @@ object PlayerProfileStore {
             editor.putString(PREF_NAME, it)
             editor.putString(OpcionesActivity.PREF_PLAYER_NAME, it)
         }
-        bio.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_BIO, it) }
+        editor.putString(PREF_BIO, bio)
         avatarKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_AVATAR, it) }
         playGamesAvatarUri?.let {
             editor.putString(

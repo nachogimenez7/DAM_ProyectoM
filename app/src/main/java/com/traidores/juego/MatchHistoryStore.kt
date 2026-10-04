@@ -11,7 +11,8 @@ data class MatchRecord(
     val mapName: String,
     val roleKey: String,
     val roleName: String,
-    val won: Boolean
+    val won: Boolean,
+    val origin: String = "local"
 )
 
 data class LocalMatchStats(
@@ -47,7 +48,8 @@ internal object MatchOutcome {
 }
 
 object MatchHistoryStore {
-    fun record(context: Context, session: GameSession): Boolean {
+    fun record(context: Context, session: GameSession, cloudOwnerUid: String = ""): Boolean {
+        AccountMatchHistory.recordLocal(context, session, cloudOwnerUid)
         if (session.winner.isBlank() || session.winner == GameRules.CANCELLED_WINNER) return false
         val human = session.players.firstOrNull { it.isHuman } ?: return false
         val key = MatchOutcome.matchKey(session)
@@ -89,6 +91,11 @@ object MatchHistoryStore {
 
     fun lastMatches(context: Context, amount: Int = 5): List<MatchRecord> {
         if (amount <= 0) return emptyList()
+        if (AccountMatchHistory.registeredUid().isNotEmpty()) {
+            val cloud = AccountMatchHistory.snapshot
+            return if (cloud.uid == AccountMatchHistory.registeredUid() && cloud.status == AccountMatchHistory.Status.READY)
+                cloud.records.take(amount) else emptyList()
+        }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return loadRecords(prefs)
             .sortedByDescending { it.dateEpochMs }
@@ -96,6 +103,11 @@ object MatchHistoryStore {
     }
 
     fun stats(context: Context): LocalMatchStats {
+        if (AccountMatchHistory.registeredUid().isNotEmpty()) {
+            val cloud = AccountMatchHistory.snapshot
+            return if (cloud.uid == AccountMatchHistory.registeredUid() && cloud.status == AccountMatchHistory.Status.READY)
+                cloud.stats else LocalMatchStats(0, 0)
+        }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return LocalMatchStats(
             matches = prefs.getInt(KEY_TOTAL_MATCHES, 0).coerceAtLeast(0),

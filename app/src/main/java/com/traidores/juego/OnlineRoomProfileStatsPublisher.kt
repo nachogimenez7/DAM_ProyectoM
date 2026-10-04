@@ -5,7 +5,7 @@ import android.os.SystemClock
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
-/** Optional device history. Failure must never affect room creation, joining or presence. */
+/** Publishes only statistics already confirmed by the account backend. */
 internal class OnlineRoomProfileStatsPublisher {
     private var publishedKey = ""
     private var pending = false
@@ -13,6 +13,7 @@ internal class OnlineRoomProfileStatsPublisher {
 
     fun publish(context: Context, roomId: String, uid: String) {
         if (roomId.isBlank() || uid.isBlank() || FirebaseAuth.getInstance().currentUser?.uid != uid) return
+        if (AccountMatchHistory.snapshot.uid != uid || AccountMatchHistory.snapshot.status != AccountMatchHistory.Status.READY) return
         val stats = MatchHistoryStore.stats(context)
         val matches = stats.matches.coerceIn(0, 1_000_000)
         val wins = stats.wins.coerceIn(0, matches)

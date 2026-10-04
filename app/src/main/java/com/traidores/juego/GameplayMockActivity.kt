@@ -83,6 +83,7 @@ private data class TraitorRevealCardMetrics(
 )
 
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
+    private var historyOwnerUid = ""
 
     private val fullBleedModalOverlays = mutableListOf<FrameLayout>()
 
@@ -730,6 +731,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        historyOwnerUid = savedInstanceState?.getString("account_history_owner_uid") ?: AccountMatchHistory.registeredUid()
         setContentView(R.layout.activity_gameplay_mock)
         val requestedDebugChatPreview = intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).orEmpty()
         val debugChatPreviewKey = if (
@@ -1570,6 +1572,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("account_history_owner_uid", historyOwnerUid)
         outState.putSerializable(STATE_SESSION, session)
         outState.putString(STATE_TRANSITION_KEY, lastPresentedTransitionKey)
         outState.putString(STATE_PRESENTED_PERIOD, presentedPeriod?.name)
@@ -2851,7 +2854,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!isOnlineGameplay()) {
             AchievementTracker.recordMatchIfNeeded(this, session)
         }
-        MatchHistoryStore.record(this, session)
+        MatchHistoryStore.record(this, session,
+            if (!isOnlineGameplay() && intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) historyOwnerUid else "")
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
@@ -3168,6 +3172,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             val activeHost = roomSnapshot.getString(OnlineRoomFirestore.FIELD_ACTIVE_HOST_ID)
                 ?: roomSnapshot.getString("hostId")
             check(activeHost == onlinePlayerId) { "La autoridad cambió durante la publicación" }
+            check(roomSnapshot.getString("partidaInicial.matchId") == matchId) {
+                "La partida cambió durante la publicación"
+            }
             val epoch = roomSnapshot.getLong(OnlineRoomFirestore.FIELD_HOST_VERSION) ?: 0L
             val previous = oldCheckpoint.get("estadoPartida").asStringAnyMap().orEmpty()
             val previousSequence = (previous["stateSequence"] as? Number)?.toLong() ?: 0L
@@ -3180,6 +3187,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 OnlineAuthoritativeStateStore.FIELD_UPDATED_LOCAL to state["actualizadaEnLocal"],
                 OnlineAuthoritativeStateStore.FIELD_AUTHOR to onlinePlayerId
             ))
+            if ((sequenced["ganador"] as? String) in listOf(GameRules.TOWN_WINNER, GameRules.TRAITOR_WINNER)) {
+                // Persist the final room snapshot together with its checkpoint. The backend can
+                // archive every participant even if the host exits before publishing to RTDB.
+                transaction.update(room, authoritativeRoomUpdate(sequenced, includeResult = true))
+            }
             sequenced
         }.continueWithTask { committed ->
             if (!committed.isSuccessful) throw (committed.exception ?: IllegalStateException("Checkpoint no confirmado"))

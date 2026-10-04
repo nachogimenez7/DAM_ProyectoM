@@ -3215,11 +3215,7 @@ class LobbyActivity : BaseActivity() {
                 .filter { EmoteCatalog.byId(it) != null }
                 .distinct()
                 .take(EmoteCatalog.LOADOUT_SIZE),
-            stats = if (document.id == onlineTempUid) {
-                MatchHistoryStore.stats(this).let { PlayerStats(it.matches, it.wins, true) }
-            } else {
-                PublicProfileStats.fromMap(document.get(PlayerPublicIdentity.FIELD_PROFILE_STATS) as? Map<*, *>)
-            },
+            stats = PublicProfileStats.fromMap(document.get(PlayerPublicIdentity.FIELD_PROFILE_STATS) as? Map<*, *>),
             cosmeticThemeId = CosmeticPilot.normalizeTheme(
                 document.getString(PlayerPublicIdentity.FIELD_PROFILE_COSMETIC_THEME)
             ) ?: CosmeticPilot.THEME_CLASSIC

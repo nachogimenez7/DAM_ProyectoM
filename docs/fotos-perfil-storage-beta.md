@@ -12,7 +12,7 @@ Decisión del usuario: galería y avatares ilustrados; sin SafeSearch ni revisi�
 - Avatar de respaldo mientras se descarga; caché en memoria y protección contra callbacks de una foto anterior en una vista reutilizada. No se llama a Vision por visualizar fotos.
 - Subida/reintento al guardar/volver al perfil. La copia local sigue disponible si falla la red. Cambiar nombre/frase no vuelve a subir una foto recuperada de la nube. Las fotos existentes del dispositivo se publican al entrar al perfil cuando se habilita Storage.
 
-La integración remota está deshabilitada por defecto para conservar las reglas desplegadas y evitar peticiones al bucket antes de prepararlo. Construir con `-PtraidoresProfileStorage=true` solo después de conectar el bucket y desplegar reglas. Para emuladores: combinar con `-PtraidoresOnlineAuthorityEmulator=true`; Storage en puerto 9199. El proyecto existente aún usa Auth real; las pruebas de reglas usan identidades simuladas y no requieren una cuenta ni facturación.
+La integración remota está deshabilitada por defecto para conservar las reglas desplegadas y evitar peticiones al bucket antes de prepararlo. Construir con `-PtraidoresProfileStorage=true` solo después de conectar el bucket y desplegar reglas. Para emuladores: combinar con `-PtraidoresOnlineAuthorityEmulator=true`; Storage en puerto 9199. Con esa opción de emuladores, Auth también se enruta al puerto 9099 (actualizado el 4/10). Las pruebas de reglas usan identidades de prueba y no requieren facturación.
 
 ## iOS
 
