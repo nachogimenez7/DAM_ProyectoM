@@ -26,6 +26,7 @@
 	<array>
 		<string>bree_serif.ttf</string>
 		<string>roboto_android.ttf</string>
+		<string>google_sans.ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
@@ -45,5 +46,16 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.99323018581-eb44u39i8unns5hfji767le496s7cm96</string>
+			</array>
+		</dict>
+	</array>
+	<key>TraidoresAppleSignInEnabled</key>
+	<string>$(TRAIDORES_APPLE_SIGN_IN_ENABLED)</string>
 </dict>
 </plist>

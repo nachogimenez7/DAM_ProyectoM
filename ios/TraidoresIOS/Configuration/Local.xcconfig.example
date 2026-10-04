@@ -4,3 +4,4 @@
 // Firebase is configured on first online use; the menu and local game never need it.
 // With a paid Apple Developer team, enable Sign in with Apple and App Attest:
 // CODE_SIGN_ENTITLEMENTS = TraidoresIOS/TraidoresIOS-Online.entitlements
+// TRAIDORES_APPLE_SIGN_IN_ENABLED = YES

@@ -145,9 +145,16 @@ struct OnlineAccountFlow: View {
             }
         } else {
             GameDialogCard(title: "Tu cuenta",
-                           message: "Con una cuenta elegís tu nombre, personalizás el perfil y conservás todo aunque cambies de celular. No perdés nada de lo que ya jugaste.",
+                           message: "Vinculá una cuenta para guardar tu perfil y tu número, o entrá para recuperar los que ya tenés.",
                            positive: working ? "PROCESANDO…" : "CONTINUAR", positiveEnabled: !working,
                            onNegative: onClose, onPositive: submit, identifier: "accountDialog") {
+                GoogleAccountButton {
+                    run { try await services.account.continueWithGoogle() }
+                }
+                .frame(height: 48)
+                .modifier(AccountProviderButtonFrame())
+                .disabled(!services.account.googleSignInAvailable)
+                .accessibilityIdentifier("online.account.google")
                 if services.account.appleSignInAvailable {
                     SignInWithAppleButton(.continue) { request in
                         do { try services.account.prepareAppleRequest(request) } catch {
@@ -156,12 +163,19 @@ struct OnlineAccountFlow: View {
                     } onCompletion: { result in
                         run { try await services.account.completeAppleSignIn(result) }
                     }
-                    .signInWithAppleButtonStyle(.white)
+                    .signInWithAppleButtonStyle(.black)
                     .frame(height: 48)
+                    .modifier(AccountProviderButtonFrame())
                     .accessibilityIdentifier("online.account.apple")
-                    Text("O USÁ TU CORREO").font(.caption.bold()).tracking(1)
-                        .foregroundStyle(TraidoresTheme.secondary)
+                } else {
+                    UnavailableAppleAccountButton()
+                        .frame(height: 48)
+                        .modifier(AccountProviderButtonFrame())
+                    Text("Apple todavía no está habilitado en esta versión.")
+                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                 }
+                Text("O USÁ TU CORREO").font(.caption.bold()).tracking(1)
+                    .foregroundStyle(TraidoresTheme.secondary)
                 TextField("Correo", text: $email)
                     .textFieldStyle(OnlineTextFieldStyle())
                     .textContentType(.username)
@@ -192,7 +206,7 @@ struct OnlineAccountFlow: View {
 
     private func successMessage(_ outcome: Outcome) -> String {
         switch outcome {
-        case .linked: "Tu perfil, tu número y tu progreso quedaron protegidos con tu cuenta."
+        case .linked: "Tu perfil y tu número quedaron vinculados a tu cuenta."
         case .recovered(let number): number.map { "Tu cuenta quedó vinculada y recuperaste el perfil #\($0)." }
             ?? "Entraste con tu cuenta y recuperaste tu perfil."
         }
@@ -222,16 +236,88 @@ struct OnlineAccountFlow: View {
             let before = currentUid
             do {
                 try await operation()
-                guard case .ready(let identity) = services.account.access else { return }
+                guard case .ready(let identity) = services.account.access else {
+                    if case .failed(let error) = services.account.access { throw error }
+                    if case .suspended(let reason) = services.account.access { throw OnlineError.suspended(reason) }
+                    throw OnlineError.sessionExpired
+                }
                 outcome = identity.uid == before ? .linked : .recovered(identity.publicId)
             } catch {
-                problem = (error as? OnlineError ?? .server(nil)).message
+                let failure = error as? OnlineError ?? .server(nil)
+                if failure != .cancelled { problem = failure.message }
             }
         }
     }
 
     private var currentUid: String? {
         if case .ready(let identity) = services.account.access { identity.uid } else { nil }
+    }
+}
+
+/// Decorate the space around the official provider artwork to match the dialog.
+private struct AccountProviderButtonFrame: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(3)
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(TraidoresTheme.gold.opacity(0.35), lineWidth: 1)
+            }
+    }
+}
+
+/// Google's current dark branding. Its iOS SDK's `.dark` preset still renders blue.
+private struct GoogleAccountButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image("google_sign_in_g")
+                    .resizable().scaledToFit().frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
+                Text("Iniciar sesión con Google")
+                    .font(.custom("GoogleSans-Regular_Medium", size: 17, relativeTo: .body))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 48)
+        }
+        .buttonStyle(GoogleAccountButtonStyle())
+    }
+}
+
+private struct GoogleAccountButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(Color(hex: "#E3E3E3"))
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#131314")))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color(hex: "#8E918F"), lineWidth: 1)
+            }
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}
+
+/// Apple's button currently omits UIAccessibilityTraitNotEnabled when disabled. Keep the
+/// official UIKit button and override that trait for the unavailable state.
+private struct UnavailableAppleAccountButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        let button = DisabledAppleIDButton(type: .continue, style: .black)
+        button.isEnabled = false
+        button.accessibilityIdentifier = "online.account.apple"
+        return button
+    }
+    func updateUIView(_ button: ASAuthorizationAppleIDButton, context: Context) {
+        button.isEnabled = false
+    }
+}
+
+private final class DisabledAppleIDButton: ASAuthorizationAppleIDButton {
+    override var accessibilityTraits: UIAccessibilityTraits {
+        get { super.accessibilityTraits.union(.notEnabled) }
+        set { super.accessibilityTraits = newValue }
     }
 }
 
@@ -246,10 +332,21 @@ struct OnlineAccountCard: View {
         if case .ready(let identity) = services.account.access, identity.isRegistered { identity } else { nil }
     }
 
+    private var accountStatus: String {
+        switch services.account.access {
+        case .signedOut, .connecting: "Comprobando tu cuenta…"
+        case .failed(let error): error.message
+        case .suspended(let reason): reason
+        case .ready(let identity):
+            identity.isRegistered
+                ? "Cuenta: \(services.profile.profile?.nombrePerfil ?? identity.displayName)\(identity.publicId.map { " #\($0)" } ?? "")."
+                : "Jugás como invitado. Con una cuenta elegís tu nombre, personalizás el perfil y tenés tu número."
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
-            Text(registered.map { "Cuenta: \($0.displayName)\($0.publicId.map { " #\($0)" } ?? "")." }
-                 ?? "Jugás como invitado. Con una cuenta elegís tu nombre, personalizás el perfil y tenés tu número.")
+            Text(accountStatus)
                 .font(.subheadline)
                 .foregroundStyle(TraidoresTheme.text)
                 .multilineTextAlignment(.center)
@@ -260,12 +357,20 @@ struct OnlineAccountCard: View {
                     .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
                     .accessibilityIdentifier("profile.account")
             }
+            if case .failed = services.account.access {
+                Button("REINTENTAR") { Task { await services.account.enterAsGuest() } }
+                    .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
+                    .accessibilityIdentifier("profile.account.retry")
+            }
         }
         .padding(14)
         .background(surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.5)))
         .gameDialog(isPresented: $presenting) {
             OnlineAccountFlow { presenting = false }.environment(services)
+        }
+        .task {
+            if services.account.access == .signedOut { await services.account.enterAsGuest() }
         }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct TraidoresApp: App {
@@ -24,6 +25,7 @@ struct TraidoresApp: App {
                 .modifier(GamePreferencesBridge(preferences: preferences))
                 .environment(preferences)
                 .environment(onlineServices)
+                .onOpenURL { url in _ = GIDSignIn.sharedInstance.handle(url) }
                 .defaultAppStorage(.menuStore)
                 .preferredColorScheme(.dark)
                 .tint(TraidoresTheme.gold)

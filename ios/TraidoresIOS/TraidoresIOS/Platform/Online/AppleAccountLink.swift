@@ -52,19 +52,9 @@ final class AppleAccountLink {
         let credential = OAuthProvider.appleCredential(withIDToken: token, rawNonce: nonce, fullName: apple.fullName)
         do {
             let outcome: Outcome
-            if let guest = auth.currentUser, guest.isAnonymous {
-                do {
-                    outcome = .linkedGuest(uid: try await guest.link(with: credential).user.uid)
-                } catch let error as NSError where error.code == AuthErrorCode.credentialAlreadyInUse.rawValue {
-                    // Apple's nonce is single use; Firebase hands back the credential to sign in.
-                    guard let existing = error.userInfo[AuthErrorUserInfoUpdatedCredentialKey] as? AuthCredential else {
-                        throw Failure.failed
-                    }
-                    outcome = .signedIn(uid: try await auth.signIn(with: existing).user.uid)
-                }
-            } else {
-                outcome = .signedIn(uid: try await auth.signIn(with: credential).user.uid)
-            }
+            let previousUID = auth.currentUser?.uid
+            let user = try await FirebaseCredentialLink.linkOrRecover(credential)
+            outcome = user.uid == previousUID ? .linkedGuest(uid: user.uid) : .signedIn(uid: user.uid)
             // Like Android's `AccountLink.refreshClaims`: the rules read the provider and the
             // email from the token, which still says anonymous until it is refreshed.
             _ = try await auth.currentUser?.getIDTokenResult(forcingRefresh: true)
@@ -72,7 +62,7 @@ final class AppleAccountLink {
         } catch let failure as Failure {
             throw failure
         } catch {
-            throw Failure.failed
+            throw FirebaseAccountService.onlineError(error)
         }
     }
 

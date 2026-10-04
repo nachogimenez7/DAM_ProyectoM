@@ -84,7 +84,7 @@ struct MenuView: View {
             Spacer(minLength: 0)
             NavigationLink(value: MenuRoute.profile) {
                 let profile = LocalMenuProfile.load(localProfileData)
-                ProfilePortrait(image: profile.avatar, photoData: profile.photoData)
+                ProfilePortrait(image: profile.avatar, photoData: profile.photoData, photoURL: OnlineContract.photoURL(profile.profilePhotoURL))
                     .frame(width: 44, height: 44)
                     .overlay(Circle().stroke(TraidoresTheme.gold, lineWidth: 1.5))
             }

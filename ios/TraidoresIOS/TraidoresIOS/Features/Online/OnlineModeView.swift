@@ -99,7 +99,18 @@ struct OnlineModeView: View {
                     .accessibilityIdentifier("online.create")
             }
             // As on Android, nothing online is reachable until access is confirmed.
-            .disabled(identity == nil)
+            .disabled(identity == nil || !services.roomsAvailable)
+            if !services.roomsAvailable {
+                Text("Las partidas online de iOS siguen en preparación. Ya podés vincular o recuperar tu cuenta.")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    .multilineTextAlignment(.center).padding(.top, 12)
+            }
+            if identity == nil {
+                Button("CREAR CUENTA O ENTRAR") { present(.account) }
+                    .buttonStyle(TraidoresButtonStyle())
+                    .accessibilityIdentifier("online.account")
+                    .padding(.top, 12)
+            }
         }
     }
 
@@ -281,14 +292,17 @@ private struct OnlineIdentityCard: View {
 
 @MainActor
 enum OnlineBootstrap {
-    /// Injected once at the app root so every online screen, dialog and the profile share the
-    /// same session. Codex's Firebase adapters replace the fakes; until then only debug
-    /// builds launched with an online scenario get services, and everyone else sees the badge.
+    /// One real account/profile session for Profile and Online. Fakes require an explicit
+    /// UI-test launch argument and never appear in normal Debug or Release builds.
     static func services() -> OnlineServices? {
         #if DEBUG
-        FakeOnlineScenario.requested?.makeServices()
-        #else
-        nil
+        if let scenario = FakeOnlineScenario.requested { return scenario.makeServices() }
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing"), FirebaseSetup.emulatorHost == nil { return nil }
         #endif
+        guard FirebaseSetup.options != nil else { return nil }
+        let profile = FirebasePublicProfileService()
+        let rooms = UnavailableIOSRooms()
+        return OnlineServices(account: FirebaseAccountService(profiles: profile), profile: profile,
+                              directory: rooms, room: rooms, roomsAvailable: false)
     }
 }

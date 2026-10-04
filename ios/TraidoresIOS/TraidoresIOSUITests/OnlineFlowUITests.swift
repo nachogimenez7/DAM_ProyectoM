@@ -8,6 +8,81 @@ final class OnlineFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testSocialAccessButtonsAreSharedByProfileAndOnline() throws {
+        let app = launchMenu("guest")
+        app.buttons["menu.profile"].tap()
+        let account = app.buttons["profile.account"]
+        XCTAssertTrue(scrollTo(account, in: app))
+        account.tap()
+        XCTAssertTrue(element(app, "online.account.google").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(app, "online.account.apple").exists)
+        XCTAssertFalse(element(app, "online.account.apple").isEnabled)
+        XCTAssertTrue(app.staticTexts["Apple todavía no está habilitado en esta versión."].exists)
+        try audit(app, "Accesos desde Perfil", dialog: true)
+        attach(app, "profile-account-google-apple")
+        app.buttons["accountDialog.negative"].tap()
+        app.buttons["menu.back"].tap()
+        app.buttons["menu.play"].tap()
+        app.buttons["play.online"].tap()
+        XCTAssertTrue(app.buttons["online.account"].waitForExistence(timeout: 5))
+        app.buttons["online.account"].tap()
+        XCTAssertTrue(element(app, "online.account.google").waitForExistence(timeout: 3))
+        XCTAssertTrue(element(app, "online.account.apple").exists)
+        attach(app, "online-account-google-apple")
+    }
+
+    /// Opt in while running local Auth/Firestore. This uses the real app adapters, not a
+    /// fake scenario, and verifies that the saved profile is recovered after restarting.
+    func testRealAccountAndProfileAgainstEmulators() throws {
+        guard ProcessInfo.processInfo.environment["TRAIDORES_AUTH_EMULATOR_TEST"] == "1" else {
+            throw XCTSkip("Requires local Auth/Firestore emulators and explicit opt-in")
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-firebase-emulator-host", "127.0.0.1", "-firebase-ui-reset-auth", "YES"]
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
+        app.buttons["menu.profile"].tap()
+        let account = app.buttons["profile.account"]
+        XCTAssertTrue(scrollTo(account, in: app))
+        account.tap()
+        let google = element(app, "online.account.google")
+        XCTAssertTrue(google.waitForExistence(timeout: 3))
+        XCTAssertTrue(google.isEnabled, "normal emulator launch uses the real Google adapter")
+        XCTAssertFalse(element(app, "online.account.apple").isEnabled)
+        attach(app, "firebase-account-google-apple")
+        let email = app.textFields["online.account.email"]
+        email.tap(); email.typeText("ui-\(UUID().uuidString)@traidores.test")
+        let password = app.secureTextFields["online.account.password"]
+        password.tap(); password.typeText("test-password-123")
+        app.buttons["accountDialog.positive"].tap()
+        XCTAssertTrue(app.buttons["accountLinked.positive"].waitForExistence(timeout: 15))
+        dismissPasswordPrompt(app)
+        XCTAssertTrue(app.buttons["accountLinked.positive"].waitUntil(timeout: 5) { $0.isHittable })
+        app.buttons["accountLinked.positive"].tap()
+        // Autofill can present another save prompt when the account window closes.
+        dismissPasswordPrompt(app)
+        XCTAssertTrue(scrollTo(app.buttons["profile.edit"], in: app))
+        app.buttons["profile.edit"].tap()
+        let name = app.textFields["profile.name"]
+        for _ in 0..<8 where !(name.exists && name.isHittable) { app.swipeDown() }
+        XCTAssertTrue(name.exists && name.isHittable)
+        replace(name, with: "Nombre Firebase")
+        app.buttons["profile.edit"].tap()
+        XCTAssertTrue(app.staticTexts["profile.displayName"].waitUntil { $0.label == "Nombre Firebase" })
+        // The success state is also exposed in the account card after server confirmation.
+        let state = app.staticTexts["profile.account.state"]
+        XCTAssertTrue(scrollTo(state, in: app))
+        XCTAssertTrue(state.waitUntil(timeout: 10) { $0.label.contains("Nombre Firebase #") })
+        let savedState = state.label
+        app.launchArguments = ["-ui-testing", "-firebase-emulator-host", "127.0.0.1"]
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
+        app.buttons["menu.profile"].tap()
+        XCTAssertTrue(scrollTo(state, in: app))
+        XCTAssertTrue(state.waitUntil(timeout: 10) { $0.label == savedState }, "server recovery preserves profile and number")
+        attach(app, "firebase-account-recovered-after-restart")
+    }
+
     func testGuestSearchesJoinsAndSeesTheRoster() throws {
         let app = launchOnline("guest")
         XCTAssertTrue(element(app, "online.identity").waitUntil { $0.label.hasSuffix("invitado") })
@@ -103,7 +178,7 @@ final class OnlineFlowUITests: XCTestCase {
         // Linking keeps the guest's UID and gives it a number.
         let linked = app.buttons["accountLinked.positive"]
         XCTAssertTrue(linked.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Tu perfil, tu número y tu progreso quedaron protegidos con tu cuenta."].exists)
+        XCTAssertTrue(app.staticTexts["Tu perfil y tu número quedaron vinculados a tu cuenta."].exists)
         try audit(app, "Cuenta vinculada", dialog: true)
         dismissPasswordPrompt(app)
         linked.tap()
@@ -268,10 +343,14 @@ final class OnlineFlowUITests: XCTestCase {
     /// to show before going on.
     private func dismissPasswordPrompt(_ app: XCUIApplication) {
         let notNow = app.buttons["Ahora no"]
-        if notNow.waitForExistence(timeout: 6) {
+        guard notNow.waitForExistence(timeout: 6) else { return }
+        // iOS can expose the button before its presentation animation accepts the tap.
+        for _ in 0..<2 where notNow.exists {
+            XCTAssertTrue(notNow.waitUntil(timeout: 3) { $0.isHittable })
             notNow.tap()
-            _ = notNow.waitForNonExistence(timeout: 3)
+            if notNow.waitForNonExistence(timeout: 3) { return }
         }
+        XCTAssertFalse(notNow.exists, "dismiss the system password prompt before continuing")
     }
 
     private func element(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {

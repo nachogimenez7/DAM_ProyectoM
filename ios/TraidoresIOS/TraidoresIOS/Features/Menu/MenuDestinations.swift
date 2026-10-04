@@ -136,6 +136,9 @@ struct ProfileView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoLoadError = false
     @State private var loadingPhoto = false
+    @State private var syncingProfile = false
+    @State private var profileSyncError: String?
+    @State private var applyingRemoteProfile = false
     @FocusState private var editingText: Bool
     @Environment(\.dynamicTypeSize) private var systemTextSize
     @Environment(OnlineServices.self) private var online: OnlineServices?
@@ -158,13 +161,57 @@ struct ProfileView: View {
         selection = value
     }
 
-    private func saveProfile() {
-        guard initialized else { return }
+    private var registeredIdentity: OnlineIdentity? {
+        if case .ready(let identity) = online?.account.access, identity.isRegistered { return identity }
+        return nil
+    }
+
+    private func applyRemoteProfile() {
+        guard !isEditing else { return }
+        applyingRemoteProfile = true
+        if let profile = online?.profile.profile {
+          draft = LocalMenuProfile(name: profile.nombrePerfil, bio: profile.bioPerfil,
+                                 avatar: OnlineAvatarArt.asset(for: profile.avatarPerfil), banner: profile.bannerPerfil,
+                                 favorite: OnlineAvatarArt.asset(for: profile.rolFavoritoPerfil),
+                                 profilePhotoURL: profile.avatarURL?.absoluteString)
+        } else {
+            draft = LocalMenuProfile.load(storedProfile)
+        }
+        saved = draft
+        nameBeforeEditing = draft.name
+        applyingRemoteProfile = false
+    }
+
+    private func saveProfile(commit: Bool = false) {
+        guard initialized, !applyingRemoteProfile, !syncingProfile else { return }
         var profile = draft
         profile.name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.bio = profile.bio.trimmingCharacters(in: .whitespacesAndNewlines)
         // Keep the last valid name while the player clears the field to type another.
         if profile.name.isEmpty { profile.name = nameBeforeEditing }
+        if let online, let remote = online.profile.profile, registeredIdentity != nil {
+            // Text may be partially typed. Commit the complete form when editing finishes,
+            // and cache only after Firestore acknowledges it.
+            guard commit else { return }
+            let remoteDraft = PublicProfileDraft(nombrePerfil: profile.name, bioPerfil: profile.bio,
+                avatarPerfil: OnlineAvatarArt.key(for: profile.avatar), bannerPerfil: profile.banner,
+                rolFavoritoPerfil: OnlineAvatarArt.key(for: profile.favorite),
+                emotesPerfil: emoteIDs.split(separator: ",").map(String.init), temaCosmeticoPerfil: profileTheme)
+            guard remoteDraft != remote.draft else { return }
+            syncingProfile = true
+            profileSyncError = nil
+            Task {
+                defer { syncingProfile = false }
+                do {
+                    try await online.profile.save(remoteDraft)
+                    applyRemoteProfile()
+                } catch {
+                    profileSyncError = (error as? OnlineError ?? .server(nil)).message
+                    isEditing = true
+                }
+            }
+            return
+        }
         guard profile != saved else { return }
         do { storedProfile = try JSONEncoder().encode(profile); saved = profile }
         catch { saveError = true }
@@ -186,7 +233,7 @@ struct ProfileView: View {
                   Spacer().frame(height: 62)
                 }
                 Button { if isEditing { openSelection(.avatar) } else { enlargedAvatar = true } } label: {
-                    ProfilePortrait(image: draft.avatar, photoData: draft.photoData).frame(width: 112, height: 112)
+                    ProfilePortrait(image: draft.avatar, photoData: draft.photoData, photoURL: OnlineContract.photoURL(draft.profilePhotoURL)).frame(width: 112, height: 112)
                         .overlay(Circle().stroke(accent, lineWidth: 4))
                         .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
                         .overlay(alignment: .bottomTrailing) {
@@ -207,18 +254,22 @@ struct ProfileView: View {
                     .multilineTextAlignment(.center).frame(maxWidth: .infinity)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("profile.displayName")
-                Text("PERFIL LOCAL").font(.subheadline.bold()).tracking(1).foregroundStyle(accent)
-                Text("Sin cuenta vinculada").font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                Text(registeredIdentity == nil ? "PERFIL LOCAL" : "PERFIL DE TU CUENTA").font(.subheadline.bold()).tracking(1).foregroundStyle(accent)
+                Text(registeredIdentity?.publicId.map { "#\($0)" } ?? "Sin cuenta vinculada")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    .accessibilityIdentifier("profile.publicId")
+                if syncingProfile { ProgressView("Guardando tu perfil…") }
+                if let profileSyncError { Text(profileSyncError).font(.footnote).foregroundStyle(OnlineInlineError.color) }
             }
             .frame(maxWidth: .infinity)
             if isEditing {
             VStack(alignment: .leading, spacing: 14) {
-                editField(title: "NOMBRE VISIBLE", count: draft.name.count, limit: 20) {
+                editField(title: "NOMBRE VISIBLE", count: draft.name.count, limit: 18) {
                     TextField("Tu nombre", text: $draft.name)
                         .textContentType(.nickname).submitLabel(.done).focused($editingText)
                         .accessibilityIdentifier("profile.name")
                         .onChange(of: draft.name) { _, value in
-                            if value.count > 20 { draft.name = String(value.prefix(20)) }
+                            if value.count > 18 { draft.name = String(value.prefix(18)) }
                         }
                 }
                 editField(title: "TU FRASE", count: draft.bio.count, limit: 40) {
@@ -324,7 +375,9 @@ struct ProfileView: View {
         .overlay(alignment: .topTrailing) {
             Button {
                 if isEditing {
-                    saveProfile(); draft = saved; editingText = false
+                    saveProfile(commit: true)
+                    if registeredIdentity == nil { draft = saved }
+                    editingText = false
                 } else {
                     nameBeforeEditing = saved.name
                 }
@@ -334,6 +387,7 @@ struct ProfileView: View {
                     .font(.system(size: 17, weight: .semibold)).frame(width: 44, height: 44).background(surface, in: Circle())
                     .overlay(Circle().stroke(accent.opacity(0.6)))
             }.foregroundStyle(accent).padding(.trailing, 16)
+                .disabled(syncingProfile)
                 .accessibilityLabel(isEditing ? "Terminar de editar el perfil" : "Editar perfil")
                 .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("profile.edit")
@@ -345,12 +399,18 @@ struct ProfileView: View {
             saved = draft
             nameBeforeEditing = draft.name
             initialized = true
+            applyRemoteProfile()
         }
+        .task {
+            if let online, online.account.access == .signedOut { await online.account.enterAsGuest() }
+        }
+        .onChange(of: online?.profile.profile) { _, _ in applyRemoteProfile() }
+        .onChange(of: storedProfile) { _, _ in if !isEditing { applyRemoteProfile() } }
         .onChange(of: draft) { _, _ in saveProfile() }
-        .onDisappear { saveProfile() }
+        .onDisappear { saveProfile(commit: true) }
         .sheet(item: $selection) { selected in
             MenuPage(title: selected.title) {
-                Text("Tus elecciones se guardan automáticamente.")
+                Text(registeredIdentity == nil ? "Tus elecciones se guardan automáticamente." : "Guardá tus cambios al terminar de editar el perfil.")
                     .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                     .readableOnArtwork()
                 if selected == .style {
@@ -391,7 +451,7 @@ struct ProfileView: View {
                             .accessibilityValue(draft.banner == banner.key ? "Seleccionado" : "")
                     }
                 } else {
-                    if selected == .avatar {
+                    if selected == .avatar && registeredIdentity == nil {
                         PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                             Label("ELEGIR FOTO DEL IPHONE", systemImage: "photo")
                         }.buttonStyle(TraidoresButtonStyle()).disabled(loadingPhoto)
@@ -399,6 +459,10 @@ struct ProfileView: View {
                         Text("La foto se recorta al círculo del avatar y se guarda automáticamente en este iPhone.")
                             .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                         if loadingPhoto { ProgressView("Cargando foto…") }
+                    }
+                    if selected == .avatar && registeredIdentity != nil {
+                        Text("Las fotos de galería para tu cuenta todavía no están habilitadas.")
+                            .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                     }
                     ProfileRoleSelector(currentImage: selected == .avatar && draft.photoData != nil ? "" : (selected == .avatar ? draft.avatar : draft.favorite)) { role in
                         if selected == .avatar { draft.avatar = role.image; draft.photoData = nil }
@@ -412,7 +476,7 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $enlargedAvatar) {
             MenuPage(title: "FOTO DE PERFIL") {
-                ProfilePortrait(image: draft.avatar, photoData: draft.photoData).frame(width: 260, height: 260).frame(maxWidth: .infinity)
+                ProfilePortrait(image: draft.avatar, photoData: draft.photoData, photoURL: OnlineContract.photoURL(draft.profilePhotoURL)).frame(width: 260, height: 260).frame(maxWidth: .infinity)
                 Button("CERRAR") { enlargedAvatar = false }.buttonStyle(TraidoresButtonStyle())
             }
         }
@@ -793,6 +857,7 @@ private struct ProfileStripImage: View {
 struct ProfilePortrait: View {
     let image: String
     var photoData: Data? = nil
+    var photoURL: URL? = nil
     private var focus: CGFloat {
         if image.contains("bufon") { return 0.24 }
         if image.contains("oraculo") { return 0.27 }
@@ -800,6 +865,14 @@ struct ProfilePortrait: View {
         return image == "rol_aldeano_gaucho" ? 0.32 : 0.30
     }
     var body: some View {
+        if let photoURL, photoData == nil {
+            AsyncImage(url: photoURL) { phase in
+                if let image = phase.image { image.resizable().scaledToFill() }
+                else { portrait }
+            }.id(photoURL).clipShape(Circle()).accessibilityHidden(true)
+        } else { portrait }
+    }
+    private var portrait: some View {
         GeometryReader { geometry in
             if let artwork = photoData.flatMap(UIImage.init(data:)) ?? UIImage(named: image) {
                 let width = max(geometry.size.width, geometry.size.height * artwork.size.width / artwork.size.height)

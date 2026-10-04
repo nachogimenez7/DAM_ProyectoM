@@ -46,11 +46,20 @@ extension OnlineFeature {
         case .profileStorage: "Las fotos online todavía no están habilitadas."
         case .onlineGameplay: "La partida online todavía no está disponible en esta versión. Podés armar la sala y esperar a los demás."
         case .appleSignIn: "El acceso con Apple todavía no está disponible en esta versión."
+        case .googleSignIn: "El acceso con Google todavía no está disponible en esta versión."
         }
     }
 }
 
 enum OnlineAvatarArt {
+    static func key(for asset: String) -> String {
+        let parts = asset.split(separator: "_").map(String.init)
+        guard parts.count == 3, parts[0] == "rol" else { return "pampa_aldeano" }
+        let map = switch parts[2] { case "griego": "grecia"; case "medieval": "medieval"; default: "pampa" }
+        let role = parts[1] == "detective" ? "policia" : parts[1]
+        guard OnlineContract.roleKeys.contains(role) else { return "pampa_aldeano" }
+        return "\(map)_\(role)"
+    }
     private static let legacy = ["aldeana": "pampa_aldeano", "detective": "pampa_policia", "medica": "pampa_medico",
                                  "alcalde": "pampa_alcalde", "asesino": "pampa_asesino", "espia": "pampa_espia",
                                  "mercenario": "pampa_mercenario", "desertora": "pampa_desertor",

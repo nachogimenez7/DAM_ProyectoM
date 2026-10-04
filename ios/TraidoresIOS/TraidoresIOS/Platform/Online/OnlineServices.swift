@@ -5,6 +5,8 @@ import AuthenticationServices
 @MainActor protocol OnlineAccountService: AnyObject, Observable {
     var access: OnlineAccessState { get }
     var appleSignInAvailable: Bool { get }
+    var googleSignInAvailable: Bool { get }
+    func continueWithGoogle() async throws
     func enterAsGuest() async
     func selectGuestAlias(_ alias: String) async throws
     // Link an anonymous UID; if the email already exists, recover that account's profile.
@@ -16,6 +18,10 @@ import AuthenticationServices
 }
 
 extension OnlineAccountService {
+    var googleSignInAvailable: Bool { false }
+    func continueWithGoogle() async throws {
+        throw OnlineError.featureUnavailable(.googleSignIn)
+    }
     // Implementations without enabled Apple capabilities keep that path unavailable.
     var appleSignInAvailable: Bool { false }
     func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) throws {
@@ -75,12 +81,14 @@ extension PublicProfileService {
     let profile: any PublicProfileService
     let directory: any RoomDirectoryService
     let room: any RoomSessionService
+    let roomsAvailable: Bool
 
     init(account: any OnlineAccountService, profile: any PublicProfileService,
-         directory: any RoomDirectoryService, room: any RoomSessionService) {
+         directory: any RoomDirectoryService, room: any RoomSessionService, roomsAvailable: Bool = true) {
         self.account = account
         self.profile = profile
         self.directory = directory
         self.room = room
+        self.roomsAvailable = roomsAvailable
     }
 }

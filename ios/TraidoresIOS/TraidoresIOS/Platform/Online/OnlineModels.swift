@@ -152,7 +152,7 @@ enum MatchStartResult: Equatable, Sendable {
     case mapTieBreakRequired([String])
 }
 
-enum OnlineFeature: Equatable, Sendable { case configuration, profileStorage, onlineGameplay, appleSignIn }
+enum OnlineFeature: Equatable, Sendable { case configuration, profileStorage, onlineGameplay, appleSignIn, googleSignIn }
 
 enum OnlineError: Error, Equatable, Sendable {
     case offline, sessionExpired, permissionDenied, accountRequired, cancelled
