@@ -188,6 +188,8 @@ struct MatchResultView: View {
                 .foregroundStyle(Color(hex: "#F3D488"))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: metrics.roleHeight * textScale)
+            GamePlayerAvatar(name: player.name, isHuman: player.id == game.human.id, size: 24)
+                .padding(.top, 4)
         }
         .padding(.horizontal, 4).padding(.vertical, 2)
         .frame(width: textSize.isAccessibilitySize ? 260 : metrics.width)

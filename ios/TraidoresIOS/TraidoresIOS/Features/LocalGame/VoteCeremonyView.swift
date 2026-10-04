@@ -164,7 +164,7 @@ struct VoteCeremonyView: View {
                 .frame(width: dense ? 32 : 38, height: dense ? 44 : 52)
                 .frame(width: dense ? 42 : 52, height: dense ? 43 : 54)
             HStack(spacing: 3) {
-                InitialAvatar(name: player.name, size: dense ? 15 : 20, fill: TraidoresTheme.gold)
+                InitialAvatar(name: player.name, isHuman: player.id == game.human.id, size: dense ? 15 : 20, fill: TraidoresTheme.gold)
                 Text(player.name)
                     .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.text)
                     .lineLimit(1).minimumScaleFactor(0.7)
@@ -178,7 +178,7 @@ struct VoteCeremonyView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(game.advanced.showIndividualVotes ? 10 : 12), spacing: 2),
                                      count: dense ? 4 : 5), spacing: 2) {
                 ForEach(voters, id: \.self) { voter in
-                    VoteToken(initial: game.advanced.showIndividualVotes ? String(game.name(voter).prefix(1)) : nil)
+                    VoteToken(initial: game.advanced.showIndividualVotes ? String(game.name(voter).prefix(1)) : nil, isHuman: voter == game.human.id)
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
@@ -204,7 +204,7 @@ struct VoteCeremonyView: View {
                         .frame(width: 112, height: 150)
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
                 } else {
-                    InitialAvatar(name: target?.name ?? "?", size: 76, fill: TraidoresTheme.gold)
+                    InitialAvatar(name: target?.name ?? "?", isHuman: target?.id == game.human.id, size: 76, fill: TraidoresTheme.gold)
                         .transition(.opacity)
                 }
                 Image("expulsion_seal")
@@ -470,30 +470,23 @@ private struct VoteCardBackground: View {
 /// Gold disc with the player's initial (Android's GameplayAvatarView fallback).
 private struct InitialAvatar: View {
     let name: String
+    var isHuman = false
     let size: CGFloat
     let fill: Color
 
     var body: some View {
-        Text(String(name.prefix(1)).uppercased())
-            .font(.system(size: size * 0.55, weight: .bold))
-            .foregroundStyle(TraidoresTheme.ink)
-            .frame(width: size, height: size)
-            .background(fill, in: Circle())
-            .accessibilityHidden(true)
+        GamePlayerAvatar(name: name, isHuman: isHuman, size: size, fill: fill)
     }
 }
 
 /// A voter's seal: their initial, or an anonymous mark when votes are secret.
 private struct VoteToken: View {
     let initial: String?
+    var isHuman = false
 
     var body: some View {
         if let initial {
-            Text(initial.uppercased())
-                .font(.system(size: 6.5, weight: .heavy))
-                .foregroundStyle(TraidoresTheme.ink)
-                .frame(width: 10, height: 10)
-                .background(TraidoresTheme.gold, in: Circle())
+            GamePlayerAvatar(name: initial, isHuman: isHuman, size: 10)
                 .overlay(Circle().stroke(Color(hex: "#FFF0C4"), lineWidth: 1))
         } else {
             Circle()

@@ -4,6 +4,7 @@ import TraidoresCore
 
 struct PlayModesView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(OnlineServices.self) private var online: OnlineServices?
 
     var body: some View {
         ZStack {
@@ -27,8 +28,7 @@ struct PlayModesView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("play.local")
 
-                    modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online", badge: "PRÓXIMAMENTE")
-                        .accessibilityElement(children: .combine)
+                    onlineCard
                 }
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 16)
@@ -50,6 +50,22 @@ struct PlayModesView: View {
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    /// Online opens only when the app root has online services (`OnlineBootstrap`);
+    /// otherwise the card keeps its badge.
+    @ViewBuilder private var onlineCard: some View {
+        if let online {
+            NavigationLink {
+                OnlineModeView().environment(online)
+            } label: {
+                modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("play.online")
+        } else {
+            modeCard(title: "JUGAR ONLINE", image: "modo_jugar_online", badge: "PRÓXIMAMENTE")
+        }
     }
 
     private func modeCard(title: String, image: String, badge: String? = nil) -> some View {
@@ -97,6 +113,8 @@ struct LocalMenuProfile: Codable, Equatable {
     var banner = "pampa"
     var favorite = "rol_detective_gaucho"
     var photoData: Data?
+    // Shared online DTO will supply fotoPerfil; optional preserves existing local saves.
+    var profilePhotoURL: String?
     static func load(_ data: Data) -> Self {
         (try? JSONDecoder().decode(Self.self, from: data)) ?? Self()
     }
@@ -120,6 +138,7 @@ struct ProfileView: View {
     @State private var loadingPhoto = false
     @FocusState private var editingText: Bool
     @Environment(\.dynamicTypeSize) private var systemTextSize
+    @Environment(OnlineServices.self) private var online: OnlineServices?
     private let banners: [(key: String, title: String)] = [
         ("pampa", "Pampa"), ("grecia", "Grecia"), ("medieval", "Medieval"),
         ("asesino_medieval", "Asesino medieval"), ("medico_pampeano", "Médica pampeana"),
@@ -288,7 +307,11 @@ struct ProfileView: View {
             .profileCard(accent: accent, surface: surface)
             .accessibilityElement(children: .combine)
             profileHeading("CUENTA")
-            note("Guardado en este dispositivo. El acceso, la recuperación y la sincronización online todavía no están disponibles en esta versión.")
+            if let online {
+                OnlineAccountCard(accent: accent, surface: surface).environment(online)
+            } else {
+                note("Guardado en este dispositivo. El acceso, la recuperación y la sincronización online todavía no están disponibles en esta versión.")
+            }
             if isEditing {
                 note(!validName ? "Escribí tu nombre. Si lo dejás vacío, se conserva el anterior." : "Tus cambios se guardan automáticamente.")
                     .accessibilityIdentifier("profile.status")
@@ -1003,5 +1026,42 @@ struct SupportMessageView: View {
         .alert("No se pudo abrir el correo", isPresented: $mailUnavailable) {
             Button("ENTENDIDO", role: .cancel) {}
         } message: { Text("Podés escribirnos a \(email).") }
+    }
+}
+
+
+/// One portrait for lobby, table, chat, votes and results. Human identity is explicit:
+/// a bot with the same name must never inherit the owner's photograph.
+struct GamePlayerAvatar: View {
+    let name: String
+    let isHuman: Bool
+    let size: CGFloat
+    var remoteURL: URL? = nil
+    var fill: Color = TraidoresTheme.gold
+    @AppStorage("menu.localProfile.v1") private var storedProfile = Data()
+
+    private var profile: LocalMenuProfile { LocalMenuProfile.load(storedProfile) }
+    var body: some View {
+        Group {
+            if isHuman, let data = profile.photoData, let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if let remoteURL {
+                AsyncImage(url: remoteURL) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() }
+                    else { fallback }
+                }
+            } else { fallback }
+        }
+        .frame(width: size, height: size).clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+    private var fallback: some View {
+        // Initials are decorative portrait artwork; the parent announces the full name.
+        Canvas { context, bounds in
+            context.fill(Path(ellipseIn: CGRect(origin: .zero, size: bounds)), with: .color(fill))
+            let initial = Text(String(name.prefix(1)).uppercased())
+                .font(.system(size: size * 0.55, weight: .bold)).foregroundStyle(TraidoresTheme.ink)
+            context.draw(initial, at: CGPoint(x: bounds.width / 2, y: bounds.height / 2))
+        }.frame(width: size, height: size)
     }
 }

@@ -423,10 +423,8 @@ struct LocalLobbyView: View {
 
     private func playerRow(_ playerName: String, human: Bool) -> some View {
         HStack(spacing: 11) {
-            Circle().fill(human ? TraidoresTheme.gold : TraidoresTheme.border)
-                .frame(width: 34, height: 34)
-                .overlay(Text(String(playerName.prefix(1)).uppercased())
-                    .font(.headline).foregroundStyle(TraidoresTheme.ink))
+            GamePlayerAvatar(name: playerName, isHuman: human, size: 34,
+                             fill: human ? TraidoresTheme.gold : TraidoresTheme.border)
             VStack(alignment: .leading, spacing: 1) {
                 Text(playerName).font(.headline)
                 Text(human ? "ANFITRIÓN" : "BOT").font(.caption2.bold())
@@ -2419,12 +2417,13 @@ private struct LocalTableView: View {
                             }
                         }
                 }
-                Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold))
-                    .foregroundStyle(player.alive ? playerNameColor(player.id) : playerNameColor(player.id).opacity(0.62))
-                    .strikethrough(!player.alive)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                    .frame(height: CGFloat(metrics.nameHeight))
+                HStack(spacing: 3) {
+                    GamePlayerAvatar(name: player.name, isHuman: player.id == game.human.id,
+                                     size: min(18, CGFloat(metrics.nameHeight)))
+                    Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold))
+                        .foregroundStyle(player.alive ? playerNameColor(player.id) : playerNameColor(player.id).opacity(0.62))
+                        .strikethrough(!player.alive).lineLimit(1).minimumScaleFactor(0.65)
+                }.frame(height: CGFloat(metrics.nameHeight))
             }
             .frame(
                 minWidth: CGFloat(metrics.minimumCardWidth),
@@ -2809,8 +2808,11 @@ private struct LocalTableView: View {
                 .accessibilityIdentifier("table.player.0")
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            GamePlayerAvatar(name: game.human.name, isHuman: true, size: 28)
+                            Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
+                                .lineLimit(1)
+                        }
                         Text(humanCardRevealed ? game.human.role.classicTitle(on: game.map).uppercased() : "CARTA OCULTA")
                             .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
                         Text(humanHint(game, canChooseSelf: canChooseSelf))
@@ -3293,9 +3295,12 @@ private struct LocalTableView: View {
             HStack {
                 if mine { Spacer(minLength: 28) }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(mine ? "VOS" : game.name(speaker).uppercased())
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(mine ? TraidoresTheme.ink : playerNameColor(speaker))
+                    HStack(spacing: 4) {
+                        GamePlayerAvatar(name: game.name(speaker), isHuman: mine, size: 16)
+                        Text(mine ? "VOS" : game.name(speaker).uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(mine ? TraidoresTheme.ink : playerNameColor(speaker))
+                    }
                     Text(message.text)
                         .font(.system(size: 11))
                         .foregroundStyle(mine ? TraidoresTheme.ink : TraidoresTheme.text)

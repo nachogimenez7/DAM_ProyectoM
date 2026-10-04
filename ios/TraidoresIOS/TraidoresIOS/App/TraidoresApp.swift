@@ -5,7 +5,12 @@ struct TraidoresApp: App {
     @State private var preferences = MenuPreferences()
     @State private var audio = MenuAudio()
     @State private var introFinished = false
+    @State private var onlineServices = OnlineBootstrap.services()
     @Environment(\.scenePhase) private var scenePhase
+
+    #if DEBUG
+    init() { FirebaseSmokeCheck.runIfRequested() }
+    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +23,7 @@ struct TraidoresApp: App {
             }
                 .modifier(GamePreferencesBridge(preferences: preferences))
                 .environment(preferences)
+                .environment(onlineServices)
                 .defaultAppStorage(.menuStore)
                 .preferredColorScheme(.dark)
                 .tint(TraidoresTheme.gold)
