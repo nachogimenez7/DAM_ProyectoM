@@ -450,8 +450,10 @@ struct ProfileView: View {
     }
     private func stat(_ label: String) -> some View {
         VStack(spacing: 6) {
-            Text(label == "Porcentaje" ? "--%" : "--").font(.title2.bold())
+            // Explicit colours: inherited ones could resolve to dark text on the dark card.
+            Text(label == "Porcentaje" ? "--%" : "--").font(.title2.bold()).foregroundStyle(style.text)
             Text(label).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                .foregroundStyle(TraidoresTheme.secondary)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 16).padding(.horizontal, 4)
         .background(surface, in: RoundedRectangle(cornerRadius: 10))

@@ -229,10 +229,7 @@ struct MatchResultView: View {
 
     private func actionLabel(_ text: String) -> some View {
         Text(text).font(TraidoresTheme.title(12, relativeTo: .headline)).bold().tracking(0.3)
-            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 4).padding(.vertical, textSize.isAccessibilitySize ? 10 : 0)
-            .frame(maxWidth: .infinity, minHeight: 46)
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            .multilineTextAlignment(.center)
     }
 
     private var chronicle: some View {
@@ -392,7 +389,12 @@ private struct WinnerActionStyle: ButtonStyle {
         let colors = primary
             ? (configuration.isPressed ? ["#E8B544", "#A8751C"] : ["#F2C458", "#B77F21"])
             : (configuration.isPressed ? ["#302317", "#4A351D"] : ["#342719", "#241A11"])
+        // Framed here rather than on the text, so the clipped-text audit sees the text's own size.
         configuration.label
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 4).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .contentShape(RoundedRectangle(cornerRadius: 13))
             .foregroundStyle(Color(hex: primary ? "#211407" : "#F3D488"))
             .background(LinearGradient(colors: colors.map { Color(hex: $0) }, startPoint: .top, endPoint: .bottom),
                         in: RoundedRectangle(cornerRadius: 13))

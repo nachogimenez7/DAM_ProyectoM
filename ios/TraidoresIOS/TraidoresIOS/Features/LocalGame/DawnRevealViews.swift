@@ -198,8 +198,11 @@ struct DeathRevealView: View {
     let map: GameMap
     let onFinished: () -> Void
 
-    @Environment(\.reduceAnimations) private var reduceMotion
+    // Like the day/night transition: only the game's "Reducir animaciones" changes these
+    // reveals, as in Android. They keep their pacing either way; only motion is dropped.
+    @Environment(MenuPreferences.self) private var preferences
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    private var reduceMotion: Bool { preferences.reduceAnimations }
     @State private var overlayOpacity = 0.0
     @State private var contentScale = 0.94
     @State private var flash = 0.0
@@ -356,8 +359,11 @@ struct SilenceRevealView: View {
     let map: GameMap
     let onFinished: () -> Void
 
-    @Environment(\.reduceAnimations) private var reduceMotion
+    // Like the day/night transition: only the game's "Reducir animaciones" changes these
+    // reveals, as in Android. They keep their pacing either way; only motion is dropped.
+    @Environment(MenuPreferences.self) private var preferences
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    private var reduceMotion: Bool { preferences.reduceAnimations }
     @State private var overlayOpacity = 0.0
     @State private var contentScale = 0.95
     @State private var sidesOpacity = 0.0
@@ -466,7 +472,7 @@ struct SilenceRevealView: View {
         }
         withAnimation { continueVisible = true }
         guard !voiceOver else { return }
-        try? await Task.sleep(for: RevealTiming.seconds(1.8))
+        try? await Task.sleep(for: RevealTiming.seconds(2.8))
         guard !Task.isCancelled else { return }
         finish()
     }
@@ -543,8 +549,11 @@ struct NoDeathRevealView: View {
     let map: GameMap
     let onFinished: () -> Void
 
-    @Environment(\.reduceAnimations) private var reduceMotion
+    // Like the day/night transition: only the game's "Reducir animaciones" changes these
+    // reveals, as in Android. They keep their pacing either way; only motion is dropped.
+    @Environment(MenuPreferences.self) private var preferences
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    private var reduceMotion: Bool { preferences.reduceAnimations }
     @State private var overlayOpacity = 0.0
     @State private var contentScale = 0.95
     @State private var contentOffset = 4.0
@@ -620,7 +629,7 @@ struct NoDeathRevealView: View {
         }
         withAnimation { continueVisible = true }
         guard !voiceOver else { return }
-        try? await Task.sleep(for: RevealTiming.seconds(1.6))
+        try? await Task.sleep(for: RevealTiming.seconds(2.6))
         guard !Task.isCancelled else { return }
         finish()
     }

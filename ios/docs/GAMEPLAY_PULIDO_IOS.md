@@ -43,6 +43,15 @@ Sin prioridad por ahora: nombre y color de estilo del perfil en el panel inferio
 - **Recuento de votos** (`VoteCeremonyView.swift`): sellos que caen uno a uno, mayoría/empate, expulsión con lacre, bota que patea la carta y resultado; avanza solo a los 8 s.
 - Diferencia deliberada: el texto «No puede hablar ni votar durante el día» usa `secondary` en lugar de `text_muted` de Android, que no alcanza contraste 4,5:1 sobre el panel.
 
+## Avance (3/10, tarde)
+
+- **Ritmo de anuncios y recuento:** solo la opción «Reducir animaciones» del juego los simplifica (como la transición día/noche); el Reducir movimiento de iOS ya no los muestra de golpe. Los votos caen de a uno cada ~0,75 s; silencio y «El pueblo respira» quedan 1 s más en pantalla.
+- **Votación como Android:** «TU VOTO ✓» en verde sobre la carta elegida, botón «TU VOTO: X», «Podés cambiar hasta el cierre» y cierre 3 s después del primer voto. En el debate, «VOTAR ANTES EN N · x/y» los primeros 10 s y luego «LISTOS PARA VOTAR · x/y»; los bots se suman de a uno y al estar todos pasa a la votación.
+- **Lobby desde cero** (Codex): siempre 5 jugadores y opciones por defecto (sin revelar roles, con votos individuales); solo se recuerda el mapa. Sin «VER ÚLTIMO RESULTADO»; una partida terminada se descarta.
+- **Opciones en partida:** tarjeta centrada como el diálogo de Android (sin desplazamiento en tamaño normal) con «REPORTAR UN PROBLEMA» (abre Comentarios/errores). Se presenta como modal propio (`fullScreenCover`): la mesa se redibuja cada segundo y, dentro de ella, la auditoría y VoiceOver perdían los elementos.
+- Accesibilidad corregida: chat con estilos de texto que escalan (antes 12 pt fijos); con «Tamaño del texto: Normal» el tamaño del sistema pasa directo; botones enmarcados desde el estilo; estadísticas del perfil con color explícito.
+- Pruebas: `LocalLobbyUITests` 24/24, `MenuAccessibilityUITests` 5/5, núcleo 39/39.
+
 ## Punto de partida para la próxima sesión (3/10)
 
 Continuidad adicional: [CONTINUIDAD_CODEX_2026-10-03.md](CONTINUIDAD_CODEX_2026-10-03.md), con el arreglo del botón, pruebas, ícono e instalación/lanzamiento en el iPhone 13. El audio en el dispositivo aún requiere escucha del usuario.

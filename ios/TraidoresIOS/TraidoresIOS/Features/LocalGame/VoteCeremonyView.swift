@@ -13,8 +13,11 @@ struct VoteCeremonyView: View {
     let onAdvance: () -> Void
     let onImpact: () -> Void
 
-    @Environment(\.reduceAnimations) private var reduceMotion
+    // Like the day/night transition: only the game's "Reducir animaciones" changes these
+    // reveals, as in Android. They keep their pacing either way; only motion is dropped.
+    @Environment(MenuPreferences.self) private var preferences
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    private var reduceMotion: Bool { preferences.reduceAnimations }
 
     // Panel text and button.
     @State private var title = ""
@@ -307,19 +310,24 @@ struct VoteCeremonyView: View {
         // Same shuffle seed idea as Android: stable for this vote, different each round.
         var generator = SeededGenerator(seed: UInt64(game.round * 1_009 + game.voteRound * 97 + game.votes.count))
         let ballots = game.votes.sorted { $0.key < $1.key }.shuffled(using: &generator)
-        if reduceMotion || voiceOver {
+        if voiceOver {
             landed = Dictionary(grouping: ballots, by: \.value).mapValues { $0.map(\.key) }
         } else {
-            try? await Task.sleep(for: RevealTiming.seconds(0.42))
+            // One seal at a time, a little slower than Android's 420 ms so each vote reads.
+            try? await Task.sleep(for: RevealTiming.seconds(0.7))
             for (voter, target) in ballots {
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.19)) { landed[target, default: []].append(voter) }
-                withAnimation(.easeOut(duration: 0.09)) { pulsing = target }
-                try? await Task.sleep(for: RevealTiming.seconds(0.09))
-                withAnimation(.easeOut(duration: 0.1)) { pulsing = nil }
-                try? await Task.sleep(for: RevealTiming.seconds(0.33))
+                withAnimation(.easeOut(duration: 0.22)) { landed[target, default: []].append(voter) }
+                if !reduceMotion {
+                    withAnimation(.easeOut(duration: 0.1)) { pulsing = target }
+                    try? await Task.sleep(for: RevealTiming.seconds(0.1))
+                    withAnimation(.easeOut(duration: 0.12)) { pulsing = nil }
+                    try? await Task.sleep(for: RevealTiming.seconds(0.55))
+                } else {
+                    try? await Task.sleep(for: RevealTiming.seconds(0.65))
+                }
             }
-            try? await Task.sleep(for: RevealTiming.seconds(0.28))
+            try? await Task.sleep(for: RevealTiming.seconds(0.9))
         }
         guard !Task.isCancelled else { return }
 

@@ -65,7 +65,11 @@ struct LocalModeView: View {
 @MainActor private enum LocalLobbyPreferences {
     static let store: UserDefaults = {
         guard ProcessInfo.processInfo.arguments.contains("-ui-testing") else { return .standard }
-        return UserDefaults(suiteName: "com.traidores.juego.ios.ui-testing") ?? .standard
+        let suiteName = "com.traidores.juego.ios.ui-testing"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        // Reset test data once per launch, preserving it when the lobby is reopened.
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }()
 }
 
@@ -74,11 +78,7 @@ struct LocalLobbyView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var store: LocalGameStore
-    @AppStorage("local.botNames", store: LocalLobbyPreferences.store) private var savedBotNames = ""
-    @AppStorage("local.timing", store: LocalLobbyPreferences.store) private var savedTiming = ""
-    @AppStorage("local.advanced", store: LocalLobbyPreferences.store) private var savedAdvanced = ""
-    @AppStorage("local.testOptions", store: LocalLobbyPreferences.store) private var savedTestOptions = ""
-    @AppStorage("local.trainingRole", store: LocalLobbyPreferences.store) private var selectedTrainingRoleKey = ""
+    @State private var selectedTrainingRoleKey = ""
     @AppStorage("local.map", store: LocalLobbyPreferences.store) private var selectedMapKey = GameMap.pampa.rawValue
     @State private var playing = false
     @State private var showingTiming = false
@@ -92,20 +92,16 @@ struct LocalLobbyView: View {
 
     init(difficulty: BotDifficulty) {
         self.difficulty = difficulty
-        if ProcessInfo.processInfo.arguments.contains("-ui-testing") {
-            let suiteName = "com.traidores.juego.ios.ui-testing"
-            let defaults = UserDefaults(suiteName: suiteName) ?? .standard
-            defaults.removePersistentDomain(forName: suiteName)
-            _store = State(initialValue: LocalGameStore(defaults: defaults))
-        } else {
-            _store = State(initialValue: LocalGameStore())
-        }
+        _store = State(initialValue: LocalGameStore(defaults: LocalLobbyPreferences.store))
     }
 
     var body: some View {
         ZStack {
             if playing {
-                LocalMatchFlow(store: store, onExit: { playing = false })
+                LocalMatchFlow(store: store, onExit: {
+                    playing = false
+                    resetLobby()
+                })
                     .transition(.opacity)
             } else {
                 GeometryReader { geometry in
@@ -144,17 +140,7 @@ struct LocalLobbyView: View {
         } message: {
             Text("Usá hasta 18 caracteres.")
         }
-        .onAppear(perform: restoreBotNames)
-        .onChange(of: botNames) { _, names in
-            guard let data = try? JSONEncoder().encode(names) else { return }
-            savedBotNames = String(decoding: data, as: UTF8.self)
-        }
-        .onChange(of: timing) { _, value in saveTiming(value) }
-        .onChange(of: advanced) { _, value in saveAdvanced(value) }
-        .onChange(of: testOptions) { _, value in
-            guard let data = try? JSONEncoder().encode(value) else { return }
-            savedTestOptions = String(decoding: data, as: UTF8.self)
-        }
+        .onAppear(perform: resetLobby)
         .sheet(isPresented: $showingTiming) {
             MatchOptionsView(config: $testOptions)
         }
@@ -233,12 +219,12 @@ struct LocalLobbyView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
 
-            if let game = store.game {
-                Button(game.winner == nil ? "CONTINUAR PARTIDA · DÍA \(game.round)" : "VER ÚLTIMO RESULTADO") {
+            if let game = store.game, game.winner == nil {
+                Button("CONTINUAR PARTIDA · DÍA \(game.round)") {
                     playing = true
                 }
                     .buttonStyle(TraidoresButtonStyle())
-                    .accessibilityIdentifier(game.winner == nil ? "local.resumeGame" : "local.lastResult")
+                    .accessibilityIdentifier("local.resumeGame")
             }
 
             sectionLabel("CONFIGURACIÓN")
@@ -493,50 +479,15 @@ struct LocalLobbyView: View {
         self.editingBot = nil
     }
 
-    private func restoreBotNames() {
-        guard let data = savedBotNames.data(using: .utf8),
-              let names = try? JSONDecoder().decode([String].self, from: data),
-              (ClassicGame.minimumPlayers - 1...ClassicGame.maximumPlayers - 1).contains(names.count)
-        else {
-            restoreTiming()
-            return
+    private func resetLobby() {
+        botNames = Array(ClassicGame.defaultBotNames.prefix(4))
+        timing = .normal
+        advanced = .standard
+        testOptions = .standard
+        selectedTrainingRoleKey = ""
+        if store.game?.winner != nil {
+            store.cancel()
         }
-        botNames = names
-        restoreTiming()
-    }
-
-    private func restoreTiming() {
-        guard let data = savedTiming.data(using: .utf8),
-              let value = try? JSONDecoder().decode(GameTimingConfig.self, from: data)
-        else {
-            restoreAdvanced()
-            return
-        }
-        timing = value.normalized
-        restoreAdvanced()
-    }
-
-    private func saveTiming(_ value: GameTimingConfig) {
-        guard let data = try? JSONEncoder().encode(value.normalized) else { return }
-        savedTiming = String(decoding: data, as: UTF8.self)
-    }
-
-    private func restoreAdvanced() {
-        defer {
-            if let data = savedTestOptions.data(using: .utf8),
-               let value = try? JSONDecoder().decode(LocalTestOptions.self, from: data) {
-                testOptions = value
-            }
-        }
-        guard let data = savedAdvanced.data(using: .utf8),
-              let value = try? JSONDecoder().decode(AdvancedGameConfig.self, from: data)
-        else { return }
-        advanced = value.normalized
-    }
-
-    private func saveAdvanced(_ value: AdvancedGameConfig) {
-        guard let data = try? JSONEncoder().encode(value.normalized) else { return }
-        savedAdvanced = String(decoding: data, as: UTF8.self)
     }
 }
 
@@ -1599,88 +1550,178 @@ private struct DayNightTransitionView: View {
     }
 }
 
+/// The table's gear: Android's AccessibilityOptionsDialog as a centred card that fits on
+/// screen without scrolling (it only scrolls at accessibility text sizes).
 private struct TableOptionsPanel: View {
     @Environment(MenuPreferences.self) private var preferences
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let onClose: () -> Void
+    let onReport: () -> Void
     let onExit: () -> Void
+    @Environment(\.reduceAnimations) private var reduceMotion
+    @State private var shown = false
 
     var body: some View {
+        ZStack {
+            Color.black.opacity(shown ? 0.6 : 0).ignoresSafeArea()
+                .onTapGesture(perform: onClose)
+                .accessibilityHidden(true)
+            // One scroll view that stays still while the card fits, so the same elements
+            // live on at every text size (switching layouts would recreate them).
+            GeometryReader { geometry in
+                ScrollView {
+                    card
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
+            .padding(.horizontal, 18)
+            .opacity(shown ? 1 : 0)
+            .scaleEffect(shown || reduceMotion ? 1 : 0.95)
+        }
+        .onAppear { withAnimation(.easeOut(duration: 0.2)) { shown = true } }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityIdentifier("table.options.panel")
+    }
+
+    private var card: some View {
         @Bindable var preferences = preferences
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        return VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape.fill").font(.system(size: 15, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text("ACCESIBILIDAD")
-                    .font(TraidoresTheme.title(21, relativeTo: .headline))
-                    .foregroundStyle(TraidoresTheme.gold)
-                    .frame(maxWidth: .infinity)
+                    .font(TraidoresTheme.title(20, relativeTo: .headline))
                     .accessibilityAddTraits(.isHeader)
+            }
+            .foregroundStyle(Color(hex: "#F3D488"))
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 2)
 
-                Toggle("Música", isOn: $preferences.musicEnabled)
-                    .accessibilityIdentifier("table.options.music")
-                Text("Música: \(Int((preferences.musicVolume * 100).rounded()))%")
-                    .disabled(!preferences.musicEnabled)
-                    .opacity(preferences.musicEnabled ? 1 : 0.42)
-                    .accessibilityIdentifier("table.options.musicVolumeLabel")
-                Slider(value: $preferences.musicVolume, in: 0...1, step: 0.01)
-                    .disabled(!preferences.musicEnabled)
-                    .opacity(preferences.musicEnabled ? 1 : 0.42)
-                    .accessibilityLabel("Volumen de música")
-                    .accessibilityIdentifier("table.options.musicVolume")
+            VStack(spacing: 0) {
+                volumeRow(title: "Música", symbol: "music.note", enabled: $preferences.musicEnabled,
+                          volume: $preferences.musicVolume, id: "music")
+                Rectangle().fill(TraidoresTheme.border.opacity(0.7)).frame(height: 1).padding(.horizontal, 12)
+                volumeRow(title: "Efectos", symbol: "speaker.wave.2.fill", enabled: $preferences.effectsEnabled,
+                          volume: $preferences.effectsVolume, id: "effects")
+                Rectangle().fill(TraidoresTheme.border.opacity(0.7)).frame(height: 1).padding(.horizontal, 12)
+                Toggle(isOn: $preferences.vibrationEnabled) {
+                    Label("Vibración al interactuar", systemImage: "iphone.radiowaves.left.and.right")
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .accessibilityIdentifier("table.options.vibration")
+            }
+            // Opaque reading surfaces: translucent ones make the contrast audit misread text.
+            .background(Color(hex: "#2A2318"), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
 
-                Toggle("Efectos", isOn: $preferences.effectsEnabled)
-                    .accessibilityIdentifier("table.options.effects")
-                Text("Efectos: \(Int((preferences.effectsVolume * 100).rounded()))%")
-                    .disabled(!preferences.effectsEnabled)
-                    .opacity(preferences.effectsEnabled ? 1 : 0.42)
-                    .accessibilityIdentifier("table.options.effectsVolumeLabel")
-                Slider(value: $preferences.effectsVolume, in: 0...1, step: 0.01)
-                    .disabled(!preferences.effectsEnabled)
-                    .opacity(preferences.effectsEnabled ? 1 : 0.42)
-                    .accessibilityLabel("Volumen de efectos")
-                    .accessibilityIdentifier("table.options.effectsVolume")
-
-                Toggle("Vibración al interactuar", isOn: $preferences.vibrationEnabled)
-                    .accessibilityIdentifier("table.options.vibration")
-
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Tamaño de texto: \(preferences.textSize.title)")
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(TraidoresTheme.secondary)
                     .accessibilityIdentifier("table.options.textSizeLabel")
                 let layout = dynamicTypeSize.isAccessibilitySize
-                    ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+                    ? AnyLayout(VStackLayout(spacing: 7)) : AnyLayout(HStackLayout(spacing: 7))
                 layout {
                     ForEach(MenuTextSize.allCases) { size in
-                        Button(size.title) { preferences.textSize = size }
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(preferences.textSize == size ? TraidoresTheme.ink : TraidoresTheme.text)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(preferences.textSize == size ? TraidoresTheme.gold : TraidoresTheme.panel,
-                                        in: RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.gold.opacity(0.62)))
-                            .accessibilityAddTraits(preferences.textSize == size ? .isSelected : [])
-                            .accessibilityIdentifier("table.options.textSize.\(size.rawValue)")
+                        let chosen = preferences.textSize == size
+                        Button { preferences.textSize = size } label: {
+                            Text(size.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(chosen ? TraidoresTheme.ink : TraidoresTheme.text)
+                                .frame(maxWidth: .infinity, minHeight: 40)
+                                .background(chosen ? AnyShapeStyle(LinearGradient(colors: [Color(hex: "#F2C458"), Color(hex: "#C08A2E")],
+                                                                                   startPoint: .top, endPoint: .bottom))
+                                                   : AnyShapeStyle(Color(hex: "#2A2318")),
+                                            in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(chosen ? Color(hex: "#FFE8AD") : Color(hex: "#6B4F2A")))
+                                .contentShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(chosen ? .isSelected : [])
+                        .accessibilityIdentifier("table.options.textSize.\(size.rawValue)")
                     }
                 }
-
-                Button("SALIR DE LA PARTIDA", action: onExit)
-                    .font(.headline)
-                    .foregroundStyle(TraidoresTheme.text)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Color(red: 0.45, green: 0.16, blue: 0.13),
-                                in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("table.options.exit")
-                    .padding(.top, 8)
-                Button("CERRAR") { dismiss() }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .accessibilityIdentifier("table.options.close")
             }
-            .font(.body)
-            .foregroundStyle(TraidoresTheme.text)
-            .tint(TraidoresTheme.gold)
-            .padding(20)
-            .frame(maxWidth: 500)
-            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 8) {
+                actionButton("REPORTAR UN PROBLEMA", symbol: "exclamationmark.bubble",
+                             fill: Color(hex: "#2A2318"), stroke: Color(hex: "#6B4F2A"), text: TraidoresTheme.text,
+                             id: "table.options.report", action: onReport)
+                actionButton("SALIR DE LA PARTIDA", symbol: "rectangle.portrait.and.arrow.right",
+                             fill: Color(hex: "#2A1013"), stroke: Color(hex: "#8F2633"), text: Color(hex: "#D8C3C6"),
+                             id: "table.options.exit", action: onExit)
+            }
+            .padding(.top, 2)
+
+            Button("CERRAR", action: onClose)
+                .buttonStyle(TraidoresButtonStyle(prominent: true))
+            .accessibilityIdentifier("table.options.close")
         }
-        .accessibilityIdentifier("table.options.panel")
+        .toggleStyle(SwitchToggleStyle(tint: TraidoresTheme.gold))
+        .tint(TraidoresTheme.gold)
+        .foregroundStyle(TraidoresTheme.text)
+        .padding(18)
+        .frame(maxWidth: 380)
+        // Android's bg_dialog_game_panel: solid dark panel with a gold hairline.
+        .background(Color(hex: "#1A1510"), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.gold, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("table.options.card")
+    }
+
+    private func volumeRow(title: String, symbol: String, enabled: Binding<Bool>,
+                           volume: Binding<Double>, id: String) -> some View {
+        VStack(spacing: 4) {
+            Toggle(isOn: enabled) { Label(title, systemImage: symbol) }
+                .accessibilityIdentifier("table.options.\(id)")
+            HStack(spacing: 10) {
+                Slider(value: volume, in: 0...1, step: 0.01)
+                    .accessibilityLabel("Volumen de \(title.lowercased())")
+                    .accessibilityIdentifier("table.options.\(id)Volume")
+                Text("\(Int((volume.wrappedValue * 100).rounded()))%")
+                    .font(.footnote.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(TraidoresTheme.secondary)
+                    .frame(minWidth: 40, alignment: .trailing)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("table.options.\(id)VolumeLabel")
+            }
+            .disabled(!enabled.wrappedValue)
+            .opacity(enabled.wrappedValue ? 1 : 0.42)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+    }
+
+    private func actionButton(_ title: String, symbol: String, fill: Color, stroke: Color, text: Color,
+                              id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.bold))
+                .multilineTextAlignment(.center)
+        }
+        .buttonStyle(OptionsActionStyle(fill: fill, stroke: stroke, text: text))
+        .accessibilityIdentifier(id)
+    }
+}
+
+/// Frames and fills the label from outside, so the text keeps its own size
+/// (framing the text itself makes the clipped-text audit misjudge it).
+private struct OptionsActionStyle: ButtonStyle {
+    let fill: Color
+    let stroke: Color
+    let text: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(text)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(fill, in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(stroke))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
 
@@ -1703,7 +1744,9 @@ private struct LocalTableView: View {
     @State private var showingRole = false
     @State private var showingChat = false
     @State private var showingOptions = false
-    @State private var exitAfterOptions = false
+    @State private var reportingProblem = false
+    @State private var optionsFollowUp: OptionsFollowUp?
+    private enum OptionsFollowUp { case report, exit }
     @State private var chatDraft = ""
     @State private var readingOlderChat = false
     @FocusState private var chatInputFocused: Bool
@@ -1722,6 +1765,13 @@ private struct LocalTableView: View {
     @State private var remainingNightSeconds: Int?
     @State private var remainingPhaseSeconds: Int?
     @State private var nightSkipReady = false
+    // Android's direct vote: the chosen card shows TU VOTO ✓ and can still change
+    // during a short closing window.
+    @State private var votedTarget: Int?
+    @State private var voteCloseTask: Task<Void, Never>?
+    // Android's LISTOS PARA VOTAR: living players who are ready to skip the debate.
+    @State private var readyVoters: Set<Int> = []
+    @State private var readyCascadeTask: Task<Void, Never>?
 
     var body: some View {
         if let game = store.game {
@@ -1862,6 +1912,10 @@ private struct LocalTableView: View {
             .foregroundStyle(TraidoresTheme.text)
             .onChange(of: game.phaseIndex) { _, _ in
                 selected = nil
+                votedTarget = nil
+                voteCloseTask?.cancel(); voteCloseTask = nil
+                readyVoters = []
+                readyCascadeTask?.cancel(); readyCascadeTask = nil
                 if !game.isNight && game.phase != .discussion {
                     showingChat = false
                     chatInputFocused = false
@@ -1925,18 +1979,25 @@ private struct LocalTableView: View {
                                 isPresented: $leaving, titleVisibility: .visible) {
                 Button("Volver al menú") { dismissMatch() }
             }
-            .sheet(isPresented: $showingOptions, onDismiss: {
-                if exitAfterOptions {
-                    exitAfterOptions = false
-                    leaving = true
+            // A modal presentation of its own: the table's per-second redraws do not rebuild
+            // it, and VoiceOver leaves the dimmed table behind it alone.
+            .fullScreenCover(isPresented: $showingOptions, onDismiss: {
+                switch optionsFollowUp {
+                case .report: reportingProblem = true
+                case .exit: leaving = true
+                case nil: break
                 }
+                optionsFollowUp = nil
             }) {
-                TableOptionsPanel {
-                    exitAfterOptions = true
-                    showingOptions = false
-                }
-                .presentationDetents([.medium, .large])
-                .presentationBackground(TraidoresTheme.ink)
+                TableOptionsPanel(
+                    onClose: { showingOptions = false },
+                    onReport: { optionsFollowUp = .report; showingOptions = false },
+                    onExit: { optionsFollowUp = .exit; showingOptions = false }
+                )
+                .presentationBackground(.clear)
+            }
+            .sheet(isPresented: $reportingProblem) {
+                NavigationStack { SupportMessageView(feedback: true) }
             }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
             // Haptics follow Android's "Vibración al interactuar" (off by default): picking a
@@ -2194,7 +2255,11 @@ private struct LocalTableView: View {
                 }
                 .accessibilityLabel("Ver mi rol")
                 Button {
-                    if !dismissChatKeyboard() { showingOptions = true }
+                    if !dismissChatKeyboard() {
+                        // The card fades in itself; skip the cover's slide-up.
+                        var instant = Transaction(); instant.disablesAnimations = true
+                        withTransaction(instant) { showingOptions = true }
+                    }
                 } label: {
                     Image(systemName: "gearshape.fill").font(.caption).frame(width: 30, height: 30)
                         .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
@@ -2298,9 +2363,10 @@ private struct LocalTableView: View {
         return Button {
             if dismissChatKeyboard() { return }
             guard actionable else { return }
-            selected = player.id
             if game.phase == .voting || game.phase == .tieVote {
-                performPrimaryAction(game)
+                castVote(for: player.id, in: game)
+            } else {
+                selected = player.id
             }
         } label: {
             VStack(spacing: 0) {
@@ -2311,12 +2377,14 @@ private struct LocalTableView: View {
                         .overlay {
                             if actionable && (game.isNight || game.phase == .voting || game.phase == .tieVote) {
                                 RoundedRectangle(cornerRadius: 5)
-                                    .stroke(phaseAccent(game.phase).opacity(0.9), lineWidth: 1.5)
+                                    .stroke(votedTarget == player.id ? Color(hex: "#78C98A") : phaseAccent(game.phase).opacity(0.9),
+                                            lineWidth: votedTarget == player.id ? 2.5 : 1.5)
                             }
                         }
                         .overlay(alignment: .bottom) {
                             if actionable && (game.isNight || game.phase == .voting || game.phase == .tieVote) {
-                                Text(game.phase == .voting || game.phase == .tieVote ? "VOTAR" :
+                                Text(game.phase == .voting || game.phase == .tieVote
+                                     ? (votedTarget == player.id ? "TU VOTO ✓" : "VOTAR") :
                                      game.phase == .assassinNight ? "MATAR" :
                                      game.phase == .mercenaryNight ? "SILENCIAR" :
                                      game.phase == .medicNight ? "SALVAR" : "INVESTIGAR")
@@ -2324,7 +2392,12 @@ private struct LocalTableView: View {
                                     .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 2)
-                                    .background(phaseAccent(game.phase).opacity(0.9))
+                                    .background(votedTarget == player.id ? Color(hex: "#234A2D") : phaseAccent(game.phase).opacity(0.9))
+                                    .overlay {
+                                        if votedTarget == player.id {
+                                            Rectangle().stroke(Color(hex: "#78C98A"), lineWidth: 1)
+                                        }
+                                    }
                                     .padding(.horizontal, 2).padding(.bottom, 2)
                             }
                         }
@@ -2593,7 +2666,8 @@ private struct LocalTableView: View {
                     .accessibilityLabel("Enviar mensaje")
                     .accessibilityIdentifier("chat.send")
                 }
-                .font(.system(size: 12))
+                // Text styles, not fixed points: what the player writes grows with Dynamic Type.
+                .font(.footnote)
                 .padding(7)
                 .background(TraidoresTheme.ink.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.8)))
@@ -2601,7 +2675,7 @@ private struct LocalTableView: View {
             } else if game.phase == .discussion {
                 Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
                       "No podés hablar ahora.", systemImage: "person.wave.2.fill")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
                     .background(TraidoresTheme.ink.opacity(0.75),
@@ -2611,7 +2685,7 @@ private struct LocalTableView: View {
                 Label(traitorChat ? "Hablen bajo. El pueblo no debe oírlos." :
                       "El pueblo duerme. Esperá el amanecer.",
                       systemImage: traitorChat ? "person.wave.2.fill" : "moon.fill")
-                    .font(.system(size: 10))
+                    .font(.caption2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
                     .background(TraidoresTheme.ink.opacity(0.75),
@@ -2650,15 +2724,16 @@ private struct LocalTableView: View {
 
     private func votingPrompt(_ game: ClassicGame) -> some View {
         VStack(spacing: 13) {
-            Image(systemName: selected == nil ? "hand.tap.fill" : "checkmark.seal.fill")
+            Image(systemName: votedTarget == nil ? "hand.tap.fill" : "checkmark.seal.fill")
                 .font(.system(size: 34))
-                .foregroundStyle(TraidoresTheme.gold)
-            Text(selected.map { game.name($0).uppercased() } ?? "TOCÁ UNA CARTA PARA VOTAR")
+                .foregroundStyle(votedTarget == nil ? TraidoresTheme.gold : Color(hex: "#78C98A"))
+            Text(votedTarget.map { "TU VOTO: \(game.name($0).uppercased())" } ?? "TOCÁ UNA CARTA PARA VOTAR")
                 .font(TraidoresTheme.title(18))
                 .foregroundStyle(TraidoresTheme.gold)
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.8)
-            Text("Elegí a quién expulsar. Al tocar su carta, tu voto se registra automáticamente.")
+            Text(votedTarget.map { "Votaste a \(game.name($0)). Podés cambiar hasta el cierre." }
+                 ?? "Elegí a quién expulsar. Al tocar su carta, tu voto queda registrado.")
                 .font(.system(size: 12, weight: .medium))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(TraidoresTheme.text)
@@ -2699,6 +2774,7 @@ private struct LocalTableView: View {
         let votesByCard = (game.phase == .voting || game.phase == .tieVote) && !targets.isEmpty
         let canAdvance = !votesByCard && (game.isNight && targets.isEmpty
             ? nightSkipReady : (targets.isEmpty || targets.contains(selected ?? -1)))
+            && !(game.phase == .discussion && game.human.alive && readyUnlockSeconds(game) > 0)
         return VStack(spacing: 5) {
             HStack(spacing: 8) {
                 Button {
@@ -2762,12 +2838,21 @@ private struct LocalTableView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 10, weight: .heavy)).tracking(0.45)
-                .foregroundStyle(game.isNight && !targets.isEmpty ? Color.white : TraidoresTheme.ink)
+                .foregroundStyle(votedTarget != nil ? Color(hex: "#E9F8EC")
+                                 : game.isNight && !targets.isEmpty ? Color.white : TraidoresTheme.ink)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity, minHeight: 32)
-                .background(game.isNight && !targets.isEmpty ? phaseAccent(game.phase) : TraidoresTheme.gold,
+                .background(votedTarget != nil ? Color(hex: "#234A2D")
+                            : game.isNight && !targets.isEmpty ? phaseAccent(game.phase) : TraidoresTheme.gold,
                             in: RoundedRectangle(cornerRadius: 7))
-                .disabled(!canAdvance).opacity(canAdvance ? 1 : 0.52)
+                .overlay {
+                    if votedTarget != nil {
+                        RoundedRectangle(cornerRadius: 7).stroke(Color(hex: "#78C98A"), lineWidth: 2)
+                    } else if game.phase == .discussion && readyVoters.contains(0) {
+                        RoundedRectangle(cornerRadius: 7).stroke(Color(hex: "#78C98A"), lineWidth: 2)
+                    }
+                }
+                .disabled(!canAdvance).opacity(canAdvance || votedTarget != nil ? 1 : 0.52)
                 .accessibilityIdentifier("table.primaryAction")
                 .id(game.phase)
                 .transaction { $0.animation = nil }
@@ -2780,6 +2865,10 @@ private struct LocalTableView: View {
 
     private func performPrimaryAction(_ game: ClassicGame) {
         chatInputFocused = false
+        if game.phase == .discussion && game.human.alive {
+            toggleReadyToVote(game)
+            return
+        }
         if game.isNight && game.legalTargets(for: 0).isEmpty {
             guard nightSkipReady else { return }
             nightSkipReady = false
@@ -2900,12 +2989,91 @@ private struct LocalTableView: View {
         }
     }
 
+    // MARK: Ready to vote and direct vote (Android's btnReadyToVote and DirectVotePolicy)
+
+    private static var votingFlowAccelerated: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-ui-testing") && !arguments.contains("-ui-testing-real-time")
+    }
+
+    /// Android lets the table skip the debate only after 10 seconds of it.
+    private func readyUnlockSeconds(_ game: ClassicGame) -> Int {
+        guard !Self.votingFlowAccelerated else { return 0 }
+        let total = game.effectiveTiming.discussionSeconds
+        let elapsed = total - (remainingPhaseSeconds ?? total)
+        return max(0, min(10, total) - elapsed)
+    }
+
+    private func readyTitle(_ game: ClassicGame) -> String {
+        guard game.human.alive else { return "IR A VOTAR" }
+        let living = game.players.filter(\.alive)
+        let progress = "\(readyVoters.intersection(living.map(\.id)).count)/\(living.count)"
+        let locked = readyUnlockSeconds(game)
+        if locked > 0 { return "VOTAR ANTES EN \(locked) · \(progress)" }
+        return readyVoters.contains(0) ? "CANCELAR · \(progress)" : "LISTOS PARA VOTAR · \(progress)"
+    }
+
+    private func toggleReadyToVote(_ game: ClassicGame) {
+        guard readyUnlockSeconds(game) == 0 else { return }
+        readyCascadeTask?.cancel()
+        if readyVoters.contains(0) {
+            readyVoters = []
+            return
+        }
+        readyVoters.insert(0)
+        let phaseIndex = game.phaseIndex
+        // The rest of the table follows one by one, 0.8–3.5 s apart, like Android's bots.
+        let bots = game.players.filter { $0.alive && $0.id != 0 }
+            .map { bot in (bot.id, Self.votingFlowAccelerated ? 0.05 : 0.8 + Double(abs((game.round * 31 + bot.id * 97) % 2700)) / 1000) }
+            .sorted { $0.1 < $1.1 }
+        readyCascadeTask = Task { @MainActor in
+            var waited = 0.0
+            for (id, at) in bots {
+                try? await Task.sleep(for: .seconds(max(0, at - waited)))
+                waited = at
+                guard !Task.isCancelled, let current = store.game, current.phaseIndex == phaseIndex,
+                      readyVoters.contains(0) else { return }
+                withAnimation(.easeOut(duration: 0.2)) { _ = readyVoters.insert(id) }
+            }
+            guard !Task.isCancelled, let current = store.game, current.phaseIndex == phaseIndex else { return }
+            store.advance(target: nil, revision: phaseIndex)
+        }
+    }
+
+    /// Records the vote on the card; the voting closes three seconds after the first vote,
+    /// and the player can switch cards until then.
+    private func castVote(for target: Int, in game: ClassicGame) {
+        selected = target
+        votedTarget = target
+        guard voteCloseTask == nil else { return }
+        phaseCountdownTask?.cancel()
+        let phaseIndex = game.phaseIndex
+        let grace = Self.votingFlowAccelerated ? 1 : 3
+        remainingPhaseSeconds = grace
+        voteCloseTask = Task { @MainActor in
+            for remaining in stride(from: grace - 1, through: 0, by: -1) {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let current = store.game, current.phaseIndex == phaseIndex else { return }
+                remainingPhaseSeconds = remaining
+            }
+            guard !Task.isCancelled, let current = store.game, current.phaseIndex == phaseIndex else { return }
+            voteCloseTask = nil
+            performPrimaryAction(current)
+        }
+    }
+
     private func humanHint(_ game: ClassicGame, canChooseSelf: Bool) -> String {
         if !game.human.alive { return "Estás eliminado. Podés observar la mesa." }
         if game.isNight && game.legalTargets(for: 0).isEmpty {
             return "No actuás ahora. Esperá o saltá hasta tu turno o el amanecer."
         }
         if game.silencedPlayer == 0, !game.isNight { return "Hoy no podés hablar ni votar." }
+        if let votedTarget, game.phase == .voting || game.phase == .tieVote {
+            return "Votaste a \(game.name(votedTarget)). Podés cambiar hasta el cierre."
+        }
+        if game.phase == .discussion && readyVoters.contains(0) {
+            return "Listo para votar. Esperando al resto de la mesa."
+        }
         if game.phase == .assassinNight && selected == nil {
             return "Los Traidores se mueven en silencio."
         }
@@ -3071,7 +3239,7 @@ private struct LocalTableView: View {
 
             HStack(spacing: 5) {
                 TextField(canWrite ? "Escribir…" : "No podés hablar ahora", text: $chatDraft)
-                    .font(.system(size: 12))
+                    .font(.footnote)
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.send)
                     .focused($chatInputFocused)
@@ -3081,7 +3249,7 @@ private struct LocalTableView: View {
                     }
                     .disabled(!canWrite)
                     .padding(.horizontal, 10)
-                    .frame(height: 38)
+                    .frame(minHeight: 38)
                     .background(TraidoresTheme.ink.opacity(0.92),
                                 in: RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).stroke(TraidoresTheme.border))
@@ -3269,12 +3437,12 @@ private struct LocalTableView: View {
             case .mercenaryNight: selected == nil ? "ELEGIR OBJETIVO" : "SILENCIAR"
             case .detectiveNight: "INVESTIGAR"
             case .medicNight: selected == 0 ? "SALVARME" : "SALVAR"
-            case .voting, .tieVote: "TOCÁ UNA CARTA"
+            case .voting, .tieVote: votedTarget.map { "TU VOTO: \(game.name($0).uppercased())" } ?? "TOCÁ UNA CARTA"
             default: "CONFIRMAR"
             }
         }
         return switch game.phase {
-        case .discussion: "IR A VOTAR"
+        case .discussion: readyTitle(game)
         case .dawn: "VER AMANECER"
         case .voteCount: "CONTINUAR"
         case .result: "RESOLVER LA JORNADA"

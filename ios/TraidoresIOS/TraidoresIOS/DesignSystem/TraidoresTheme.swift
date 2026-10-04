@@ -108,7 +108,11 @@ struct GamePreferencesBridge: ViewModifier {
     func body(content: Content) -> some View {
         content
             .environment(\.reduceAnimations, systemReduceMotion || preferences.reduceAnimations)
-            .dynamicTypeSize(preferences.textSize.resolved(system: systemTextSize))
+            // "Normal" passes the system size straight through: re-applying a value read from
+            // the environment lags one frame behind every Dynamic Type change.
+            .dynamicTypeSize(preferences.textSize == .system
+                ? DynamicTypeSize.xSmall...DynamicTypeSize.accessibility5
+                : preferences.textSize.resolved(system: systemTextSize)...preferences.textSize.resolved(system: systemTextSize))
     }
 }
 

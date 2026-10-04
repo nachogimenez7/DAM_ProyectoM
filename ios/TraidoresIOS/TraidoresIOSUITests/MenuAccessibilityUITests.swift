@@ -31,9 +31,11 @@ final class MenuAccessibilityUITests: XCTestCase {
     ///   so the word never breaks (menu verified at AX5).
     /// - Role summaries stop at four lines; the full text is one tap away in the role card.
     /// - JUGAR: dark ink on the gold gradient measures about 7.8:1; the audit misreads the gradient.
+    /// - "--" (profile stats without data): cream on the dark card is about 12:1; the two thin
+    ///   dashes are mostly anti-aliased edge pixels, which the audit reads as low contrast.
     private let accepted: [(XCUIAccessibilityAuditType, String)] = [
         (.dynamicType, "TRAIDORES"), (.dynamicType, "Bandido Games"), (.dynamicType, "VERSIÓN EN DESARROLLO"),
-        (.contrast, "TRAIDORES"), (.contrast, "JUGAR")
+        (.contrast, "TRAIDORES"), (.contrast, "JUGAR"), (.contrast, "--")
     ]
 
     private func audit(_ app: XCUIApplication, screen: String) throws {
