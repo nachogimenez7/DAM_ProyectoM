@@ -75,7 +75,9 @@ object PlayGamesProfileAvatar {
         val uri = runCatching { URI(candidate) }.getOrNull() ?: return ""
         // Un content:// pertenece al dispositivo que lo emitio y no serviria en el lobby de
         // los demas. Play Juegos publica sus imagenes compartibles como HTTPS.
-        return candidate.takeIf { uri.scheme.equals("https", ignoreCase = true) }.orEmpty()
+        val localStorageEmulator = BuildConfig.DEBUG && BuildConfig.USE_ONLINE_AUTHORITY_EMULATOR &&
+            uri.scheme == "http" && uri.host == BuildConfig.FIREBASE_EMULATOR_HOST && uri.port == 9199
+        return candidate.takeIf { uri.scheme.equals("https", ignoreCase = true) || localStorageEmulator }.orEmpty()
     }
 
     /**
@@ -137,6 +139,7 @@ object PlayGamesProfileAvatar {
         onUnavailable: (() -> Unit)? = null
     ): Boolean {
         val normalized = normalize(uriValue)
+        image.setTag(R.id.remote_profile_avatar_request, normalized)
         if (normalized.isBlank()) return false
         val cachedThumbnail = synchronized(thumbnails) { thumbnails.get(normalized) }
         if (cachedThumbnail != null) {
@@ -153,6 +156,7 @@ object PlayGamesProfileAvatar {
                         rememberThumbnail(normalized, drawable)
                     }
                     image.post {
+                        if (image.getTag(R.id.remote_profile_avatar_request) != normalized) return@post
                         if (isRequestedDrawable && drawable != null) {
                             image.scaleType = ImageView.ScaleType.CENTER_CROP
                             image.setImageDrawable(drawable)

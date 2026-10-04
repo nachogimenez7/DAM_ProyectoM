@@ -31,7 +31,8 @@ class WinnerResultsRenderer(
     private val eliminatedCount: TextView,
     private val eliminatedPlayers: TextView,
     private val timeline: TextView,
-    private val roleImageFor: (GameRole?) -> Int
+    private val roleImageFor: (GameRole?) -> Int,
+    private val sessionProvider: () -> GameSession
 ) {
     fun render(
         players: List<GamePlayer>,
@@ -331,6 +332,9 @@ class WinnerResultsRenderer(
             height = metrics[6]
         )
         container.addView(roleLabel)
+        container.addView(GameplayAvatarView(context).apply {
+            bind(sessionProvider(), player, player.name.take(1), 12f)
+        }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { topMargin = dp(4) })
         return container
     }
 

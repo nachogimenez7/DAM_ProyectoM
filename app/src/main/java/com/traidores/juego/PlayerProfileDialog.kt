@@ -332,7 +332,7 @@ object PlayerProfileDialog {
     private fun identityRow(activity: Activity, profile: PlayerProfile, compact: Boolean): View {
         val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
         val useLocalPhoto = hasLocalPhotoFor(activity, profile)
-        val playGamesAvatarUri = if (useLocalPhoto) "" else profile.playGamesAvatarUri
+        val playGamesAvatarUri = if (useLocalPhoto) "" else profile.publicAvatarUri
         val cosmeticTheme = CosmeticPilot.normalizeTheme(profile.cosmeticThemeId)
             ?: CosmeticPilot.THEME_CLASSIC
         val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)

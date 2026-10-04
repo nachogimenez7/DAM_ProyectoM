@@ -1090,7 +1090,7 @@ class LobbyActivity : BaseActivity() {
                     val showingPlayGamesPhoto = PlayGamesProfileAvatar.render(
                         context = this@LobbyActivity,
                         image = this,
-                        uriValue = onlinePlayer?.profile?.playGamesAvatarUri.orEmpty(),
+                        uriValue = onlinePlayer?.profile?.publicAvatarUri.orEmpty(),
                         fallbackDrawableRes = resId
                     )
                     if (!showingPlayGamesPhoto) {
@@ -3139,6 +3139,7 @@ class LobbyActivity : BaseActivity() {
                 ?: document.getLong(OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL)
                 ?: 0L,
             publicId = profile.publicId,
+            canArbitrate = document.getBoolean(OnlineRoomFirestore.FIELD_CAN_ARBITRATE) != false,
             profile = profile
         )
     }
@@ -3199,6 +3200,9 @@ class LobbyActivity : BaseActivity() {
                 ?.take(40)
                 .orEmpty(),
             avatarKey = ProfileRoleCatalog.find(avatarKey).key,
+            profilePhotoUrl = PlayGamesProfileAvatar.normalize(
+                document.getString(PlayerPublicIdentity.FIELD_PROFILE_PHOTO).orEmpty()
+            ),
             playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
                 document.getString(PlayerPublicIdentity.FIELD_PROFILE_PLAY_GAMES_AVATAR).orEmpty()
             ),
@@ -4233,7 +4237,8 @@ class LobbyActivity : BaseActivity() {
                         order = player.order,
                         activeInMatch = player.activeInMatch,
                         mapVote = player.mapVote,
-                        publicId = player.publicId
+                        publicId = player.publicId,
+                        canArbitrate = player.canArbitrate
                     )
                 }
             val startDecision = OnlineMatchStartPolicy.evaluate(
@@ -4999,6 +5004,7 @@ class LobbyActivity : BaseActivity() {
             onlineRegisteredPlayerUids = playersAtStart
                 .filter { it.publicId.isNotBlank() }
                 .map { it.id },
+            onlineNonAuthorityPlayerUids = playersAtStart.filterNot { it.canArbitrate }.map { it.id },
             roleComposition = config.compositionFor(realPlayers.size, map.key)
         )
     }
@@ -5295,7 +5301,8 @@ class LobbyActivity : BaseActivity() {
                 // a Clásico al entrar o recuperarse de una partida.
                 OnlineMatchProfileResolver.attach(
                     result.session,
-                    onlinePlayers.associate { it.id to it.profile }
+                    onlinePlayers.associate { it.id to it.profile },
+                    onlinePlayers.associate { it.id to it.canArbitrate }
                 )
             }
             is OnlineMatchSessionResult.Failure -> {
@@ -7638,7 +7645,8 @@ class LobbyActivity : BaseActivity() {
         val mapVote: String?,
         val publicId: String,
         val profile: PlayerProfile,
-        val lastSeenLocalMs: Long
+        val lastSeenLocalMs: Long,
+        val canArbitrate: Boolean = true
     ) {
         fun statusLabel(activeHostId: String): String {
             val baseStatus = if (id == activeHostId) {

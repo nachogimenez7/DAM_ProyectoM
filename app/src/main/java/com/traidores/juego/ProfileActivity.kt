@@ -42,6 +42,7 @@ class ProfileActivity : BaseActivity() {
         var avatarKey: String,
         var localPhotoEnabled: Boolean,
         var playGamesAvatarUri: String,
+        var profilePhotoUrl: String,
         var bannerKey: String,
         var favoriteRoleKey: String,
         var achievements: List<String>,
@@ -67,6 +68,7 @@ class ProfileActivity : BaseActivity() {
             draftProfile.avatarKey = it
             draftProfile.localPhotoEnabled = false
             draftProfile.playGamesAvatarUri = ""
+            draftProfile.profilePhotoUrl = ""
         }
     }
     private val localPhotoLauncher = registerForActivityResult(
@@ -77,6 +79,7 @@ class ProfileActivity : BaseActivity() {
             .onSuccess {
                 draftProfile.localPhotoEnabled = true
                 draftProfile.playGamesAvatarUri = ""
+                draftProfile.profilePhotoUrl = ""
                 if (persistProfileChanges()) {
                     renderProfile()
                     showAutoSavedNotice("Foto actualizada.")
@@ -318,6 +321,7 @@ class ProfileActivity : BaseActivity() {
             localPhotoEnabled = preferences.getBoolean(PREF_LOCAL_PHOTO_ENABLED, false) &&
                 LocalProfilePhotoStore.hasSavedPhoto(this),
             playGamesAvatarUri = profile.playGamesAvatarUri,
+            profilePhotoUrl = profile.profilePhotoUrl,
             bannerKey = profile.bannerKey,
             favoriteRoleKey = profile.favoriteRoleKey,
             achievements = profile.featuredAchievementIds
@@ -946,6 +950,7 @@ class ProfileActivity : BaseActivity() {
             onReady = { publicId ->
                 savedProfile.publicId = publicId
                 draftProfile.publicId = publicId
+                ProfilePhotoStorage.sync(this)
                 renderProfile()
             },
             onFailure = { error ->
@@ -1012,7 +1017,7 @@ class ProfileActivity : BaseActivity() {
             PlayGamesProfileAvatar.render(
                 context = this,
                 image = image,
-                uriValue = draftProfile.playGamesAvatarUri,
+                uriValue = draftProfile.profilePhotoUrl.ifBlank { draftProfile.playGamesAvatarUri },
                 fallbackDrawableRes = fallbackRes,
                 onUnavailable = {
                     setRoleImage(image, avatarEntry.role)
@@ -1079,6 +1084,11 @@ class ProfileActivity : BaseActivity() {
             return true
         }
         val hasPendingPhoto = LocalProfilePhotoStore.hasPendingPhoto(this)
+        val photoChanged = hasPendingPhoto ||
+            draftProfile.localPhotoEnabled != savedProfile.localPhotoEnabled ||
+            draftProfile.avatarKey != savedProfile.avatarKey ||
+            draftProfile.profilePhotoUrl != savedProfile.profilePhotoUrl ||
+            draftProfile.playGamesAvatarUri != savedProfile.playGamesAvatarUri
         if (draftProfile == savedProfile && !hasPendingPhoto) return true
         if (
             draftProfile.localPhotoEnabled &&
@@ -1123,6 +1133,7 @@ class ProfileActivity : BaseActivity() {
         }
         EmoteLoadout.save(this, draftProfile.emoteLoadout)
 
+        if (photoChanged) ProfilePhotoStorage.markChanged(this)
         savedProfile = copyProfile(draftProfile)
         profileCloudSyncPending = true
         return true
@@ -1132,10 +1143,20 @@ class ProfileActivity : BaseActivity() {
         if (!profileCloudSyncPending || isGuestAccount) return
         profileCloudSyncPending = false
         PlayGamesProgressSync.onProfileSaved(this)
+        ProfilePhotoStorage.sync(this) { error ->
+            if (error != null && !isFinishing && !isDestroyed) {
+                GameNotice.show(this, "Tu foto quedó guardada en este dispositivo. No pudimos publicarla; volvé al perfil para reintentar.", duration = GameNotice.Duration.LONG)
+            }
+        }
     }
 
     private fun showAutoSavedNotice(message: String = "Cambio guardado.") {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ProfilePhotoStorage.sync(this)
     }
 
     override fun onStop() {
@@ -1162,6 +1183,7 @@ class ProfileActivity : BaseActivity() {
             outState.putString(STATE_DRAFT_PUBLIC_ID, draftProfile.publicId)
             outState.putString(STATE_DRAFT_BIO, draftProfile.bio)
             outState.putString(STATE_DRAFT_AVATAR, draftProfile.avatarKey)
+            outState.putString(STATE_DRAFT_PROFILE_PHOTO, draftProfile.profilePhotoUrl)
             outState.putBoolean(STATE_DRAFT_LOCAL_PHOTO_ENABLED, draftProfile.localPhotoEnabled)
             outState.putString(
                 STATE_DRAFT_PLAY_GAMES_AVATAR_URI,
@@ -1215,11 +1237,11 @@ class ProfileActivity : BaseActivity() {
         GameDialog.choose(
             activity = this,
             title = "Foto de perfil",
-            message = "La galería queda solo en este dispositivo. La foto pública de Google " +
-                "puede verla el resto de la sala.",
+            message = if (BuildConfig.PROFILE_STORAGE_ENABLED)
+                "Tu foto de galería será visible para los demás jugadores."
+            else "Elegí una foto de la galería o un avatar ilustrado.",
             options = listOf(
                 "Elegir una foto de la galería",
-                "Usar mi foto de Google",
                 "Usar un avatar ilustrado"
             )
         ) { choice ->
@@ -1228,61 +1250,9 @@ class ProfileActivity : BaseActivity() {
                     if (requireAccountFor("Usar una foto de tu galería")) return@choose
                     localPhotoLauncher.launch("image/*")
                 }
-                1 -> selectPlayGamesAvatar()
-                2 -> showIllustratedAvatarSelector()
+                1 -> showIllustratedAvatarSelector()
             }
         }
-    }
-
-    private fun selectPlayGamesAvatar() {
-        if (requireAccountFor("Usar tu foto de Google")) return
-        if (!PlayGamesIdentity.hasPlayGamesProvider()) {
-            GameDialog.confirm(
-                activity = this,
-                title = "Conectar Play Juegos",
-                message = "Para buscar tu foto vamos a conectar Google Play Juegos con Traidores. " +
-                    "Esto también activa logros, tablas de clasificación y respaldo del progreso. " +
-                    "Primero buscaremos la foto pública de Play Juegos y, si no existe, la de tu " +
-                    "cuenta Google vinculada.",
-                positiveLabel = "CONECTAR",
-                negativeLabel = "AHORA NO"
-            ) {
-                requestPlayGamesAvatar()
-            }
-            return
-        }
-        requestPlayGamesAvatar()
-    }
-
-    private fun requestPlayGamesAvatar() {
-        PlayGamesProfileAvatar.requestCurrent(
-            activity = this,
-            onReady = { uri ->
-                draftProfile.localPhotoEnabled = false
-                draftProfile.playGamesAvatarUri = uri
-                if (!persistProfileChanges()) return@requestCurrent
-                renderProfile()
-                GameNotice.show(
-                    activity = this,
-                    message = "Foto de Google aplicada.",
-                    duration = GameNotice.Duration.LONG
-                )
-            },
-            onFailure = { message ->
-                if (
-                    !draftProfile.localPhotoEnabled &&
-                    draftProfile.playGamesAvatarUri.isNotBlank()
-                ) {
-                    draftProfile.playGamesAvatarUri = ""
-                    renderProfile()
-                }
-                GameNotice.show(
-                    activity = this,
-                    message = message,
-                    duration = GameNotice.Duration.LONG
-                )
-            }
-        )
     }
 
     private fun showIllustratedAvatarSelector() {
@@ -2429,6 +2399,7 @@ class ProfileActivity : BaseActivity() {
                 STATE_DRAFT_LOCAL_PHOTO_ENABLED,
                 savedProfile.localPhotoEnabled
             ),
+            profilePhotoUrl = savedInstanceState.getString(STATE_DRAFT_PROFILE_PHOTO, savedProfile.profilePhotoUrl).orEmpty(),
             playGamesAvatarUri = savedInstanceState
                 .getString(
                     STATE_DRAFT_PLAY_GAMES_AVATAR_URI,
@@ -2568,6 +2539,7 @@ class ProfileActivity : BaseActivity() {
         const val STATE_DRAFT_NAME = "profile_state_draft_name"
         const val STATE_DRAFT_PUBLIC_ID = "profile_state_draft_public_id"
         const val STATE_DRAFT_BIO = "profile_state_draft_bio"
+        const val STATE_DRAFT_PROFILE_PHOTO = "profile_state_draft_photo_url"
         const val STATE_DRAFT_AVATAR = "profile_state_draft_avatar"
         const val STATE_DRAFT_LOCAL_PHOTO_ENABLED =
             "profile_state_draft_local_photo_enabled"

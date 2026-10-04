@@ -661,6 +661,12 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
+                        <com.traidores.juego.GameplayAvatarView
+                            android:id="@+id/currentPlayerPhoto"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:layout_marginEnd="6dp" />
+
                         <TextView
                             android:id="@+id/currentPlayerName"
                             android:layout_width="0dp"

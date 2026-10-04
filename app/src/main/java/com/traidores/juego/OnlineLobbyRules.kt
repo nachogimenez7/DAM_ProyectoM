@@ -9,7 +9,8 @@ data class OnlineLobbyParticipant(
     val lastSeenLocalMs: Long = 0L,
     val alive: Boolean = true,
     /** Tiene cuenta. Un invitado no puede quedar de anfitrion salvo el escalon de emergencia. */
-    val registered: Boolean = true
+    val registered: Boolean = true,
+    val canArbitrate: Boolean = true
 )
 
 object OnlineLobbyRules {
@@ -146,7 +147,7 @@ object OnlineLobbyRules {
     ): OnlineLobbyParticipant? {
         if (!needsHostHandoff(players, activeHostId)) return null
         return activePlayers(players)
-            .filter { it.connected && (allowGuests || it.registered) }
+            .filter { it.connected && it.canArbitrate && (allowGuests || it.registered) }
             .minWithOrNull(compareBy<OnlineLobbyParticipant> { it.order }.thenBy { it.id })
     }
 

@@ -12,7 +12,8 @@ data class OnlineMatchStartPlayer(
     val order: Int,
     val activeInMatch: Boolean,
     val mapVote: String?,
-    val publicId: String
+    val publicId: String,
+    val canArbitrate: Boolean = true
 )
 
 data class OnlineMatchStartRoomState(

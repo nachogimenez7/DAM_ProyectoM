@@ -38,6 +38,7 @@ object OnlineRoomFirestore {
     const val FIELD_HOST_NAME = "hostNombre"
     const val FIELD_EXPECTED_PLAYERS = "jugadoresEsperados"
     const val FIELD_ACTIVE_HOST_ID = "hostActivoId"
+    const val FIELD_CAN_ARBITRATE = "puedeArbitrar"
     const val FIELD_HOST_VERSION = "hostVersion"
     const val FIELD_INITIAL_MATCH_CREATED = "partidaInicialCreada"
     const val FIELD_INITIAL_MATCH = "partidaInicial"

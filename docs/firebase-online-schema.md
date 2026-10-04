@@ -146,14 +146,20 @@ Campos:
 - `publicId`: ID publico numerico fijo del jugador, sin el simbolo `#`.
 - `bioPerfil`: frase publica del perfil, maximo 40 caracteres.
 - `avatarPerfil`: clave de foto/avatar elegida para el perfil.
+- `fotoPerfil`: URL de la foto de galería publicada en Storage; opcional, vacía si no hay foto. Se copia al roster y se conserva en la partida.
+- `fotoPlayGames`: URL anterior de Play Games, solo respaldo de lectura para perfiles existentes.
 - `bannerPerfil`: clave de banner publico del perfil.
 - `rolFavoritoPerfil`: clave del rol favorito elegido.
-- `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
+- `uidTemporal`: UID de Firebase Auth. Debe coincidir con el id del documento.
 - `estado`: campo legacy para clientes anteriores. La fuente de verdad de conectado/desconectado vive en RTDB.
 - `esHost`: booleano opcional.
 - `listo`: booleano opcional.
 - `orden`: posicion estable del jugador dentro de la sala.
 - `activoEnPartida`: booleano para distinguir presencia de jugador activo.
+- `puedeArbitrar`: booleano opcional de compatibilidad del motor de gameplay. Ausente equivale
+  a `true` para Android anterior. iOS debe escribir `false` mientras no tenga autoridad
+  compatible; el candidato a `hostActivoId` debe tenerlo en `true`. No impide ser creador o
+  administrar una sala en espera y no habilita por sí solo el inicio ni las fases online en iOS.
 - `unidoEn`: timestamp de servidor.
 - `ultimaConexion`: timestamp de servidor.
 - `ultimaConexionLocal`: timestamp local del dispositivo.
@@ -194,6 +200,10 @@ El anfitrion activo **de gameplay** (`handoffUpdate`) no exige cuenta a proposit
 ningun registrado vivo y conectado, nadie publicaria las fases y la partida se congelaria para
 toda la mesa. El cliente prefiere siempre a un registrado y recien despues de 20 segundos sin
 candidato habilita a los invitados (`GUEST_HOST_GRACE_MS`).
+
+En ambos escalones se excluye a quien tenga `puedeArbitrar: false`. La transacción Android
+relee ese dato y las reglas también rechazan que ese cliente tome el relevo. Si solo quedan
+clientes sin motor compatible, no se les concede autoridad de gameplay.
 
 ### `partidas/{partidaId}/baneados/{uidTemporal}`
 
@@ -238,16 +248,18 @@ Este contador es experimental y funciona sin Auth para pruebas. En produccion de
 
 ### `perfiles_publicos/{uidTemporal}`
 
-Documento publico minimo del jugador mientras no exista login real.
+Documento público del jugador, identificado por su UID de Firebase Auth.
 
 Campos:
 
-- `uidTemporal`: id local del dispositivo. Debe coincidir con el id del documento.
+- `uidTemporal`: UID de Firebase Auth. Debe coincidir con el id del documento.
 - `publicId`: ID publico numerico fijo del jugador.
 - `nombrePerfil`: nombre de perfil visible.
 - `nombreSala`: nombre visible dentro de sala, maximo 32 caracteres, con `#publicId` cuando corresponde.
 - `bioPerfil`: frase publica del perfil, maximo 40 caracteres.
 - `avatarPerfil`: clave de foto/avatar elegida para el perfil.
+- `fotoPerfil`: URL de descarga de la foto en `profilePhotos/{uid}/avatar_{sha256}.jpg`. Opcional, con límite de 1000 caracteres; cadena vacía al volver a un avatar ilustrado.
+- `fotoPlayGames`: foto antigua de Play Games, usada como respaldo de lectura. No se ofrece como nueva selección.
 - `bannerPerfil`: clave de banner publico del perfil.
 - `rolFavoritoPerfil`: clave del rol favorito elegido.
 - `actualizadaEn`: timestamp de servidor.
@@ -258,6 +270,8 @@ Regla de producto actual:
 - El perfil muestra el ID como `#1`, `#2`, etc.
 - Para futuros amigos se deberia buscar/agregar por `#`.
 - Si varios jugadores tienen el mismo nombre, dentro de una sala se distinguen por `nombreSala`.
+
+La publicación de galería está deshabilitada por defecto hasta preparar el bucket y desplegar sus reglas. La cuenta registrada es dueña del archivo según su UID; los invitados no suben fotos. El contrato y las pruebas de esta beta están en `fotos-perfil-storage-beta.md` y `reparto-codex-claude-fotos-online.md`.
 
 ## Reparto online
 
