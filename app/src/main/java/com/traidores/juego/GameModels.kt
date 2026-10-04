@@ -61,6 +61,7 @@ data class GameSession(
     val onlineClosedVotePhaseIndex: Int = -1,
     val onlinePlayerUids: List<String> = emptyList(),
     val onlineRegisteredPlayerUids: List<String> = emptyList(),
+    val onlineNonAuthorityPlayerUids: List<String> = emptyList(),
     val specialVictories: List<GameSpecialVictory> = emptyList(),
     val winner: String = "",
     val phaseIndex: Int = 0,

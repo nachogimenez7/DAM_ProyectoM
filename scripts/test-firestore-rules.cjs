@@ -938,6 +938,21 @@ async function main() {
         { estado: "desconectado" }
       );
     });
+    // Un cliente sin motor de autoridad puede jugar, pero no tomar el relevo.
+    await assertFails(updateDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), {
+      puedeArbitrar: "false",
+    }));
+    await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), {
+      puedeArbitrar: false,
+    }));
+    await assertFails(updateDoc(doc(guest, "partidas", "room_handoff"), {
+      hostActivoId: "guest_uid",
+      hostVersion: increment(1),
+      actualizadaEn: serverTimestamp(),
+    }));
+    await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff", "jugadores", "guest_uid"), {
+      puedeArbitrar: true,
+    }));
     await assertSucceeds(updateDoc(doc(guest, "partidas", "room_handoff"), {
       hostActivoId: "guest_uid",
       hostVersion: increment(1),

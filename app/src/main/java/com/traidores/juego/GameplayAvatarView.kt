@@ -71,7 +71,7 @@ class GameplayAvatarView @JvmOverloads constructor(
                 PlayGamesProfileAvatar.render(
                     context = context,
                     image = photoView,
-                    uriValue = profile.playGamesAvatarUri,
+                    uriValue = profile.publicAvatarUri,
                     fallbackDrawableRes = fallbackRes
                 )
             )

@@ -14,7 +14,7 @@ import java.io.FileOutputStream
 /**
  * Guarda una única foto de perfil dentro del almacenamiento privado de la app.
  *
- * La foto nunca se publica en Firebase ni queda visible para otros jugadores. Se vuelve a
+ * La copia local sirve de vista previa antes de publicar en Storage. Se vuelve a
  * codificar para quitar metadatos (incluida la ubicación EXIF), limitar el tamaño en disco y
  * evitar depender para siempre del permiso temporal que entrega el selector de Android.
  */
@@ -61,6 +61,7 @@ object LocalProfilePhotoStore {
             else -> return false
         }
         val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return false
+        image.setTag(R.id.remote_profile_avatar_request, null)
         image.scaleType = ImageView.ScaleType.CENTER_CROP
         image.imageMatrix = Matrix()
         image.setImageBitmap(bitmap)
@@ -169,6 +170,8 @@ object LocalProfilePhotoStore {
     }
 
     private fun profileDirectory(context: Context): File = File(context.filesDir, DIRECTORY)
+
+    fun savedFile(context: Context): File = finalFile(context)
 
     private fun finalFile(context: Context): File = File(profileDirectory(context), FINAL_FILE)
 

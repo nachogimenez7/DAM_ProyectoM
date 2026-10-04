@@ -675,7 +675,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val actionMarkPrimaryLabel: TextView,
         val actionMarkSecondaryLabel: TextView,
         val actionMarkTertiaryLabel: TextView,
-        val avatar: TextView,
+        val avatar: GameplayAvatarView,
         val mutedBadge: TextView,
         val reconnectingBadge: TextView,
         val actionBadge: TextView,
@@ -724,7 +724,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val activeInMatch: Boolean,
         val lastSeenLocalMs: Long,
         /** Solo las cuentas registradas reservan `publicId`, asi que sirve de señal. */
-        val registered: Boolean
+        val registered: Boolean,
+        val canArbitrate: Boolean = true
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1218,7 +1219,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             eliminatedCount = winnerSummaryPlayers,
             eliminatedPlayers = winnerSummaryHighlight,
             timeline = winnerSummaryTimeline,
-            roleImageFor = ::roleImageFor
+            roleImageFor = ::roleImageFor,
+            sessionProvider = { session }
         )
 
         applyGameplayTextScale()
@@ -2826,6 +2828,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         renderEventLogPanel()
         renderEventLog(publicMessage, phaseText)
         currentPlayerName.text = GameEngine.humanPlayer(session).name
+        val humanPortrait = GameEngine.humanPlayer(session)
+        findViewById<GameplayAvatarView>(R.id.currentPlayerPhoto).bind(
+            session, humanPortrait, humanPortrait.initial, 14f
+        )
         renderHumanCosmeticTheme()
         renderPersonalStatus()
         currentPlayerHint.text = privateHintText()
@@ -4642,7 +4648,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 state = PLAYER_STATE_CONNECTED,
                 activeInMatch = true,
                 lastSeenLocalMs = 0L,
-                registered = uid in registeredIds
+                registered = uid in registeredIds,
+                canArbitrate = uid !in session.onlineNonAuthorityPlayerUids
             )
         }
     }
@@ -5244,7 +5251,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 order = player.order,
                 lastSeenLocalMs = player.lastSeenLocalMs,
                 alive = session.players.getOrNull(player.order)?.alive == true,
-                registered = player.registered
+                registered = player.registered,
+                canArbitrate = player.canArbitrate
             )
         }
         if (!OnlineLobbyRules.needsHostHandoff(participants, activeHostId)) {
@@ -5311,6 +5319,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 ?: previousHostId
             val previousHost = transaction.get(previousHostReference)
             val candidate = transaction.get(candidateReference)
+            if (candidate.getBoolean(OnlineRoomFirestore.FIELD_CAN_ARBITRATE) == false) {
+                return@runTransaction false
+            }
             if (currentHostId != previousHostId) {
                 return@runTransaction false
             }
@@ -7617,11 +7628,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         cardFace.addView(actionMarkSecondaryLabel)
         cardFace.addView(actionMarkTertiaryLabel)
 
-        val avatar = TextView(this)
-        avatar.gravity = Gravity.CENTER
-        avatar.setBackgroundResource(R.drawable.bg_player_avatar)
-        avatar.setTextColor(getColor(R.color.accent_gold))
-        avatar.setTypeface(null, Typeface.BOLD)
+        val avatar = GameplayAvatarView(this)
         cardFace.addView(
             avatar,
             FrameLayout.LayoutParams(
@@ -8135,22 +8142,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             topMargin = dp(2)
         }
-        holder.avatar.visibility = if (isOnlineGameplay() && !showPublicRole) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
-        if (isOnlineGameplay() && !showPublicRole) {
-            holder.avatar.text = if (isAlive || isOracleGuest) {
-                GameplayTableUi.playerInitial(player)
-            } else {
-                "\u2620"
-            }
-            holder.avatar.setBackgroundResource(R.drawable.bg_player_avatar)
-            holder.avatar.setTextColor(getColor(R.color.accent_gold))
-            holder.avatar.textSize =
-                if (isAlive || isOracleGuest) metrics.nameTextSp else metrics.nameTextSp + 1f
-        }
+        holder.avatar.visibility = View.VISIBLE
+        holder.avatar.bind(
+            session = session,
+            player = player,
+            fallbackInitial = GameplayTableUi.playerInitial(player),
+            textSizeSp = metrics.nameTextSp
+        )
         holder.mutedBadge.visibility = if (isAlive && player.muted) View.VISIBLE else View.GONE
         holder.reconnectingBadge.visibility = if (isReconnecting) View.VISIBLE else View.GONE
         holder.reconnectingBadge.background = if (isReconnecting) {

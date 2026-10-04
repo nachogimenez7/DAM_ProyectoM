@@ -169,6 +169,7 @@ object AccountLink {
                     name = document.getString(PlayerPublicIdentity.FIELD_PROFILE_NAME).orEmpty(),
                     bio = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BIO).orEmpty(),
                     avatarKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_AVATAR).orEmpty(),
+                    profilePhotoUrl = document.getString(PlayerPublicIdentity.FIELD_PROFILE_PHOTO),
                     playGamesAvatarUri = document
                         .getString(PlayerPublicIdentity.FIELD_PROFILE_PLAY_GAMES_AVATAR),
                     bannerKey = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BANNER).orEmpty(),

@@ -2,6 +2,7 @@ package com.traidores.juego
 
 import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 
 data class OnlineBan(val reason: String)
 
@@ -17,7 +18,7 @@ object OnlineAccessGate {
                 FirebaseFirestore.getInstance()
                     .collection("bans")
                     .document(uid)
-                    .get()
+                    .get(Source.SERVER)
                     .addOnSuccessListener { document ->
                         if (document.exists()) {
                             onBlocked(

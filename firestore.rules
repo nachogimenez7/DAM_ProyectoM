@@ -84,6 +84,7 @@ service cloud.firestore {
           'bioPerfil',
           'avatarPerfil',
           'fotoPlayGames',
+          'fotoPerfil',
           'bannerPerfil',
           'rolFavoritoPerfil',
           'emotesPerfil',
@@ -104,6 +105,7 @@ service cloud.firestore {
         && isOptionalString(data, 'bioPerfil', 40)
         && isOptionalString(data, 'avatarPerfil', 40)
         && isOptionalString(data, 'fotoPlayGames', 1000)
+        && isOptionalString(data, 'fotoPerfil', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && validProfileEmotes(data)
@@ -585,7 +587,8 @@ service cloud.firestore {
         && get(previousHostPath).data.activoEnPartida != false
         && exists(candidatePath)
         && get(candidatePath).data.estado == 'conectado'
-        && get(candidatePath).data.activoEnPartida != false;
+        && get(candidatePath).data.activoEnPartida != false
+        && get(candidatePath).data.get('puedeArbitrar', true) == true;
     }
 
     function hostLeaseExpired(playerPath) {
@@ -665,6 +668,7 @@ service cloud.firestore {
           'bioPerfil',
           'avatarPerfil',
           'fotoPlayGames',
+          'fotoPerfil',
           'bannerPerfil',
           'rolFavoritoPerfil',
           'emotesPerfil',
@@ -682,7 +686,8 @@ service cloud.firestore {
           'listoParaVotar',
           'listoParaVotarRonda',
           'listoParaVotarPhaseIndex',
-          'votoMapa'
+          'votoMapa',
+          'puedeArbitrar'
         ])
         && hasAll(data, ['nombre', 'estado', 'uidTemporal'])
         && isString(data.nombre, 1, 18)
@@ -691,6 +696,7 @@ service cloud.firestore {
         && isOptionalString(data, 'bioPerfil', 40)
         && isOptionalString(data, 'avatarPerfil', 40)
         && isOptionalString(data, 'fotoPlayGames', 1000)
+        && isOptionalString(data, 'fotoPerfil', 1000)
         && isOptionalString(data, 'bannerPerfil', 40)
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && validProfileEmotes(data)
@@ -698,6 +704,7 @@ service cloud.firestore {
           || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
+        && (!('puedeArbitrar' in data) || data.puedeArbitrar is bool)
         && validProfileStats(data)
         && validPlayerState(data.estado)
         && (!('esHost' in data) || data.esHost is bool)

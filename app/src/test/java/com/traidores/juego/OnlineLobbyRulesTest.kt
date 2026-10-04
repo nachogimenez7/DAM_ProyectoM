@@ -465,6 +465,29 @@ class OnlineLobbyRulesTest {
         assertEquals("guest", candidate?.id)
     }
 
+    @Test
+    fun handoffSkipsConnectedClientWithoutCompatibleAuthority() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("ios", connected = true, ready = true, active = true, order = 1, canArbitrate = false),
+            participant("android", connected = true, ready = true, active = true, order = 2)
+        )
+
+        assertEquals("android", OnlineLobbyRules.hostHandoffCandidate(players, "host")?.id)
+    }
+
+    @Test
+    fun guestFallbackAlsoRequiresCompatibleAuthority() {
+        val players = listOf(
+            participant("host", connected = false, ready = false, active = true, order = 0),
+            participant("ios", connected = true, ready = true, active = true, order = 1,
+                registered = false, canArbitrate = false)
+        )
+
+        assertEquals(null, OnlineLobbyRules.hostHandoffCandidate(players, "host", allowGuests = true))
+        assertTrue(OnlineLobbyRules.needsHostHandoff(players, "host"))
+    }
+
     /**
      * `needsHostHandoff` tiene que distinguir "no hace falta relevo" de "hace falta y no hay
      * candidato": las dos daban `null` en `hostHandoffCandidate` y solo la segunda habilita la
@@ -579,7 +602,8 @@ class OnlineLobbyRulesTest {
         order: Int,
         lastSeenLocalMs: Long = 0L,
         alive: Boolean = true,
-        registered: Boolean = true
+        registered: Boolean = true,
+        canArbitrate: Boolean = true
     ): OnlineLobbyParticipant {
         return OnlineLobbyParticipant(
             id = id,
@@ -589,7 +613,8 @@ class OnlineLobbyRulesTest {
             order = order,
             lastSeenLocalMs = lastSeenLocalMs,
             alive = alive,
-            registered = registered
+            registered = registered,
+            canArbitrate = canArbitrate
         )
     }
 }

@@ -15,8 +15,11 @@ data class PlayerProfile(
     val emoteIds: List<String>,
     val stats: PlayerStats,
     val playGamesAvatarUri: String = "",
-    val cosmeticThemeId: String = CosmeticPilot.THEME_CLASSIC
-) : Serializable
+    val cosmeticThemeId: String = CosmeticPilot.THEME_CLASSIC,
+    val profilePhotoUrl: String = ""
+) : Serializable {
+    val publicAvatarUri: String get() = profilePhotoUrl.ifBlank { playGamesAvatarUri }
+}
 
 data class PlayerStats(
     val matches: Int,
@@ -90,6 +93,7 @@ object PlayerProfileStore {
             playGamesAvatarUri = PlayGamesProfileAvatar.normalize(
                 preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
             ),
+            profilePhotoUrl = ProfilePhotoStorage.publishedUrl(context),
             cosmeticThemeId = CosmeticPilot.selectedTheme(context)
         )
     }
@@ -146,8 +150,10 @@ object PlayerProfileStore {
         bannerKey: String,
         favoriteRoleKey: String,
         playGamesAvatarUri: String? = null,
-        emoteIds: List<String>? = null
+        emoteIds: List<String>? = null,
+        profilePhotoUrl: String? = null
     ) {
+        profilePhotoUrl?.let { ProfilePhotoStorage.restorePublishedUrl(context, it) }
         val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         name.takeIf { it.isNotBlank() }?.let {
             editor.putString(PREF_NAME, it)
