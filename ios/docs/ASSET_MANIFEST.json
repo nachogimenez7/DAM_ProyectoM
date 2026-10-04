@@ -149,57 +149,57 @@
   {
     "source": "app/src/main/res/raw/sfx_night_fall.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_night_fall.mp3",
-    "sourceSHA256": "95e7c50b905549414d88e1da235745894e10afc421856dfbe513c138b50f2146",
-    "destinationSHA256": "95e7c50b905549414d88e1da235745894e10afc421856dfbe513c138b50f2146",
+    "sourceSHA256": "84cef8f97f08623b80dc08dd65bd02a84284934e2ce4ed13965e4affddb30d8f",
+    "destinationSHA256": "84cef8f97f08623b80dc08dd65bd02a84284934e2ce4ed13965e4affddb30d8f",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_dawn.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_dawn.mp3",
-    "sourceSHA256": "ee5a2df577d83158f85ae4234f549c9a21bae6b0484ae4d29c6fbd1baae9f94d",
-    "destinationSHA256": "ee5a2df577d83158f85ae4234f549c9a21bae6b0484ae4d29c6fbd1baae9f94d",
+    "sourceSHA256": "8613ef25fd938bb3b8d4718684533cff82bd8131619ab1fc596d9847f5ebc62a",
+    "destinationSHA256": "8613ef25fd938bb3b8d4718684533cff82bd8131619ab1fc596d9847f5ebc62a",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_death_elevenlabs.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_death_elevenlabs.mp3",
-    "sourceSHA256": "f726ae73e183a4bd0fd0ac8be7500e8326d8134ce2dce8bcab2675f1ae574578",
-    "destinationSHA256": "f726ae73e183a4bd0fd0ac8be7500e8326d8134ce2dce8bcab2675f1ae574578",
+    "sourceSHA256": "d108e5a1d10d9d95b821e6417b297e08187fad7b0016546ff59ce2db07d8df40",
+    "destinationSHA256": "d108e5a1d10d9d95b821e6417b297e08187fad7b0016546ff59ce2db07d8df40",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_elimination.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_elimination.mp3",
-    "sourceSHA256": "a0affacad7b789fba5adb6f3c77bcc2b9e4018e1570e5d13f2377a70efe0725a",
-    "destinationSHA256": "a0affacad7b789fba5adb6f3c77bcc2b9e4018e1570e5d13f2377a70efe0725a",
+    "sourceSHA256": "ec0d8a58d19521abd2ceac8abff277daee75cd070d4d8f19e2b6e3be7dec9b05",
+    "destinationSHA256": "ec0d8a58d19521abd2ceac8abff277daee75cd070d4d8f19e2b6e3be7dec9b05",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_expulsion.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_expulsion.mp3",
-    "sourceSHA256": "848da2aa335144fb52d138865b7a798d4f0d9287ebf9419c1eaf14e94b4adbf3",
-    "destinationSHA256": "848da2aa335144fb52d138865b7a798d4f0d9287ebf9419c1eaf14e94b4adbf3",
+    "sourceSHA256": "481df6451321e8618935b957bf9273791861da6c5c3ef3c9ef61eb8340cbbb62",
+    "destinationSHA256": "481df6451321e8618935b957bf9273791861da6c5c3ef3c9ef61eb8340cbbb62",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_no_death.wav",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_no_death.wav",
-    "sourceSHA256": "9e75419f1428e2eb5fe542e183f4b7985fbc2bc96230f91737a03b6907b4f349",
-    "destinationSHA256": "9e75419f1428e2eb5fe542e183f4b7985fbc2bc96230f91737a03b6907b4f349",
+    "sourceSHA256": "27d638d14abd98cad5273b21c916521c456f1109ff44a2a023a2f4219d292153",
+    "destinationSHA256": "27d638d14abd98cad5273b21c916521c456f1109ff44a2a023a2f4219d292153",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_vote_cast.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_vote_cast.mp3",
-    "sourceSHA256": "857ee993459278139ec7d5d505d5cec3cbd47df5c5566e4c5b0be66d5ee9a8fb",
-    "destinationSHA256": "857ee993459278139ec7d5d505d5cec3cbd47df5c5566e4c5b0be66d5ee9a8fb",
+    "sourceSHA256": "ea858643d01edad5a3c6dd1681efc910b684847c4060e8bd9703c214b94865fe",
+    "destinationSHA256": "ea858643d01edad5a3c6dd1681efc910b684847c4060e8bd9703c214b94865fe",
     "operation": "copy"
   },
   {
     "source": "app/src/main/res/raw/sfx_tie_break.mp3",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_tie_break.mp3",
-    "sourceSHA256": "955ba8cd179ff02ce9cc145756634e5fbbe967402d1bc056d48cf372ccd8b0d2",
-    "destinationSHA256": "955ba8cd179ff02ce9cc145756634e5fbbe967402d1bc056d48cf372ccd8b0d2",
+    "sourceSHA256": "1a03250f3b596c9ab9d8950dbc1f147cfd7fc01a7f3bed19309de1c8dc0999ef",
+    "destinationSHA256": "1a03250f3b596c9ab9d8950dbc1f147cfd7fc01a7f3bed19309de1c8dc0999ef",
     "operation": "copy"
   },
   {

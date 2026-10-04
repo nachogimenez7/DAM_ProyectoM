@@ -45,16 +45,9 @@ final class GameAudio {
             }
         }
 
-        fileprivate var relativeVolume: Float {
-            switch self {
-            case .cardDeal: 1
-            case .nightFall: 0.85
-            case .dawn, .silence, .noDeath: 0.9
-            case .elimination: 0.78
-            case .expulsion, .tieBreak: 0.82
-            case .voteCast: 0.72
-            }
-        }
+        /// Every file is already levelled to the same loudness (`scripts/audio_levels.py`),
+        /// so no per-effect multiplier is needed.
+        fileprivate var relativeVolume: Float { 1 }
     }
 
     @ObservationIgnored private let playback = GameAudioPlayback()

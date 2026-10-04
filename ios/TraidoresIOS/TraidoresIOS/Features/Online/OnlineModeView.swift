@@ -202,10 +202,18 @@ private struct OnlineIdentityCard: View {
     @Environment(\.dynamicTypeSize) private var textSize
 
     private var profile: PublicProfile? { identity.isRegistered ? services.profile.profile : nil }
+    private var bio: String { profile?.bioPerfil.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
     private var removingPhoto: Bool { services.profile.pendingPhoto == .removal }
 
     var body: some View {
         VStack(spacing: 12) {
+            if let profile {
+                Image("profile_banner_\(profile.bannerPerfil)")
+                    .resizable().scaledToFit()
+                    .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+            }
             // At accessibility sizes the portrait goes above the name instead of squeezing it.
             let layout = textSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 14))
@@ -236,6 +244,15 @@ private struct OnlineIdentityCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityText)
             .accessibilityIdentifier("online.identity")
+
+            if !bio.isEmpty {
+                Text(bio)
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    .multilineTextAlignment(textSize.isAccessibilitySize ? .center : .leading)
+                    .frame(maxWidth: .infinity, alignment: textSize.isAccessibilitySize ? .center : .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("online.identity.bio")
+            }
 
             photoStatus
 

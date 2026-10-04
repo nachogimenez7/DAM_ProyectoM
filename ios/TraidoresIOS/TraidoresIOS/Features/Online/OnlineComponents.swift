@@ -87,29 +87,13 @@ struct OnlinePortrait: View {
     var localPhoto: Data? = nil
 
     var body: some View {
-        Group {
-            if let localPhoto, let image = UIImage(data: localPhoto) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else if let photoURL {
-                AsyncImage(url: photoURL) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() } else { artwork }
-                }
-                // A reused row must not keep the previous player's download.
-                .id(photoURL)
-            } else {
-                artwork
-            }
-        }
+        ProfilePortrait(image: OnlineAvatarArt.asset(for: avatarKey), photoData: localPhoto, photoURL: photoURL)
         .frame(width: size, height: size)
         .clipShape(Circle())
         .overlay(Circle().stroke(TraidoresTheme.border, lineWidth: 1))
         .accessibilityHidden(true)
     }
 
-    private var artwork: some View {
-        Image(OnlineAvatarArt.asset(for: avatarKey)).resizable().scaledToFill()
-            .frame(width: size, height: size, alignment: .top)
-    }
 }
 
 struct OnlinePanel: ViewModifier {

@@ -248,9 +248,14 @@ final class FirebaseAccountService: OnlineAccountService {
 final class FirebasePublicProfileService: PublicProfileService {
     private(set) var profile: PublicProfile?
     private(set) var photoSync: PhotoSyncState = .idle
+    @ObservationIgnored private var profileListener: ListenerRegistration?
+    @ObservationIgnored private var listeningUID: String?
     var pendingPhoto: PendingProfilePhoto? { nil }
 
     func clear() {
+        profileListener?.remove()
+        profileListener = nil
+        listeningUID = nil
         profile = nil
         photoSync = .idle
         let defaults = UserDefaults.menuStore
@@ -326,6 +331,23 @@ final class FirebasePublicProfileService: PublicProfileService {
         defaults.set(value.temaCosmeticoPerfil, forKey: "menu.profileTheme")
         defaults.set(value.emotesPerfil.joined(separator: ","), forKey: "menu.profileEmotes")
         profile = value
+        if listeningUID != value.uid {
+            profileListener?.remove()
+            listeningUID = value.uid
+            let owner = value.uid
+            profileListener = Firestore.firestore().collection("perfiles_publicos").document(owner)
+                .addSnapshotListener(includeMetadataChanges: true) { [weak self] snapshot, error in
+                    guard error == nil, let snapshot, snapshot.exists,
+                          !snapshot.metadata.isFromCache, !snapshot.metadata.hasPendingWrites else { return }
+                    let data = snapshot.data() ?? [:]
+                    Task { @MainActor [weak self] in
+                        guard let self, self.listeningUID == owner,
+                              let user = Auth.auth().currentUser, !user.isAnonymous, user.uid == owner,
+                              let confirmed = try? OnlineContract.profile(uid: owner, data: data) else { return }
+                        if self.profile != confirmed { self.confirm(confirmed) }
+                    }
+                }
+        }
     }
 
     func refresh() async throws {
@@ -343,6 +365,10 @@ final class FirebasePublicProfileService: PublicProfileService {
               ["classic", "space", "sea", "fire"].contains(draft.temaCosmeticoPerfil), draft.emotesPerfil.count <= 4 else {
             throw OnlineError.invalidProfile
         }
+        var normalized = draft
+        normalized.nombrePerfil = name
+        // Reopening the editor or confirming an unchanged selection is not a write.
+        guard normalized != previous.draft else { return }
         try await Firestore.firestore().collection("perfiles_publicos").document(previous.uid).updateData([
             "nombrePerfil": name, "nombreSala": "\(name) #\(previous.publicId ?? "")",
             "bioPerfil": draft.bioPerfil, "avatarPerfil": draft.avatarPerfil, "bannerPerfil": draft.bannerPerfil,

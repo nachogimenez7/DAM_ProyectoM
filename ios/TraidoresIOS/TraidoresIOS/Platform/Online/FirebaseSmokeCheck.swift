@@ -77,6 +77,11 @@ enum FirebaseSmokeCheck {
             let server = try await Firestore.firestore().collection("perfiles_publicos").document(linked.uid).getDocument(source: .server)
             try check(server.data()?["publicId"] as? String == linked.publicId && server.data()?["nombrePerfil"] as? String == draft.nombrePerfil,
                       "profile must be acknowledged by Firestore")
+            let savedAt = server.data()?["actualizadaEn"] as? Timestamp
+            try await profiles.save(draft)
+            let unchanged = try await Firestore.firestore().collection("perfiles_publicos").document(linked.uid).getDocument(source: .server)
+            try check(savedAt != nil && unchanged.data()?["actualizadaEn"] as? Timestamp == savedAt,
+                      "saving an unchanged profile must not write again")
             try await account.signOut()
             await account.enterAsGuest()
             try check(try identity().uid != linked.uid, "recovery starts with a different guest")
