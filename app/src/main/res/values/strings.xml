@@ -119,7 +119,7 @@
     <string name="play_games_open_failed">No se pudo abrir Play Games. Probá de nuevo cuando tengas conexión.</string>
     <string name="play_games_close">CERRAR</string>
     <string name="profile_account_dialog_title">Tu cuenta</string>
-    <string name="profile_account_dialog_message">Con una cuenta elegís tu nombre, personalizás el perfil y conservás todo aunque cambies de celular. No perdés nada de lo que ya jugaste.</string>
+    <string name="profile_account_dialog_message">Con una cuenta elegís tu nombre, personalizás el perfil y guardás tus próximas partidas para recuperarlas aunque cambies de celular.</string>
     <string name="account_invitation_title">Tu identidad en Traidores</string>
     <string name="account_invitation_intro">Vinculá tu cuenta y construí un perfil que crezca con cada partida.</string>
     <string name="account_invitation_benefits">✦ Seguí tus partidas, victorias y porcentaje.\n✦ Personalizá tu nombre, avatar y presentación.\n✦ Conservá tu número # y recuperá tu perfil.\n✦ Creá tus propias salas online.</string>
@@ -137,12 +137,12 @@
     <string name="account_google_failure_title">No pudimos conectar con Google</string>
     <string name="account_google_retry">REINTENTAR</string>
     <string name="account_link_success_title">Cuenta vinculada exitosamente</string>
-    <string name="account_link_success_message">Tu perfil, tu número y tu progreso quedaron protegidos con Google.</string>
+    <string name="account_link_success_message">Tu perfil quedó vinculado a tu cuenta. Tus próximas partidas se guardarán en ella.</string>
     <string name="account_link_recovered_message">Tu cuenta quedó vinculada y recuperaste el perfil #%1$s.</string>
     <string name="account_link_success_badge_description">Cuenta vinculada correctamente</string>
     <string name="account_delete_action">ELIMINAR MI CUENTA</string>
     <string name="account_delete_cancel">CONSERVAR CUENTA</string>
-    <string name="account_delete_explanation">Esta acción es permanente. Se eliminarán tu cuenta de Traidores, el perfil público, el progreso respaldado por Traidores en Play Games y los datos locales. Los logros y clasificaciones administrados por Google se gestionan desde Play Games.\n\nEscribí ELIMINAR para confirmar.</string>
+    <string name="account_delete_explanation">Esta acción es permanente. Se eliminarán tu cuenta de Traidores, el perfil público, tu historial de partidas, el progreso respaldado por Traidores en Play Games y los datos locales. Los logros y clasificaciones administrados por Google se gestionan desde Play Games.\n\nEscribí ELIMINAR para confirmar.</string>
     <string name="account_delete_password_hint">Contraseña actual</string>
     <string name="account_delete_confirmation_error">Escribí %1$s exactamente para confirmar.</string>
     <string name="account_delete_password_error">Ingresá tu contraseña actual.</string>

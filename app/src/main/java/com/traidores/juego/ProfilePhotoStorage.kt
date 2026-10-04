@@ -12,6 +12,16 @@ import java.security.MessageDigest
 
 /** Gallery publication. Disabled until the bucket and rules are ready; no moderation API. */
 object ProfilePhotoStorage {
+    enum class PublicationStatus { IDLE, UPLOADING, FAILED }
+    fun publicationStatus(context: Context): PublicationStatus {
+        if (!BuildConfig.PROFILE_STORAGE_ENABLED) return PublicationStatus.IDLE
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return PublicationStatus.IDLE
+        val saved = prefs(context)
+        if (saved.getString("profile_photo_status_owner", "") != uid) return PublicationStatus.IDLE
+        val status = PublicationStatus.entries.firstOrNull { it.name == saved.getString("profile_photo_status", "") }
+            ?: PublicationStatus.IDLE
+        return if (status == PublicationStatus.UPLOADING && !syncing) PublicationStatus.FAILED else status
+    }
     private const val OWNER = "profile_photo_owner"
     private const val URL = "profile_photo_url"
     private const val DIRTY = "profile_photo_dirty"
@@ -29,6 +39,13 @@ object ProfilePhotoStorage {
             PlayGamesProfileAvatar.normalize(saved.getString(URL, "").orEmpty()) else ""
     }
 
+    fun ownsLocalPhoto(context: Context): Boolean {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
+        val saved = prefs(context)
+        return saved.getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false) &&
+            saved.getString(DIRTY_OWNER, "") == uid && LocalProfilePhotoStore.hasSavedPhoto(context)
+    }
+
     fun restorePublishedUrl(context: Context, url: String) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         if (prefs(context).getBoolean(DIRTY, false) && prefs(context).getString(DIRTY_OWNER, "") == uid) return
@@ -44,6 +61,7 @@ object ProfilePhotoStorage {
 
     fun sync(context: Context, onComplete: (Exception?) -> Unit = {}) {
         if (!BuildConfig.PROFILE_STORAGE_ENABLED || syncing) return
+        if (publicationStatus(context) == PublicationStatus.FAILED) markChanged(context)
         if (!prefs(context).getBoolean(DIRTY, false)) {
             val localSelected = prefs(context).getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
             if (localSelected && LocalProfilePhotoStore.hasSavedPhoto(context) && publishedUrl(context).isBlank())
@@ -59,11 +77,15 @@ object ProfilePhotoStorage {
         val usePhoto = saved.getBoolean(ProfileActivity.PREF_LOCAL_PHOTO_ENABLED, false)
         val file = LocalProfilePhotoStore.savedFile(app)
         if (usePhoto && (!file.isFile || file.length() > MAX_BYTES)) {
+            saved.edit().putString("profile_photo_status_owner", uid)
+                .putString("profile_photo_status", PublicationStatus.FAILED.name).apply()
             onComplete(IllegalStateException("La foto no está disponible o supera 256 KB."))
             return
         }
         // Snapshot the compressed bytes: another selection cannot mutate an in-flight upload.
         val bytes = if (usePhoto) runCatching { file.readBytes() }.getOrElse {
+            saved.edit().putString("profile_photo_status_owner", uid)
+                .putString("profile_photo_status", PublicationStatus.FAILED.name).apply()
             onComplete(it as? Exception ?: IllegalStateException(it)); return
         } else null
         val revision = bytes?.let { data ->
@@ -77,9 +99,12 @@ object ProfilePhotoStorage {
         }
         val reference = storage.reference.child("profilePhotos/$uid/avatar_$revision.jpg")
         syncing = true
-        saved.edit().putBoolean(DIRTY, false).apply()
+        saved.edit().putBoolean(DIRTY, false).putString("profile_photo_status_owner", uid)
+            .putString("profile_photo_status", PublicationStatus.UPLOADING.name).apply()
         fun finish(error: Exception?) {
             syncing = false
+            saved.edit().putString("profile_photo_status_owner", uid)
+                .putString("profile_photo_status", if (error == null) PublicationStatus.IDLE.name else PublicationStatus.FAILED.name).apply()
             if (error != null) {
                 saved.edit().putBoolean(DIRTY, true).apply()
                 OnlineDebugLog.e("profile_photo_publish_failure", error)

@@ -1400,14 +1400,51 @@ service cloud.firestore {
 
     match /perfiles_publicos/{uidTemporal} {
       allow read: if signedIn();
-      allow create: if isSelf(uidTemporal)
+      allow create: if isSelf(uidTemporal) && isRegistered()
+        && (!('estadisticasPerfil' in request.resource.data)
+          || (request.resource.data.estadisticasPerfil.partidas == 0
+            && request.resource.data.estadisticasPerfil.victorias == 0))
         && validPublicProfile(request.resource.data, uidTemporal);
-      allow update: if isSelf(uidTemporal)
+      allow update: if isSelf(uidTemporal) && isRegistered()
         && request.resource.data.publicId == resource.data.publicId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['estadisticasPerfil'])
         && validPublicProfile(request.resource.data, uidTemporal);
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
       // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
       allow delete: if isSelf(uidTemporal);
+    }
+
+    // Private account history. Online results and counters are only written by the backend.
+    match /cuentas/{uid} {
+      allow get: if isSelf(uid) && isRegistered();
+      allow list, write: if false;
+      match /historial/{recordId} {
+        allow read: if isSelf(uid) && isRegistered();
+        allow update, delete: if false;
+        allow create: if isSelf(uid) && isRegistered() && !isGloballyBanned()
+          && exists(/databases/$(database)/documents/perfiles_publicos/$(uid))
+          && recordId.matches('^local_[a-f0-9]{64}$')
+          && request.resource.data.keys().hasOnly(['schemaVersion', 'uid', 'matchKey', 'origen',
+            'roomId', 'matchId', 'fechaLocalMs', 'mapKey', 'mapName', 'roleKey', 'roleName',
+            'won', 'participantCount', 'winner', 'finalizadaEn'])
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.uid == uid
+          && request.resource.data.origen == 'local'
+          && request.resource.data.roomId == '' && request.resource.data.matchId == ''
+          && isString(request.resource.data.matchKey, 1, 160)
+          && request.resource.data.matchKey.matches('^local:.*')
+          && validMapKey(request.resource.data.mapKey)
+          && isString(request.resource.data.mapName, 1, 40)
+          && isString(request.resource.data.roleKey, 1, 40)
+          && isString(request.resource.data.roleName, 1, 40)
+          && request.resource.data.won is bool
+          && request.resource.data.participantCount is int
+          && request.resource.data.participantCount >= 2 && request.resource.data.participantCount <= 30
+          && request.resource.data.winner in ['Pueblo', 'Traidores']
+          && request.resource.data.fechaLocalMs is int && request.resource.data.fechaLocalMs > 0
+          && request.resource.data.fechaLocalMs <= request.time.toMillis() + 300000
+          && request.resource.data.finalizadaEn == request.time;
+      }
     }
 
     match /{document=**} {

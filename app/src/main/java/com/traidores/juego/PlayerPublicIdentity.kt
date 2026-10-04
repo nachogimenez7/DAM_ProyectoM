@@ -4,7 +4,6 @@ import android.content.Context
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import kotlin.math.abs
 
 object PlayerPublicIdentity {
     const val FIELD_PUBLIC_ID = "publicId"
@@ -80,8 +79,11 @@ object PlayerPublicIdentity {
 
         val existing = currentPublicId(context)
         if (existing.isNotBlank()) {
-            publishPublicProfile(context, firestore, existing)
-            onReady(existing)
+            // Checking an existing identity must not republish stale local fields.
+            // Only explicit pending edits are sent, and the server must acknowledge them.
+            AccountProfileSync.sync(context) { error ->
+                if (error == null) onReady(existing) else onFailure(error)
+            }
             return
         }
 
@@ -122,12 +124,12 @@ object PlayerPublicIdentity {
             publicId
         }.addOnSuccessListener { publicId ->
             savePublicId(context, publicId)
-            publishPublicProfile(context, firestore, publicId)
-            onReady(publicId)
+            AccountProfileSync.markChanged(context)
+            AccountProfileSync.sync(context) { error ->
+                if (error == null) onReady(publicId) else onFailure(error)
+            }
         }.addOnFailureListener { error ->
-            val fallback = localFallbackPublicId(uidTemporal)
-            savePublicId(context, fallback)
-            onReady(fallback)
+            // A disconnected device cannot reserve an account number locally.
             onFailure(error)
         }
     }
@@ -229,31 +231,8 @@ object PlayerPublicIdentity {
         }
         // This payload participates in room creation, joins and presence updates. Keep its
         // deployed schema: optional stats must not make these critical writes fail. Sharing
-        // stats requires a separately negotiated rollout; local history remains available.
+        // Account statistics are maintained by the backend; profile edits must not overwrite them.
         return fields
     }
 
-    private fun publishPublicProfile(
-        context: Context,
-        firestore: FirebaseFirestore,
-        publicId: String
-    ) {
-        if (!isValidPublicId(publicId)) return
-        val uidTemporal = OnlineTempIdentity.getOrCreate(context)
-        val profileFields = publicProfileFields(context, publicId)
-        firestore.collection(PUBLIC_PROFILES_COLLECTION)
-            .document(uidTemporal)
-            .set(
-                profileFields + mapOf(
-                    FIELD_UID_TEMPORAL to uidTemporal,
-                    FIELD_UPDATED_AT to FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
-    }
-
-    private fun localFallbackPublicId(uidTemporal: String): String {
-        val hash = abs(uidTemporal.hashCode().toLong())
-        return (900_000L + (hash % 100_000L)).toString()
-    }
 }

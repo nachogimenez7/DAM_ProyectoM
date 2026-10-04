@@ -52,15 +52,28 @@
 
         </LinearLayout>
 
-        <ImageButton
+        <FrameLayout
             android:id="@+id/btnProfile"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_btn_dark"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:clickable="true"
+            android:focusable="true"
             android:contentDescription="Abrir perfil"
-            android:padding="10dp"
-            android:src="@drawable/ic_person_profile"
-            app:tint="@color/accent_gold" />
+            android:foreground="?attr/selectableItemBackgroundBorderless">
+            <FrameLayout
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_profile_portrait_ring">
+                <com.traidores.juego.CircleProfileImageView
+                    android:id="@+id/menuProfilePortrait"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="center"
+                    android:importantForAccessibility="no"
+                    android:contentDescription="@null" />
+            </FrameLayout>
+        </FrameLayout>
 
     </LinearLayout>
 
@@ -231,6 +244,5 @@
     </FrameLayout>
 
 </RelativeLayout>
-
 
 

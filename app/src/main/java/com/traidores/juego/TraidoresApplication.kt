@@ -19,6 +19,7 @@ class TraidoresApplication : Application() {
         FirebaseEmulatorConfig.configureIfEnabled()
         configurePlayGames()
         configureFirestore()
+        AccountMatchHistory.initialize(this)
         TraidoresNotifications.createChannel(this)
     }
 

@@ -25,6 +25,11 @@ import java.util.concurrent.TimeoutException
 class MainActivity : BaseActivity() {
 
     private lateinit var btnMusic: ImageButton
+    private val portraitPreferencesListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in setOf("profile_avatar", ProfileActivity.PREF_LOCAL_PHOTO_ENABLED,
+                ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "profile_photo_url", "profile_photo_owner",
+                "profile_photo_dirty_owner")) findViewById<View>(R.id.btnProfile)?.post { renderProfilePortrait() }
+    }
     private lateinit var bandidoIntro: BandidoIntroController
     private var isMusicOn = true
     private var introVisible = false
@@ -73,7 +78,7 @@ class MainActivity : BaseActivity() {
 
         // Bind bottom-bar action
         btnMusic = findViewById(R.id.btnMusic)
-        val btnProfile: ImageButton = findViewById(R.id.btnProfile)
+        val btnProfile: View = findViewById(R.id.btnProfile)
 
         val sharedPref = AudioPreferences.preferences(this)
         loadAudioState(sharedPref)
@@ -148,6 +153,9 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         PlayGamesIdentity.ensureLinked(this)
+        getSharedPreferences(ProfileActivity.PREFS_NAME, MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(portraitPreferencesListener)
+        renderProfilePortrait()
         loadAudioState(AudioPreferences.preferences(this))
         if (!introVisible) MusicManager.playMenuMusic(this)
     }
@@ -157,13 +165,31 @@ class MainActivity : BaseActivity() {
         super.onDestroy()
     }
 
+    override fun onPause() {
+        getSharedPreferences(ProfileActivity.PREFS_NAME, MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(portraitPreferencesListener)
+        super.onPause()
+    }
+
+    private fun renderProfilePortrait() {
+        if (isDestroyed) return
+        val image = findViewById<CircleProfileImageView>(R.id.menuProfilePortrait) ?: return
+        val preferences = getSharedPreferences(ProfileActivity.PREFS_NAME, MODE_PRIVATE)
+        if (ProfilePhotoStorage.ownsLocalPhoto(this) && LocalProfilePhotoStore.render(this, image, false)) return
+        ProfilePortraitRenderer.render(this, image,
+            preferences.getString("profile_avatar", ProfileActivity.DEFAULT_AVATAR_KEY).orEmpty(),
+            ProfilePhotoStorage.publishedUrl(this).ifBlank {
+                preferences.getString(ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI, "").orEmpty()
+            })
+    }
+
     private fun loadAudioState(sharedPref: android.content.SharedPreferences) {
         isMusicOn = AudioPreferences.isMusicEnabled(sharedPref)
         if (::btnMusic.isInitialized) updateAudioButtonIcon()
     }
 
     private fun updateAudioButtonIcon() {
-        btnMusic.setImageResource(if (isMusicOn) R.drawable.ic_music_note else R.drawable.ic_music_off)
+        btnMusic.setImageResource(if (isMusicOn) R.drawable.ic_speaker_on else R.drawable.ic_speaker_off)
         btnMusic.alpha = if (isMusicOn) 1f else 0.55f
         btnMusic.contentDescription = if (isMusicOn) "Silenciar música" else "Activar música"
     }
