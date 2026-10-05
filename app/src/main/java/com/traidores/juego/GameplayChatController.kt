@@ -271,7 +271,6 @@ class GameplayChatController(
     private val topStatus: LinearLayout = root.findViewById(R.id.topStatus)
     private val phaseSubtitle: TextView = root.findViewById(R.id.phaseSubtitle)
     private val phaseProgressTrack: View = root.findViewById(R.id.phaseProgressTrack)
-    private val btnReadyToVote: Button = root.findViewById(R.id.btnReadyToVote)
     private val bottomPlayerPanel: LinearLayout = root.findViewById(R.id.bottomPlayerPanel)
     private val roleCard: View = root.findViewById(R.id.roleCard)
     private val currentPlayerName: TextView = root.findViewById(R.id.currentPlayerName)
@@ -2415,6 +2414,7 @@ class GameplayChatController(
         session: GameSession,
         channel: ChatChannel
     ): Pair<String, String> {
+        GameplayPhasePresentation.votingWatchText(session)?.let { return it.title to it.subtitle }
         if (channel == ChatChannel.ESPECTADORES) {
             val period = if (GameplayTableUi.isNightPhase(session.phase)) "NOCHE" else "DÍA"
             return "OBSERVANDO · $period ${session.round}" to
@@ -3764,20 +3764,9 @@ class GameplayChatController(
             ?: bottomPlayerPanel.height.takeIf { it > 0 }
             ?: host.dp(BOTTOM_PLAYER_PANEL_HEIGHT_DP)
         val topMargin = topHeight + host.dp(CHAT_AMBIENT_EDGE_GAP_DP)
-        var bottomMargin = bottomPanelHeight + host.dp(CHAT_AMBIENT_EDGE_GAP_DP)
+        val bottomMargin = bottomPanelHeight + host.dp(CHAT_AMBIENT_EDGE_GAP_DP)
 
-        if (btnReadyToVote.visibility == View.VISIBLE) {
-            val readyParams = btnReadyToVote.layoutParams as? FrameLayout.LayoutParams
-            val readyHeight = btnReadyToVote.layoutParams.height.takeIf { it > 0 }
-                ?: btnReadyToVote.height.takeIf { it > 0 }
-                ?: host.dp(CHAT_AMBIENT_READY_HEIGHT_DP)
-            val readyBottomMargin = readyParams?.bottomMargin
-                ?: host.dp(CHAT_AMBIENT_READY_BOTTOM_MARGIN_DP)
-            bottomMargin = maxOf(
-                bottomMargin,
-                readyBottomMargin + readyHeight + host.dp(CHAT_AMBIENT_READY_GAP_DP)
-            )
-        }
+
 
         val availableHeight = (containerHeight - topMargin - bottomMargin).coerceAtLeast(1)
         val targetHeight = minOf(
@@ -4518,9 +4507,6 @@ class GameplayChatController(
         private const val CHAT_AMBIENT_MESSAGE_MAX_LINES = 3
         private const val CHAT_AMBIENT_FALLBACK_TOP_HEIGHT_DP = 76
         private const val CHAT_AMBIENT_EDGE_GAP_DP = 8
-        private const val CHAT_AMBIENT_READY_HEIGHT_DP = 34
-        private const val CHAT_AMBIENT_READY_BOTTOM_MARGIN_DP = 152
-        private const val CHAT_AMBIENT_READY_GAP_DP = 6
         private const val CHAT_EXPANDED_SOURCE_LIMIT = 60
         private const val BOTTOM_PLAYER_PANEL_HEIGHT_DP = 146
         private const val BOTTOM_PLAYER_PANEL_CHAT_SUMMARY_HEIGHT_DP = 72

@@ -57,7 +57,8 @@ data class GameWinnerPresentation(
     val humanWon: Boolean,
     val summary: GameSummaryPresentation,
     val specialVictories: List<GameSpecialVictory> = emptyList(),
-    val specialWinningPlayers: List<GamePlayer> = emptyList()
+    val specialWinningPlayers: List<GamePlayer> = emptyList(),
+    val losingPlayers: List<GamePlayer> = emptyList()
 )
 
 data class GameSummaryPresentation(
@@ -470,11 +471,13 @@ object GameplayTableUi {
             GamePhase.CONTRAPUNTO ->
                 "Escucha a los participantes y señala al más sospechoso."
             GamePhase.VOTACION ->
-                "Tocá una carta para votar. Tocá otra para cambiar antes del cierre."
+                GameplayPhasePresentation.votingWatchText(session)?.subtitle
+                    ?: "Tocá una carta para votar. Tocá otra para cambiar antes del cierre."
             GamePhase.RECUENTO_VOTOS ->
                 "El pueblo cuenta los votos recibidos."
             GamePhase.DESEMPATE_VOTACION ->
-                "Tocá una carta empatada para votar; podés cambiar antes del cierre."
+                GameplayPhasePresentation.votingWatchText(session)?.subtitle
+                    ?: "Tocá una carta empatada para votar; podés cambiar antes del cierre."
             GamePhase.ALCALDE_DESEMPATE ->
                 "El Alcalde debe decidir entre los jugadores empatados."
             GamePhase.RESULTADO -> session.publicAnnouncement.ifBlank { fallback }
@@ -530,7 +533,7 @@ object GameplayTableUi {
 
         val factionWinningPlayers = session.players.filter { player ->
             when {
-                player.role?.key == "desertor" -> session.desertorTeam == session.winner
+                player.role?.key == "desertor" -> player.alive && session.desertorTeam == session.winner
                 session.winner == GameRules.TOWN_WINNER ->
                     player.role?.team == GameRules.TOWN_WINNER
                 session.winner == GameRules.TRAITOR_WINNER ->
@@ -545,8 +548,24 @@ object GameplayTableUi {
             humanWon = factionWinningPlayers.any { it.isHuman } || specialWinningPlayers.any { it.isHuman },
             specialVictories = session.specialVictories,
             specialWinningPlayers = specialWinningPlayers,
+            losingPlayers = if (session.winner == GameRules.CANCELLED_WINNER) emptyList() else
+                session.players.filter { it !in factionWinningPlayers && it !in specialWinningPlayers },
             summary = gameSummary(session)
         )
+    }
+
+    fun winnerRoleLabel(session: GameSession, player: GamePlayer): String {
+        if (session.specialVictories.any { it.playerName == player.name && it.roleKey == RoleCatalog.BUFON }) {
+            return "GANÓ COMO BUFÓN"
+        }
+        if (player.role?.key == RoleCatalog.DESERTOR) {
+            return when (session.desertorTeam) {
+                GameRules.TOWN_WINNER -> "DESERTOR · PUEBLO"
+                GameRules.TRAITOR_WINNER -> "DESERTOR · TRAIDORES"
+                else -> "DESERTOR"
+            }
+        }
+        return player.role?.name?.uppercase() ?: "SIN ROL"
     }
 
     fun gameSummary(

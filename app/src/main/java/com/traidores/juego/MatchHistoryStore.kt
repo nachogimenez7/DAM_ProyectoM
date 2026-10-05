@@ -37,7 +37,7 @@ internal object MatchOutcome {
         val roleKey = human.role?.key.orEmpty()
         return when {
             session.specialVictories.any { it.playerName == human.name } -> true
-            roleKey == RoleCatalog.DESERTOR -> session.desertorTeam == session.winner
+            roleKey == RoleCatalog.DESERTOR -> human.alive && session.desertorTeam == session.winner
             session.winner == GameRules.TOWN_WINNER ->
                 human.role?.team == GameRules.TOWN_WINNER
             session.winner == GameRules.TRAITOR_WINNER ->
@@ -84,6 +84,7 @@ object MatchHistoryStore {
             )
             .apply()
         PlayGamesProgressSync.onMatchRecorded(context)
+        GameAnalytics.matchCompleted(context, session, record.roleKey, record.won)
         return true
     }
 

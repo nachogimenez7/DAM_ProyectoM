@@ -20,6 +20,7 @@ class TraidoresApplication : Application() {
         configurePlayGames()
         configureFirestore()
         AccountMatchHistory.initialize(this)
+        GameAnalytics.initialize(this)
         TraidoresNotifications.createChannel(this)
     }
 

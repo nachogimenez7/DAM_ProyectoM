@@ -66,12 +66,6 @@ class VoteResultAnimator(
         const val PANEL_MARGIN_HORIZONTAL_DP = 18
     }
 
-    private data class VoteToken(
-        val voterName: String,
-        val targetName: String,
-        val initial: String
-    )
-
     private data class VoteCardHolder(
         val root: LinearLayout,
         val avatar: View,
@@ -110,7 +104,7 @@ class VoteResultAnimator(
         title.text = when {
             tiedRecount && session.voteRound == 1 -> "EMPATE"
             session.voteRound == 2 -> "RECUENTO FINAL"
-            session.voteRound == 3 -> "DECISION DEL ALCALDE"
+            session.voteRound == 3 -> "DECISIÓN DEL ALCALDE"
             session.voteRound == 4 -> "CORRUPCION EN EL PUEBLO"
             else -> "RECUENTO DE VOTOS"
         }
@@ -127,13 +121,7 @@ class VoteResultAnimator(
         }
         setNotice("")
 
-        val candidateNames = session.players
-            .map { it.name }
-            .filter { candidate ->
-                session.votes.values.any { it == candidate } ||
-                    session.contrapuntoSuspicion == candidate ||
-                    (session.voteRound == 3 && session.dayEliminationTarget == candidate)
-            }
+        val candidateNames = VoteRecountPresentation.candidates(session).map { it.name }
         if (candidateNames.isEmpty()) {
             cards.columnCount = 1
             cards.addView(
@@ -154,6 +142,7 @@ class VoteResultAnimator(
             candidateNames.forEachIndexed { index, candidate ->
                 val player = session.players.first { it.name == candidate }
                 val holder = createVoteCard(session, player, dense = denseCards)
+                holder.root.minimumHeight = dp(cardHeight)
                 cardHolders[candidate] = holder
                 val row = index / cols
                 val col = index % cols
@@ -162,7 +151,7 @@ class VoteResultAnimator(
                     GridLayout.spec(col)
                 ).apply {
                     width = dp(cardWidth)
-                    height = dp(cardHeight)
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
                     setMargins(dp(cardMargin), dp(cardMargin), dp(cardMargin), dp(cardMargin))
                 }
                 // La ultima carta impar se centra abarcando ambas columnas.
@@ -184,7 +173,12 @@ class VoteResultAnimator(
                 .start()
         }
 
-        val tokens = voteTokens(session).shuffled(
+        if (session.voteRound == 3) {
+            setNotice("El Alcalde eligió expulsar a ${session.dayEliminationTarget}.")
+            setContinueReady("VER EXPULSIÓN")
+            return
+        }
+        val tokens = VoteRecountPresentation.tokens(session).shuffled(
             Random(session.round * 1009 + session.voteRound * 97 + session.votes.size)
         )
         if (tokens.isEmpty()) {
@@ -425,9 +419,9 @@ class VoteResultAnimator(
         // Reserva aire alrededor de las columnas ornamentales. En pantallas angostas dos
         // tarjetas de 96 dp rozaban el borde derecho del marco aun cuando la grilla entraba.
         return when {
-            candidateCount <= 2 -> 88 to 132
-            candidateCount <= 4 -> 82 to 122
-            else -> 60 to 104
+            candidateCount <= 2 -> 88 to 164
+            candidateCount <= 4 -> 82 to 154
+            else -> 60 to 124
         }
     }
 
@@ -862,31 +856,10 @@ class VoteResultAnimator(
         notice.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
     }
 
-    private fun voteTokens(session: GameSession): List<VoteToken> {
-        val playersByName = session.players.associateBy { it.name }
-        val result = session.votes.map { (voter, target) ->
-            VoteToken(
-                voterName = voter,
-                targetName = target,
-                initial = playersByName[voter]?.initial ?: "?"
-            )
-        }.toMutableList()
-        val mayor = session.players.firstOrNull { it.alive && it.role?.key == "alcalde" }
-        if (session.alcaldeRevealed && mayor != null) {
-            session.votes[mayor.name]?.let { target ->
-                result += VoteToken(mayor.name, target, mayor.initial)
-            }
-        }
-        if (session.contrapuntoSuspicion.isNotBlank()) {
-            result += VoteToken("Senalamiento del Payador", session.contrapuntoSuspicion, "P")
-        }
-        return result
-    }
-
-    private fun addVoteToken(session: GameSession, token: VoteToken) {
+    private fun addVoteToken(session: GameSession, token: VoteRecountPresentation.Token) {
         val holder = cardHolders[token.targetName] ?: return
         holder.count += 1
-        holder.total.text = "${holder.count} ${if (holder.count == 1) "VOTO" else "VOTOS"}"
+        holder.total.text = "VOTOS: ${holder.count}"
         val tokenView: View = (if (session.showIndividualVotes) {
             GameplayAvatarView(context).apply {
                 bind(
@@ -948,16 +921,18 @@ class VoteResultAnimator(
         val rootPaddingHorizontal = if (dense) 4 else 5
         val rootPaddingTop = if (dense) 4 else 5
         val rootPaddingBottom = if (dense) 3 else 4
-        val cardBackWidth = if (dense) 32 else 38
-        val cardBackHeight = if (dense) 44 else 52
+        val cardBackWidth = if (dense) 40 else 58
+        val cardBackHeight = if (dense) 56 else 78
         val avatarSize = if (dense) 15 else 20
-        val roleImageSize = if (dense) 32 else 38
-        val portraitWidth = if (dense) 42 else 52
-        val portraitHeight = if (dense) 43 else 54
+        val roleImageSize = if (dense) 40 else 58
+        val portraitWidth = if (dense) 46 else 64
+        val portraitHeight = if (dense) 60 else 82
         val identityHeight = if (dense) 15 else 20
         val totalHeight = if (dense) 15 else 18
-        val tokensHeight = 24
         val tokenColumns = if (dense) 4 else 5
+        val tokenCount = VoteRecountPresentation.tokens(session).count { it.targetName == player.name }
+        val tokenSize = if (session.showIndividualVotes) 12 else 14 // seal plus margins
+        val tokensHeight = maxOf(24, ((tokenCount + tokenColumns - 1) / tokenColumns) * tokenSize + 2)
         val nameTextSize = if (dense) 10f else 12f
         val totalTextSize = if (dense) 10f else 12f
         val root = LinearLayout(context).apply {
@@ -1000,7 +975,6 @@ class VoteResultAnimator(
         }
         portrait.addView(cardBack, FrameLayout.LayoutParams(dp(cardBackWidth), dp(cardBackHeight), Gravity.CENTER))
         portrait.addView(roleImage, FrameLayout.LayoutParams(dp(roleImageSize), dp(roleImageSize), Gravity.CENTER))
-        root.addView(portrait, LinearLayout.LayoutParams(dp(portraitWidth), dp(portraitHeight)))
 
         val playerName = TextView(context).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.START
@@ -1031,16 +1005,22 @@ class VoteResultAnimator(
             )
         )
 
+        root.addView(portrait, LinearLayout.LayoutParams(dp(portraitWidth), dp(portraitHeight)).apply {
+            topMargin = dp(if (dense) 4 else 6)
+        })
+
         val total = TextView(context).apply {
             gravity = Gravity.CENTER
-            text = "0 VOTOS"
+            text = "VOTOS: 0"
             setTextColor(context.getColor(R.color.accent_gold))
             textSize = totalTextSize
             typeface = Typeface.DEFAULT_BOLD
         }
+        if (session.voteRound == 3) total.visibility = View.GONE
         root.addView(total, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(totalHeight)))
 
         val voterTokens = GridLayout(context).apply {
+            if (session.voteRound == 3) visibility = View.GONE
             columnCount = tokenColumns
             alignmentMode = GridLayout.ALIGN_BOUNDS
             useDefaultMargins = false

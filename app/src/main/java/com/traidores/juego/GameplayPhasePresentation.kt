@@ -11,7 +11,18 @@ data class GameplayPhaseText(
  * Esta frontera puede moverse a un futuro modulo KMP `commonMain`.
  */
 object GameplayPhasePresentation {
+    fun votingWatchText(session: GameSession): GameplayPhaseText? {
+        if (!DirectVotePolicy.isEnabled(session.phase)) return null
+        val human = GameEngine.humanPlayer(session)
+        return when {
+            !human.alive -> GameplayPhaseText("ESTÁS ELIMINADO", "Mirá cómo vota el pueblo. La votación se cierra sola.", "OBSERVANDO")
+            human.muted -> GameplayPhaseText("HOY NO PODÉS VOTAR", "Te silenciaron durante la noche. Mirá cómo vota el resto de la mesa.", "OBSERVANDO")
+            else -> null
+        }
+    }
+
     fun phaseAdvice(session: GameSession): String? {
+        votingWatchText(session)?.let { return "${it.title} · ${it.subtitle}" }
         val human = GameEngine.humanPlayer(session)
         val roleKey = human.role?.key ?: return null
         val allies = session.players
@@ -23,7 +34,7 @@ object GameplayPhasePresentation {
 
         if (!human.alive) return "Estás eliminado. Observa la partida y lee el cronista."
         if (human.muted && session.phase == GamePhase.DIA_DEBATE) {
-            return "Estás silenciado. Lee el debate y prepara tu voto."
+            return "Estás silenciado. Leé el debate; hoy no podés hablar ni votar."
         }
 
         return when (session.phase) {

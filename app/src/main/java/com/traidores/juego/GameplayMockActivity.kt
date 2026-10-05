@@ -493,7 +493,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private lateinit var btnContinueRolePreview: Button
     private lateinit var btnRevealCard: Button
     private lateinit var btnRevealMayorSecondary: Button
-    private lateinit var btnReadyToVote: Button
     private lateinit var btnToggleEmotes: ImageButton
     private lateinit var btnToggleEventLog: Button
     private lateinit var centralPublicEventBanner: FrameLayout
@@ -915,7 +914,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         btnContinueRolePreview = findViewById(R.id.btnContinueRolePreview)
         btnRevealCard = findViewById(R.id.btnRevealCard)
         btnRevealMayorSecondary = findViewById(R.id.btnRevealMayorSecondary)
-        btnReadyToVote = findViewById(R.id.btnReadyToVote)
         btnToggleEmotes = findViewById(R.id.btnToggleEmotes)
         btnToggleEventLog = findViewById(R.id.btnToggleEventLog)
         centralPublicEventBanner = findViewById(R.id.centralPublicEventBanner)
@@ -1240,9 +1238,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 renderGame()
             }
         }
-        btnAction.setOnClickListener { handleCurrentPhase() }
-        btnRevealMayorSecondary.setOnClickListener { revealMayorFromSecondaryAction() }
-        btnReadyToVote.setOnClickListener { toggleReadyToVote() }
+        btnAction.setOnClickListener {
+            if (session.phase == GamePhase.DIA_DEBATE &&
+                session.winner.isBlank() && GameEngine.humanPlayer(session).alive &&
+                !isOnlineStartupPhase() && !onlineRecoveryInProgress) {
+                toggleReadyToVote()
+            } else {
+                handleCurrentPhase()
+            }
+        }
+        btnRevealMayorSecondary.setOnClickListener {
+            if (session.phase == GamePhase.DIA_DEBATE &&
+                GameEngine.humanPlayer(session).role?.key == RoleCatalog.PAYADOR) {
+                if (confirmedTargetActionLabel() != null) performTargetAction(selectedTarget)
+            } else {
+                revealMayorFromSecondaryAction()
+            }
+        }
         btnRevealCard.setOnClickListener { toggleHumanCard() }
         btnToggleEmotes.setOnClickListener { toggleReactionPalette() }
         btnToggleEventLog.setOnClickListener { toggleEventLog() }
@@ -2753,7 +2765,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             currentPlayerHint.text = "Recuperando la partida…"
             btnAction.text = "RECUPERANDO PARTIDA..."
             btnAction.isEnabled = false
-            btnReadyToVote.isEnabled = false
             renderPlayerColumns()
             return
         }
@@ -2856,6 +2867,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
         MatchHistoryStore.record(this, session,
             if (!isOnlineGameplay() && intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) historyOwnerUid else "")
+        if (intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) {
+            GameAnalytics.matchStarted(this, session, isOnlineGameplay())
+        }
         lastRenderedPhase = session.phase
         lastRenderedAnnouncement = narratorMessage
         publishOnlineClientState()
@@ -6654,6 +6668,15 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun renderAdvanceButton() {
+        if (session.phase == GamePhase.DIA_DEBATE &&
+            session.winner.isBlank() && GameEngine.humanPlayer(session).alive &&
+            !isOnlineStartupPhase() && !onlineRecoveryInProgress) {
+            cancelActionPulse()
+            renderDebateAbilityButton()
+            renderReadyToVoteButton()
+            return
+        }
+        updateReadyToVoteAttentionPulse(false)
         val selectedAction = confirmedTargetActionLabel()
         val directVote = DirectVotePolicy.isEnabled(session.phase)
         val validTargets = validHumanTargets()
@@ -6685,7 +6708,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             onlineAwaitingHostAdvance -> "ACTUALIZANDO PARTIDA..."
             directVote && onlineProvisionalVoteWrites > 0 -> "ENVIANDO VOTO..."
             directVote && directVoteConfirmed -> "✓ VOTO REGISTRADO"
-            directVote -> "SELECCIONÁ A UN JUGADOR"
+            directVote -> GameplayPhasePresentation.votingWatchText(session)?.actionLabel ?: "SELECCIONÁ A UN JUGADOR"
             selectedAction != null -> primaryTargetActionLabel(selectedAction, selectedTarget)
             canSelfProtect -> "SALVARME"
             GameEngine.needsInitialDesertorChoice(session) -> "ELEGIR BANDO"
@@ -6747,13 +6770,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun renderReadyToVoteButton() {
-        if (!::btnReadyToVote.isInitialized || !::session.isInitialized) return
+        if (!::btnAction.isInitialized || !::session.isInitialized) return
         syncReadyVoteStateForPhase()
         val human = GameEngine.humanPlayer(session)
         val visible = session.phase == GamePhase.DIA_DEBATE &&
             session.winner.isBlank() &&
-            human.alive
-        btnReadyToVote.visibility = if (visible) View.VISIBLE else View.GONE
+            human.alive && !isOnlineStartupPhase() && !onlineRecoveryInProgress
         if (!visible) {
             updateReadyToVoteAttentionPulse(false)
             return
@@ -6762,29 +6784,30 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val unlockRemainingMs = readyVoteUnlockRemainingMs()
         val progress = readyVoteProgress()
         val humanReady = isHumanReadyToVote()
-        btnReadyToVote.text = when {
+        btnAction.text = when {
             unlockRemainingMs > 0L ->
                 "VOTAR ANTES EN ${ceil(unlockRemainingMs / 1000.0).toInt()} · ${progress.first}/${progress.second}"
             humanReady -> "CANCELAR · ${progress.first}/${progress.second}"
             else -> "LISTOS PARA VOTAR · ${progress.first}/${progress.second}"
         }
-        btnReadyToVote.isEnabled = unlockRemainingMs <= 0L &&
+        btnAction.isEnabled = unlockRemainingMs <= 0L &&
             !readyVoteAdvanceInProgress &&
             !localPhaseResolutionInProgress &&
             !countdown.isTransitionLocked(session.phaseIndex) &&
             !onlineAwaitingHostAdvance
-        val enabled = btnReadyToVote.isEnabled
+        btnAction.contentDescription = btnAction.text
+        val enabled = btnAction.isEnabled
         val canPulse = enabled && !humanReady && unlockRemainingMs <= 0L
-        btnReadyToVote.background = readyToVoteBackground(
+        btnAction.background = readyToVoteBackground(
             humanReady = humanReady,
             enabled = enabled
         )
-        btnReadyToVote.setTextColor(
+        btnAction.setTextColor(
             if (humanReady) Color.parseColor("#E9F8EC") else Color.parseColor("#FFF2D4")
         )
         updateReadyToVoteAttentionPulse(canPulse)
         if (!canPulse) {
-            btnReadyToVote.alpha = if (enabled) 1f else 0.58f
+            btnAction.alpha = if (enabled) 1f else 0.58f
         }
 
         if (!isOnlineGameplay() && humanReady && !readyVoteBotCascadeScheduled) {
@@ -7209,10 +7232,25 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         )
     }
 
+    private fun renderDebateAbilityButton() {
+        val human = GameEngine.humanPlayer(session)
+        val payador = human.role?.key == RoleCatalog.PAYADOR && !human.muted && !session.payadorUsed
+        renderMayorRevealSecondaryButton(canOfferMayorReveal() || payador)
+        if (!payador) return
+        val action = confirmedTargetActionLabel()
+        btnRevealMayorSecondary.text = action?.let { primaryTargetActionLabel(it, selectedTarget) }
+            ?: "ELEGÍ UNA CARTA PARA CONTRAPUNTO"
+        btnRevealMayorSecondary.isEnabled = action != null &&
+            !localPhaseResolutionInProgress && !onlineAwaitingHostAdvance &&
+            !countdown.isTransitionLocked(session.phaseIndex)
+        btnRevealMayorSecondary.alpha = if (btnRevealMayorSecondary.isEnabled) 0.96f else 0.52f
+    }
+
     private fun renderMayorRevealSecondaryButton(visible: Boolean) {
         if (!::btnRevealMayorSecondary.isInitialized) return
         btnRevealMayorSecondary.visibility = if (visible) View.VISIBLE else View.GONE
         if (!visible) return
+        btnRevealMayorSecondary.text = "REVELARME - VOTO DOBLE"
 
         val accent = getColor(R.color.accent_red)
         btnRevealMayorSecondary.isEnabled = !countdown.isTransitionLocked(session.phaseIndex)
@@ -7306,7 +7344,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         val pulseDuration = 2200L
         val alpha = ObjectAnimator.ofFloat(
-            btnReadyToVote,
+            btnAction,
             View.ALPHA,
             1f,
             0.78f,
@@ -7317,7 +7355,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             repeatMode = ValueAnimator.RESTART
         }
         val scaleX = ObjectAnimator.ofFloat(
-            btnReadyToVote,
+            btnAction,
             View.SCALE_X,
             1f,
             1.018f,
@@ -7328,7 +7366,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             repeatMode = ValueAnimator.RESTART
         }
         val scaleY = ObjectAnimator.ofFloat(
-            btnReadyToVote,
+            btnAction,
             View.SCALE_Y,
             1f,
             1.018f,
@@ -7349,10 +7387,10 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         readyVotePulseAnimator?.cancel()
         readyVotePulseAnimator = null
         lastReadyVoteAttentionKey = null
-        if (::btnReadyToVote.isInitialized) {
-            btnReadyToVote.scaleX = 1f
-            btnReadyToVote.scaleY = 1f
-            btnReadyToVote.alpha = 1f
+        if (::btnAction.isInitialized) {
+            btnAction.scaleX = 1f
+            btnAction.scaleY = 1f
+            btnAction.alpha = 1f
         }
     }
 
@@ -8749,6 +8787,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun phaseText(phase: GamePhase): GameplayPhaseText {
+        if (phase == session.phase) GameplayPhasePresentation.votingWatchText(session)?.let { return it }
         val roleForPhase = when (phase) {
             GamePhase.NOCHE_ASESINO -> RoleCatalog.ASESINO
             GamePhase.NOCHE_MERCENARIO -> RoleCatalog.MERCENARIO
@@ -10436,6 +10475,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun privateHintText(): String {
+        GameplayPhasePresentation.votingWatchText(session)?.let { return it.subtitle }
         val human = GameEngine.humanPlayer(session)
         if (!human.alive) {
             return if (session.phase == GamePhase.DIA_DEBATE &&
@@ -11232,7 +11272,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 else -> "Votaste a $selectedTarget. Podés cambiar hasta el cierre."
             }
         } else {
-            "Tocá una carta para votar. Podés cambiar hasta el cierre."
+            GameplayPhasePresentation.votingWatchText(session)?.subtitle
+                ?: "Tocá una carta para votar. Podés cambiar hasta el cierre."
         }
     }
 
@@ -11729,7 +11770,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             summary = presentation.summary,
             specialVictories = presentation.specialVictories,
             specialWinners = presentation.specialWinningPlayers,
-            winnerKey = session.winner
+            winnerKey = session.winner,
+            losingPlayers = presentation.losingPlayers
         )
         val livingWinners = presentation.winningPlayers.count { it.alive }
         val survivorLabel = if (livingWinners == 1) "1 superviviente" else "$livingWinners supervivientes"
@@ -12869,7 +12911,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                     startedAtEpochMs = System.currentTimeMillis() - 8 * 60_000L - 42_000L
                 )
             }
-            else -> null
+            else -> GameplayParityPreview.create(previewKey.lowercase(), base)
         }
     }
 

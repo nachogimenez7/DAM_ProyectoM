@@ -7,6 +7,21 @@ import org.junit.Test
 
 class GameplayPhasePresentationTest {
     @Test
+    fun eliminatedAndSilencedPlayersWatchBothVotingRoundsWithoutInvitationToVote() {
+        val base = GameSession("WATCH", "pampa", "Pampa", listOf(
+            GamePlayer("Humano", "H", RoleCatalog.gameRole(RoleCatalog.ALDEANO, RoleMap.PAMPA), isHuman = true)))
+        for (phase in listOf(GamePhase.VOTACION, GamePhase.DESEMPATE_VOTACION)) {
+            val voting = base.copy(phase = phase)
+            val eliminated = voting.copy(players = voting.players.map { it.copy(alive = false) })
+            val muted = voting.copy(players = voting.players.map { it.copy(muted = true) })
+            assertEquals("ESTÁS ELIMINADO", GameplayPhasePresentation.votingWatchText(eliminated)?.title)
+            assertEquals("HOY NO PODÉS VOTAR", GameplayPhasePresentation.votingWatchText(muted)?.title)
+            assertTrue(GameplayPhasePresentation.phaseAdvice(muted)!!.contains("Mirá cómo vota"))
+            assertEquals(null, GameplayPhasePresentation.votingWatchText(voting))
+        }
+    }
+
+    @Test
     fun nightActionLabelReflectsWhetherTheHumanCanAct() {
         val active = GameplayPhasePresentation.phaseText(
             GamePhase.NOCHE_POLICIA,

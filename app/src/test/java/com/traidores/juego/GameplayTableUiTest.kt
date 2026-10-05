@@ -327,7 +327,7 @@ class GameplayTableUiTest {
     }
 
     @Test
-    fun townWinnerPresentationIncludesTownAndTownDesertorEvenWhenDead() {
+    fun townWinnerPresentationIncludesDeadTownButExcludesDeadDesertor() {
         val town = GameRole("aldeano", "Aldeano", "Pueblo", "rol_aldeano_gaucho")
         val assassin = GameRole("asesino", "Asesino", "Traidores", "rol_asesino_gaucho")
         val desertor = GameRole("desertor", "Desertora", "Neutral", "rol_desertor_gaucho")
@@ -348,11 +348,13 @@ class GameplayTableUiTest {
         val presentation = GameplayTableUi.winnerPresentation(session)
 
         assertEquals(
-            listOf("Humano", "Pueblo vivo", "Desertora"),
+            listOf("Humano", "Pueblo vivo"),
             presentation.winningPlayers.map { it.name }
         )
         assertTrue(presentation.humanWon)
         assertTrue(presentation.winningPlayers.any { !it.alive })
+        assertEquals(listOf("Asesino", "Desertora"), presentation.losingPlayers.map { it.name })
+        assertEquals("DESERTOR · PUEBLO", GameplayTableUi.winnerRoleLabel(session, session.players.last()))
     }
 
     @Test
@@ -417,7 +419,26 @@ class GameplayTableUiTest {
         assertEquals(listOf("Pueblo"), presentation.winningPlayers.map { it.name })
         assertEquals("Bufon", presentation.specialVictories.single().playerName)
         assertEquals(listOf("Bufon"), presentation.specialWinningPlayers.map { it.name })
+        assertEquals(listOf("Traidor"), presentation.losingPlayers.map { it.name })
+        assertEquals("GANÓ COMO BUFÓN", GameplayTableUi.winnerRoleLabel(session, session.players.last()))
         assertTrue(presentation.humanWon)
+    }
+
+    @Test
+    fun humanDesertorWinsOnlyWhenAliveOnTheWinningFinalSide() {
+        val desertor = GameRole("desertor", "Desertor", "Neutral", "rol_desertor_gaucho")
+        val base = GameSession("TEST", "pampa", "Pampa", listOf(
+            GamePlayer("Humano", "H", role = desertor, isHuman = true)), winner = GameRules.TOWN_WINNER)
+        for (alive in listOf(true, false)) {
+            for (side in listOf(GameRules.TOWN_WINNER, GameRules.TRAITOR_WINNER, "")) {
+                val game = base.copy(players = base.players.map { it.copy(alive = alive) }, desertorTeam = side)
+                val presentation = GameplayTableUi.winnerPresentation(game)
+                val won = alive && side == GameRules.TOWN_WINNER
+                assertEquals(won, presentation.humanWon)
+                assertEquals(if (won) 1 else 0, presentation.winningPlayers.size)
+                assertEquals(if (won) 0 else 1, presentation.losingPlayers.size)
+            }
+        }
     }
 
     @Test
