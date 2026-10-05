@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
 const {initializeTestEnvironment, assertFails, assertSucceeds} = require('@firebase/rules-unit-testing');
-const {ref, uploadBytes, getMetadata, getBytes, getDownloadURL, deleteObject} = require('firebase/storage');
+const {ref, uploadBytes, getMetadata, getBytes, getDownloadURL, deleteObject, listAll} = require('firebase/storage');
 const {doc, getDoc, setDoc, updateDoc, serverTimestamp} = require('firebase/firestore');
 
 // The bytes are fixtures for transport checks; these rules validate metadata, not image content.
@@ -82,15 +82,17 @@ async function testPhotoLifecycle(env, owner, other, db) {
   await assertSucceeds(updateDoc(playerRef, {fotoPerfil: nextUrl}));
   const updatedRoster = await assertSucceeds(getDoc(rosterRef));
   await assertDownload(updatedRoster.data().fotoPerfil, nextBytes);
-  await assertSucceeds(deleteObject(first));
-  await assertRemoved(first, firstUrl);
+  // An active roster can keep the old URL after the profile is replaced.
+  await assertDownload(firstUrl, firstBytes);
 
   await assertSucceeds(updateDoc(profileRef, {fotoPerfil: '', actualizadaEn: serverTimestamp()}));
   await assertSucceeds(updateDoc(playerRef, {fotoPerfil: ''}));
-  await assertSucceeds(deleteObject(next));
+  const versions = await assertSucceeds(listAll(ref(owner, 'profilePhotos/owner')));
+  await Promise.all(versions.items.map(item => assertSucceeds(deleteObject(item))));
   assert.equal((await getDoc(doc(recoveredDb, 'perfiles_publicos', 'owner'))).data().fotoPerfil, '');
   assert.equal((await getDoc(rosterRef)).data().fotoPerfil, '');
   await assertRemoved(next, nextUrl);
+  await assertRemoved(first, firstUrl);
   console.log('Photo lifecycle: upload, download, account recovery, roster, failed publication, replacement and removal passed.');
 }
 (async () => {

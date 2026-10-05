@@ -1,6 +1,6 @@
 # Reparto propuesto: fotos y online — 3 de octubre de 2026
 
-Actualización del 4 de octubre: este documento conserva el plan inicial. Los adaptadores de cuenta y perfil iOS ya están implementados; las salas y la subida de fotos iOS siguen pendientes. El estado del cierre y el próximo trabajo están en `cierre-jornada-2026-10-04.md`; los detalles de cuenta, en `cuentas-google-apple.md`.
+Actualización del 4 de octubre, noche: este documento conserva el reparto inicial como referencia histórica. Cuenta, perfil, historial y publicación de fotos iOS ya tienen adaptadores Firebase reales, registrados en el proyecto Xcode. Las salas y el gameplay online iOS siguen pendientes. Para revisar el estado actual y lo que viene, empezar por `ENTREGA_CLAUDE_FIREBASE_2026-10-04.md`; no usar las secciones históricas de este plan como inventario de pendientes vigente.
 
 Pedido: foto de perfil de cada ganador debajo de su rol en la ventana final (tanto si el jugador ganó como si perdió). Android e iOS usan ahora un retrato circular de 24 dp/pt, antes de 32, manteniendo carta → nombre → rol → foto. Sin foto se conserva un respaldo. Los bots no heredan la foto humana aunque sus nombres coincidan.
 

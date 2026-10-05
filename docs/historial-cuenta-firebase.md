@@ -2,7 +2,7 @@
 
 ## Estado
 
-Implementación Android y backend preparada y probada contra Firebase Auth, Firestore y Functions emulados. El proyecto remoto sigue en Spark: estas reglas y funciones todavía no están desplegadas. La lectura del historial en iOS es el siguiente bloque; su pantalla sigue indicando que no está conectado.
+Android, iOS y backend usan el mismo historial privado por UID. iOS ya escucha resumen y últimas 50 partidas de Firestore, muestra carga/error/reintento y no presenta datos de caché o preferencias como confirmados. El proyecto remoto sigue en Spark: estas reglas y funciones todavía no están desplegadas.
 
 El menú Android muestra el retrato propio y un altavoz con estados de música activa/silenciada. El bloque online está centrado como en iOS. Ambas tarjetas encuadran las ilustraciones por la cara, con el mismo criterio del Perfil; Android coloca el retrato arriba del nombre con texto grande.
 
@@ -14,7 +14,7 @@ La tarjeta de identidad de Android usa el perfil público confirmado por el serv
 - Resumen privado: `cuentas/{uid}`, con `schemaVersion: 1`, `partidas`, `victorias`, `ultimaPartidaEn` y `actualizadaEn`.
 - Registros privados: `cuentas/{uid}/historial/{recordId}`.
 - ID: `online_` o `local_` seguido del SHA-256 hexadecimal UTF-8 de `matchKey`.
-- Online: `matchKey = online:{partidaInicial.matchId}`. Local: `local:{codigo}:{startedAtEpochMs}:{initialPlayerCount}`.
+- Online: `matchKey = online:{partidaInicial.matchId}`. Android local: `local:{codigo}:{startedAtEpochMs}:{initialPlayerCount}`. iOS local: `local:ios:{UUID}`, fijado y persistido al comenzar.
 - Campos: `schemaVersion`, `uid`, `matchKey`, `origen` (local/online), `roomId`, `matchId`, `fechaLocalMs`, `mapKey`, `mapName`, `roleKey`, `roleName`, `won`, `participantCount`, `winner`, `finalizadaEn` (Timestamp), `contabilizada` (solo servidor).
 - Lectura: ordenar por `finalizadaEn` descendente y limitar a 50. Los contadores abarcan todo el historial, no solamente esos 50 registros. No requiere índice compuesto.
 - El resumen público `perfiles_publicos/{uid}.estadisticasPerfil` lo actualiza el backend. Editar el perfil conserva esos contadores.
@@ -31,7 +31,7 @@ El cliente conserva una cola de envíos pendientes por UID, para sobrevivir a un
 
 No se importan los contadores históricos del dispositivo: no tienen propietario verificable. Los invitados conservan únicamente su historial local existente. Las cuentas muestran registros leídos de Firebase, con estados de carga, error, envío pendiente y estadísticas en proceso.
 
-`borrarHistorialCuentaV1` elimina primero el perfil público y luego el historial privado al eliminar Firebase Auth. Esto impide que un evento atrasado recree la cuenta borrada.
+`borrarHistorialCuentaV1` elimina primero el perfil público y luego el historial privado al eliminar Firebase Auth. Esto impide que un evento atrasado recree la cuenta borrada. También elimina todas sus versiones de `profilePhotos/{uid}/`; el emulador nunca accede a un bucket remoto si falta el endpoint de Storage.
 
 ## Activación remota
 
@@ -40,7 +40,7 @@ No se importan los contadores históricos del dispositivo: no tienen propietario
 3. Con Blaze activo y los clientes actualizados, ejecutar `node scripts/prepare-firebase-release.cjs --apply`. Despliega explícitamente inicio, limpieza e historial del repositorio, espera su confirmación y después publica las reglas e índices de Firestore. Ante un fallo se detiene antes de la siguiente etapa. No activa facturación ni crea recursos de Storage. Para publicar también sus reglas, añadir `--storage` una vez que exista el bucket: verifica su propietario antes del despliegue.
 4. Instalar una compilación normal, sin `traidoresOnlineAuthorityEmulator`.
 5. Terminar una partida online con dos cuentas, revisar los dos historiales y recuperar uno en otra sesión. Comprobar una local, un reintento y una partida cancelada.
-6. Conectar iOS a los mismos documentos y UID; no crear otro contador ni importar preferencias del teléfono. La subida de fotos de iOS también continúa pendiente: sus métodos reales actualmente devuelven una función no disponible.
+6. Habilitar Storage en ambas compilaciones solo después de configurar bucket/reglas: Android `-PtraidoresProfileStorage=true`; iOS `TRAIDORES_PROFILE_STORAGE_ENABLED = YES`. Verificar recuperación con el mismo UID en ambos sistemas. La conexión iOS ya está implementada; el gameplay online de iOS continúa pendiente.
 
 Los cambios Android y las reglas deben publicarse de forma coordinada. Las nuevas reglas reservan estadísticas del perfil al servidor; un cliente antiguo que intente cambiarlas recibirá un rechazo. Los payloads actuales de perfil de Android/iOS omiten esas estadísticas.
 
@@ -75,4 +75,16 @@ Esto elimina operaciones repetidas en los clientes normales, pero no es una prot
 
 Verificación de esta optimización: Android ensamblado y 691 pruebas unitarias sin fallos; backend 21 pruebas sin fallos; iOS `testRealAccountAndProfileAgainstEmulators` aprobado, con una nueva comprobación de que repetir el mismo borrador conserva `actualizadaEn` en el documento remoto emulado. La consulta de preparación y el intento con `--apply` en Spark terminaron sin desplegar: la comprobación de facturación detuvo este último antes de ejecutar Firebase deploy.
 
-La preparación y el despliegue son estados diferentes. No puede completarse el despliegue de Functions/Storage en Spark. Tampoco debe presentarse como terminado todo el online de iOS: cuenta y perfil están conectados; historial, fotos y gameplay aún requieren trabajo y aceptación real.
+La preparación y el despliegue son estados diferentes. No puede completarse el despliegue de Functions/Storage en Spark. Tampoco debe presentarse como terminado todo el online de iOS: cuenta, perfil, historial y publicación de fotos están conectados y se prueban con emuladores; requieren despliegue y aceptación con el proyecto remoto. El gameplay online de iOS continúa pendiente.
+
+## Conexión iOS y publicación duradera — 4/10 noche
+
+`FirebaseAccountHistory` limita sus escuchas a la pantalla Perfil y al UID actual. Al cambiar Auth elimina los datos del usuario anterior. Un corte de red al cargar muestra error y reintento, nunca contadores locales inventados. `LocalGameStore` fija UID e ID al comenzar, conserva ambos en el guardado y encola el resultado al terminar. Recuperar un guardado finalizado consulta el ID canónico existente antes de escribir: el trigger cuenta una sola vez. Una partida finalizada después de cambiar de cuenta espera en la cola del UID inicial.
+
+Las fotos se preparan en JPEG de 512 × 512, hasta 256 KiB y sin metadatos del original. Cada plataforma conserva los bytes pendientes por UID y revisión, sobrevive al cierre de proceso y serializa las publicaciones: un ACK viejo no borra una selección nueva. El envío de nombre/banner/descripción omite los campos de foto. El flag remoto sigue apagado; las pruebas Debug solo lo habilitan con endpoints explícitos de emuladores.
+
+Verificación de backend con Auth/Firestore/Functions/Storage emulados: 21 pruebas unitarias y 5 integraciones aprobadas, incluyendo triggers de resultado local/online y eliminación de todas las fotos de una cuenta sin tocar otra. Android: driver nativo Debug aprobado para compresión sin GPS, cambios rápidos con Firestore sin red, aislamiento entre cuentas, lecturas remotas, recuperación después de cerrar proceso y eliminación de versiones.
+
+iOS: `testNativeHistoryAndPhotosAgainstEmulators` y `testNativeLocalResultsReachFirebase` aprobadas. Se ejecutaron servicios y SDK reales, descarga de otra cuenta, publicación y reemplazo, reintento tras cierre de proceso, historial privado, corte de red con reintento y auditoría de accesibilidad del historial. Se verificó visualmente la foto descargada del emulador en el Perfil. Los fixtures usan una foto de color sólido exclusivamente para comprobar los bytes: nunca se inyectan en una ejecución normal. Reglas de Storage/historial y contratos compartidos aprobados.
+
+Compilación iOS Release aprobada; los drivers y hooks de prueba solo existen en Debug. El flag de publicación de fotos conserva NO en la configuración compartida.

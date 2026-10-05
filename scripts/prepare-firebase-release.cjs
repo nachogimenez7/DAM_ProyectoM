@@ -55,7 +55,7 @@ async function main() {
   console.log("La app de producción debe incluir los payloads nuevos que reservan las estadísticas al servidor.");
   for (const stage of stages) console.log(`firebase ${stage.join(" ")}`);
   if (!args.includes("--apply")) {
-    console.log("Consulta terminada: no se desplegó nada. iOS aún requiere historial y fotos; su gameplay online sigue pendiente.");
+    console.log("Consulta terminada: no se desplegó nada. Historial y fotos están preparados en ambas apps; el gameplay online de iOS sigue pendiente.");
     return;
   }
   if (!billing.billingEnabled) throw new Error("Blaze debe activarse antes del despliegue. No se modificó el proyecto.");
