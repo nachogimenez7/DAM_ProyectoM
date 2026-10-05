@@ -272,7 +272,7 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(count.label.hasPrefix("6/"))
         app.buttons["lobby.map.grecia"].tap()
 
-        app.buttons["Opciones avanzadas"].tap()
+        app.buttons["lobby.advanced"].tap()
         let revealRoles = app.switches["Mostrar roles al morir o al expulsar"]
         XCTAssertTrue(revealRoles.waitForExistence(timeout: 3))
         XCTAssertEqual(revealRoles.value as? String, "0")
@@ -285,7 +285,7 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(apply.waitForNonExistence(timeout: 3))
 
         // Check that the change was applied before leaving the lobby.
-        app.buttons["Opciones avanzadas"].tap()
+        app.buttons["lobby.advanced"].tap()
         XCTAssertTrue(revealRoles.waitForExistence(timeout: 3))
         XCTAssertEqual(revealRoles.value as? String, "1")
         let cancel = app.buttons["CANCELAR"]
@@ -306,7 +306,7 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(count.waitForExistence(timeout: 3))
         XCTAssertTrue(count.label.hasPrefix("5/"))
         XCTAssertEqual(app.staticTexts["lobby.selectedMapName"].label, "GRECIA")
-        app.buttons["Opciones avanzadas"].tap()
+        app.buttons["lobby.advanced"].tap()
         XCTAssertTrue(revealRoles.waitForExistence(timeout: 3))
         XCTAssertEqual(revealRoles.value as? String, "0")
         XCTAssertEqual(app.switches["Mostrar votos individuales"].value as? String, "1")
@@ -550,6 +550,323 @@ final class LocalLobbyUITests: XCTestCase {
         add(sentScreenshot)
     }
 
+    /// Quick chat: phrases come from chips or «MÁS», players are chosen by tapping their
+    /// card, roles by tapping a role card. The killers' night chat has its own plan phrases.
+    func testQuickChatChoosesPlayersAndRolesByTheirCards() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
+        app.buttons["local.startGame"].tap()
+        let roleStart = app.buttons["role.start"]
+        XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
+        startMatch(app, roleStart)
+        let nightTransition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if nightTransition.exists {
+            XCTAssertTrue(nightTransition.waitForNonExistence(timeout: 3))
+        }
+
+        // Night: the killers' plan.
+        let firstCard = app.buttons["table.player.1"]
+        XCTAssertTrue(waitUntilHittable(firstCard, timeout: 6))
+        let firstName = String(firstCard.label.split(separator: ",").first ?? "")
+        quickChip(app, "Matemos a…")
+        XCTAssertTrue(app.otherElements["chat.quickPick"].waitForExistence(timeout: 2))
+        attach(app, "Mensajes rápidos · elegir carta de noche")
+        firstCard.tap()
+        XCTAssertTrue(app.staticTexts["Matemos a \(firstName)"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.otherElements["chat.quickPick"].exists)
+
+        firstCard.tap()
+        app.buttons["table.primaryAction"].tap()
+        app.buttons["table.dismissPrivateFeedback"].tap()
+        let transition = app.descendants(matching: .any)
+            .matching(identifier: "table.dayNightTransition").firstMatch
+        if transition.waitForExistence(timeout: 1) {
+            XCTAssertTrue(transition.waitForNonExistence(timeout: 3))
+        }
+        let dawnAnnouncement = app.descendants(matching: .any)
+            .matching(identifier: "table.dawnAnnouncement").firstMatch
+        if dawnAnnouncement.exists {
+            XCTAssertTrue(dawnAnnouncement.waitForNonExistence(timeout: 6))
+        }
+
+        // Day: a chip that needs a player.
+        XCTAssertTrue(waitUntilHittable(app.buttons["chat.quickMore"], timeout: 6))
+        attach(app, "Mensajes rápidos · debate")
+        quickChip(app, "Sospecho de…")
+        let card = app.buttons["table.player.2"]
+        XCTAssertTrue(waitUntilHittable(card, timeout: 3))
+        attach(app, "Mensajes rápidos · sospecho de")
+        let name = String(card.label.split(separator: ",").first ?? "")
+        card.tap()
+        XCTAssertTrue(app.staticTexts["Sospecho de \(name)"].waitForExistence(timeout: 3))
+
+        // «Soy…» opens the role cards.
+        quickChip(app, "Soy…")
+        let villager = app.buttons["chat.quickRole.aldeano"]
+        XCTAssertTrue(villager.waitForExistence(timeout: 2))
+        attach(app, "Mensajes rápidos · decir mi rol")
+        villager.tap()
+        let claim = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Soy '")).firstMatch
+        XCTAssertTrue(claim.waitForExistence(timeout: 3))
+
+        // «MÁS» → Informar una acción → Investigación → card → result.
+        app.buttons["chat.quickMore"].tap()
+        attach(app, "Mensajes rápidos · más")
+        let report = app.buttons["Informar una acción…"]
+        // With accessibility text the menu is taller than the screen.
+        for _ in 0..<4 where !(report.exists && report.isHittable) { app.swipeUp() }
+        report.tap()
+        app.buttons["Investigación…"].tap()
+        XCTAssertTrue(waitUntilHittable(card, timeout: 3))
+        card.tap()
+        app.buttons["INOCENTE"].tap()
+        XCTAssertTrue(app.staticTexts["Investigué a \(name) y me dio inocente"].waitForExistence(timeout: 3))
+
+        // Cancelling leaves the table as it was.
+        quickChip(app, "Sospecho de…")
+        app.buttons["chat.quickCancel"].tap()
+        XCTAssertFalse(app.otherElements["chat.quickPick"].exists)
+        attach(app, "Mensajes rápidos · enviados")
+    }
+
+    /// The header gear opens the general options (sound, text size, reports), like Android's
+    /// lobby; match settings stay under OPCIONES AVANZADAS.
+    func testLobbyGearOpensGeneralOptions() throws {
+        let app = launchLobby()
+        app.buttons["lobby.options"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["table.options.panel"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["table.options.report"].exists)
+        XCTAssertFalse(app.buttons["table.options.exit"].exists)
+        attach(app, "Lobby · opciones generales")
+        app.buttons["table.options.close"].tap()
+        XCTAssertTrue(app.buttons["lobby.advanced"].waitForExistence(timeout: 3))
+    }
+
+    /// A practice role needs its map and minimum players, with the reason in the picker
+    /// and a clear notice instead of silently dealing another role.
+    func testPracticeRoleRequiresItsMapAndPlayers() throws {
+        let app = launchLobby()
+        app.buttons["lobby.map.pampa"].tap()
+        choosePracticeRole(app, "Alcald", requirement: "desde 8 jugadores")
+        app.buttons["local.startGame"].tap()
+        XCTAssertTrue(app.staticTexts["No se puede iniciar"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'necesita al menos 8 jugadores'")).firstMatch.exists)
+        attach(app, "Rol de práctica · faltan jugadores")
+        app.buttons["ENTENDIDO"].tap()
+
+        choosePracticeRole(app, "Bufón", requirement: "solo Medieval")
+        app.buttons["local.startGame"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'solo existe en el mapa Medieval'")).firstMatch
+            .waitForExistence(timeout: 3))
+        app.buttons["ENTENDIDO"].tap()
+
+        // With the map and enough players the role is dealt.
+        app.buttons["lobby.map.medieval"].tap()
+        for _ in 0..<3 { app.buttons["lobby.addPlayer"].tap() }
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        if start.waitForExistence(timeout: 8), !start.isHittable {
+            for _ in 0..<4 where !start.isHittable { app.swipeUp() }
+        }
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] 'BUFÓN'")).firstMatch.waitForExistence(timeout: 3))
+    }
+
+    /// Role names change per map («Alcaldesa» in Pampa), so match the start and the requirement.
+    private func choosePracticeRole(_ app: XCUIApplication, _ role: String, requirement: String) {
+        app.buttons["lobby.advanced"].tap()
+        let picker = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Tu rol' OR label CONTAINS 'Al azar' OR label CONTAINS '·'")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 3))
+        picker.tap()
+        let option = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@",
+                                                      role, requirement)).firstMatch
+        for _ in 0..<4 where !(option.exists && option.isHittable) { app.swipeUp() }
+        XCTAssertTrue(option.waitForExistence(timeout: 2))
+        option.tap()
+        let apply = app.buttons["APLICAR"]
+        for _ in 0..<5 where !apply.isHittable { app.swipeUp() }
+        apply.tap()
+        XCTAssertTrue(apply.waitForNonExistence(timeout: 3))
+    }
+
+    /// Emotes: only in the day's public phases, two per round ten seconds apart, and the
+    /// bots react too.
+    func testEmotesInTheDebateWithLimits() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=aldeano", "-ui-testing-emotes"])
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        let transition = app.descendants(matching: .any).matching(identifier: "table.dayNightTransition").firstMatch
+        if transition.exists { XCTAssertTrue(transition.waitForNonExistence(timeout: 4)) }
+        let emotes = app.buttons["table.emotes"]
+        XCTAssertTrue(waitUntilHittable(emotes, timeout: 6))
+        emotes.tap()
+        XCTAssertTrue(app.staticTexts["Los emotes se usan durante el debate y la votación."].waitForExistence(timeout: 2))
+
+        skipToHumanNightTurn(app)
+        for _ in 0..<6 where !waitForPhase(app, containing: "DEBATE", timeout: 2) {
+            let announcement = app.descendants(matching: .any).matching(identifier: "table.dawnAnnouncement").firstMatch
+            if announcement.exists { _ = announcement.waitForNonExistence(timeout: 8) }
+        }
+        XCTAssertTrue(waitUntilHittable(emotes, timeout: 6))
+        emotes.tap()
+        let palette = app.descendants(matching: .any)["table.emotePalette"]
+        XCTAssertTrue(palette.waitForExistence(timeout: 2))
+        attach(app, "Emotes · paleta")
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'table.emote.'")).firstMatch.tap()
+        XCTAssertFalse(palette.exists)
+        attach(app, "Emotes · burbuja propia")
+        emotes.tap()
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'table.emote.'")).firstMatch.tap()
+        let cooldown = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Esperá'")).firstMatch
+        XCTAssertTrue(cooldown.waitForExistence(timeout: 2))
+        // Bots react every 5–10 seconds.
+        sleep(9)
+        attach(app, "Emotes · bots")
+    }
+
+    /// The Desertor picks a side before EMPEZAR appears.
+    func testDeserterChoosesASideBeforeStarting() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=desertor"])
+        app.buttons["local.startGame"].tap()
+        let town = app.buttons["role.deserter.town"]
+        XCTAssertTrue(town.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["role.start"].exists)
+        attach(app, "Desertor · elegir bando")
+        town.tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        startMatch(app, start)
+    }
+
+    /// The Alcalde reveals himself in the debate after confirming.
+    func testMayorRevealsDuringTheDebate() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=alcalde"])
+        startAndReachDay(app)
+        let reveal = app.buttons["ability.mayor"]
+        XCTAssertTrue(waitUntilHittable(reveal, timeout: 6))
+        reveal.tap()
+        app.buttons["REVELARME"].tap()
+        let announced = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'se reveló como Alcalde'")).firstMatch
+        XCTAssertTrue(announced.waitForExistence(timeout: 3))
+        XCTAssertFalse(reveal.exists)
+        attach(app, "Alcalde revelado")
+    }
+
+    /// The Payador opens a Contrapunto by tapping two cards and then points at one.
+    func testPayadorOpensAndClosesAContrapunto() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=payador"])
+        app.buttons["lobby.map.pampa"].tap()
+        startAndReachDay(app)
+        let open = app.buttons["ability.contrapunto"]
+        XCTAssertTrue(waitUntilHittable(open, timeout: 6))
+        open.tap()
+        let first = app.buttons["table.player.1"], second = app.buttons["table.player.2"]
+        XCTAssertTrue(waitUntilHittable(first, timeout: 3))
+        attach(app, "Payador · elegir contrapunto")
+        first.tap()
+        second.tap()
+        XCTAssertTrue(waitForPhase(app, containing: "CONTRAPUNTO"))
+        attach(app, "Payador · contrapunto abierto")
+        let pointed = String(first.label.split(separator: ",").first ?? "")
+        first.tap()
+        XCTAssertTrue(waitForPhase(app, containing: "VOTACIÓN"))
+        let marked = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "\(pointed) quedó señalado")).firstMatch
+        XCTAssertTrue(marked.exists || app.descendants(matching: .any)["table.votingPrompt"].exists)
+    }
+
+    /// The Oráculo, from the second night, invokes a dead player into the next debate.
+    func testOracleInvokesADeadPlayerOnTheSecondNight() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=oraculo", "-ui-testing-finish-match"])
+        app.buttons["lobby.map.grecia"].tap()
+        // 13 players deal two Asesinos and a Espía: one expulsion cannot end the match
+        // before the second night.
+        for _ in 0..<8 { app.buttons["lobby.addPlayer"].tap() }
+        startAndReachDay(app)
+        let primary = app.buttons["table.primaryAction"]
+        let targetCard = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                         "table.player.", "Objetivo disponible")).firstMatch
+        for _ in 0..<40 {
+            if primary.exists, primary.label == "GUARDAR PODER" { break }
+            let transition = app.descendants(matching: .any).matching(identifier: "table.dayNightTransition").firstMatch
+            if transition.exists { _ = transition.waitForNonExistence(timeout: 6); continue }
+            let feedback = app.buttons["table.dismissPrivateFeedback"]
+            if feedback.exists { feedback.tap(); continue }
+            let announcement = app.descendants(matching: .any).matching(identifier: "table.dawnAnnouncement").firstMatch
+            if announcement.exists { _ = announcement.waitForNonExistence(timeout: 8); continue }
+            let next = app.buttons["table.voteContinue"]
+            if next.exists, next.label != "", tapCeremonyButton(next) { continue }
+            guard primary.exists, primary.isHittable else { sleep(1); continue }
+            if primary.label.hasPrefix("TU VOTO") { sleep(1); continue }
+            if (primary.label.hasPrefix("LISTOS") || primary.label == "SALTAR NOCHE"), primary.isEnabled {
+                primary.tap(); continue
+            }
+            if app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN"), targetCard.exists, targetCard.isHittable {
+                targetCard.tap(); continue
+            }
+            sleep(1)
+        }
+        XCTAssertEqual(primary.label, "GUARDAR PODER")
+        XCTAssertTrue(waitUntilHittable(targetCard, timeout: 3))
+        attach(app, "Oráculo · invocar")
+        let guestCard = app.buttons[targetCard.identifier]
+        targetCard.tap()
+        XCTAssertEqual(primary.label, "INVOCAR")
+        primary.tap()
+        XCTAssertTrue(app.staticTexts["INVOCACIÓN REGISTRADA"].waitForExistence(timeout: 3))
+        app.buttons["table.dismissPrivateFeedback"].tap()
+        // The invoked player's card carries the public mark during the debate.
+        let invoked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS 'invocado'"),
+                                                object: guestCard)
+        XCTAssertEqual(XCTWaiter.wait(for: [invoked], timeout: 20), .completed)
+        XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
+        attach(app, "Oráculo · invitado en el debate")
+    }
+
+    private func startAndReachDay(_ app: XCUIApplication) {
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        let transition = app.descendants(matching: .any).matching(identifier: "table.dayNightTransition").firstMatch
+        if transition.exists { XCTAssertTrue(transition.waitForNonExistence(timeout: 4)) }
+        skipToHumanNightTurn(app)
+        for _ in 0..<6 where !waitForPhase(app, containing: "DEBATE", timeout: 2) {
+            if transition.exists { _ = transition.waitForNonExistence(timeout: 4) }
+            let announcement = app.descendants(matching: .any).matching(identifier: "table.dawnAnnouncement").firstMatch
+            if announcement.exists { _ = announcement.waitForNonExistence(timeout: 8) }
+            let feedback = app.buttons["table.dismissPrivateFeedback"]
+            if feedback.exists { feedback.tap() }
+        }
+        XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
+    }
+
+    /// Taps the vote ceremony button. A full-screen system "Toolbar" element sometimes makes
+    /// XCTest report it as covered although real touches reach it, so fall back to its
+    /// on-screen coordinate once it has a valid frame.
+    @discardableResult
+    private func tapCeremonyButton(_ button: XCUIElement, timeout: TimeInterval = 1) -> Bool {
+        if waitUntilHittable(button, timeout: timeout) { button.tap(); return true }
+        guard button.exists, !button.frame.isEmpty, button.frame.minY > 0 else { return false }
+        button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        return true
+    }
+
+    /// Chips are visible at regular sizes; with accessibility text they live in the menu.
+    private func quickChip(_ app: XCUIApplication, _ title: String) {
+        let chip = app.buttons[title].firstMatch
+        if !(chip.exists && chip.isHittable) { app.buttons["chat.quickMore"].tap() }
+        XCTAssertTrue(chip.waitForExistence(timeout: 2))
+        chip.tap()
+    }
+
+    private func attach(_ app: XCUIApplication, _ name: String) {
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testChatBackgroundPreviewForEveryMap() throws {
         for map in ["pampa", "grecia", "medieval"] {
             let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
@@ -779,14 +1096,15 @@ final class LocalLobbyUITests: XCTestCase {
             let ceremony = app.descendants(matching: .any).matching(identifier: "table.voteCeremony").firstMatch
             if ceremony.exists {
                 XCTAssertTrue(next.waitForExistence(timeout: realTime ? 14 : 8))
-                XCTAssertTrue(waitUntilHittable(next, timeout: realTime ? 14 : 8))
+                let label = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != ''"), object: next)
+                _ = XCTWaiter.wait(for: [label], timeout: realTime ? 14 : 8)
                 if realTime && app.staticTexts["table.voteCeremony.title"].label.contains("FUE EXPULSADO") {
                     let shot = XCTAttachment(screenshot: app.screenshot())
                     shot.name = "Expulsión completa con tiempos reales"
                     shot.lifetime = .keepAlways
                     add(shot)
                 }
-                next.tap()
+                XCTAssertTrue(tapCeremonyButton(next, timeout: realTime ? 14 : 8))
                 continue
             }
             let primary = app.buttons["table.primaryAction"]
@@ -860,6 +1178,10 @@ final class LocalLobbyUITests: XCTestCase {
     /// Taps EMPEZAR once it accepts touches and checks that the match really left the
     /// role reveal; retries once if SwiftUI swallowed the tap during the panel transition.
     private func startMatch(_ app: XCUIApplication, _ roleStart: XCUIElement) {
+        // With large text the role panel scrolls; bring EMPEZAR into view first.
+        if roleStart.waitForExistence(timeout: 8), !roleStart.isHittable {
+            for _ in 0..<6 where !roleStart.isHittable { app.swipeUp() }
+        }
         XCTAssertTrue(waitUntilHittable(roleStart, timeout: 8))
         for _ in 0..<2 {
             roleStart.tap()

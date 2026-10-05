@@ -22,20 +22,25 @@ struct MatchResultView: View {
     @State private var footerHeight: CGFloat = 73
 
     private var accent: Color { Color(hex: winner == .town ? "#8FCB91" : "#8F2633") }
-    private var winners: [ClassicPlayer] { game.players.filter { team(of: $0) == winner } }
-    private var humanWon: Bool { team(of: game.human) == winner }
+    /// The winning side plus a Bufón who won by being expelled.
+    private var winners: [ClassicPlayer] { game.players.filter { team(of: $0) == winner || specialWinner($0) } }
+    /// Everyone else, so the whole table learns who had each role.
+    private var losers: [ClassicPlayer] { game.players.filter { !winners.contains($0) } }
+    private let loserAccent = Color(hex: "#A89A82")
+    /// Covers the Desertor's final side and the Bufón expelled by the town.
+    private var humanWon: Bool { game.humanWon }
     private var title: String { winner == .town ? "VICTORIA DEL PUEBLO" : "VICTORIA DE LOS TRAIDORES" }
     private var subtitle: String {
         winner == .town ? "La plaza vuelve a respirar." : "Las sombras reclaman el pueblo."
     }
-    private var metrics: WinnerCardMetrics { .init(count: winners.count) }
-    private var columns: Int {
-        guard !textSize.isAccessibilitySize else { return 1 }
-        let rows = winners.count <= 2 ? 1 : winners.count <= 4 ? 2 : winners.count <= 8 ? 3 : winners.count <= 12 ? 4 : 5
-        return max(1, Int(ceil(Double(winners.count) / Double(rows))))
-    }
-    private var rows: [[ClassicPlayer]] {
-        stride(from: 0, to: winners.count, by: columns).map { Array(winners[$0..<min($0 + columns, winners.count)]) }
+    private func rows(of players: [ClassicPlayer]) -> [[ClassicPlayer]] {
+        let count = players.count
+        let columns: Int
+        if textSize.isAccessibilitySize { columns = 1 } else {
+            let rows = count <= 2 ? 1 : count <= 4 ? 2 : count <= 8 ? 3 : count <= 12 ? 4 : 5
+            columns = max(1, Int(ceil(Double(count) / Double(rows))))
+        }
+        return stride(from: 0, to: count, by: columns).map { Array(players[$0..<min($0 + columns, count)]) }
     }
 
     var body: some View {
@@ -142,10 +147,23 @@ struct MatchResultView: View {
     }
 
     private var winnerCards: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
+            teamSection("EQUIPO GANADOR", players: winners, accent: accent)
+            if !losers.isEmpty {
+                teamSection("EQUIPO PERDEDOR", players: losers, accent: loserAccent, compact: true)
+                    .accessibilityIdentifier("table.result.losers")
+            }
+        }
+    }
+
+    private func teamSection(_ title: String, players: [ClassicPlayer], accent: Color,
+                             compact: Bool = false) -> some View {
+        // The losing side stays secondary: never larger than a five-card grid.
+        let metrics = WinnerCardMetrics(count: compact ? max(players.count, 5) : players.count)
+        return VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Rectangle().fill(accent.opacity(190.0 / 255)).frame(height: 1)
-                Text("EQUIPO GANADOR")
+                Text(title)
                     .font(sans(12))
                     .foregroundStyle(accent)
                     .lineLimit(textSize.isAccessibilitySize ? nil : 1)
@@ -155,9 +173,10 @@ struct MatchResultView: View {
                 Rectangle().fill(accent.opacity(190.0 / 255)).frame(height: 1)
             }
             .padding(.horizontal, 6).frame(minHeight: 28).padding(.bottom, 3)
-            ForEach(rows.indices, id: \.self) { index in
+            let grid = rows(of: players)
+            ForEach(grid.indices, id: \.self) { index in
                 HStack(alignment: .top, spacing: 0) {
-                    ForEach(rows[index]) { player in winnerCard(player) }
+                    ForEach(grid[index]) { player in winnerCard(player, metrics: metrics, accent: accent) }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 5)
@@ -165,8 +184,9 @@ struct MatchResultView: View {
         }
     }
 
-    private func winnerCard(_ player: ClassicPlayer) -> some View {
+    private func winnerCard(_ player: ClassicPlayer, metrics: WinnerCardMetrics, accent: Color) -> some View {
         let visible = visibleCards.contains(player.id)
+        let role = roleLabel(player)
         return VStack(spacing: 0) {
             Image(player.role.classicImage(on: game.map))
                 .resizable().scaledToFit()
@@ -179,12 +199,12 @@ struct MatchResultView: View {
                 .shadow(color: .black.opacity(player.alive ? 0.3 : 0), radius: 4, y: 4)
                 .accessibilityHidden(true)
             Text(player.name)
-                .font(sans(fittedLabelSize(player.name, base: metrics.nameSize)))
+                .font(sans(fittedLabelSize(player.name, base: metrics.nameSize, width: metrics.width)))
                 .foregroundStyle(Color(hex: "#FFF0C7"))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: metrics.nameHeight * textScale)
-            Text(player.role.classicTitle(on: game.map).uppercased())
-                .font(sans(fittedLabelSize(player.role.classicTitle(on: game.map).uppercased(), base: metrics.roleSize)))
+            Text(role)
+                .font(sans(fittedLabelSize(role, base: metrics.roleSize, width: metrics.width)))
                 .foregroundStyle(Color(hex: "#F3D488"))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: metrics.roleHeight * textScale)
@@ -197,7 +217,7 @@ struct MatchResultView: View {
         .offset(y: visible || reduceMotion ? 0 : 16)
         .scaleEffect(visible || reduceMotion ? 1 : 0.9)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(player.name), \(player.role.classicTitle(on: game.map)), \(player.alive ? "en pie" : "eliminado")")
+        .accessibilityLabel("\(player.name), \(role.lowercased()), \(player.alive ? "en pie" : "eliminado")")
         .accessibilityIdentifier("table.result.player.\(player.id)")
         .accessibilityHidden(!visible)
     }
@@ -328,7 +348,7 @@ struct MatchResultView: View {
         guard !Task.isCancelled else { return }
         withAnimation(.easeOut(duration: 0.36)) { headingsShown = true }
         try? await Task.sleep(for: .milliseconds(360))
-        for player in winners {
+        for player in winners + losers {
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.3)) { _ = visibleCards.insert(player.id) }
             try? await Task.sleep(for: .milliseconds(95))
@@ -343,8 +363,24 @@ struct MatchResultView: View {
         AccessibilityNotification.Announcement("\(title). \(humanWon ? "Victoria" : "Derrota").").post()
     }
 
+    private func specialWinner(_ player: ClassicPlayer) -> Bool {
+        game.specialVictories.contains { $0.playerID == player.id }
+    }
+
+    /// Role line under each name; the neutral roles say how they ended.
+    private func roleLabel(_ player: ClassicPlayer) -> String {
+        let title = player.role.classicTitle(on: game.map).uppercased()
+        if specialWinner(player) { return "GANÓ COMO \(title)" }
+        if player.role == .deserter, let side = game.deserterTeam {
+            return "\(title) · \(side == .town ? "PUEBLO" : "TRAIDORES")"
+        }
+        return title
+    }
+
+    /// A Desertor only stands with the winners if he chose that side and survived.
     private func team(of player: ClassicPlayer) -> RoleTeam {
-        RoleCatalog.all.first { $0.id == player.role }?.team ?? .town
+        if player.role == .deserter { return player.alive ? (game.deserterTeam ?? .neutral) : .neutral }
+        return RoleCatalog.all.first { $0.id == player.role }?.team ?? .town
     }
 
     private func sans(_ size: CGFloat, weight: UIFont.Weight = .bold, italic: Bool = false) -> Font {
@@ -352,12 +388,12 @@ struct MatchResultView: View {
         return .custom(name, size: size, relativeTo: .body)
     }
 
-    private func fittedLabelSize(_ text: String, base: CGFloat) -> CGFloat {
+    private func fittedLabelSize(_ text: String, base: CGFloat, width cardWidth: CGFloat) -> CGFloat {
         guard !textSize.isAccessibilitySize else { return base }
         let width = (text as NSString).size(withAttributes: [.font: UIFont(name: "Roboto-Bold", size: base) ?? UIFont.systemFont(ofSize: base, weight: .bold)]).width
         // Android auto-sizes each one-line label down to 7sp. iOS stops at the
         // legibility floor and lets a longer label wrap instead.
-        return min(base, max(WinnerCardMetrics.minimumTextSize, base * (metrics.width - 8) / max(1, width)))
+        return min(base, max(WinnerCardMetrics.minimumTextSize, base * (cardWidth - 8) / max(1, width)))
     }
 }
 

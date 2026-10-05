@@ -450,10 +450,12 @@ struct ProfileView: View {
                     }
                     Text("El estilo cambia el aspecto de tu perfil; no afecta a las partidas.")
                         .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
+                    betaCosmeticsNotice
                 } else if selected == .emotes {
                     ProfileEmoteSelector(ids: emoteIDs.split(separator: ",").map(String.init)) { ids in
                         emoteIDs = ids.joined(separator: ",")
                     }
+                    betaCosmeticsNotice
                 } else if selected == .achievements {
                     Text("Estos son los diez logros del juego. Se desbloquean con progreso real; todavía no se pueden destacar en esta versión.")
                         .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
@@ -609,6 +611,12 @@ struct ProfileView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(confirmed ? value : "sin datos")")
         .accessibilityIdentifier("profile.stats.\(label)")
+    }
+
+    private var betaCosmeticsNotice: some View {
+        Text("Durante la beta, algunos cosméticos están disponibles para todos. Su disponibilidad puede cambiar en futuras versiones.")
+            .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
+            .accessibilityIdentifier("profile.betaCosmeticsNotice")
     }
 
     @ViewBuilder private var historyStatus: some View {
@@ -984,7 +992,8 @@ struct ProfilePortrait: View {
     }
 }
 
-private struct ProfileEmoteImage: View {
+/// Shared with the match: the animated «6 7» alternates its two frames.
+struct ProfileEmoteImage: View {
     let emote: ProfileEmoteContent
     @Environment(\.reduceAnimations) private var reduceMotion
     @State private var frame = "a"

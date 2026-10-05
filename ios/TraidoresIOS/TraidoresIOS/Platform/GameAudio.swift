@@ -63,6 +63,12 @@ final class GameAudio {
         playback.play(effect, volume: Float(min(max(volume, 0), 1)) * scale, rate: rate)
     }
 
+    /// Android's EmoteSoundEffects: one emote channel where the latest sound wins.
+    func playEmote(_ key: String, volume: Double) {
+        guard volume > 0 else { return }
+        playback.playEmote(key, volume: Float(min(max(volume, 0), 1)))
+    }
+
     func stop() { playback.stop() }
 }
 
@@ -76,6 +82,8 @@ private final class GameAudioPlayback: @unchecked Sendable {
     private var musicGeneration = 0
     private var effectData: [String: Data] = [:]
     private var effectPlayers: [AVAudioPlayer] = []
+    private var emotePlayer: AVAudioPlayer?
+    private var lastEmoteAt = Date.distantPast
 
     func setMusic(_ requested: GameAudio.Music?, volume: Float) {
         queue.async { [self] in setMusicOnQueue(requested, volume: volume) }
@@ -85,8 +93,35 @@ private final class GameAudioPlayback: @unchecked Sendable {
         queue.async { [self] in playOnQueue(effect, volume: volume, rate: rate) }
     }
 
+    func playEmote(_ key: String, volume: Float) {
+        queue.async { [self] in
+            // Same 300 ms throttle as Android, so a burst of bot emotes stays readable.
+            let now = Date()
+            guard now.timeIntervalSince(lastEmoteAt) >= 0.3 else { return }
+            let name = "sfx_emote_\(key)"
+            guard let url = Self.url(name, "mp3") ?? Self.url(name, "m4a") else {
+                logger.error("Falta el sonido de emote \(name, privacy: .public).")
+                return
+            }
+            lastEmoteAt = now
+            do {
+                emotePlayer?.stop()
+                let player = try AVAudioPlayer(contentsOf: url)
+                player.volume = volume
+                player.prepareToPlay()
+                activate()
+                player.play()
+                emotePlayer = player
+            } catch {
+                logger.error("No se pudo reproducir \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     func stop() {
         queue.async { [self] in
+            emotePlayer?.stop()
+            emotePlayer = nil
             musicGeneration += 1
             musicPlayer?.stop()
             musicPlayer = nil

@@ -34,7 +34,8 @@ struct SpyClassicGameTests {
         game.players[assassin].alive = false
         #expect(ClassicGame.winner(for: game.players) == nil)
 
-        for player in game.players where player.role == .villager {
+        // Remove the added town specials too: this fixture must remain at exact 2-vs-2 parity.
+        for player in game.players where [.villager, .mayor, .payador].contains(player.role) {
             game.players[player.id].alive = false
         }
         #expect(ClassicGame.winner(for: game.players) == .traitors)

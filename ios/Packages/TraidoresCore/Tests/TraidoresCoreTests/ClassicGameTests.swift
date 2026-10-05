@@ -115,7 +115,8 @@ struct ClassicGameTests {
             #expect(game.players.filter { $0.role == .mercenary }.count == (count >= 7 ? 1 : 0))
             #expect(game.players.filter { $0.role == .villager }.count ==
                     count - (3 + (count >= 13 ? 1 : 0) +
-                             (count >= 7 ? 1 : 0) + (count >= 10 ? 1 : 0)))
+                             (count >= 7 ? 1 : 0) + (count >= 10 ? 1 : 0) +
+                             (count >= 8 ? 2 : 0) + (count >= 14 ? 1 : 0)))
             #expect(try ClassicSave.decode(ClassicSave.encode(game)) == game)
         }
     }

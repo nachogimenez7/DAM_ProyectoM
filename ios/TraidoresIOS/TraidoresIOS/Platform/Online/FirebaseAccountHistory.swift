@@ -149,10 +149,10 @@ enum LocalAccountHistoryOutbox {
         guard let winner = game.winner, winner != .neutral else { return }
         var records = queue(uid)
         guard !records.contains(where: { $0.matchKey == matchKey }) else { return }
-        let team = RoleCatalog.all.first { $0.id == game.human.role }?.team
+        // humanWon covers the Desertor's final side and the Bufón's special victory.
         records.append(Record(matchKey: matchKey, fechaLocalMs: Int64(finishedAt.timeIntervalSince1970 * 1000),
             mapKey: game.map.rawValue, mapName: game.map.title, roleKey: game.human.role.rawValue,
-            roleName: game.human.role.classicTitle(on: game.map), won: team == winner,
+            roleName: game.human.role.classicTitle(on: game.map), won: game.humanWon,
             participantCount: game.players.count, winner: winner.rawValue))
         UserDefaults.menuStore.set(try? JSONEncoder().encode(records), forKey: key(uid))
         Task { await flush() }

@@ -116,6 +116,25 @@ final class LocalGameStore {
         save()
     }
 
+    // Role abilities (Alcalde, Desertor, Payador). The Oráculo and the Alcalde's tie
+    // decision go through `advance`, like the other night and target actions.
+    func revealMayor(revision: Int) { mutate { $0.revealMayor(expectedPhaseIndex: revision) } }
+    func chooseDeserterTeam(_ team: RoleTeam, revision: Int) {
+        mutate { $0.chooseDeserterTeam(team, expectedPhaseIndex: revision) }
+    }
+    func chooseContrapuntoPlayer(_ target: Int, revision: Int) {
+        mutate { $0.chooseContrapuntoPlayer(target, expectedPhaseIndex: revision) }
+    }
+    func pointContrapuntoPlayer(_ target: Int, revision: Int) {
+        mutate { $0.pointContrapuntoPlayer(target, expectedPhaseIndex: revision) }
+    }
+
+    private func mutate(_ action: (inout ClassicGame) -> Bool) {
+        guard var current = game, action(&current) else { return }
+        game = current
+        save()
+    }
+
     func cancel() {
         game = nil
         errorMessage = nil

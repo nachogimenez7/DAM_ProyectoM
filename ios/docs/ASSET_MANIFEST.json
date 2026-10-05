@@ -271,5 +271,89 @@
     "sourceSHA256": "94e4420eb01477e1b7c7dffbc05dedc09bbc9ecef1e5daeea47e204d90e5669e",
     "destinationSHA256": "1a1d323f2deec14285a38e34e299bfdfa50f917b9f763fe78913427609d83a43",
     "operation": "WebP to PNG with sips; no resize; original Android artwork"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_angry.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_angry.mp3",
+    "sourceSHA256": "cedd0afc42c0c471fed1d93378e74bd8eec7681e382a5149b02f3f33bbf6f1a1",
+    "destinationSHA256": "cedd0afc42c0c471fed1d93378e74bd8eec7681e382a5149b02f3f33bbf6f1a1",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_happy.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_happy.mp3",
+    "sourceSHA256": "981a6e0b972258abcb6e91be3babb856e0a9cfe0a7656ff7da5d286590862e84",
+    "destinationSHA256": "981a6e0b972258abcb6e91be3babb856e0a9cfe0a7656ff7da5d286590862e84",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_desertor_lengua.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_desertor_lengua.m4a",
+    "sourceSHA256": "4c3c4b7167efa7da69fc49efb71417026dcc83845c863c488ad5f1bc1d80d74c",
+    "destinationSHA256": "80bfe4695d23c1348d8e0832903b2579234aa7b0229b7cd61b71f939a9bc2a17",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_dormida.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_dormida.mp3",
+    "sourceSHA256": "84011c56ed701d034bccdfb790b10700da7d85eaffa507b53a4341173c8a52dc",
+    "destinationSHA256": "84011c56ed701d034bccdfb790b10700da7d85eaffa507b53a4341173c8a52dc",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_genio.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_genio.m4a",
+    "sourceSHA256": "7ca61660049ec53f1bf159912eed22a8818dcd59d6b01a428658e269da7b5c52",
+    "destinationSHA256": "c84767155be9051d7ddf3b1769f46c7d936944f61509ca206420af047567c5f6",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_hermosa_manana.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_hermosa_manana.mp3",
+    "sourceSHA256": "0ca5eed4bf36c6ed093837d616c54ccb1855bc077f849b6819128242bd66392b",
+    "destinationSHA256": "0ca5eed4bf36c6ed093837d616c54ccb1855bc077f849b6819128242bd66392b",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_mate.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_mate.m4a",
+    "sourceSHA256": "da572c73ddbb9b06c92ab7808199ce70449a966e224e91e74b61c87074820fc5",
+    "destinationSHA256": "dcbd0b331d799bf3cf38597d1cd6d8dbcd1f508e14b455c89c2db9604ec6561b",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_medico_timido.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_medico_timido.m4a",
+    "sourceSHA256": "ecfa0ab4a9cfdf4149d57af90ca6eb8dd398392aa11615df592ff47f15ec88dc",
+    "destinationSHA256": "ca1a97bd3f572dd29ffe1551c514836915fc7a4b9ffa0be9bffdc82d488a752a",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_oraculo_mmm_nie.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_oraculo_mmm_nie.m4a",
+    "sourceSHA256": "ba0782a59a90ac91d17232ba151f405260d077cc19fbe2feb495795d53c65f9c",
+    "destinationSHA256": "aff20af9027d79f697ed43055b76d13553666c32bb6eede0a128dd064bcad38a",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_six_seven.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_six_seven.m4a",
+    "sourceSHA256": "222276f8fffa01458f65d68511a0c645ffe16d7a7cab65e084a863045ebab196",
+    "destinationSHA256": "b19086411f1d491cecf0a4aa4efb05fdddc29a78e57e2d9b3aedb56bf05f4348",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_sad.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_sad.mp3",
+    "sourceSHA256": "3e2f387b8a00fc5e3f5849545d5fbd6546abe811da960a81deda4e418eeeb604",
+    "destinationSHA256": "3e2f387b8a00fc5e3f5849545d5fbd6546abe811da960a81deda4e418eeeb604",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_suspicious.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_suspicious.mp3",
+    "sourceSHA256": "d159cde10fc856fa1e677a66e44c80df3057894f96f60882e7d1f9fbac3c9126",
+    "destinationSHA256": "d159cde10fc856fa1e677a66e44c80df3057894f96f60882e7d1f9fbac3c9126",
+    "operation": "copy"
   }
 ]

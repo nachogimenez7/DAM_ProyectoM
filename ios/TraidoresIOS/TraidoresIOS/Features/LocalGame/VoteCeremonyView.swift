@@ -124,8 +124,23 @@ struct VoteCeremonyView: View {
     }
 
     private var candidates: [ClassicPlayer] {
-        let voted = Set(game.votes.values)
+        let voted = Set(weightedBallots.map(\.target))
         return game.players.filter { voted.contains($0.id) }
+    }
+
+    /// One seal per vote: the revealed Alcalde's ballot counts twice and the player the
+    /// Payador pointed at in the Contrapunto gets one more, from the Payador.
+    private var weightedBallots: [(voter: Int, target: Int)] {
+        var ballots = game.votes.sorted { $0.key < $1.key }.map { (voter: $0.key, target: $0.value) }
+        if let mayor = game.revealedMayorID, game.living.contains(where: { $0.id == mayor }),
+           let target = game.votes[mayor] {
+            ballots.append((voter: mayor, target: target))
+        }
+        if let pointed = game.payadorPointedPlayer,
+           let payador = game.players.first(where: { $0.role == .payador }) {
+            ballots.append((voter: payador.id, target: pointed))
+        }
+        return ballots
     }
 
     @ViewBuilder
@@ -158,26 +173,29 @@ struct VoteCeremonyView: View {
     private func voteCard(_ player: ClassicPlayer, size: CGSize, dense: Bool) -> some View {
         let voters = landed[player.id] ?? []
         let count = voters.count
+        // The voted player is the card's title; the seals underneath are the votes it got,
+        // so a voter's portrait is never mistaken for the candidate (user feedback 5/10).
         return VStack(spacing: 0) {
-            Image("card_back_traidores")
-                .resizable().scaledToFit()
-                .frame(width: dense ? 32 : 38, height: dense ? 44 : 52)
-                .frame(width: dense ? 42 : 52, height: dense ? 43 : 54)
             HStack(spacing: 3) {
                 InitialAvatar(name: player.name, isHuman: player.id == game.human.id, size: dense ? 15 : 20, fill: TraidoresTheme.gold)
                 Text(player.name)
-                    .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.text)
+                    .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
-            .frame(height: dense ? 15 : 20)
-            Text("\(count) \(count == 1 ? "VOTO" : "VOTOS")")
-                .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
+            .frame(height: dense ? 16 : 21)
+            Rectangle().fill(TraidoresTheme.gold.opacity(0.45)).frame(height: 1).padding(.horizontal, 4)
+            Image("card_back_traidores")
+                .resizable().scaledToFit()
+                .frame(width: dense ? 27 : 36, height: dense ? 36 : 50)
+                .frame(width: dense ? 42 : 52, height: dense ? 38 : 52)
+            Text("VOTOS: \(count)")
+                .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.text)
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(count)))
-                .frame(height: dense ? 15 : 18)
+                .frame(height: dense ? 14 : 17)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(game.advanced.showIndividualVotes ? 10 : 12), spacing: 2),
                                      count: dense ? 4 : 5), spacing: 2) {
-                ForEach(voters, id: \.self) { voter in
+                ForEach(Array(voters.enumerated()), id: \.offset) { _, voter in
                     VoteToken(initial: game.advanced.showIndividualVotes ? String(game.name(voter).prefix(1)) : nil, isHuman: voter == game.human.id)
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
@@ -309,9 +327,17 @@ struct VoteCeremonyView: View {
 
         // Same shuffle seed idea as Android: stable for this vote, different each round.
         var generator = SeededGenerator(seed: UInt64(game.round * 1_009 + game.voteRound * 97 + game.votes.count))
-        let ballots = game.votes.sorted { $0.key < $1.key }.shuffled(using: &generator)
+        let ballots = weightedBallots.shuffled(using: &generator)
+        if game.voteRound == 3, let target = game.eliminationTarget {
+            // The revealed Alcalde broke a repeated tie: no ballots, just his decision.
+            title = "DECISIÓN DEL ALCALDE"
+            subtitle = "El empate se repitió."
+            notice = "El Alcalde eligió expulsar a \(game.name(target))."
+            await ready("VER EXPULSIÓN")
+            return
+        }
         if voiceOver {
-            landed = Dictionary(grouping: ballots, by: \.value).mapValues { $0.map(\.key) }
+            landed = Dictionary(grouping: ballots, by: \.target).mapValues { $0.map(\.voter) }
         } else {
             // One seal at a time, a little slower than Android's 420 ms so each vote reads.
             try? await Task.sleep(for: RevealTiming.seconds(0.7))

@@ -52,6 +52,51 @@ Sin prioridad por ahora: nombre y color de estilo del perfil en el panel inferio
 - Accesibilidad corregida: chat con estilos de texto que escalan (antes 12 pt fijos); con «Tamaño del texto: Normal» el tamaño del sistema pasa directo; botones enmarcados desde el estilo; estadísticas del perfil con color explícito.
 - Pruebas: `LocalLobbyUITests` 24/24, `MenuAccessibilityUITests` 5/5, núcleo 39/39.
 
+## Avance (5/10): mensajes rápidos y roles completos
+
+Objetivo acordado con el usuario: preparar el gameplay para el online. Lo que importa es la usabilidad, aunque los bots todavía no reaccionen a todo.
+
+- **Mensajes rápidos** (`TraidoresCore/QuickChat.swift`, con pruebas): son el catálogo de `BotQuickReplies` de Android, con tildes. Es lógica pura, independiente de `ClassicGame`; para el online se arma el `QuickChatContext` con el roster de la sala.
+  - Botones contextuales (hasta 3) y «MÁS» fijo a la derecha, con las 6 categorías de Android, en el mismo orden (`menuOrder(.fixed)`).
+  - En el chat de los asesinos aparece el «PLAN DE LOS ASESINOS».
+  - Para las frases que piden un jugador, se toca su carta en la mesa: las cartas siguen boca abajo y no se revela ningún rol. Para «Soy…», se tocan las cartas de los roles en juego, que ya son públicos en «PARTIDA ·…».
+  - Cada mensaje guarda una intención (`QuickChatIntent`) para la futura conversación de los bots.
+  - Con texto de accesibilidad, un solo botón «MENSAJES» abre el menú del sistema.
+- **Nombre del jugador:** es el del perfil, como en Android; ya no dice «Vos». Si un bot se llama igual, toma el nombre «Nico».
+- **Roles** (motor de Codex en `ClassicGame`, 29 pruebas nuevas; interfaz en `LocalGameView`):
+  - **Desertor:** elige bando antes de EMPEZAR y puede cambiarlo una vez, con confirmación.
+  - **Alcalde:** se revela con confirmación, su voto se cuenta doble y decide el segundo empate en la fase `.mayorTieBreak`, con las cartas marcadas EXPULSAR.
+  - **Payador:** usa «ABRIR CONTRAPUNTO» y toca dos cartas. En la fase `.counterpoint` solo hablan los dos elegidos, con un temporizador de la mitad del debate y como mínimo 15 s. El Payador toca la carta que señala, y esa recibe un sello extra en el recuento.
+  - **Oráculo:** a partir de la segunda noche invoca a un muerto o guarda su poder. Al invocado se lo marca INVOCADO en el debate.
+  - **Bufón:** si el pueblo lo expulsa, gana. El aviso dice «¡GANASTE COMO BUFÓN!» y la partida sigue.
+  - La victoria personal (`humanWon`) se usa en el resultado y en el historial de la cuenta.
+- **Reparto con texto grande:** el panel del rol se desplaza cuando no entra en pantalla (antes, EMPEZAR quedaba fuera de alcance).
+- Cosas chicas de Android: el lobby dice «PRACTICAR CONTRA LA IA» y Estilo y Emotes muestran el aviso de cosméticos de la beta.
+- **Pendiente:**
+  - La mesa en tamaño AX5 necesita una pasada propia: la cabecera, el título del chat y el panel inferior se desbordan desde antes de este bloque.
+  - Animación de victoria del Bufón (`JesterVictoryAnimator`).
+  - Conversación de los bots usando `QuickChatIntent`.
+  - Emotes en partida.
+
+### Correcciones tras la prueba en el iPhone (5/10)
+
+- **Rol de práctica:** como en el lobby de Android, cada rol exige su mapa y su mínimo de jugadores (Mercenario 7, Alcalde/Payador/Oráculo/Bufón 8, Espía 10, Desertor 14). El selector muestra el requisito («Alcaldesa · desde 8 jugadores», «Bufón · solo Medieval») y, si no se cumple, INICIAR PARTIDA avisa con «No se puede iniciar» y no reparte otro rol. Los argumentos `-ui-testing-role=` siguen forzando el rol para las pruebas.
+- **Engranaje del lobby:** abre las opciones generales (`TableOptionsPanel` sin «SALIR DE LA PARTIDA»), igual que el `AccessibilityOptionsDialog` del lobby de Android. Las reglas de la partida siguen en «OPCIONES AVANZADAS» (`lobby.advanced`).
+- **Votación sin voto propio:** si el jugador está eliminado o silenciado, el cartel dice «ESTÁS ELIMINADO» o «HOY NO PODÉS VOTAR» en lugar de invitar a tocar una carta.
+- **Recuento (pedido del usuario, que también se pasa a Android):** cada tarjeta lleva como título la foto y el nombre de quien recibe los votos; debajo van la carta, «VOTOS: N» y los sellos de quienes votaron.
+- **Resultado (pedido del usuario, que también se pasa a Android):** «EQUIPO GANADOR» y debajo «EQUIPO PERDEDOR», más compacto, con nombre y rol de cada jugador. El Bufón expulsado aparece entre los ganadores como «GANÓ COMO BUFÓN»; el Desertor muestra su bando final («DESERTOR · PUEBLO»).
+
+### Emotes en partida y nombres legibles (5/10)
+
+- **Emotes** (`TraidoresCore/Reactions.swift`, con pruebas; interfaz en `LocalGameView`, sección `Emotes`):
+  - Botón de emotes en el panel del jugador. Abre la paleta con los 4 emotes del Perfil (`menu.profileEmotes`).
+  - Solo funcionan en las fases públicas del día (debate, Contrapunto, votaciones y desempate del Alcalde), y no mientras hay una transición o un anuncio en pantalla.
+  - Límite de 2 por ronda y 10 s de espera entre uno y otro, con avisos («Esperá N s para otro emote», «Ya usaste tus emotes de esta ronda»).
+  - La burbuja va sobre la carta (o sobre el panel propio): aparece en 0,18 s, queda 3,65 s y se va. El «6 7» está animado.
+  - Los bots reaccionan cada 5 a 10 s con el set de su rol (Asesino medieval, Comisario gaucho; el resto usa el griego) y una emoción según la fase, como en Android. En las pruebas UI solo reaccionan con `-ui-testing-emotes`.
+  - Sonidos: `Scripts/prepare_emote_audio.py` copia los MP3 y convierte a AAC los OGG, que AVAudioPlayer no lee. Hay un canal propio donde el último emote gana, con un mínimo de 0,3 s entre sonidos.
+- **Nombres en la mesa:** llevan una plaquita oscura detrás, para que se lean sobre los mapas de día.
+
 ## Punto de partida para la próxima sesión (3/10)
 
 Continuidad adicional: [CONTINUIDAD_CODEX_2026-10-03.md](CONTINUIDAD_CODEX_2026-10-03.md), con el arreglo del botón, pruebas, ícono e instalación/lanzamiento en el iPhone 13. El audio en el dispositivo aún requiere escucha del usuario.
