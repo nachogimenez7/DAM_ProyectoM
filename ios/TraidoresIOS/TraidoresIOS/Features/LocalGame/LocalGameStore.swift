@@ -1,6 +1,8 @@
 import Foundation
 import Observation
 import TraidoresCore
+import FirebaseAuth
+import FirebaseCore
 
 @MainActor @Observable
 final class LocalGameStore {
@@ -12,6 +14,8 @@ final class LocalGameStore {
     private let finishedKey = "local.classic.finishedAt"
     private(set) var startedAt: Date?
     private(set) var finishedAt: Date?
+    private var accountOwnerUID: String?
+    private var accountMatchKey: String?
 
     var durationLabel: String {
         guard let startedAt else { return "—" }
@@ -26,6 +30,11 @@ final class LocalGameStore {
             game = try ClassicSave.decode(data)
             startedAt = defaults.object(forKey: startedKey) as? Date
             finishedAt = defaults.object(forKey: finishedKey) as? Date
+            accountOwnerUID = defaults.string(forKey: "local.classic.accountOwnerUID")
+            accountMatchKey = defaults.string(forKey: "local.classic.accountMatchKey")
+            if let game, let uid = accountOwnerUID, let matchKey = accountMatchKey, let finishedAt {
+                LocalAccountHistoryOutbox.record(game: game, uid: uid, matchKey: matchKey, finishedAt: finishedAt)
+            }
         }
         catch { errorMessage = "No se pudo recuperar la partida guardada. Podés comenzar una nueva." }
     }
@@ -39,6 +48,21 @@ final class LocalGameStore {
                            botNames: botNames)
         startedAt = Date()
         finishedAt = nil
+        // Capture ownership when starting, never when showing the result. Old saves and
+        // a match started as a guest cannot be adopted by a later registered account.
+        if UserDefaults.menuStore.string(forKey: "online.profileOwner") != nil {
+            // A returning account can start a local match before opening Profile/Online.
+            // Restore Auth from its keychain instead of treating that match as a guest.
+            FirebaseSetup.configureIfNeeded()
+        }
+        accountOwnerUID = FirebaseApp.app().flatMap { _ in Auth.auth().currentUser }
+            .flatMap { $0.isAnonymous ? nil : $0.uid }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "ui-testing") { accountOwnerUID = nil }
+        #endif
+        accountMatchKey = accountOwnerUID == nil ? nil : "local:ios:\(UUID().uuidString)"
+        defaults.set(accountOwnerUID, forKey: "local.classic.accountOwnerUID")
+        defaults.set(accountMatchKey, forKey: "local.classic.accountMatchKey")
         save()
     }
 
@@ -100,6 +124,9 @@ final class LocalGameStore {
         finishedAt = nil
         defaults.removeObject(forKey: startedKey)
         defaults.removeObject(forKey: finishedKey)
+        defaults.removeObject(forKey: "local.classic.accountOwnerUID")
+        defaults.removeObject(forKey: "local.classic.accountMatchKey")
+        accountOwnerUID = nil; accountMatchKey = nil
     }
 
     private func save() {
@@ -109,6 +136,9 @@ final class LocalGameStore {
             defaults.set(try ClassicSave.encode(game), forKey: saveKey)
             defaults.set(startedAt, forKey: startedKey)
             defaults.set(finishedAt, forKey: finishedKey)
+            if let uid = accountOwnerUID, let matchKey = accountMatchKey, let finishedAt {
+                LocalAccountHistoryOutbox.record(game: game, uid: uid, matchKey: matchKey, finishedAt: finishedAt)
+            }
             errorMessage = nil
         }
         catch { errorMessage = "No se pudo guardar el progreso de esta partida." }

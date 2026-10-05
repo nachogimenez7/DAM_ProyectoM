@@ -35,6 +35,7 @@ extension OnlineAccountService {
 @MainActor protocol PublicProfileService: AnyObject, Observable {
     var profile: PublicProfile? { get }
     var photoSync: PhotoSyncState { get }
+    var photoUploadsAvailable: Bool { get }
     // Owner-scoped local preview, retained after a failed publication.
     var pendingPhoto: PendingProfilePhoto? { get }
     func refresh() async throws
@@ -45,7 +46,20 @@ extension OnlineAccountService {
     func removePhoto() async throws
 }
 
+@MainActor protocol AccountHistoryService: AnyObject, Observable {
+    var owner: String? { get }
+    var status: AccountHistoryStatus { get }
+    var matches: Int { get }
+    var wins: Int { get }
+    var entries: [AccountHistoryEntry] { get }
+    var processing: Bool { get }
+    func attach(uid: String)
+    func detach()
+    func retry()
+}
+
 extension PublicProfileService {
+    var photoUploadsAvailable: Bool { false }
     var pendingPhotoData: Data? {
         guard case .image(let data) = pendingPhoto else { return nil }
         return data
@@ -82,13 +96,16 @@ extension PublicProfileService {
     let directory: any RoomDirectoryService
     let room: any RoomSessionService
     let roomsAvailable: Bool
+    let history: (any AccountHistoryService)?
 
     init(account: any OnlineAccountService, profile: any PublicProfileService,
-         directory: any RoomDirectoryService, room: any RoomSessionService, roomsAvailable: Bool = true) {
+         directory: any RoomDirectoryService, room: any RoomSessionService, roomsAvailable: Bool = true,
+         history: (any AccountHistoryService)? = nil) {
         self.account = account
         self.profile = profile
         self.directory = directory
         self.room = room
         self.roomsAvailable = roomsAvailable
+        self.history = history
     }
 }

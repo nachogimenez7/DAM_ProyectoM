@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFunctions
 import FirebaseFirestore
+import FirebaseStorage
 import Foundation
 import TraidoresCore
 
@@ -11,6 +12,18 @@ import TraidoresCore
 @MainActor
 enum FirebaseSetup {
     private static var configured = false
+    static var profileStorageEnabled: Bool {
+        #if DEBUG
+        if emulatorHost != nil { return true }
+        #endif
+        return (Bundle.main.object(forInfoDictionaryKey: "TraidoresProfileStorageEnabled") as? String) == "YES"
+    }
+    static var storageEmulatorOrigin: URL? {
+        #if DEBUG
+        if let host = emulatorHost { return URL(string: "http://\(host):9199") }
+        #endif
+        return nil
+    }
     static var options: FirebaseOptions? {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else { return nil }
         return FirebaseOptions(contentsOfFile: path)
@@ -54,6 +67,10 @@ enum FirebaseSetup {
             settings.cacheSettings = MemoryCacheSettings()
             firestore.settings = settings
             Functions.functions(region: OnlineMatchStartContract.region).useEmulator(withHost: host, port: 5001)
+            let storage = Storage.storage()
+            storage.useEmulator(withHost: host, port: 9199)
+            storage.maxUploadRetryTime = 5
+            storage.maxOperationRetryTime = 5
         }
         configured = true
         return true

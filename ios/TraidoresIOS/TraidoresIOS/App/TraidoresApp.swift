@@ -22,6 +22,14 @@ struct TraidoresApp: App {
                     BandidoIntroView(audio: audio) { introFinished = true }
                 }
             }
+                .overlay(alignment: .top) {
+                    #if DEBUG
+                    if FirebaseSetup.emulatorHost != nil, UserDefaults.standard.string(forKey: "firebase-media-smoke") != nil {
+                        Text(FirebaseSmokeCheck.mediaReport.message).padding().background(.black)
+                            .accessibilityIdentifier("firebase.media.result")
+                    }
+                    #endif
+                }
                 .modifier(GamePreferencesBridge(preferences: preferences))
                 .environment(preferences)
                 .environment(onlineServices)

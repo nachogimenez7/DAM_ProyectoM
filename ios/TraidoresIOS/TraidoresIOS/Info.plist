@@ -57,5 +57,7 @@
 	</array>
 	<key>TraidoresAppleSignInEnabled</key>
 	<string>$(TRAIDORES_APPLE_SIGN_IN_ENABLED)</string>
+	<key>TraidoresProfileStorageEnabled</key>
+	<string>$(TRAIDORES_PROFILE_STORAGE_ENABLED)</string>
 </dict>
 </plist>

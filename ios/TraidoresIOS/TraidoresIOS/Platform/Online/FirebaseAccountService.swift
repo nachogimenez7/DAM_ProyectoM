@@ -247,17 +247,19 @@ final class FirebaseAccountService: OnlineAccountService {
 @MainActor @Observable
 final class FirebasePublicProfileService: PublicProfileService {
     private(set) var profile: PublicProfile?
-    private(set) var photoSync: PhotoSyncState = .idle
+    @ObservationIgnored private let photos = FirebaseProfilePhotos()
+    var photoSync: PhotoSyncState { photos.state }
+    var photoUploadsAvailable: Bool { FirebaseSetup.profileStorageEnabled }
     @ObservationIgnored private var profileListener: ListenerRegistration?
     @ObservationIgnored private var listeningUID: String?
-    var pendingPhoto: PendingProfilePhoto? { nil }
+    var pendingPhoto: PendingProfilePhoto? { photos.preview }
 
     func clear() {
         profileListener?.remove()
         profileListener = nil
         listeningUID = nil
         profile = nil
-        photoSync = .idle
+        photos.clear()
         let defaults = UserDefaults.menuStore
         if defaults.string(forKey: "online.profileOwner") != nil {
             defaults.set(try? JSONEncoder().encode(LocalMenuProfile()), forKey: "menu.localProfile.v1")
@@ -272,7 +274,7 @@ final class FirebasePublicProfileService: PublicProfileService {
         let ref = db.collection("perfiles_publicos").document(uid)
         let snapshot = try await ref.getDocument(source: .server)
         if snapshot.exists {
-            let recovered = try OnlineContract.profile(uid: uid, data: snapshot.data() ?? [:])
+            let recovered = try OnlineContract.profile(uid: uid, data: snapshot.data() ?? [:], emulatorOrigin: FirebaseSetup.storageEmulatorOrigin)
             try ensureOwner(uid)
             confirm(recovered)
             return recovered
@@ -314,7 +316,7 @@ final class FirebasePublicProfileService: PublicProfileService {
           })
         }
         let confirmed = try await ref.getDocument(source: .server)
-        let created = try OnlineContract.profile(uid: uid, data: confirmed.data() ?? [:])
+        let created = try OnlineContract.profile(uid: uid, data: confirmed.data() ?? [:], emulatorOrigin: FirebaseSetup.storageEmulatorOrigin)
         try ensureOwner(uid)
         confirm(created)
         return created
@@ -331,6 +333,8 @@ final class FirebasePublicProfileService: PublicProfileService {
         defaults.set(value.temaCosmeticoPerfil, forKey: "menu.profileTheme")
         defaults.set(value.emotesPerfil.joined(separator: ","), forKey: "menu.profileEmotes")
         profile = value
+        photos.activate(uid: value.uid)
+        Task { await LocalAccountHistoryOutbox.flush() }
         if listeningUID != value.uid {
             profileListener?.remove()
             listeningUID = value.uid
@@ -343,7 +347,7 @@ final class FirebasePublicProfileService: PublicProfileService {
                     Task { @MainActor [weak self] in
                         guard let self, self.listeningUID == owner,
                               let user = Auth.auth().currentUser, !user.isAnonymous, user.uid == owner,
-                              let confirmed = try? OnlineContract.profile(uid: owner, data: data) else { return }
+                              let confirmed = try? OnlineContract.profile(uid: owner, data: data, emulatorOrigin: FirebaseSetup.storageEmulatorOrigin) else { return }
                         if self.profile != confirmed { self.confirm(confirmed) }
                     }
                 }
@@ -379,9 +383,27 @@ final class FirebasePublicProfileService: PublicProfileService {
         try await refresh()
     }
 
-    func setPhoto(imageData: Data) async throws { throw OnlineError.featureUnavailable(.profileStorage) }
-    func retryPhotoSync() async throws { throw OnlineError.featureUnavailable(.profileStorage) }
-    func removePhoto() async throws { throw OnlineError.featureUnavailable(.profileStorage) }
+    func setPhoto(imageData: Data) async throws {
+        guard photoUploadsAvailable else { throw OnlineError.featureUnavailable(.profileStorage) }
+        try await photos.setPhoto(imageData)
+        try await refresh()
+    }
+    func retryPhotoSync() async throws {
+        guard photoUploadsAvailable else { throw OnlineError.featureUnavailable(.profileStorage) }
+        try await photos.flush()
+        try await refresh()
+    }
+    func removePhoto() async throws {
+        guard photoUploadsAvailable else { throw OnlineError.featureUnavailable(.profileStorage) }
+        try await photos.removePhoto()
+        try await refresh()
+    }
+    #if DEBUG
+    func setPhotoPublicationGateForTesting(_ gate: (() async -> Void)?) {
+        guard FirebaseSetup.emulatorHost != nil else { return }
+        photos.beforePublicationForTesting = gate
+    }
+    #endif
 
     private func ensureOwner(_ uid: String) throws {
         guard let user = Auth.auth().currentUser, !user.isAnonymous, user.uid == uid else { throw OnlineError.sessionExpired }

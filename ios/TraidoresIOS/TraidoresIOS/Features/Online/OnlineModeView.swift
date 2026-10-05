@@ -320,6 +320,6 @@ enum OnlineBootstrap {
         let profile = FirebasePublicProfileService()
         let rooms = UnavailableIOSRooms()
         return OnlineServices(account: FirebaseAccountService(profiles: profile), profile: profile,
-                              directory: rooms, room: rooms, roomsAvailable: false)
+                              directory: rooms, room: rooms, roomsAvailable: false, history: FirebaseAccountHistory())
     }
 }

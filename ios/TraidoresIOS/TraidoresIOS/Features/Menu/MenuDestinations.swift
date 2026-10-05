@@ -139,6 +139,7 @@ struct ProfileView: View {
     @State private var syncingProfile = false
     @State private var profileSyncError: String?
     @State private var applyingRemoteProfile = false
+    @State private var showingHistory = false
     @FocusState private var editingText: Bool
     @Environment(\.dynamicTypeSize) private var systemTextSize
     @Environment(OnlineServices.self) private var online: OnlineServices?
@@ -164,6 +165,22 @@ struct ProfileView: View {
     private var registeredIdentity: OnlineIdentity? {
         if case .ready(let identity) = online?.account.access, identity.isRegistered { return identity }
         return nil
+    }
+
+    private var accountHistory: (any AccountHistoryService)? {
+        guard let uid = registeredIdentity?.uid, let history = online?.history, history.owner == uid else { return nil }
+        return history
+    }
+    private var portraitData: Data? { online?.profile.pendingPhotoData ?? draft.photoData }
+    private var portraitURL: URL? {
+        if case .removal = online?.profile.pendingPhoto { return nil }
+        return OnlineContract.photoURL(draft.profilePhotoURL, emulatorOrigin: FirebaseSetup.storageEmulatorOrigin)
+    }
+    private func applyPublishedPhoto() {
+        guard let profile = online?.profile.profile, profile.uid == registeredIdentity?.uid else { return }
+        draft.profilePhotoURL = profile.avatarURL?.absoluteString
+        saved.profilePhotoURL = draft.profilePhotoURL
+        draft.photoData = nil
     }
 
     private func applyRemoteProfile() {
@@ -233,7 +250,7 @@ struct ProfileView: View {
                   Spacer().frame(height: 62)
                 }
                 Button { if isEditing { openSelection(.avatar) } else { enlargedAvatar = true } } label: {
-                    ProfilePortrait(image: draft.avatar, photoData: draft.photoData, photoURL: OnlineContract.photoURL(draft.profilePhotoURL)).frame(width: 112, height: 112)
+                    ProfilePortrait(image: draft.avatar, photoData: portraitData, photoURL: portraitURL).frame(width: 112, height: 112)
                         .overlay(Circle().stroke(accent, lineWidth: 4))
                         .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
                         .overlay(alignment: .bottomTrailing) {
@@ -260,6 +277,7 @@ struct ProfileView: View {
                     .accessibilityIdentifier("profile.publicId")
                 if syncingProfile { ProgressView("Guardando tu perfil…") }
                 if let profileSyncError { Text(profileSyncError).font(.footnote).foregroundStyle(OnlineInlineError.color) }
+                photoPublicationStatus
             }
             .frame(maxWidth: .infinity)
             if isEditing {
@@ -296,7 +314,7 @@ struct ProfileView: View {
             let statsLayout = systemTextSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
             statsLayout { stat("Partidas"); stat("Victorias"); stat("Porcentaje") }
-            note("Las estadísticas se mostrarán cuando este perfil tenga progreso registrado.")
+            historyStatus
             Button {
                 if isEditing { openSelection(.favorite) } else { roleDetail = true }
             } label: {
@@ -345,18 +363,18 @@ struct ProfileView: View {
                 .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
                 .accessibilityIdentifier("profile.achievements")
             profileHeading("ÚLTIMA PARTIDA")
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "clock.arrow.circlepath").font(.title2).foregroundStyle(accent)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Sin historial conectado").font(.headline)
-                    Text("Tus partidas terminadas aparecerán aquí cuando el historial esté disponible.")
-                        .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            if accountHistory?.status == .ready {
+                if let last = accountHistory?.entries.first {
+                    historyRow(last)
+                    Button("VER HISTORIAL") { showingHistory = true }
+                        .buttonStyle(TraidoresButtonStyle(accent: accent, surface: surface))
+                        .accessibilityIdentifier("profile.history")
+                } else {
+                    note("Todavía no hay partidas registradas en tu cuenta.")
                 }
-                Spacer(minLength: 0)
+            } else if registeredIdentity == nil {
+                note("Vinculá una cuenta para guardar y recuperar tu historial.")
             }
-            .profileCard(accent: accent, surface: surface)
-            .accessibilityElement(children: .combine)
             profileHeading("CUENTA")
             if let online {
                 OnlineAccountCard(accent: accent, surface: surface).environment(online)
@@ -404,10 +422,23 @@ struct ProfileView: View {
         .task {
             if let online, online.account.access == .signedOut { await online.account.enterAsGuest() }
         }
-        .onChange(of: online?.profile.profile) { _, _ in applyRemoteProfile() }
+        .task(id: registeredIdentity?.uid) {
+            if let uid = registeredIdentity?.uid { online?.history?.attach(uid: uid) }
+            else { online?.history?.detach() }
+        }
+        .onChange(of: online?.profile.profile) { _, _ in applyPublishedPhoto(); applyRemoteProfile() }
         .onChange(of: storedProfile) { _, _ in if !isEditing { applyRemoteProfile() } }
         .onChange(of: draft) { _, _ in saveProfile() }
-        .onDisappear { saveProfile(commit: true) }
+        .onDisappear { saveProfile(commit: true); online?.history?.detach() }
+        .sheet(isPresented: $showingHistory) {
+            MenuPage(title: "HISTORIAL") {
+                Text("Últimas 50 partidas de tu cuenta. Las estadísticas incluyen todo el historial.")
+                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
+                if accountHistory?.status == .ready {
+                    ForEach(accountHistory?.entries ?? []) { historyRow($0) }
+                } else { historyStatus }
+            }
+        }
         .sheet(item: $selection) { selected in
             MenuPage(title: selected.title) {
                 Text(registeredIdentity == nil ? "Tus elecciones se guardan automáticamente." : "Guardá tus cambios al terminar de editar el perfil.")
@@ -451,21 +482,39 @@ struct ProfileView: View {
                             .accessibilityValue(draft.banner == banner.key ? "Seleccionado" : "")
                     }
                 } else {
-                    if selected == .avatar && registeredIdentity == nil {
+                    if selected == .avatar && (registeredIdentity == nil || online?.profile.photoUploadsAvailable == true) {
                         PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                             Label("ELEGIR FOTO DEL IPHONE", systemImage: "photo")
                         }.buttonStyle(TraidoresButtonStyle()).disabled(loadingPhoto)
                             .accessibilityIdentifier("profile.photoPicker")
-                        Text("La foto se recorta al círculo del avatar y se guarda automáticamente en este iPhone.")
+                        Text(registeredIdentity == nil ? "La foto se guarda en este iPhone." : "La foto se publica en tu cuenta para que otros jugadores puedan verla.")
                             .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                         if loadingPhoto { ProgressView("Cargando foto…") }
                     }
-                    if selected == .avatar && registeredIdentity != nil {
-                        Text("Las fotos de galería para tu cuenta todavía no están habilitadas.")
+                    if selected == .avatar && registeredIdentity != nil && online?.profile.photoUploadsAvailable != true {
+                        Text("Las fotos de tu cuenta estarán disponibles cuando se habilite Storage.")
                             .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
                     }
+                    if selected == .avatar && registeredIdentity != nil && online?.profile.photoUploadsAvailable == true &&
+                        (draft.profilePhotoURL != nil || online?.profile.pendingPhoto != nil) {
+                        Button("QUITAR FOTO") {
+                            Task {
+                                do { try await online?.profile.removePhoto(); applyPublishedPhoto(); applyRemoteProfile() }
+                                catch { profileSyncError = FirebaseAccountService.onlineError(error).message }
+                            }
+                        }.buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.removePhoto")
+                    }
                     ProfileRoleSelector(currentImage: selected == .avatar && draft.photoData != nil ? "" : (selected == .avatar ? draft.avatar : draft.favorite)) { role in
-                        if selected == .avatar { draft.avatar = role.image; draft.photoData = nil }
+                        if selected == .avatar {
+                            draft.avatar = role.image; draft.photoData = nil
+                            if registeredIdentity != nil, draft.profilePhotoURL != nil,
+                               online?.profile.photoUploadsAvailable == true {
+                                Task {
+                                    do { try await online?.profile.removePhoto(); applyPublishedPhoto() }
+                                    catch { profileSyncError = FirebaseAccountService.onlineError(error).message }
+                                }
+                            }
+                        }
                         else { draft.favorite = role.image }
                         selection = nil
                     }
@@ -476,7 +525,7 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $enlargedAvatar) {
             MenuPage(title: "FOTO DE PERFIL") {
-                ProfilePortrait(image: draft.avatar, photoData: draft.photoData, photoURL: OnlineContract.photoURL(draft.profilePhotoURL)).frame(width: 260, height: 260).frame(maxWidth: .infinity)
+                ProfilePortrait(image: draft.avatar, photoData: portraitData, photoURL: portraitURL).frame(width: 260, height: 260).frame(maxWidth: .infinity)
                 Button("CERRAR") { enlargedAvatar = false }.buttonStyle(TraidoresButtonStyle())
             }
         }
@@ -501,10 +550,17 @@ struct ProfileView: View {
             defer { loadingPhoto = false; self.photoItem = nil }
             do {
                 guard let data = try await photoItem.loadTransferable(type: Data.self),
-                      data.count <= 15_000_000, let image = UIImage(data: data) else {
+                      data.count <= 15_000_000 else {
                     photoLoadError = true; return
                 }
                 guard !Task.isCancelled else { return }
+                if let online, registeredIdentity != nil {
+                    try await online.profile.setPhoto(imageData: data)
+                    applyPublishedPhoto()
+                    selection = nil
+                    return
+                }
+                guard let image = UIImage(data: data) else { photoLoadError = true; return }
                 let factor = min(1, 512 / max(image.size.width, image.size.height))
                 let size = CGSize(width: image.size.width * factor, height: image.size.height * factor)
                 let format = UIGraphicsImageRendererFormat(); format.scale = 1
@@ -536,9 +592,14 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
     private func stat(_ label: String) -> some View {
-        VStack(spacing: 6) {
+        let history = accountHistory
+        let confirmed = history?.status == .ready
+        let value = !confirmed ? "—" : label == "Partidas" ? String(history?.matches ?? 0)
+            : label == "Victorias" ? String(history?.wins ?? 0)
+            : "\(Int((Double(history?.wins ?? 0) * 100 / Double(max(1, history?.matches ?? 0))).rounded()))%"
+        return VStack(spacing: 6) {
             // Explicit colours: inherited ones could resolve to dark text on the dark card.
-            Text(label == "Porcentaje" ? "--%" : "--").font(.title2.bold()).foregroundStyle(style.text)
+            Text(value).font(.title2.bold()).foregroundStyle(style.text)
             Text(label).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
                 .foregroundStyle(TraidoresTheme.secondary)
         }
@@ -546,7 +607,44 @@ struct ProfileView: View {
         .background(surface, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.3)))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): sin datos")
+        .accessibilityLabel("\(label): \(confirmed ? value : "sin datos")")
+        .accessibilityIdentifier("profile.stats.\(label)")
+    }
+
+    @ViewBuilder private var historyStatus: some View {
+        switch accountHistory?.status {
+        case .loading: ProgressView("Cargando historial de tu cuenta…")
+        case .ready:
+            note(accountHistory?.processing == true ? "Hay estadísticas en proceso de actualizarse." : "Historial sincronizado con tu cuenta.")
+        case .failed(let message):
+            Text(message).font(.footnote).foregroundStyle(OnlineInlineError.color)
+            Button("REINTENTAR HISTORIAL") { online?.history?.retry() }
+                .buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.history.retry")
+        default:
+            note(registeredIdentity == nil ? "Vinculá una cuenta para sincronizar tus partidas." : "Conectando con el historial…")
+        }
+    }
+    private func historyRow(_ entry: AccountHistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.won ? "VICTORIA" : "DERROTA").font(.headline)
+                .foregroundStyle(entry.won ? Color.green : TraidoresTheme.text)
+            Text("\(entry.roleName) · \(entry.mapName)").font(.subheadline)
+            Text("\(entry.isOnline ? "Online" : "Local") · \(entry.participantCount) jugadores").font(.footnote)
+            Text(entry.finishedAt, format: .dateTime.day().month().year().hour().minute()).font(.footnote)
+                .foregroundStyle(TraidoresTheme.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).profileCard(accent: accent, surface: surface)
+            .accessibilityElement(children: .combine).accessibilityIdentifier("profile.history.\(entry.id)")
+    }
+    @ViewBuilder private var photoPublicationStatus: some View {
+        switch online?.profile.photoSync {
+        case .pending, .uploading: ProgressView("Publicando tu foto…")
+        case .failed(let error):
+            Text(error.message).font(.footnote).foregroundStyle(OnlineInlineError.color)
+            Button("REINTENTAR FOTO") {
+                Task { try? await online?.profile.retryPhotoSync() }
+            }.buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.photo.retry")
+        default: EmptyView()
+        }
     }
     private func editBadge(size: CGFloat) -> some View {
         Image(systemName: "pencil").font(.system(size: size * 0.42, weight: .semibold))

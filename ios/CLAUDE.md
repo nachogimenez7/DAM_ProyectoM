@@ -4,7 +4,8 @@ Claude es responsable principal del port nativo SwiftUI. Codex (plugin `codex@op
 
 ## Antes de trabajar
 
-- Leer la sección «Prioridad vigente» de `docs/PLAN_MIGRACION_IOS.md`, `docs/PARIDAD_MENU_PERFIL_IOS.md` y la auditoría más reciente (`docs/AUDITORIA_MENU_PERFIL_IOS.md`). Trabajar solo en el bloque vigente (desde el 1/10/2026, el gameplay local por pedido del usuario); no adelantar Firebase ni el gameplay online.
+- Estado actualizado al cierre del 4/10/2026: Codex integró cuenta, perfil, historial y fotos con Firebase, y registró sus archivos/dependencias en Xcode. Para la revisión pedida por el usuario, leer primero `../docs/ENTREGA_CLAUDE_FIREBASE_2026-10-04.md`. Los planes del 1–3/10 conservan contexto histórico y no son el inventario vigente de adaptadores pendientes. El pedido actual para Claude es analizar los cambios y señalar problemas; el siguiente bloque de implementación se acuerda con el usuario.
+- Conservar la referencia de diseño y accesibilidad de `docs/PLAN_MIGRACION_IOS.md`, `docs/PARIDAD_MENU_PERFIL_IOS.md` y `docs/AUDITORIA_MENU_PERFIL_IOS.md`. Las salas y el gameplay online iOS todavía no tienen adaptadores reales.
 - `git status` primero. Puede haber cambios sin confirmar de otras personas o de Codex: conservarlos y no incluirlos en tus commits. Cambios solo bajo `ios/`; `app/`, recursos originales y `sources/` del proyecto ChatGPT son de solo lectura.
 - Comprobar el entorno real (Xcode, simuladores y el iPhone 13 conectado) en lugar de confiar en documentos que pueden describir un entorno anterior.
 - Gameplay: empezar por «Punto de partida para la próxima sesión» en `docs/GAMEPLAY_PULIDO_IOS.md` (estado, pendientes y orden acordado con el usuario).

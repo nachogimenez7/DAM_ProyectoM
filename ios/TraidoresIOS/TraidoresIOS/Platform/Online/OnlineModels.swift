@@ -1,5 +1,17 @@
 import Foundation
 
+struct AccountHistoryEntry: Identifiable, Equatable {
+    let id: String
+    let mapName: String
+    let roleName: String
+    let won: Bool
+    let participantCount: Int
+    let finishedAt: Date
+    let isOnline: Bool
+    let counted: Bool
+}
+enum AccountHistoryStatus: Equatable { case signedOut, loading, ready, failed(String) }
+
 // Presentation models shared by the Firebase adapters and the in-memory UI test services.
 // They contain no Firebase types and never use a display name as player identity.
 struct OnlineIdentity: Equatable, Sendable {

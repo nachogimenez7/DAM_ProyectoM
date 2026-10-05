@@ -5,3 +5,5 @@
 // With a paid Apple Developer team, enable Sign in with Apple and App Attest:
 // CODE_SIGN_ENTITLEMENTS = TraidoresIOS/TraidoresIOS-Online.entitlements
 // TRAIDORES_APPLE_SIGN_IN_ENABLED = YES
+// Only after Blaze, the bucket and Storage rules are deployed and verified:
+// TRAIDORES_PROFILE_STORAGE_ENABLED = YES

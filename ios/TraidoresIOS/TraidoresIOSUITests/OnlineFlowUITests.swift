@@ -8,6 +8,64 @@ final class OnlineFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testNativeHistoryAndPhotosAgainstEmulators() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let email = environment["TRAIDORES_MEDIA_EMAIL"], let other = environment["TRAIDORES_MEDIA_OTHER_EMAIL"],
+              let password = environment["TRAIDORES_MEDIA_PASSWORD"] else {
+            throw XCTSkip("Requires the two accounts from seed-media-emulators.cjs and all local emulators")
+        }
+        let app = XCUIApplication()
+        let base = ["-ui-testing", "-firebase-emulator-host", "127.0.0.1",
+                    "-firebase-media-email", email, "-firebase-media-other-email", other, "-firebase-media-password", password]
+        app.launchArguments = base + ["-firebase-media-smoke", "prepare"]
+        app.launch()
+        let report = app.staticTexts["firebase.media.result"]
+        XCTAssertTrue(report.waitForExistence(timeout: 10))
+        XCTAssertTrue(report.waitUntil(timeout: 120) { $0.label == "MEDIA PREPARED" || $0.label.hasPrefix("MEDIA FAIL") }, report.label)
+        XCTAssertEqual(report.label, "MEDIA PREPARED")
+        app.terminate()
+        app.launchArguments = base + ["-firebase-media-smoke", "resume"]
+        app.launch()
+        XCTAssertTrue(report.waitForExistence(timeout: 10))
+        XCTAssertTrue(report.waitUntil(timeout: 40) { $0.label == "MEDIA PASS" || $0.label.hasPrefix("MEDIA FAIL") }, report.label)
+        XCTAssertEqual(report.label, "MEDIA PASS")
+        app.terminate()
+        // Normal services, no fake scenario and no test driver. Verify the Profile renders
+        // the same backend result and the published photo after another process launch.
+        app.launchArguments = ["-ui-testing", "-firebase-emulator-host", "127.0.0.1"]
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.profile"].waitForExistence(timeout: 5))
+        app.buttons["menu.profile"].tap()
+        let stats = element(app, "profile.stats.Partidas")
+        XCTAssertTrue(scrollTo(stats, in: app))
+        XCTAssertTrue(stats.waitUntil(timeout: 15) { $0.label == "Partidas: 1" }, stats.label)
+        XCTAssertEqual(element(app, "profile.stats.Victorias").label, "Victorias: 1")
+        attach(app, "native-firebase-profile-history-photo")
+        let history = app.buttons["profile.history"]
+        XCTAssertTrue(scrollTo(history, in: app))
+        history.tap()
+        XCTAssertTrue(app.staticTexts["HISTORIAL"].waitForExistence(timeout: 5))
+        try audit(app, "Historial real de cuenta")
+        attach(app, "native-firebase-account-history")
+    }
+
+    func testNativeLocalResultsReachFirebase() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let email = environment["TRAIDORES_MEDIA_EMAIL"], let other = environment["TRAIDORES_MEDIA_OTHER_EMAIL"],
+              let password = environment["TRAIDORES_MEDIA_PASSWORD"] else {
+            throw XCTSkip("Requires native media fixtures and the Functions emulator")
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-firebase-emulator-host", "127.0.0.1", "-firebase-media-smoke", "local",
+                               "-firebase-media-email", email, "-firebase-media-other-email", other, "-firebase-media-password", password]
+        app.launch()
+        let report = app.staticTexts["firebase.media.result"]
+        XCTAssertTrue(report.waitForExistence(timeout: 10))
+        XCTAssertTrue(report.waitUntil(timeout: 100) { $0.label == "MEDIA LOCAL PASS" || $0.label.hasPrefix("MEDIA FAIL") }, report.label)
+        XCTAssertEqual(report.label, "MEDIA LOCAL PASS")
+        app.terminate()
+    }
+
     func testSocialAccessButtonsAreSharedByProfileAndOnline() throws {
         let app = launchMenu("guest")
         app.buttons["menu.profile"].tap()
