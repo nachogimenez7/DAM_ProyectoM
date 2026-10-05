@@ -9,6 +9,31 @@ test("victorias del pueblo, traidores, desertor y especial coinciden con el moto
   value.estadoPartida.ganador = "Traidores";
   assert.deepEqual(recordsForFinishedRoom("room", value, 1000).map((r) => r.won), [false, true, false, true, true]);
 });
+test("desertor solo gana si sobrevive y coincide su bando final", () => {
+  for (const winner of ["Pueblo", "Traidores"]) {
+    for (const alive of [true, false, undefined]) {
+      for (const team of ["Pueblo", "Traidores", ""]) {
+        const value = room();
+        value.estadoPartida.ganador = winner;
+        value.estadoPartida.desertorBando = team;
+        const desertor = value.estadoPartida.jugadores.find((p) => p.rolKey === "desertor");
+        desertor.vivo = alive;
+        const record = recordsForFinishedRoom("room", value, 1000).find((r) => r.roleKey === "desertor");
+        assert.equal(record.won, alive === true && team === winner,
+          `ganador=${winner}, vivo=${alive}, bando=${team}`);
+      }
+    }
+  }
+});
+test("la supervivencia no cambia la victoria de equipo ni la victoria especial del bufón", () => {
+  const value = room();
+  value.estadoPartida.jugadores.forEach((p) => { p.vivo = false; });
+  assert.deepEqual(recordsForFinishedRoom("room", value, 1000).map((r) => r.won),
+    [true, false, false, true, false]);
+  value.estadoPartida.ganador = "Traidores";
+  assert.deepEqual(recordsForFinishedRoom("room", value, 1000).map((r) => r.won),
+    [false, true, false, true, true]);
+});
 test("cancelada, sin final o roster ambiguo no producen historial", () => {
   for (const mutate of [
     (r) => { r.estadoPartida.ganador = "Cancelada"; },

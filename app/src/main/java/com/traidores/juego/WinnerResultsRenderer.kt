@@ -39,12 +39,16 @@ class WinnerResultsRenderer(
         summary: GameSummaryPresentation,
         specialVictories: List<GameSpecialVictory>,
         specialWinners: List<GamePlayer>,
-        winnerKey: String
+        winnerKey: String,
+        losingPlayers: List<GamePlayer>
     ): List<View> {
         applyThemeInsets()
         val factionAccent = factionAccent(winnerKey)
-        val cardViews = renderCards(players, factionAccent)
-        val specialCardViews = renderSpecialVictories(specialVictories, specialWinners)
+        val winnerNames = (players + specialWinners).map { it.name }.toSet()
+        val allWinners = sessionProvider().players.filter { it.name in winnerNames }
+        cards.removeAllViews()
+        val cardViews = renderCards(allWinners, factionAccent, "EQUIPO GANADOR")
+        val losingCardViews = renderCards(losingPlayers, Color.parseColor("#A89A82"), "EQUIPO PERDEDOR", compact = true)
         rounds.text = statText(summary.roundsPlayed.toString(), "RONDAS")
         duration.text = statText(summary.durationLabel, "TIEMPO")
         eliminatedCount.text = statText(summary.eliminated.toString(), "ELIM.")
@@ -73,7 +77,7 @@ class WinnerResultsRenderer(
             keyMoments?.let { "MOMENTOS CLAVE\n$it" },
             "RONDA POR RONDA\n$dayLog"
         ).joinToString("\n\n")
-        return cardViews + specialCardViews
+        return cardViews + losingCardViews
     }
 
     private fun statText(value: String, label: String): SpannableString {
@@ -107,78 +111,17 @@ class WinnerResultsRenderer(
         }
     }
 
-    private fun renderSpecialVictories(
-        specialVictories: List<GameSpecialVictory>,
-        specialWinners: List<GamePlayer>
-    ): List<View> {
-        if (specialVictories.isEmpty() || specialWinners.isEmpty()) return emptyList()
-
-        val accent = context.getColor(R.color.special_victory_accent)
-        val headerText = specialVictories.joinToString(" / ") { victory ->
-            "VICTORIA ESPECIAL - ${victory.roleKey.uppercase()}"
-        }
-        cards.addView(
-            sectionHeader(headerText, accent),
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(28)
-            ).apply {
-                topMargin = dp(8)
-                bottomMargin = dp(4)
-            }
-        )
-
-        val box = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(context.getColor(R.color.special_victory_bg))
-                setStroke(dp(1), context.getColor(R.color.special_victory_border))
-                cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(8), dp(7), dp(8), dp(7))
-        }
-        cards.addView(
-            box,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                leftMargin = dp(4)
-                rightMargin = dp(4)
-            }
-        )
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        box.addView(row, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
-        val victoriesByPlayer = specialVictories.associateBy { it.playerName }
-        return specialWinners.map { player ->
-            createSpecialCard(
-                player = player,
-                winnerCount = specialWinners.size,
-                victory = victoriesByPlayer[player.name]
-            )
-                .also { row.addView(it) }
-        }
-    }
-
-    private fun renderCards(players: List<GamePlayer>, borderColor: Int): List<View> {
-        cards.removeAllViews()
+    private fun renderCards(players: List<GamePlayer>, borderColor: Int, title: String, compact: Boolean = false): List<View> {
         if (players.isEmpty()) return emptyList()
 
         val cardViews = mutableListOf<View>()
         cards.addView(
-            sectionHeader("EQUIPO GANADOR", borderColor),
+            sectionHeader(title, borderColor),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(28)
             ).apply {
+                if (compact) topMargin = dp(10)
                 bottomMargin = dp(3)
             }
         )
@@ -205,7 +148,7 @@ class WinnerResultsRenderer(
                 }
             )
             rowPlayers.forEach { player ->
-                createCard(player, players.size, borderColor).also {
+                createCard(player, if (compact) maxOf(players.size, 5) else players.size, borderColor).also {
                     cardViews += it
                     row.addView(it)
                 }
@@ -325,7 +268,7 @@ class WinnerResultsRenderer(
         container.addView(playerName)
 
         val roleLabel = resultLabel(
-            text = player.role?.name?.uppercase() ?: "SIN ROL",
+            text = GameplayTableUi.winnerRoleLabel(sessionProvider(), player),
             textColor = "#F3D488",
             textSize = metrics[4],
             font = null,
@@ -336,34 +279,6 @@ class WinnerResultsRenderer(
             bind(sessionProvider(), player, player.name.take(1), 12f)
         }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { topMargin = dp(4) })
         return container
-    }
-
-    private fun createSpecialCard(
-        player: GamePlayer,
-        winnerCount: Int,
-        victory: GameSpecialVictory?
-    ): View {
-        val accent = context.getColor(R.color.special_victory_accent)
-        val card = createCard(player, winnerCount, accent, forceFullColor = true) as LinearLayout
-        val roleLabel = victory?.roleKey?.uppercase() ?: player.role?.name?.uppercase() ?: "ESPECIAL"
-        val existingRole = card.getChildAt(2) as? TextView
-        existingRole?.text = roleLabel
-        val reason = TextView(context).apply {
-            text = when (victory?.roleKey) {
-                RoleCatalog.BUFON -> "Engano al pueblo y gano al ser expulsado."
-                else -> "Consiguio una victoria especial durante la partida."
-            }
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTextColor(Color.parseColor("#D8C9F0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-            maxLines = 2
-        }
-        card.addView(reason, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(28)
-        ))
-        return card
     }
 
     private fun factionAccent(winnerKey: String): Int {

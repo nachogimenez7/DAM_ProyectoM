@@ -71,7 +71,8 @@ exports.iniciarPartidaV2 = onCall(
 );
 
 exports.limpiarSalasAbandonadasV1 = onSchedule({
-  region: "southamerica-west1",
+  // Firebase places the Scheduler job in the function's region. Scheduler has no Santiago location.
+  region: "southamerica-east1",
   schedule: "every 15 minutes",
   timeZone: "Etc/UTC",
   timeoutSeconds: 540,
@@ -125,7 +126,8 @@ exports.contarPartidaLocalV1 = onDocumentCreated({
 });
 
 // Auth deletion also removes private history; delayed room events require an existing profile.
-exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("southamerica-west1")
+// Auth onDelete is a 1st-gen trigger; Santiago only supports 2nd-gen functions.
+exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("southamerica-east1")
   .runWith({failurePolicy: true, maxInstances: 2}).auth.user().onDelete(async (user) => {
     await getFirestore().doc(`perfiles_publicos/${user.uid}`).delete();
     await getFirestore().recursiveDelete(getFirestore().doc(`cuentas/${user.uid}`));

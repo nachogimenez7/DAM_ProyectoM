@@ -2036,6 +2036,7 @@ class LobbyActivity : BaseActivity() {
             return
         }
         val shareText = "Unite a mi sala de Traidores con el codigo: $onlineRoomCode"
+        GameAnalytics.inviteShared(this)
         startActivity(
             Intent.createChooser(
                 Intent(Intent.ACTION_SEND)

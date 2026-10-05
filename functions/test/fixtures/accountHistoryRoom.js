@@ -7,7 +7,7 @@ function room() {
     ["bufon", "Neutral"], ["espia", "Traidores"]];
   return {partidaInicial: {matchId: "history-test-match", mapa: "pampa", mapaNombre: "Pampa", jugadores: roster.map((p) => ({...p}))},
     estadoPartida: {ganador: "Pueblo", desertorBando: "Pueblo", victoriasEspeciales: [{jugador: "Jugador3"}],
-      jugadores: roster.map((p, index) => ({orden: p.orden, nombre: p.nombre,
+      jugadores: roster.map((p, index) => ({orden: p.orden, nombre: p.nombre, vivo: true,
         rolKey: roles[index][0], rolNombre: roles[index][0], rolEquipo: roles[index][1]}))}};
 }
 module.exports = {room, roster};

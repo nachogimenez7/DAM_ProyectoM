@@ -7,7 +7,8 @@ const {createHash} = require('node:crypto');
 
 (async () => {
   const env = await initializeTestEnvironment({projectId: 'demo-traidores-history', firestore: {
-    host: '127.0.0.1', port: 8081, rules: fs.readFileSync('firestore.rules', 'utf8')}});
+    host: '127.0.0.1', port: Number(process.env.FIRESTORE_EMULATOR_HOST?.split(':').at(-1) || 8081),
+    rules: fs.readFileSync('firestore.rules', 'utf8')}});
   try {
     await env.clearFirestore();
     const owner = env.authenticatedContext('owner', {firebase: {sign_in_provider: 'password'}}).firestore();

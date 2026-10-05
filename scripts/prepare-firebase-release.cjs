@@ -13,8 +13,8 @@ const region = "southamerica-west1";
 const names = ["iniciarPartidaV2", "limpiarSalasAbandonadasV1", "registrarSalaHuerfanaV1",
   "programarLimpiezaSalaV2", "guardarHistorialOnlineV1", "contarPartidaLocalV1", "borrarHistorialCuentaV1"];
 const args = process.argv.slice(2);
-if (args.some(arg => !["--apply", "--storage"].includes(arg))) {
-  console.error("Uso: node scripts/prepare-firebase-release.cjs [--apply] [--storage]");
+if (args.some(arg => !["--apply", "--storage", "--database", "--force"].includes(arg))) {
+  console.error("Uso: node scripts/prepare-firebase-release.cjs [--apply] [--storage] [--database] [--force]");
   process.exit(1);
 }
 process.chdir(root);
@@ -49,9 +49,13 @@ async function main() {
     ["deploy", "--project", project, "--only", names.map(name => `functions:${name}`).join(",")],
     ["deploy", "--project", project, "--only", "firestore:rules,firestore:indexes"],
   ];
+  // First deployment of retry-enabled triggers requires the CLI's explicit acknowledgement.
+  // Use only after reviewing the existing function inventory; regular releases omit --force.
+  if (args.includes("--force")) stages[0].push("--force");
+  if (args.includes("--database")) stages.push(["deploy", "--project", project, "--only", "database"]);
   if (args.includes("--storage")) stages.push(["deploy", "--project", project, "--only", "storage"]);
   console.log(`Proyecto ${project}; Firestore ${database.locationId}; facturación ${billing.billingEnabled ? "activa" : "inactiva (Spark)"}.`);
-  console.log("Orden: backend confirmado → reglas → Storage (solo con --storage y bucket existente).");
+  console.log("Orden: backend confirmado → Firestore → RTDB (--database) → Storage (--storage y bucket existente).");
   console.log("La app de producción debe incluir los payloads nuevos que reservan las estadísticas al servidor.");
   for (const stage of stages) console.log(`firebase ${stage.join(" ")}`);
   if (!args.includes("--apply")) {

@@ -43,6 +43,16 @@ class MatchOutcomeTest {
         assertTrue(MatchOutcome.didHumanWin(special, townHuman))
     }
 
+    @Test
+    fun desertorHistoryRequiresSurvivalAndTheWinningFinalSide() {
+        val human = GamePlayer("Humano", "H", role = role(RoleCatalog.DESERTOR, "Desertor", "Neutral"), isHuman = true)
+        val session = GameSession("HISTORY", "pampa", "Pampa", listOf(human),
+            winner = GameRules.TOWN_WINNER, desertorTeam = GameRules.TOWN_WINNER)
+        assertTrue(MatchOutcome.didHumanWin(session, human))
+        assertFalse(MatchOutcome.didHumanWin(session, human.copy(alive = false)))
+        assertFalse(MatchOutcome.didHumanWin(session.copy(desertorTeam = GameRules.TRAITOR_WINNER), human))
+    }
+
     private fun role(key: String, name: String, team: String): GameRole {
         return GameRole(key, name, team, "rol_${key}_gaucho")
     }
