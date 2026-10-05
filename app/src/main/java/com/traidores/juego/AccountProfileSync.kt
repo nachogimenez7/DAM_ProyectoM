@@ -25,7 +25,7 @@ internal object AccountProfileSync {
         val owner = uid()
         val number = PlayerPublicIdentity.currentPublicId(context)
         if (owner.isEmpty() || number.isEmpty()) return
-        val fields = PlayerPublicIdentity.publicProfileFields(context, number)
+        val fields = metadataFields(PlayerPublicIdentity.publicProfileFields(context, number))
         val snapshot = JSONObject(fields).toString()
         val saved = prefs(context)
         // Keep the newest edit while a write is in flight, including a revert. Once
@@ -52,7 +52,7 @@ internal object AccountProfileSync {
             if (!current()) { finish(IllegalStateException("La cuenta cambió.")); return }
             val pending = saved.getString(owner, null)
             if (pending == null) { finish(null); return }
-            val payload = runCatching { fields(JSONObject(pending)) }.getOrElse {
+            val payload = runCatching { metadataFields(fields(JSONObject(pending))) }.getOrElse {
                 finish(IllegalStateException("No pudimos leer los cambios del perfil.", it)); return
             }
             ref.set(payload + mapOf("uidTemporal" to owner, "actualizadaEn" to FieldValue.serverTimestamp()), SetOptions.merge())
@@ -91,6 +91,9 @@ internal object AccountProfileSync {
             playGamesAvatarUri = data["fotoPlayGames"] as? String,
             emoteIds = (data["emotesPerfil"] as? List<*>)?.filterIsInstance<String>(), profilePhotoUrl = data["fotoPerfil"] as? String)
         prefs(context).edit().putString("confirmed:$owner",
-            JSONObject(PlayerPublicIdentity.publicProfileFields(context, number)).toString()).apply()
+            JSONObject(metadataFields(PlayerPublicIdentity.publicProfileFields(context, number))).toString()).apply()
+    }
+    private fun metadataFields(fields: Map<String, Any>) = fields.filterKeys {
+        it != "fotoPerfil" && (!BuildConfig.PROFILE_STORAGE_ENABLED || it != "fotoPlayGames")
     }
 }

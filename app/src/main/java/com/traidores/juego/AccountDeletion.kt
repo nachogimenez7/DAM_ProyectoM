@@ -70,6 +70,7 @@ object AccountDeletion {
                         .addOnSuccessListener {
                             AccountMatchHistory.forget(user.uid)
                             AccountProfileSync.forget(activity, user.uid)
+                            ProfilePhotoStorage.forget(activity, user.uid)
                             finishLocalDeletion(activity)
                             onResult(AccountDeletionResult.Deleted)
                         }

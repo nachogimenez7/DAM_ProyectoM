@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {initializeApp, deleteApp} = require("firebase-admin/app");
 const {getFirestore, Timestamp} = require("firebase-admin/firestore");
 const {getAuth} = require("firebase-admin/auth");
+const {getStorage} = require("firebase-admin/storage");
 const {archiveFinishedRoom, saveRecord, historyId} = require("../src/accountHistoryService");
 const {room} = require("./fixtures/accountHistoryRoom");
 let app, firestore;
@@ -97,12 +98,29 @@ test("local: trigger, reintentos e ID no canónico no inflan contadores", async 
   assert.equal(await saveRecord({firestore, uid, record, recordId: "local_" + "a".repeat(64), existingLocal: true}), false);
   assert.equal((await firestore.doc("cuentas/" + uid).get()).data().partidas, 1);
 });
-test("eliminar Auth purga el historial privado y cierra futuros resultados", async () => {
+test("eliminar Auth purga historial y todas las versiones de fotos sin tocar otra cuenta", async () => {
   const uid = await profile("delete");
   await firestore.doc("cuentas/" + uid).set({partidas: 1});
   await firestore.doc("cuentas/" + uid + "/historial/old").set({won: true});
+  const other = await profile("delete-other");
+  let bucket;
+  if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+    assert.match(process.env.FIREBASE_STORAGE_EMULATOR_HOST, /^127\.0\.0\.1:/);
+    bucket = getStorage(app).bucket(`${app.options.projectId}.firebasestorage.app`);
+    for (const owner of [uid, other]) {
+      for (const revision of ["a", "b"]) {
+        await bucket.file(`profilePhotos/${owner}/avatar_${revision.repeat(64)}.jpg`)
+          .save(Buffer.from("emulator JPEG fixture"), {metadata: {contentType: "image/jpeg"}});
+      }
+    }
+  }
   await getAuth(app).deleteUser(uid);
   await eventually(() => firestore.doc("perfiles_publicos/" + uid).get(), (snap) => !snap.exists);
   await eventually(() => firestore.collection("cuentas/" + uid + "/historial").get(), (snap) => snap.empty);
   assert.equal((await firestore.doc("cuentas/" + uid).get()).exists, false);
+  if (bucket) {
+    await eventually(() => bucket.getFiles({prefix: `profilePhotos/${uid}/`}), ([files]) => files.length === 0);
+    const [others] = await bucket.getFiles({prefix: `profilePhotos/${other}/`});
+    assert.equal(others.length, 2);
+  }
 });

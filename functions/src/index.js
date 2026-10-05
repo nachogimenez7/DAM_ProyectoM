@@ -3,6 +3,7 @@
 const {getApps, initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {getDatabase} = require("firebase-admin/database");
+const {getStorage} = require("firebase-admin/storage");
 const {HttpsError, onCall} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentDeleted, onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -128,4 +129,10 @@ exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("south
   .runWith({failurePolicy: true, maxInstances: 2}).auth.user().onDelete(async (user) => {
     await getFirestore().doc(`perfiles_publicos/${user.uid}`).delete();
     await getFirestore().recursiveDelete(getFirestore().doc(`cuentas/${user.uid}`));
+    // Never let an emulator without Storage fall through to a real bucket.
+    if (process.env.FUNCTIONS_EMULATOR === "true" && !process.env.FIREBASE_STORAGE_EMULATOR_HOST) return;
+    const options = getApps()[0].options;
+    const bucket = options.storageBucket || `${options.projectId || process.env.GCLOUD_PROJECT}.firebasestorage.app`;
+    try { await getStorage().bucket(bucket).deleteFiles({prefix: `profilePhotos/${user.uid}/`, force: true}); }
+    catch (error) { if (Number(error.code) !== 404) throw error; }
   });
