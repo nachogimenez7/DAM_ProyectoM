@@ -123,6 +123,21 @@ struct VoteCeremonyView: View {
         .padding(.horizontal, 18)
     }
 
+    /// Votes on the most voted card, so every card shares one seal size.
+    private var landedMax: Int { weightedBallots.reduce(into: [Int: Int]()) { $0[$1.target, default: 0] += 1 }.values.max() ?? 0 }
+
+    /// Largest seal (12 pt minimum) whose grid holds `votes` seals inside width × height.
+    static func sealLayout(votes: Int, width: CGFloat, height: CGFloat, maxSize: CGFloat) -> (CGFloat, Int) {
+        var size = maxSize
+        while size > 12 {
+            let columns = max(1, Int((width + 3) / (size + 3)))
+            let rows = Int(ceil(Double(votes) / Double(columns)))
+            if CGFloat(rows) * (size + 3) <= height { return (size, columns) }
+            size -= 1
+        }
+        return (12, max(1, Int((width + 3) / 15)))
+    }
+
     private var candidates: [ClassicPlayer] {
         let voted = Set(weightedBallots.map(\.target))
         return game.players.filter { voted.contains($0.id) }
@@ -152,8 +167,9 @@ struct VoteCeremonyView: View {
                 .multilineTextAlignment(.center).padding(6)
         } else {
             let columns = list.count <= 1 ? 1 : (list.count <= 4 ? 2 : 3)
-            let size: CGSize = list.count <= 2 ? .init(width: 88, height: 132)
-                : (list.count <= 4 ? .init(width: 82, height: 122) : .init(width: 60, height: 104))
+            // Larger cards so the voters' portraits read at a glance (user feedback 5/10).
+            let size: CGSize = list.count <= 2 ? .init(width: 116, height: 176)
+                : (list.count <= 4 ? .init(width: 104, height: 168) : .init(width: 88, height: 136))
             let dense = list.count > 4
             let margin: CGFloat = dense ? 3 : 5
             let rows = stride(from: 0, to: list.count, by: columns).map { Array(list[$0..<min($0 + columns, list.count)]) }
@@ -175,33 +191,40 @@ struct VoteCeremonyView: View {
         let count = voters.count
         // The voted player is the card's title; the seals underneath are the votes it got,
         // so a voter's portrait is never mistaken for the candidate (user feedback 5/10).
+        // Seals fit the card: as large as possible for the busiest card, never overflowing.
+        let mostVotes = max(1, landedMax)
+        let (seal, sealColumns) = Self.sealLayout(votes: mostVotes, width: size.width - (dense ? 8 : 10),
+                                                  height: size.height - (dense ? 86 : 100), maxSize: dense ? 22 : 26)
         return VStack(spacing: 0) {
             HStack(spacing: 3) {
-                InitialAvatar(name: player.name, isHuman: player.id == game.human.id, size: dense ? 15 : 20, fill: TraidoresTheme.gold)
+                InitialAvatar(name: player.name, isHuman: player.id == game.human.id, size: dense ? 16 : 19, fill: TraidoresTheme.gold)
                 Text(player.name)
-                    .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
+                    .font(.system(size: dense ? 10 : 11, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
                     .lineLimit(1).minimumScaleFactor(0.7)
             }
-            .frame(height: dense ? 16 : 21)
+            .frame(height: dense ? 18 : 21)
             Rectangle().fill(TraidoresTheme.gold.opacity(0.45)).frame(height: 1).padding(.horizontal, 4)
             Image("card_back_traidores")
                 .resizable().scaledToFit()
-                .frame(width: dense ? 27 : 36, height: dense ? 36 : 50)
-                .frame(width: dense ? 42 : 52, height: dense ? 38 : 52)
+                .frame(width: dense ? 24 : 28, height: dense ? 32 : 38)
+                .frame(height: dense ? 36 : 42)
             Text("VOTOS: \(count)")
-                .font(.system(size: dense ? 10 : 12, weight: .bold)).foregroundStyle(TraidoresTheme.text)
+                .font(.system(size: dense ? 10 : 11, weight: .bold)).foregroundStyle(TraidoresTheme.text)
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(count)))
-                .frame(height: dense ? 14 : 17)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(game.advanced.showIndividualVotes ? 10 : 12), spacing: 2),
-                                     count: dense ? 4 : 5), spacing: 2) {
+                .frame(height: dense ? 14 : 16)
+            // Each seal is the voter's portrait (their photo for the player), large enough
+            // to tell who voted whom.
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(seal), spacing: 3),
+                                     count: sealColumns), spacing: 3) {
                 ForEach(Array(voters.enumerated()), id: \.offset) { _, voter in
-                    VoteToken(initial: game.advanced.showIndividualVotes ? String(game.name(voter).prefix(1)) : nil, isHuman: voter == game.human.id)
+                    VoteToken(name: game.advanced.showIndividualVotes ? game.name(voter) : nil,
+                              isHuman: voter == game.human.id, size: seal)
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
-            .frame(height: 24, alignment: .top)
-            .padding(.top, 2)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.top, 3)
         }
         .padding(.horizontal, dense ? 4 : 5).padding(.top, dense ? 4 : 5).padding(.bottom, dense ? 3 : 4)
         .frame(width: size.width, height: size.height)
@@ -507,19 +530,21 @@ private struct InitialAvatar: View {
 
 /// A voter's seal: their initial, or an anonymous mark when votes are secret.
 private struct VoteToken: View {
-    let initial: String?
+    /// nil when votes are secret: an anonymous seal.
+    let name: String?
     var isHuman = false
+    let size: CGFloat
 
     var body: some View {
-        if let initial {
-            GamePlayerAvatar(name: initial, isHuman: isHuman, size: 10)
-                .overlay(Circle().stroke(Color(hex: "#FFF0C4"), lineWidth: 1))
+        if let name {
+            GamePlayerAvatar(name: name, isHuman: isHuman, size: size)
+                .overlay(Circle().stroke(Color(hex: "#FFF0C4"), lineWidth: 1.5))
         } else {
             Circle()
                 .fill(Color(hex: "#5E4722"))
                 .overlay(Circle().stroke(TraidoresTheme.gold, lineWidth: 1.5))
-                .overlay(Circle().fill(TraidoresTheme.gold).padding(3.5))
-                .frame(width: 12, height: 12)
+                .overlay(Circle().fill(TraidoresTheme.gold).padding(size * 0.3))
+                .frame(width: size, height: size)
         }
     }
 }

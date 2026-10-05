@@ -155,7 +155,7 @@ struct LocalLobbyView: View {
         .sheet(isPresented: $showingTiming) {
             MatchOptionsView(config: $testOptions)
         }
-        .sheet(isPresented: $showingAdvanced) {
+        .fullScreenCover(isPresented: $showingAdvanced) {
             AdvancedOptionsView(config: $advanced, timing: $timing,
                                 trainingRoleKey: $selectedTrainingRoleKey,
                                 playerCount: botNames.count + 1, map: selectedMap)
@@ -544,6 +544,7 @@ private struct AdvancedOptionsView: View {
     @State private var draft: AdvancedGameConfig
     @State private var draftRoleKey: String
     @State private var showingTiming = false
+    @State private var choosingRole = false
 
     init(config: Binding<AdvancedGameConfig>, timing: Binding<GameTimingConfig>,
          trainingRoleKey: Binding<String>, playerCount: Int, map: GameMap) {
@@ -561,9 +562,6 @@ private struct AdvancedOptionsView: View {
             MenuBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("OPCIONES AVANZADAS")
-                        .font(TraidoresTheme.title(25)).foregroundStyle(TraidoresTheme.gold)
-                        .frame(maxWidth: .infinity, alignment: .center)
                     Text("REGLAS DE LA PARTIDA").font(.caption.bold()).tracking(1.2)
                         .foregroundStyle(TraidoresTheme.secondary)
                     optionToggle(title: "Mostrar roles al morir o al expulsar",
@@ -610,26 +608,34 @@ private struct AdvancedOptionsView: View {
                         .foregroundStyle(TraidoresTheme.secondary)
                     Text("Elegí el rol que querés probar en la próxima partida. AZAR mantiene el reparto normal.")
                         .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("TU ROL").font(.subheadline.bold())
-                            Spacer()
-                            Picker("Tu rol", selection: $draftRoleKey) {
-                                Text("Al azar").tag("")
-                                ForEach(ClassicGame.supportedTrainingRoles, id: \.self) { role in
-                                    Text(role.practiceLabel(players: playerCount, map: map)).tag(role.rawValue)
-                                }
+                    Button { choosingRole = true } label: {
+                        let role = RoleKey(rawValue: draftRoleKey)
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(role.map { $0.classicImage(on: map) } ?? "card_back_traidores")
+                                .resizable().scaledToFill()
+                                .frame(width: 58, height: 86).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(TraidoresTheme.gold.opacity(0.7)))
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text("TU ROL").font(.caption.bold()).tracking(1).foregroundStyle(TraidoresTheme.secondary)
+                                Text(role.map { $0.classicTitle(on: map).uppercased() } ?? "AL AZAR")
+                                    .font(TraidoresTheme.title(19)).foregroundStyle(TraidoresTheme.gold)
+                                Text(trainingRoleExplanation)
+                                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("ELEGIR ROL")
+                                    .font(.caption.weight(.heavy)).foregroundStyle(TraidoresTheme.gold)
+                                    .padding(.top, 2)
                             }
-                            .labelsHidden()
-                            .tint(TraidoresTheme.gold)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        Text(trainingRoleExplanation)
-                            .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        .padding(12)
+                        .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .padding(12)
-                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("practice.role")
                     Button("APLICAR") {
                         config = draft.normalized
                         trainingRoleKey = draftRoleKey
@@ -644,10 +650,22 @@ private struct AdvancedOptionsView: View {
                 }
                 .padding(20).frame(maxWidth: 560).frame(maxWidth: .infinity)
             }
+            // An opaque bar: scrolled options never show through under the status bar.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Text("OPCIONES AVANZADAS")
+                    .font(TraidoresTheme.title(23)).foregroundStyle(TraidoresTheme.gold)
+                    .accessibilityAddTraits(.isHeader)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(TraidoresTheme.ink.ignoresSafeArea(edges: .top))
+                    .overlay(alignment: .bottom) { Rectangle().fill(TraidoresTheme.border).frame(height: 1) }
+            }
         }
         .foregroundStyle(TraidoresTheme.text)
-        .presentationDetents([.large])
         .sheet(isPresented: $showingTiming) { TimingOptionsView(timing: $timing) }
+        .sheet(isPresented: $choosingRole) {
+            PracticeRolePicker(selection: $draftRoleKey, playerCount: playerCount, map: map)
+        }
     }
 
     private func optionToggle(title: String, detail: String, value: Binding<Bool>) -> some View {
@@ -1876,6 +1894,11 @@ private struct LocalTableView: View {
     @State private var emoteBubbles: [Int: EmoteBubble] = [:]
     @State private var showingEmotePalette = false
     @State private var emoteNotice: String?
+    // Android's ESPECTADORES channel: eliminated players talk among themselves.
+    @State private var spectatorChannel = false
+    @State private var spectatorMessages: [TableMessage] = []
+    // Android: by day a traitor can reopen the killers' night chat to review the plan.
+    @State private var reviewingPlan = false
     @AppStorage("menu.profileEmotes") private var profileEmoteIDs =
         "griego_enojado,griego_triste,griego_contento,griego_sospechoso"
     @Environment(\.dynamicTypeSize) private var tableTextSize
@@ -1918,6 +1941,8 @@ private struct LocalTableView: View {
                                 .background(TraidoresTheme.ink.opacity(0.42), in: RoundedRectangle(cornerRadius: 12))
                                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(TraidoresTheme.border, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                // The emote palette hangs from the header over the right column.
+                                .zIndex(1)
                                 playerColumn(sides.right, game: game, metrics: metrics)
                             }
                             .padding(.horizontal, 4)
@@ -2017,10 +2042,6 @@ private struct LocalTableView: View {
                         .zIndex(5)
                 }
 
-                if scenePhase != .active {
-                    TraidoresTheme.ink.ignoresSafeArea()
-                    Text("TRAIDORES").font(TraidoresTheme.title(36)).foregroundStyle(TraidoresTheme.gold)
-                }
             }
             .foregroundStyle(TraidoresTheme.text)
             .onChange(of: game.phaseIndex) { _, _ in
@@ -2032,6 +2053,7 @@ private struct LocalTableView: View {
                 quickPick = nil; quickPickTarget = nil; quickRolePick = nil; quickPickReturnsToChat = false
                 contrapuntoPicks = nil
                 showingEmotePalette = false
+                if store.game?.isNight == true { reviewingPlan = false }
                 if !game.isNight && !isTalkPhase(game) {
                     showingChat = false
                     chatInputFocused = false
@@ -2117,6 +2139,7 @@ private struct LocalTableView: View {
             }
             .modifier(roleDialogs(game))
             .task(id: botEmoteKey(game)) { await runBotEmotes(for: game) }
+            .onChange(of: game.human.alive) { _, alive in if !alive { spectatorChannel = true } }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
             // Haptics follow Android's "Vibración al interactuar" (off by default): picking a
             // target, each new period, the last seconds of a timer and the end of the match.
@@ -2366,15 +2389,7 @@ private struct LocalTableView: View {
                 if let seconds = game.isNight ? remainingNightSeconds : remainingPhaseSeconds {
                     timerBadge(seconds)
                 }
-                Button {
-                    if !dismissChatKeyboard() { showingRole = true }
-                } label: {
-                    Image(systemName: "person.text.rectangle").font(.caption).frame(width: 30, height: 30)
-                        .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(0.62)))
-                        .frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .accessibilityLabel("Ver mi rol")
+                emoteButton(game)
                 Button {
                     if !dismissChatKeyboard() {
                         // The card fades in itself; skip the cover's slide-up.
@@ -2402,6 +2417,15 @@ private struct LocalTableView: View {
         .onTapGesture { chatInputFocused = false }
         .background(TraidoresTheme.panel.opacity(0.95), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
+        .overlay(alignment: .bottomTrailing) {
+            if showingEmotePalette {
+                emotePalette(game)
+                    .fixedSize()
+                    .offset(x: 8, y: 80)
+                    .transition(.opacity)
+            }
+        }
+        .zIndex(2)
     }
 
     /// Countdown badge: rolling digits, red and pulsing during the last five seconds.
@@ -2748,18 +2772,21 @@ private struct LocalTableView: View {
 
     private func tableConversationPanel(_ game: ClassicGame) -> some View {
         let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
-        let canWrite = traitorChat ? game.human.alive : game.canSpeak(0)
+        let canWrite = !planReview(game) && (spectating(game) || (traitorChat ? game.human.alive : game.canSpeak(0)))
         let visibleMessages = visibleConversationMessages(game)
-        let title = game.isNight
+        let title = spectating(game) ? "LOS MUERTOS" : planReview(game) ? "PLAN NOCTURNO" : game.isNight
             ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
             : game.phase == .counterpoint ? "CONTRAPUNTO" : "CHAT DEL PUEBLO"
-        let accent = game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold
+        let accent = spectating(game) ? Color(hex: "#A9C8EA") : planReview(game) ? Color(hex: "#D9606A")
+            : game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
                 Text(title)
                     .font(.caption.weight(.bold)).tracking(0.8)
                     .foregroundStyle(accent)
-                Spacer(minLength: 0)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Spacer(minLength: 4)
+                if !game.human.alive || hasPlanChannel(game) { channelToggle(game) }
                 Button { openChat(focus: false) } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 10, weight: .bold))
@@ -2783,6 +2810,11 @@ private struct LocalTableView: View {
                         ForEach(visibleMessages) { message in
                             chatMessage(message, game: game).id(message.id)
                         }
+                        if visibleMessages.isEmpty && planReview(game) {
+                            Text("Todavía no hablaron del plan.")
+                                .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                                .padding(.top, 12)
+                        }
                         Color.clear.frame(height: 1).id("table.chatBottom")
                     }
                     .frame(maxWidth: .infinity)
@@ -2800,7 +2832,7 @@ private struct LocalTableView: View {
                 }
             }
             roleAbilityBar(game)
-            if canWrite {
+            if canWrite && !spectating(game) {
                 quickChatBar(game, accent: accent)
                 HStack(spacing: 4) {
                     Image(systemName: "person.wave.2.fill")
@@ -2835,6 +2867,13 @@ private struct LocalTableView: View {
                 .background(TraidoresTheme.ink.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.8)))
                 .contentShape(RoundedRectangle(cornerRadius: 12))
+            } else if planReview(game) {
+                Label("De día el plan de los asesinos es solo de lectura.", systemImage: "eye.fill")
+                    .font(.caption2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(TraidoresTheme.ink.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(TraidoresTheme.border))
             } else if isTalkPhase(game) {
                 Label(game.silencedPlayer == 0 ? "Estás silenciado durante el día" :
                       game.phase == .counterpoint ? "Contrapunto: solo hablan los dos elegidos." :
@@ -2864,6 +2903,9 @@ private struct LocalTableView: View {
     }
 
     private func visibleConversationMessages(_ game: ClassicGame) -> [TableMessage] {
+        if spectating(game) { return spectatorMessages }
+        // Every night's plan, oldest first, so the whole strategy can be reread.
+        if planReview(game) { return game.privateChatMessages.sorted { $0.id < $1.id } }
         let publicMessages = game.messages.filter { $0.round == game.round && $0.id != 1 }
         guard game.isNight else { return publicMessages }
         let nightEvents = publicMessages.filter { $0.speaker == nil }
@@ -2952,8 +2994,9 @@ private struct LocalTableView: View {
             HStack(spacing: 8) {
                 Button {
                     if dismissChatKeyboard() { return }
+                    // Tapping your own card explains your role (it used to be a header button).
                     if canChooseSelf { selected = 0 }
-                    else { humanCardRevealed.toggle() }
+                    else { showingRole = true }
                 } label: {
                     Image(humanCardRevealed ? game.human.role.classicImage(on: game.map) : "card_back_traidores")
                         .resizable().scaledToFill()
@@ -2978,7 +3021,7 @@ private struct LocalTableView: View {
                         }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(canChooseSelf ? "Elegirme para protegerme" : "Ver mi carta")
+                .accessibilityLabel(canChooseSelf ? "Elegirme para protegerme" : "Ver qué hace mi rol")
                 .accessibilityIdentifier("table.player.0")
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -2994,7 +3037,6 @@ private struct LocalTableView: View {
                             .lineLimit(2).minimumScaleFactor(0.82)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    emoteButton(game)
                 }
             }
 
@@ -3040,13 +3082,11 @@ private struct LocalTableView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.border))
         .overlay(alignment: .topLeading) {
             if let bubble = emoteBubbles[0] {
+                // Over the player's own card, so it never covers a companion's card.
                 EmoteBubbleView(emote: bubble.emote, large: true)
-                    .offset(x: 6, y: -74)
+                    .offset(x: -3, y: 4)
                     .transition(emoteTransition)
             }
-        }
-        .overlay(alignment: .topTrailing) {
-            if showingEmotePalette { emotePalette(game).offset(y: -76).transition(.opacity) }
         }
         .overlay(alignment: .top) {
             if let emoteNotice {
@@ -3092,18 +3132,15 @@ private struct LocalTableView: View {
         return Button {
             if dismissChatKeyboard() { return }
             if let reason = emoteUnavailableReason(game) { showEmoteNotice(reason); return }
-            if case .roundLimit = reactionLimiter.check(player: 0, round: game.round, now: Date().timeIntervalSinceReferenceDate) {
-                showEmoteNotice("Ya usaste tus emotes de esta ronda.")
-                return
-            }
             withAnimation(.easeOut(duration: 0.15)) { showingEmotePalette.toggle() }
         } label: {
-            Image(systemName: "face.smiling.inverse")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(available ? TraidoresTheme.gold : TraidoresTheme.secondary)
-                .frame(width: 44, height: 44)
-                .background(TraidoresTheme.ink, in: Circle())
-                .overlay(Circle().stroke(available ? TraidoresTheme.gold.opacity(0.8) : TraidoresTheme.border))
+            ReactionsMenuIcon()
+                .frame(width: 20, height: 20)
+                .opacity(available ? 1 : 0.55)
+                .frame(width: 30, height: 30)
+                .background(TraidoresTheme.ink.opacity(0.84), in: RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(TraidoresTheme.gold.opacity(available ? 0.62 : 0.3)))
+                .frame(width: 44, height: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Emotes")
@@ -3139,13 +3176,10 @@ private struct LocalTableView: View {
         guard let game = store.game else { return }
         withAnimation(.easeOut(duration: 0.15)) { showingEmotePalette = false }
         if let reason = emoteUnavailableReason(game) { showEmoteNotice(reason); return }
-        switch reactionLimiter.record(player: 0, round: game.round, now: Date().timeIntervalSinceReferenceDate) {
-        case .none:
-            showEmote(emote, by: 0)
-            quickSent += 1
-        case .cooldown(let seconds): showEmoteNotice("Esperá \(seconds) s para otro emote.")
-        case .roundLimit: showEmoteNotice("Ya usaste tus emotes de esta ronda.")
-        }
+        // Against the AI nothing is sent anywhere, so the player has no cooldown or round
+        // limit (user decision 5/10). ReactionLimiter still paces the bots and online rooms.
+        showEmote(emote, by: 0)
+        quickSent += 1
     }
 
     private func showEmote(_ emote: ProfileEmoteContent, by player: Int) {
@@ -3467,7 +3501,10 @@ private struct LocalTableView: View {
     private func sendChat(_ game: ClassicGame) {
         let message = chatDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
-        if game.isNight {
+        if spectating(game) {
+            spectatorMessages.append(TableMessage(id: -(spectatorMessages.count + 1), round: game.round,
+                                                  speaker: 0, text: String(message.prefix(140))))
+        } else if game.isNight {
             store.sendTraitorMessage(message, revision: game.phaseIndex)
         } else {
             store.sendPublicMessage(message, revision: game.phaseIndex)
@@ -3478,6 +3515,40 @@ private struct LocalTableView: View {
             await Task.yield()
             chatInputFocused = true
         }
+    }
+
+    // MARK: Spectators
+
+    private func spectating(_ game: ClassicGame) -> Bool { !game.human.alive && spectatorChannel }
+
+    private func hasPlanChannel(_ game: ClassicGame) -> Bool {
+        !game.isNight && game.human.alive && [.assassin, .mercenary, .spy].contains(game.human.role)
+    }
+    private func planReview(_ game: ClassicGame) -> Bool { hasPlanChannel(game) && reviewingPlan }
+
+    /// By day: a traitor flips between the town and the killers' plan (read-only);
+    /// an eliminated player between the town and the dead. One small button next to the title.
+    private func channelToggle(_ game: ClassicGame) -> some View {
+        let plan = hasPlanChannel(game)
+        let away = plan ? reviewingPlan : spectatorChannel
+        let tint = away ? TraidoresTheme.gold : plan ? Color(hex: "#D9606A") : Color(hex: "#A9C8EA")
+        return Button {
+            if plan { reviewingPlan.toggle() } else { spectatorChannel.toggle() }
+            readingOlderChat = false
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.left.arrow.right").font(.system(size: 8, weight: .bold))
+                Text(away ? "PUEBLO" : plan ? "PLAN" : "MUERTOS")
+                    .font(.system(size: 9, weight: .heavy)).tracking(0.5)
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7).frame(height: 20)
+            .overlay(Capsule().stroke(tint.opacity(0.7), lineWidth: 1))
+            .frame(minHeight: 25).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(away ? "Volver al chat del pueblo" : plan ? "Ver el plan de los asesinos" : "Ver el chat de los muertos")
+        .accessibilityIdentifier(away ? "chat.channel.town" : plan ? "chat.channel.plan" : "chat.channel.dead")
     }
 
     // MARK: Role abilities
@@ -3909,11 +3980,11 @@ private struct LocalTableView: View {
 
     private func chatPanel(_ game: ClassicGame) -> some View {
         let traitorChat = game.isNight && [.assassin, .mercenary, .spy].contains(game.human.role)
-        let canWrite = traitorChat ? game.human.alive : game.canSpeak(0)
+        let canWrite = !planReview(game) && (spectating(game) || (traitorChat ? game.human.alive : game.canSpeak(0)))
         let visibleMessages = visibleConversationMessages(game)
         return VStack(spacing: 5) {
             HStack {
-                Text(game.isNight ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
+                Text(spectating(game) ? "LOS MUERTOS" : planReview(game) ? "PLAN DE LOS ASESINOS" : game.isNight ? (traitorChat ? "CHAT DE LOS ASESINOS" : "LA NOCHE")
                                   : game.phase == .counterpoint ? "CONTRAPUNTO" : "CHAT DEL PUEBLO")
                     .font(.caption.bold()).tracking(0.6)
                     .foregroundStyle(game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold)
@@ -3985,7 +4056,7 @@ private struct LocalTableView: View {
             }
             .frame(height: 14)
 
-            if canWrite {
+            if canWrite && !spectating(game) {
                 quickChatBar(game, accent: game.isNight ? phaseAccent(game.phase) : TraidoresTheme.gold)
             }
 
@@ -4110,7 +4181,7 @@ private struct LocalTableView: View {
                 Text("TU ROL").font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Text(role.classicTitle(on: map).uppercased())
                     .font(TraidoresTheme.title(27)).foregroundStyle(TraidoresTheme.gold)
-                Text([RoleKey.assassin, .mercenary, .spy].contains(role) ? "TRAIDORES" : "PUEBLO")
+                Text(role.teamLabel)
                     .font(.caption.bold()).foregroundStyle(TraidoresTheme.secondary)
                 Divider().overlay(TraidoresTheme.border)
                 HStack(alignment: .top, spacing: 11) {
@@ -4399,5 +4470,107 @@ private struct EmoteBubbleView: View {
         .shadow(color: .black.opacity(0.55), radius: 6, y: 3)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Android's ic_reactions_menu: a cream theatre mask, redrawn from its 24-unit vector.
+private struct ReactionsMenuIcon: View {
+    var body: some View {
+        Canvas { context, size in
+            let k = min(size.width, size.height) / 24
+            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+            var mask = Path()
+            mask.move(to: p(4, 5))
+            mask.addQuadCurve(to: p(5.5, 4.5), control: p(4, 3.4))
+            mask.addQuadCurve(to: p(18.5, 4.5), control: p(12, 8.1))
+            mask.addQuadCurve(to: p(20, 5), control: p(20, 3.4))
+            mask.addLine(to: p(20, 13.3))
+            mask.addQuadCurve(to: p(12, 21), control: p(19.1, 18.7))
+            mask.addQuadCurve(to: p(4, 13.3), control: p(4.9, 18.7))
+            mask.closeSubpath()
+            context.fill(mask, with: .color(Color(hex: "#FFF0CE")))
+            context.stroke(mask, with: .color(Color(hex: "#A97426")), lineWidth: 1.3 * k)
+            var eyes = Path()
+            eyes.move(to: p(7.1, 10.6)); eyes.addQuadCurve(to: p(10.1, 10.6), control: p(8.6, 8.9))
+            eyes.move(to: p(13.9, 10.6)); eyes.addQuadCurve(to: p(16.9, 10.6), control: p(15.4, 8.9))
+            context.stroke(eyes, with: .color(Color(hex: "#21170D")),
+                           style: StrokeStyle(lineWidth: 1.8 * k, lineCap: .round))
+            var mouth = Path()
+            mouth.move(to: p(7.7, 13.5))
+            mouth.addQuadCurve(to: p(16.3, 13.5), control: p(12, 16.7))
+            mouth.addQuadCurve(to: p(12, 18.2), control: p(15.7, 17.7))
+            mouth.addQuadCurve(to: p(7.7, 13.5), control: p(8.3, 17.7))
+            context.fill(mouth, with: .color(Color(hex: "#21170D")))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// The practice role chosen by its card: the roles of this map, «Al azar» first, and the
+/// ones the current table cannot deal shown dimmed with their requirement.
+private struct PracticeRolePicker: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selection: String
+    let playerCount: Int
+    let map: GameMap
+
+    private var roles: [RoleKey] {
+        ClassicGame.supportedTrainingRoles.filter { role in
+            let exclusive = RoleCatalog.all.first { $0.id == role }?.exclusiveMap
+            return exclusive == nil || exclusive == map
+        }
+    }
+
+    var body: some View {
+        MenuPage(title: "ELEGÍ TU ROL") {
+            Text("Roles de \(map.title) con \(playerCount) jugadores. Los apagados necesitan más jugadores.")
+                .font(.footnote).foregroundStyle(TraidoresTheme.secondary).readableOnArtwork()
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 12) {
+                cell(key: "", image: "card_back_traidores", title: "AL AZAR", note: "Reparto normal", locked: false)
+                ForEach(roles, id: \.self) { role in
+                    let minimum = RoleCatalog.all.first { $0.id == role }?.minimumPlayers ?? 5
+                    cell(key: role.rawValue, image: role.classicImage(on: map),
+                         title: role.classicTitle(on: map).uppercased(),
+                         note: playerCount < minimum ? "Desde \(minimum) jugadores" : role.teamLabel.capitalized,
+                         locked: playerCount < minimum)
+                }
+            }
+        }
+    }
+
+    private func cell(key: String, image: String, title: String, note: String, locked: Bool) -> some View {
+        let chosen = selection == key
+        return Button {
+            selection = key
+            dismiss()
+        } label: {
+            VStack(spacing: 4) {
+                Image(image).resizable().scaledToFit()
+                    .frame(height: 128)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7)
+                        .stroke(chosen ? TraidoresTheme.gold : TraidoresTheme.border, lineWidth: chosen ? 3 : 1))
+                    .saturation(locked ? 0 : 1)
+                    .opacity(locked ? 0.5 : 1)
+                    .overlay {
+                        if locked {
+                            Image(systemName: "lock.fill").font(.title2).foregroundStyle(TraidoresTheme.text)
+                                .padding(10).background(TraidoresTheme.ink.opacity(0.85), in: Circle())
+                        }
+                    }
+                Text(title).font(.caption.weight(.heavy))
+                    .foregroundStyle(chosen ? TraidoresTheme.gold : TraidoresTheme.text)
+                    .multilineTextAlignment(.center)
+                Text(note).font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(locked)
+        .accessibilityLabel(locked ? "\(title), \(note)" : title)
+        .accessibilityAddTraits(chosen ? .isSelected : [])
+        .accessibilityIdentifier("practice.role.\(key.isEmpty ? "random" : key)")
     }
 }

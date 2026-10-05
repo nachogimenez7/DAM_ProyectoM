@@ -647,22 +647,37 @@ final class LocalLobbyUITests: XCTestCase {
     func testPracticeRoleRequiresItsMapAndPlayers() throws {
         let app = launchLobby()
         app.buttons["lobby.map.pampa"].tap()
-        choosePracticeRole(app, "Alcald", requirement: "desde 8 jugadores")
-        app.buttons["local.startGame"].tap()
-        XCTAssertTrue(app.staticTexts["No se puede iniciar"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'necesita al menos 8 jugadores'")).firstMatch.exists)
-        attach(app, "Rol de práctica · faltan jugadores")
-        app.buttons["ENTENDIDO"].tap()
-
-        choosePracticeRole(app, "Bufón", requirement: "solo Medieval")
-        app.buttons["local.startGame"].tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'solo existe en el mapa Medieval'")).firstMatch
-            .waitForExistence(timeout: 3))
-        app.buttons["ENTENDIDO"].tap()
+        // With five players the Alcalde is locked and Medieval's Bufón is not offered in Pampa.
+        openPracticeRoles(app)
+        let mayor = app.buttons["practice.role.alcalde"]
+        XCTAssertTrue(mayor.waitForExistence(timeout: 3))
+        XCTAssertFalse(mayor.isEnabled)
+        XCTAssertTrue(mayor.label.contains("Desde 8 jugadores"))
+        XCTAssertFalse(app.buttons["practice.role.bufon"].exists)
+        XCTAssertTrue(app.buttons["practice.role.payador"].exists)
+        attach(app, "Rol de práctica · cartas")
+        app.buttons["practice.role.random"].tap()
+        applyAdvanced(app)
 
         // With the map and enough players the role is dealt.
         app.buttons["lobby.map.medieval"].tap()
         for _ in 0..<3 { app.buttons["lobby.addPlayer"].tap() }
+        openPracticeRoles(app)
+        let jester = app.buttons["practice.role.bufon"]
+        XCTAssertTrue(jester.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !jester.isHittable { app.swipeUp() }
+        XCTAssertTrue(jester.isEnabled)
+        jester.tap()
+        applyAdvanced(app)
+
+        // Removing a player afterwards blocks the start with the reason.
+        app.buttons["lobby.removePlayer"].tap()
+        app.buttons["local.startGame"].tap()
+        XCTAssertTrue(app.staticTexts["No se puede iniciar"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'necesita al menos 8 jugadores'")).firstMatch.exists)
+        app.buttons["ENTENDIDO"].tap()
+
+        app.buttons["lobby.addPlayer"].tap()
         app.buttons["local.startGame"].tap()
         let start = app.buttons["role.start"]
         if start.waitForExistence(timeout: 8), !start.isHittable {
@@ -671,25 +686,24 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] 'BUFÓN'")).firstMatch.waitForExistence(timeout: 3))
     }
 
-    /// Role names change per map («Alcaldesa» in Pampa), so match the start and the requirement.
-    private func choosePracticeRole(_ app: XCUIApplication, _ role: String, requirement: String) {
+    private func openPracticeRoles(_ app: XCUIApplication) {
         app.buttons["lobby.advanced"].tap()
-        let picker = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Tu rol' OR label CONTAINS 'Al azar' OR label CONTAINS '·'")).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 3))
-        picker.tap()
-        let option = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@ AND label CONTAINS %@",
-                                                      role, requirement)).firstMatch
-        for _ in 0..<4 where !(option.exists && option.isHittable) { app.swipeUp() }
-        XCTAssertTrue(option.waitForExistence(timeout: 2))
-        option.tap()
+        let card = app.buttons["practice.role"]
+        XCTAssertTrue(card.waitForExistence(timeout: 3))
+        for _ in 0..<4 where !card.isHittable { app.swipeUp() }
+        card.tap()
+    }
+
+    private func applyAdvanced(_ app: XCUIApplication) {
         let apply = app.buttons["APLICAR"]
+        XCTAssertTrue(apply.waitForExistence(timeout: 3))
         for _ in 0..<5 where !apply.isHittable { app.swipeUp() }
         apply.tap()
         XCTAssertTrue(apply.waitForNonExistence(timeout: 3))
     }
 
-    /// Emotes: only in the day's public phases, two per round ten seconds apart, and the
-    /// bots react too.
+    /// Emotes: only in the day's public phases, no limit for the player against the AI,
+    /// and the bots react too.
     func testEmotesInTheDebateWithLimits() throws {
         let app = launchLobby(extraArguments: ["-ui-testing-role=aldeano", "-ui-testing-emotes"])
         app.buttons["local.startGame"].tap()
@@ -716,10 +730,16 @@ final class LocalLobbyUITests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'table.emote.'")).firstMatch.tap()
         XCTAssertFalse(palette.exists)
         attach(app, "Emotes · burbuja propia")
+        // Against the AI the player has no cooldown.
         emotes.tap()
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'table.emote.'")).firstMatch.tap()
         let cooldown = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Esperá'")).firstMatch
-        XCTAssertTrue(cooldown.waitForExistence(timeout: 2))
+        XCTAssertFalse(cooldown.waitForExistence(timeout: 1))
+        // The own card explains the role.
+        app.buttons["table.player.0"].tap()
+        XCTAssertTrue(app.staticTexts["QUÉ HACE"].waitForExistence(timeout: 2))
+        attach(app, "Mi rol desde mi carta")
+        app.buttons["CERRAR"].tap()
         // Bots react every 5–10 seconds.
         sleep(9)
         attach(app, "Emotes · bots")
@@ -821,6 +841,34 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [invoked], timeout: 20), .completed)
         XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
         attach(app, "Oráculo · invitado en el debate")
+    }
+
+    /// By day an Asesino rereads the night plan, read-only, and goes back to the town chat.
+    func testTraitorReviewsTheNightPlanDuringTheDay() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin"])
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        skipToHumanNightTurn(app)
+        let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                     "table.player.", "Objetivo disponible")).firstMatch
+        XCTAssertTrue(waitUntilHittable(target, timeout: 4))
+        target.tap()
+        app.buttons["table.primaryAction"].tap()
+        for _ in 0..<8 where !waitForPhase(app, containing: "DEBATE", timeout: 2) {
+            let feedback = app.buttons["table.dismissPrivateFeedback"]
+            if feedback.exists { feedback.tap() }
+        }
+        XCTAssertTrue(waitForPhase(app, containing: "DEBATE"))
+        let plan = app.buttons["chat.channel.plan"]
+        XCTAssertTrue(waitUntilHittable(plan, timeout: 8))
+        plan.tap()
+        XCTAssertTrue(app.staticTexts["PLAN NOCTURNO"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["De día el plan de los asesinos es solo de lectura."].exists)
+        attach(app, "Plan de los asesinos de día")
+        app.buttons["chat.channel.town"].tap()
+        XCTAssertTrue(app.staticTexts["CHAT DEL PUEBLO"].waitForExistence(timeout: 2))
     }
 
     private func startAndReachDay(_ app: XCUIApplication) {

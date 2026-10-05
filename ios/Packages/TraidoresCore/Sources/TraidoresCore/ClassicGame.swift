@@ -20,6 +20,13 @@ public struct TableMessage: Codable, Equatable, Identifiable, Sendable {
     public let round: Int
     public let speaker: Int?
     public let text: String
+
+    public init(id: Int, round: Int, speaker: Int?, text: String) {
+        self.id = id
+        self.round = round
+        self.speaker = speaker
+        self.text = text
+    }
 }
 
 public struct SpecialVictory: Codable, Equatable, Sendable {
