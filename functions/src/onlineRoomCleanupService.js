@@ -3,7 +3,8 @@
 const crypto = require("node:crypto");
 const {FieldPath, FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {ServerValue} = require("firebase-admin/database");
-const {roomRetention, realtimeRetention, RETENTION_MS} = require("./onlineRoomCleanupPolicy");
+const {roomRetention, realtimeRetention, RETENTION_MS, timestampMs} = require("./onlineRoomCleanupPolicy");
+const {archiveFinishedRoom} = require("./accountHistoryService");
 
 const ORPHANS = "onlineRoomCleanupOrphans";
 const MAINTENANCE = "onlineMaintenance/roomCleanup";
@@ -66,7 +67,8 @@ async function observeDeletedRoom({firestore, roomId, room, observedAtMs = Date.
   await enqueueRoomCleanup({firestore, roomId, nowMs: observedAtMs});
 }
 
-async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orphan = null}) {
+async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orphan = null,
+  archiveResult = archiveFinishedRoom}) {
   const roomRef = firestore.collection("partidas").doc(roomId);
   const realtimeRef = database.ref(`salas/${roomId}`);
   const realtime = (await realtimeRef.get()).val(); // A failed read aborts; never infer absence.
@@ -129,6 +131,14 @@ async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orp
       });
     });
     return {status: "retained", reason: "realtime-changed-before-lock"};
+  }
+
+  // Old final rooms can predate the history trigger, or its event can still be retrying.
+  // Persist the last match before removing its snapshot. A failure leaves both locks and
+  // the complete result in place for the next sweep; the match key prevents double counting.
+  if (["Pueblo", "Traidores"].includes(claim.room.estadoPartida?.ganador)) {
+    const finishedAtMs = timestampMs(claim.room.actualizadaEn ?? claim.room.creadaEn);
+    await archiveResult({firestore, roomId, room: claim.room, finishedAtMs});
   }
 
   // Keep the parent lock while traversing ALL collections, including runtime,

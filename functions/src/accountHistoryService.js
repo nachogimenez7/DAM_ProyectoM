@@ -39,7 +39,8 @@ function recordsForFinishedRoom(roomId, room, finishedAtMs) {
         typeof player.rolEquipo !== "string") return [];
     const special = Array.isArray(state.victoriasEspeciales) &&
       state.victoriasEspeciales.some((v) => v.jugador === member.nombre);
-    const won = special || (player.rolKey === "desertor" ? state.desertorBando === state.ganador :
+    const won = special || (player.rolKey === "desertor" ?
+      player.vivo === true && state.desertorBando === state.ganador :
       state.ganador === "Pueblo" ? player.rolEquipo === "Pueblo" :
         ["asesino", "mercenario", "espia"].includes(player.rolKey));
     records.push({schemaVersion: 1, uid: member.uidTemporal, matchKey: `online:${initial.matchId}`,

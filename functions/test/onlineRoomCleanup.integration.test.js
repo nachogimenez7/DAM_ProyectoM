@@ -6,8 +6,10 @@ const {getFirestore, Timestamp} = require("firebase-admin/firestore");
 const {getDatabase} = require("firebase-admin/database");
 const {cleanupRoom, observeDeletedRoom, sweepRooms, enqueueRoomCleanup, ORPHANS, QUEUE} = require("../src/onlineRoomCleanupService");
 const {DAY_MS} = require("../src/onlineRoomCleanupPolicy");
+const {room: historyRoom} = require("./fixtures/accountHistoryRoom");
 let app, firestore, database;
 const ids = [];
+const accountIds = [];
 const nowMs = Date.now();
 before(() => {
   assert.match(process.env.FIRESTORE_EMULATOR_HOST || "", /^(127\.0\.0\.1|localhost):/);
@@ -16,6 +18,10 @@ before(() => {
   firestore = getFirestore(app); database = getDatabase(app);
 });
 after(async () => {
+  for (const uid of accountIds) {
+    await firestore.doc(`perfiles_publicos/${uid}`).delete();
+    await firestore.recursiveDelete(firestore.doc(`cuentas/${uid}`));
+  }
   for (const id of ids) {
     await firestore.recursiveDelete(firestore.doc(`partidas/${id}`));
     await firestore.doc(`${ORPHANS}/${id}`).delete();
@@ -48,6 +54,37 @@ test("purga subcolecciones anidadas y espejo, conserva tombstones y es idempoten
   assert.equal(mirror.control.cleanupState, "deleting");
   assert.equal((await firestore.doc("codigosSala/CLN234").get()).exists, false);
   assert.equal((await cleanupRoom({firestore, database, roomId, nowMs})).status, "retained");
+});
+test("sala final antigua guarda el historial antes de purgar y no duplica al reintentar", async () => {
+  const uid = `cleanup-history-${nowMs}`; accountIds.push(uid);
+  await firestore.doc(`perfiles_publicos/${uid}`).set({uidTemporal: uid, publicId: "42"});
+  const final = historyRoom();
+  final.partidaInicial.matchId = uid;
+  final.partidaInicial.jugadores.forEach((p, index) => {
+    if (index === 0) p.uidTemporal = uid;
+    else p.simulado = true;
+  });
+  const roomId = await seed({...final, estado: "finalizada", actualizadaEn: nowMs - 8 * DAY_MS});
+  assert.equal((await cleanupRoom({firestore, database, roomId, nowMs})).status, "cleaned");
+  const records = await firestore.collection(`cuentas/${uid}/historial`).get();
+  assert.equal(records.size, 1);
+  assert.equal(records.docs[0].data().finalizadaEn.toMillis(), nowMs - 8 * DAY_MS);
+  assert.equal(records.docs[0].data().won, true);
+  assert.equal((await firestore.doc(`cuentas/${uid}`).get()).data().partidas, 1);
+  assert.equal((await cleanupRoom({firestore, database, roomId, nowMs})).status, "retained");
+  assert.equal((await firestore.doc(`cuentas/${uid}`).get()).data().partidas, 1);
+});
+test("si falla el historial conserva el resultado completo y recupera la limpieza", async () => {
+  const final = historyRoom();
+  const roomId = await seed({...final, estado: "finalizada"});
+  await assert.rejects(cleanupRoom({firestore, database, roomId, nowMs,
+    archiveResult: async () => {throw new Error("history-unavailable");}}), /history-unavailable/);
+  const room = (await firestore.doc(`partidas/${roomId}`).get()).data();
+  assert.equal(room.cleanupState, "deleting");
+  assert.equal(room.cleanupCompleted, undefined);
+  assert.equal(room.estadoPartida.ganador, "Pueblo");
+  assert.equal((await firestore.doc(`partidas/${roomId}/acciones/a/nested/b`).get()).exists, true);
+  assert.equal((await cleanupRoom({firestore, database, roomId, nowMs})).status, "cleaned");
 });
 test("reconexión gana carrera antes del lock RTDB; revierte claim sin borrar", async () => {
   const roomId = await seed();

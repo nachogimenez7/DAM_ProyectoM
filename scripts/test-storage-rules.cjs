@@ -97,8 +97,11 @@ async function testPhotoLifecycle(env, owner, other, db) {
 }
 (async () => {
   const env = await initializeTestEnvironment({projectId: 'demo-traidores-photos', storage: {
-    host: '127.0.0.1', port: 9199, rules: fs.readFileSync('storage.rules', 'utf8')
-  }, firestore: {host: '127.0.0.1', port: 8081, rules: fs.readFileSync('firestore.rules', 'utf8')}});
+    host: '127.0.0.1', port: Number(process.env.FIREBASE_STORAGE_EMULATOR_HOST?.split(':').at(-1) || 9199),
+    rules: fs.readFileSync('storage.rules', 'utf8')
+  }, firestore: {host: '127.0.0.1',
+    port: Number(process.env.FIRESTORE_EMULATOR_HOST?.split(':').at(-1) || 8081),
+    rules: fs.readFileSync('firestore.rules', 'utf8')}});
   try {
     const owner = env.authenticatedContext('owner', {firebase: {sign_in_provider: 'password'}}).storage();
     const other = env.authenticatedContext('other', {firebase: {sign_in_provider: 'password'}}).storage();

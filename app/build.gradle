@@ -17,7 +17,7 @@ if (!(firebaseEmulatorHost ==~ /[A-Za-z0-9.:-]+/)) {
     throw new GradleException('firebaseEmulatorHost contiene caracteres no validos')
 }
 
-def profileStorageEnabled = providers.gradleProperty('traidoresProfileStorage').orElse('false').get().toBoolean()
+def profileStorageEnabled = providers.gradleProperty('traidoresProfileStorage').orElse('true').get().toBoolean()
 
 android {
     namespace = 'com.traidores.juego'
