@@ -1884,6 +1884,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private fun isUnrevealedHumanMayor(): Boolean {
         val human = GameEngine.humanPlayer(session)
         return human.alive &&
+            !human.muted &&
             human.role?.key == RoleCatalog.ALCALDE &&
             !session.alcaldeRevealed
     }
@@ -1924,7 +1925,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
      */
     private fun recordOnlineMayorReveal() {
         val human = GameEngine.humanPlayer(session)
-        if (human.role?.key != RoleCatalog.ALCALDE || !human.alive) return
+        if (human.role?.key != RoleCatalog.ALCALDE || !human.alive || human.muted) return
         if (session.alcaldeRevealed || onlineMayorRevealSent) return
         onlineMayorRevealSent = true
         GameplayEffects.play(this, GameplayEffect.CONFIRM)
@@ -4437,7 +4438,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!isOnlineGameplay() || session.onlineMatchId.isBlank()) return null
         realtimeAuthoritativeState?.let { return it }
         val transport = RealtimeAuthoritativeState(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             matchId = session.onlineMatchId,
             uid = onlinePlayerId,
@@ -4493,7 +4494,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!isOnlineGameplay() || realtimePresence != null) return
         if (onlineIsHost) syncRealtimeGameplayAccess()
         val presence = RealtimeRoomPresence(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             uid = onlinePlayerId,
             onPresenceChanged = { states ->
@@ -4526,7 +4527,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!isOnlineGameplay() || onlinePartidaId.isBlank() || onlinePlayerId.isBlank()) return null
         realtimeGameplaySync?.let { return it }
         val sync = RealtimeGameplaySync(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             uid = onlinePlayerId,
             onClientStatesChanged = { states ->
@@ -4581,7 +4582,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }.toMap()
         if (members.isEmpty()) return
         RealtimeRoomAccess.syncMembers(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             hostUid = onlinePlayerId,
             matchId = session.onlineMatchId,
@@ -13016,7 +13017,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         val notices = TraitorKillNotices.confirmedNotices(session, onlineNightActionRecords)
         if (notices.isEmpty()) return
 
-        val planReference = FirebaseDatabase.getInstance()
+        val planReference = FirebaseEmulatorConfig.database
             .getReference("salas/$onlinePartidaId/chat_traidores")
         notices.forEach { notice ->
             val remoteNoticeId =

@@ -30,7 +30,7 @@ class OnlineModeActivity : BaseActivity() {
 
     private val firestore = FirebaseFirestore.getInstance()
     private val ownedWaitingRoomCleaner by lazy {
-        OnlineOwnedWaitingRoomCleaner(firestore, FirebaseDatabase.getInstance())
+        OnlineOwnedWaitingRoomCleaner(firestore, FirebaseEmulatorConfig.database)
     }
     private lateinit var btnCreate: Button
     private lateinit var btnJoinCode: Button
@@ -723,7 +723,7 @@ class OnlineModeActivity : BaseActivity() {
         selectedMap: GameMap,
         roomCode: String
     ) {
-        val database = FirebaseDatabase.getInstance()
+        val database = FirebaseEmulatorConfig.database
         val roomReference = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION).document()
         val safePlayerName = OnlineRoomFirestore.normalizedPlayerName(playerName)
         RealtimeRoomAccess.initializeHost(
@@ -848,8 +848,8 @@ class OnlineModeActivity : BaseActivity() {
                 val updatedAtMs = snapshot.getTimestamp(OnlineRoomFirestore.FIELD_UPDATED_AT)
                     ?.toDate()?.time ?: 0L
                 if (snapshot.getString("cleanupState") == "deleting" ||
-                    OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
-                    !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)) {
+                    (snapshot.getString("authorityMode") != "server" && (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
+                    !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)))) {
                     OnlineRoomRecovery.clear(this)
                     return@addOnSuccessListener
                 }
@@ -865,7 +865,7 @@ class OnlineModeActivity : BaseActivity() {
                             ) != false,
                             inGameEntryReleased = isCurrentMatchEntryReleased(snapshot)
                         )
-                        if (target == OnlineRecoveryTarget.CLEAR) {
+                        if (target == OnlineRecoveryTarget.CLEAR && snapshot.getString("authorityMode") != "server") {
                             OnlineRoomRecovery.clear(this)
                             return@addOnSuccessListener
                         }
@@ -907,7 +907,8 @@ class OnlineModeActivity : BaseActivity() {
         room: DocumentSnapshot,
         onAvailable: () -> Unit
     ) {
-        FirebaseDatabase.getInstance().getReference("salas/${room.id}/presencia")
+        if (room.getString("authorityMode") == "server") { onAvailable(); return }
+        FirebaseEmulatorConfig.database.getReference("salas/${room.id}/presencia")
             .get()
             .addOnSuccessListener { snapshot ->
                 if (isFinishing || isDestroyed || OnlineRoomRecovery.load(this)?.roomId != room.id) {
@@ -972,8 +973,8 @@ class OnlineModeActivity : BaseActivity() {
                         val updatedAtMs = snapshot.getTimestamp(OnlineRoomFirestore.FIELD_UPDATED_AT)
                             ?.toDate()?.time ?: 0L
                         if (snapshot.getString("cleanupState") == "deleting" ||
-                            OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
-                            !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)) {
+                            (snapshot.getString("authorityMode") != "server" && (OnlineRecoveryGate.targetForRoomState(state) == OnlineRecoveryTarget.CLEAR ||
+                            !OnlineRoomRetentionPolicy.isRecoveryAvailable(state, updatedAtMs, serverNowMs)))) {
                             clearUnavailableRecoveredRoom("La sala ya termino o fue abandonada.")
                             return@roomSnapshot
                         }
@@ -1004,6 +1005,11 @@ class OnlineModeActivity : BaseActivity() {
             .document(uid)
             .get(Source.SERVER)
             .addOnSuccessListener { player ->
+                if (snapshot.getString("authorityMode") == "server" && snapshot.getLong("protocolVersion") == 3L) {
+                    if (player.exists() && player.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false) openRecoveredLobby(room, snapshot)
+                    else clearUnavailableRecoveredRoom("Ya no formás parte de esa partida.")
+                    return@addOnSuccessListener
+                }
                 when (
                     OnlineRecoveryGate.targetForRecovery(
                         state = state,
@@ -1086,6 +1092,7 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     private fun openRecoveredGameplay(room: OnlineRecoveredRoom, snapshot: DocumentSnapshot) {
+        if (snapshot.getString("authorityMode") == "server") { openRecoveredLobby(room, snapshot); return }
         val uid = OnlineTempIdentity.getOrCreate(this)
         val repartos = firestore.collection(OnlineRoomFirestore.ROOMS_COLLECTION)
             .document(room.roomId)
@@ -1533,7 +1540,9 @@ class OnlineModeActivity : BaseActivity() {
             }
 
             val profileCreateData = PlayerPublicIdentity.publicProfileFields(this, publicId, playerName)
-            val connectionData = mapOf(
+            val protocolFields = if (BuildConfig.SERVER_ONLINE_V3 || freshRoom.getLong("protocolVersion") == 3L)
+                mapOf("protocolVersion" to 3, OnlineRoomFirestore.FIELD_CAN_ARBITRATE to false) else emptyMap()
+            val connectionData = protocolFields + mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "listo" to false,

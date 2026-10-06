@@ -4,6 +4,7 @@ const {getApps, initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 const {getDatabase} = require("firebase-admin/database");
 const {getStorage} = require("firebase-admin/storage");
+const {getFunctions} = require("firebase-admin/functions");
 const {HttpsError, onCall} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentDeleted, onDocumentWritten, onDocumentCreated} = require("firebase-functions/v2/firestore");
@@ -12,6 +13,8 @@ const logger = require("firebase-functions/logger");
 const {sweepRooms, observeDeletedRoom, enqueueRoomCleanup} = require("./onlineRoomCleanupService");
 const {OnlineStartError} = require("./onlineStartCore");
 const {startOnlineMatch} = require("./onlineStartService");
+const {createServerEndpoints, createDeadlineEnqueuer} = require("./onlineGameFunctions");
+const {requestLimitId} = require("./onlineRequestLimiter");
 
 function adminAppOptions() {
   if (process.env.FUNCTIONS_EMULATOR !== "true") return undefined;
@@ -24,6 +27,9 @@ function adminAppOptions() {
 }
 
 if (getApps().length === 0) initializeApp(adminAppOptions());
+
+Object.assign(exports, createServerEndpoints({getFirestore, getDatabase, logger,
+  enqueueDeadline: (task) => createDeadlineEnqueuer(getFunctions())(task)}));
 
 function callableError(error) {
   if (!(error instanceof OnlineStartError)) {
@@ -131,6 +137,7 @@ exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("south
   .runWith({failurePolicy: true, maxInstances: 2}).auth.user().onDelete(async (user) => {
     await getFirestore().doc(`perfiles_publicos/${user.uid}`).delete();
     await getFirestore().recursiveDelete(getFirestore().doc(`cuentas/${user.uid}`));
+    await getFirestore().doc(`onlineRequestLimits/${requestLimitId(user.uid)}`).delete();
     // Never let an emulator without Storage fall through to a real bucket.
     if (process.env.FUNCTIONS_EMULATOR === "true" && !process.env.FIREBASE_STORAGE_EMULATOR_HOST) return;
     const options = getApps()[0].options;

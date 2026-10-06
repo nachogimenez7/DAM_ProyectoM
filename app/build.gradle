@@ -18,6 +18,7 @@ if (!(firebaseEmulatorHost ==~ /[A-Za-z0-9.:-]+/)) {
 }
 
 def profileStorageEnabled = providers.gradleProperty('traidoresProfileStorage').orElse('true').get().toBoolean()
+def serverOnlineV3 = providers.gradleProperty('traidoresServerOnlineV3').orElse('false').get().toBoolean()
 
 android {
     namespace = 'com.traidores.juego'
@@ -41,12 +42,14 @@ android {
 
     buildTypes {
         debug {
+            buildConfigField 'boolean', 'SERVER_ONLINE_V3', serverOnlineV3.toString()
             buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR',
                 onlineAuthorityEmulatorEnabled.toString()
             buildConfigField 'String', 'FIREBASE_EMULATOR_HOST',
                 "\"${firebaseEmulatorHost}\""
         }
         release {
+            buildConfigField 'boolean', 'SERVER_ONLINE_V3', 'false'
             buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR', 'false'
             buildConfigField 'String', 'FIREBASE_EMULATOR_HOST', '""'
             minifyEnabled = true

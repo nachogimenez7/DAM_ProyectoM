@@ -494,9 +494,7 @@ object GameRules {
         )
     }
 
-    fun desertorSwitchThreshold(initialPlayerCount: Int): Int {
-        return kotlin.math.ceil(initialPlayerCount * 2.0 / 3.0).toInt()
-    }
+    const val DESERTOR_RECONSIDERATION_ROUND = 4
 }
 
 object LocalGameFactory {

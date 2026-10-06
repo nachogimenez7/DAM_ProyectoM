@@ -10,6 +10,71 @@ import org.junit.Test
 class GameEngineTest {
 
     @Test
+    fun desertorFinalChoiceReevaluatesWinnerImmediatelyEvenWhenKeepingSide() {
+        val players = listOf(
+            GamePlayer("Humano", "H", role = role("desertor", "Desertor", "Neutral"), isHuman = true),
+            GamePlayer("Asesino", "A", role = role("asesino", "Asesino", "Traidores")),
+            GamePlayer("Mercenario", "M", role = role("mercenario", "Mercenario", "Traidores")),
+            GamePlayer("Espia", "E", role = role("espia", "Espia", "Traidores")),
+            GamePlayer("Policia", "P", role = role("policia", "Comisario", "Pueblo")),
+            GamePlayer("Medico", "D", role = role("medico", "Medico", "Pueblo"))
+        )
+        val waiting = GameEngine.resolveDawn(GameSession(code = "DES-FINAL", mapKey = "pampa",
+            mapName = "Pampa", players = players, phase = GamePhase.AMANECER,
+            desertorTeam = GameRules.TOWN_WINNER, initialPlayerCount = 14, round = 4))
+        assertEquals("", waiting.winner)
+        for (team in listOf(GameRules.TOWN_WINNER, GameRules.TRAITOR_WINNER)) {
+            val result = GameEngine.chooseDesertorTeam(waiting, team)
+            assertTrue(result.desertorChangedTeam)
+            assertEquals(team, result.desertorTeam)
+            assertEquals(GameRules.TRAITOR_WINNER, result.winner)
+            assertEquals(result, GameEngine.chooseDesertorTeam(result, GameRules.TOWN_WINNER))
+        }
+    }
+
+    @Test
+    fun silencedMayorCannotRevealVoteOrDecideEvenThroughCorruption() {
+        val muted = sessionWithHumanAdvancedRole("alcalde").copy(
+            phase = GamePhase.DIA_DEBATE,
+            players = sessionWithHumanAdvancedRole("alcalde").players.map {
+                if (it.isHuman) it.copy(muted = true) else it
+            }
+        )
+        assertEquals(muted, GameEngine.revealAlcalde(muted))
+        assertFalse(GameEngine.canSpeak(muted, GameEngine.humanPlayer(muted)))
+        assertFalse(GameEngine.canVote(GameEngine.humanPlayer(muted)))
+        for (candidates in listOf(listOf("Asesino", "Policia"), listOf("Humano", "Asesino"))) {
+            for (revealed in listOf(false, true)) {
+                val recount = muted.copy(phase = GamePhase.RECUENTO_VOTOS,
+                    voteRound = 2, tieVoteCandidates = candidates, alcaldeRevealed = revealed)
+                val result = GameEngine.continueAfterVoteRecount(recount)
+                assertEquals(if (revealed) GamePhase.RESULTADO else GamePhase.ALCALDE_DESEMPATE, result.phase)
+                assertEquals("", result.dayEliminationTarget)
+                assertEquals(revealed, result.alcaldeRevealed)
+                assertFalse(result.alcaldeCorruption)
+            }
+        }
+        val choosing = muted.copy(phase = GamePhase.ALCALDE_DESEMPATE,
+            alcaldeRevealed = true, alcaldeTieCandidates = listOf("Asesino", "Policia"))
+        assertFalse(GameEngine.canActOnTarget(choosing, "Asesino"))
+        assertEquals(choosing, GameEngine.chooseAlcaldeTie(choosing, "Asesino"))
+    }
+
+    @Test
+    fun oracleInvitationSurvivesTheOraclesDeathThatSameNight() {
+        val invoked = GameEngine.resolveOracle(oracleSession(), "Fallecido")
+            .copy(nightKillTarget = "Humano", protectedPlayer = "")
+        val dawn = GameEngine.resolveDawn(invoked)
+        assertFalse(GameEngine.humanPlayer(dawn).alive)
+        assertTrue(dawn.oracleUsed)
+        assertEquals("Fallecido", dawn.oracleInvitedPlayer)
+        val guest = GameEngine.playerByName(dawn, "Fallecido")!!
+        assertFalse(guest.alive)
+        assertTrue(GameEngine.canSpeak(dawn, guest))
+        assertFalse(GameEngine.canVote(guest))
+    }
+
+    @Test
     fun incompletePrivateRolesNeverDeclareAFalseTownVictory() {
         val session = GameSession(
             code = "ONLINE",
@@ -943,11 +1008,15 @@ class GameEngineTest {
     }
 
     @Test
-    fun desertorCanReconsiderAtTwoThirdsOfInitialPlayers() {
-        assertEquals(6, GameRules.desertorSwitchThreshold(9))
-        assertEquals(7, GameRules.desertorSwitchThreshold(10))
-        assertEquals(8, GameRules.desertorSwitchThreshold(12))
-        assertEquals(10, GameRules.desertorSwitchThreshold(15))
+    fun desertorCanReconsiderFromRoundFourDuringDebateEvenWhenSilenced() {
+        var setup = LocalGameFactory.createSession()
+        repeat(9) { setup = LocalGameFactory.addMockPlayer(setup) }
+        val base = LocalGameFactory.assignRoles(setup, forcedHumanRoleKey = "desertor").copy(phase = GamePhase.DIA_DEBATE,
+            desertorTeam = GameRules.TOWN_WINNER, round = 3)
+        assertFalse(GameEngine.canDesertorReconsider(base))
+        val eligible = base.copy(round = 4, players = base.players.map { if (it.isHuman) it.copy(muted = true) else it })
+        assertTrue(GameEngine.canDesertorReconsider(eligible))
+        assertFalse(GameEngine.canDesertorReconsider(eligible.copy(phase = GamePhase.NOCHE_ASESINO)))
     }
 
     @Test
@@ -968,7 +1037,7 @@ class GameEngineTest {
     }
 
     @Test
-    fun desertorCanReconsiderOnlyOnceAtThreshold() {
+    fun desertorCanReconsiderOnlyOnceFromRoundFour() {
         var setup = LocalGameFactory.createSession()
         repeat(4) {
             setup = LocalGameFactory.addMockPlayer(setup)
@@ -976,6 +1045,7 @@ class GameEngineTest {
         val assigned = LocalGameFactory.assignRoles(setup, forcedHumanRoleKey = "desertor")
         val initial = GameEngine.chooseDesertorTeam(assigned, GameRules.TOWN_WINNER)
         val threshold = initial.copy(
+            round = 4, phase = GamePhase.DIA_DEBATE,
             players = initial.players.mapIndexed { index, player ->
                 if (index >= 6) player.copy(alive = false, muted = true) else player
             }
@@ -3473,9 +3543,15 @@ class GameEngineTest {
 
         val resolved = GameEngine.continueAfterVoteRecount(recount)
 
-        assertEquals(GamePhase.RESULTADO, resolved.phase)
+        assertEquals(GamePhase.ALCALDE_DESEMPATE, resolved.phase)
         assertEquals("", resolved.dayEliminationTarget)
-        assertTrue(resolved.alcaldeTieCandidates.isEmpty())
+        assertEquals(listOf("Asesino", "Policia"), resolved.alcaldeTieCandidates)
+        assertEquals(resolved, GameEngine.chooseAlcaldeTie(resolved, "Asesino"))
+        val expired = GameEngine.resolveAlcaldeTieTimeout(resolved)
+        assertEquals(GamePhase.RESULTADO, expired.phase)
+        assertEquals("", expired.dayEliminationTarget)
+        assertEquals(GamePhase.RESULTADO,
+            GameEngine.continueAfterVoteRecount(recount.copy(alcaldeRevealed = true)).phase)
     }
 
     @Test

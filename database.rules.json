@@ -455,6 +455,110 @@
           ".validate": false
         }
       }
+    },
+    "onlineV3": {
+      "$roomId": {
+        "snapshot": {
+          "public": {
+            ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true"
+          },
+          "private": {
+            "$uid": {
+              ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && auth.uid === $uid"
+            }
+          },
+          "permissions": {
+            "$uid": {
+              ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && auth.uid === $uid"
+            }
+          }
+        },
+        "presence": {
+          ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true",
+          "$uid": {
+            ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && auth.uid === $uid && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting'",
+            ".validate": "newData.hasChildren(['estado','actualizadaEn']) && (newData.child('estado').val() === 'conectado' || newData.child('estado').val() === 'desconectado') && newData.child('actualizadaEn').isNumber() && newData.child('actualizadaEn').val() === now",
+            "estado": {},
+            "actualizadaEn": {},
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "chat": {
+          "publico": {
+            ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true",
+            ".indexOn": [
+              "ts"
+            ],
+            "$messageId": {
+              ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('publicChat').val() === true && newData.exists() && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting'",
+              ".validate": "newData.hasChildren(['actorUid','matchId','phaseIndex','slot','text','ts']) && newData.child('actorUid').val() === auth.uid && (!data.exists() || data.child('actorUid').val() === auth.uid) && newData.child('matchId').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('matchId').val() && newData.child('phaseIndex').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('phaseIndex').val() && root.child('onlineV3').child($roomId).child('snapshot').child('public').child('limiteFaseEpochMs').val() > now && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 16 && newData.child('slot').val() % 1 === 0 && $messageId === auth.uid + '_' + newData.child('slot').val() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 300 && newData.child('ts').val() === now && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('messageId').val() === $messageId && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('channel').val() === 'publico' && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('ts').val() === now",
+              "actorUid": {},
+              "matchId": {},
+              "text": {},
+              "ts": {},
+              "$other": {
+                ".validate": false
+              },
+              "phaseIndex": {},
+              "slot": {}
+            }
+          },
+          "traidores": {
+            ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('traitor').val() === true",
+            ".indexOn": [
+              "ts"
+            ],
+            "$messageId": {
+              ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('traitorChat').val() === true && newData.exists() && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting'",
+              ".validate": "newData.hasChildren(['actorUid','matchId','phaseIndex','slot','text','ts']) && newData.child('actorUid').val() === auth.uid && (!data.exists() || data.child('actorUid').val() === auth.uid) && newData.child('matchId').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('matchId').val() && newData.child('phaseIndex').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('phaseIndex').val() && root.child('onlineV3').child($roomId).child('snapshot').child('public').child('limiteFaseEpochMs').val() > now && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 16 && newData.child('slot').val() % 1 === 0 && $messageId === auth.uid + '_' + newData.child('slot').val() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 300 && newData.child('ts').val() === now && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('messageId').val() === $messageId && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('channel').val() === 'traidores' && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('ts').val() === now",
+              "actorUid": {},
+              "matchId": {},
+              "text": {},
+              "ts": {},
+              "$other": {
+                ".validate": false
+              },
+              "phaseIndex": {},
+              "slot": {}
+            }
+          },
+          "muertos": {
+            ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('alive').val() === false",
+            ".indexOn": [
+              "ts"
+            ],
+            "$messageId": {
+              ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('deadChat').val() === true && newData.exists() && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting'",
+              ".validate": "newData.hasChildren(['actorUid','matchId','phaseIndex','slot','text','ts']) && newData.child('actorUid').val() === auth.uid && (!data.exists() || data.child('actorUid').val() === auth.uid) && newData.child('matchId').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('matchId').val() && newData.child('phaseIndex').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('phaseIndex').val() && root.child('onlineV3').child($roomId).child('snapshot').child('public').child('limiteFaseEpochMs').val() > now && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 16 && newData.child('slot').val() % 1 === 0 && $messageId === auth.uid + '_' + newData.child('slot').val() && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 300 && newData.child('ts').val() === now && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('messageId').val() === $messageId && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('channel').val() === 'muertos' && newData.parent().parent().parent().child('chatRate').child(auth.uid).child('ts').val() === now",
+              "actorUid": {},
+              "matchId": {},
+              "text": {},
+              "ts": {},
+              "$other": {
+                ".validate": false
+              },
+              "phaseIndex": {},
+              "slot": {}
+            }
+          }
+        },
+        "chatRate": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true",
+            ".write": "auth != null && auth.uid === $uid && newData.exists() && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting' && (!data.exists() || now >= data.child('ts').val() + 2000)",
+            ".validate": "newData.hasChildren(['messageId','channel','slot','ts']) && (newData.child('channel').val() === 'publico' || newData.child('channel').val() === 'traidores' || newData.child('channel').val() === 'muertos') && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 16 && newData.child('slot').val() % 1 === 0 && newData.child('messageId').val() === auth.uid + '_' + newData.child('slot').val() && newData.child('ts').val() === now && newData.parent().parent().child('chat').child(newData.child('channel').val()).child(newData.child('messageId').val()).child('actorUid').val() === auth.uid && newData.parent().parent().child('chat').child(newData.child('channel').val()).child(newData.child('messageId').val()).child('slot').val() === newData.child('slot').val() && newData.parent().parent().child('chat').child(newData.child('channel').val()).child(newData.child('messageId').val()).child('ts').val() === now",
+            "messageId": {},
+            "channel": {},
+            "slot": {},
+            "ts": {},
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
     }
   }
 }

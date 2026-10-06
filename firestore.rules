@@ -247,7 +247,8 @@ service cloud.firestore {
 
     function roomClientWriteAllowed(partidaId) {
       let roomPath = /databases/$(database)/documents/partidas/$(partidaId);
-      return !exists(roomPath) || get(roomPath).data.get('cleanupState', '') != 'deleting';
+      return !exists(roomPath) || (get(roomPath).data.get('cleanupState', '') != 'deleting'
+        && get(roomPath).data.get('authorityMode', '') != 'server');
     }
 
     function validPlayerJoin(partidaId) {
@@ -687,7 +688,8 @@ service cloud.firestore {
           'listoParaVotarRonda',
           'listoParaVotarPhaseIndex',
           'votoMapa',
-          'puedeArbitrar'
+          'puedeArbitrar',
+          'protocolVersion'
         ])
         && hasAll(data, ['nombre', 'estado', 'uidTemporal'])
         && isString(data.nombre, 1, 18)
@@ -705,6 +707,7 @@ service cloud.firestore {
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
         && (!('puedeArbitrar' in data) || data.puedeArbitrar is bool)
+        && (!('protocolVersion' in data) || (data.protocolVersion == 3 && data.get('puedeArbitrar', true) == false))
         && validProfileStats(data)
         && validPlayerState(data.estado)
         && (!('esHost' in data) || data.esHost is bool)

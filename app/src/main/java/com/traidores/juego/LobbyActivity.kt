@@ -111,6 +111,8 @@ class LobbyActivity : BaseActivity() {
     private var onlineLobbyName = ""
     private var onlinePartidaId = ""
     private var onlineRoomCode = ""
+    private var onlineServerProtocol = BuildConfig.SERVER_ONLINE_V3
+    private var onlineServerAuthority = false
     private var onlineRoomState = ONLINE_ROOM_STATE_WAITING
     private var onlineRoomModePrueba = false
     private var onlineRoomMaxPlayers = LocalGameFactory.MAX_PLAYERS
@@ -501,8 +503,11 @@ class LobbyActivity : BaseActivity() {
             }
             enteringOnlineMatch = false
             lobbyRealtimeAccessReady = false
-            startRealtimePresence()
-            markOnlinePresence(PLAYER_STATE_CONNECTED)
+            // Recovering V3 must read room authority before any legacy presence write.
+            if (!BuildConfig.SERVER_ONLINE_V3 && !recoveringOnlineMatch) {
+                startRealtimePresence()
+                markOnlinePresence(PLAYER_STATE_CONNECTED)
+            }
             listenToOnlineRoom()
             listenToOnlinePlayers()
             listenToOwnOnlineMembership()
@@ -1180,7 +1185,7 @@ class LobbyActivity : BaseActivity() {
         }
         if (lobbyChatController == null) {
             lobbyChatController = LobbyChatController(
-                database = FirebaseDatabase.getInstance(),
+                database = FirebaseEmulatorConfig.database,
                 roomId = onlinePartidaId,
                 actorId = onlineTempUid,
                 speaker = onlinePlayerName,
@@ -1519,7 +1524,7 @@ class LobbyActivity : BaseActivity() {
     private fun startRealtimePresence() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank() || realtimePresence != null) return
         val presence = RealtimeRoomPresence(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             uid = onlineTempUid,
             onPresenceChanged = { states ->
@@ -1556,7 +1561,7 @@ class LobbyActivity : BaseActivity() {
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return null
         realtimeGameplaySync?.let { return it }
         val sync = RealtimeGameplaySync(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             uid = onlineTempUid,
             onClientStatesChanged = { states ->
@@ -1581,6 +1586,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun startRealtimeLobbySync() {
+        if (onlineServerAuthority) return
         ensureRealtimeLobbySync()?.start()
     }
 
@@ -1610,6 +1616,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun markOnlinePresence(state: String) {
+        if (onlineServerAuthority) return
         if (onlinePartidaId.isBlank() || onlineTempUid.isBlank()) return
         realtimePresence?.setConnected(state == PLAYER_STATE_CONNECTED)
         OnlineDebugLog.i("presence_update roomId=$onlinePartidaId uid=$onlineTempUid state=$state")
@@ -1623,6 +1630,10 @@ class LobbyActivity : BaseActivity() {
             OnlineRoomFirestore.FIELD_LAST_SEEN_LOCAL to System.currentTimeMillis(),
             OnlineRoomFirestore.FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp()
         )
+        if (onlineServerProtocol) {
+            playerData["protocolVersion"] = 3
+            playerData[OnlineRoomFirestore.FIELD_CAN_ARBITRATE] = false
+        }
         playerData.putAll(
             PlayerPublicIdentity.publicProfileUpdateFields(this, publicId, onlinePlayerName)
         )
@@ -2617,7 +2628,7 @@ class LobbyActivity : BaseActivity() {
         trackLobbyPlayerNotices(onlinePlayers, updatedPlayers)
         onlinePlayers = updatedPlayers
         val ownPlayer = onlinePlayers.firstOrNull { it.id == onlineTempUid }
-        if (lobbyPlayersServerBaselineReady && ownPlayer?.activeInMatch == true) {
+        if (lobbyRoomBaselineReady && !onlineServerAuthority && lobbyPlayersServerBaselineReady && ownPlayer?.activeInMatch == true) {
             roomProfileStatsPublisher.publish(this, onlinePartidaId, onlineTempUid)
         }
         if (lobbyPlayersServerBaselineReady && ownPlayer?.activeInMatch == false) {
@@ -2664,6 +2675,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun syncRealtimeLobbyAccess() {
+        if (onlineServerAuthority) return
         if (
             !isFirestoreOnlineLobby() ||
             onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
@@ -2700,7 +2712,7 @@ class LobbyActivity : BaseActivity() {
                 "host=$onlineTempUid members=${members.size}"
         )
         RealtimeRoomAccess.syncMembers(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             hostUid = onlineTempUid,
             matchId = "",
@@ -2740,6 +2752,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun returnRealtimeAuthorityToLobbyHost() {
+        if (onlineServerAuthority || onlineServerProtocol) return
         if (onlineRoomState != ONLINE_ROOM_STATE_WAITING || onlineActiveHostId.isBlank() ||
             onlineTempUid.isBlank() || currentUserIsOnlineHost()) return
         val nextHostId = onlineActiveHostId
@@ -2748,7 +2761,7 @@ class LobbyActivity : BaseActivity() {
         realtimeLobbyHostReturnKey = key
         // Only the actual RTDB coordinator can read this control field and transfer it.
         // Other participants get no access; they must never grant themselves authority.
-        FirebaseDatabase.getInstance().getReference("salas/$onlinePartidaId/control/hostUid")
+        FirebaseEmulatorConfig.database.getReference("salas/$onlinePartidaId/control/hostUid")
             .get()
             .addOnSuccessListener { snapshot ->
                 if (!onlineLobbyStarted || onlineRoomState != ONLINE_ROOM_STATE_WAITING ||
@@ -2756,7 +2769,7 @@ class LobbyActivity : BaseActivity() {
                     return@addOnSuccessListener
                 }
                 RealtimeRoomAccess.transferHost(
-                    database = FirebaseDatabase.getInstance(), roomId = onlinePartidaId,
+                    database = FirebaseEmulatorConfig.database, roomId = onlinePartidaId,
                     nextHostUid = nextHostId,
                     onComplete = {
                         OnlineDebugLog.i("rtdb_lobby_host_return_success roomId=$onlinePartidaId")
@@ -2931,6 +2944,8 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun applyOnlineRoomSnapshot(snapshot: DocumentSnapshot) {
+        onlineServerProtocol = snapshot.getLong("protocolVersion") == 3L || BuildConfig.SERVER_ONLINE_V3
+        onlineServerAuthority = snapshot.getString("authorityMode") == "server"
         val previousActiveHostId = onlineActiveHostId
         val previousLobbyConfig = onlineLobbyConfig
         val previousRoomState = onlineRoomState
@@ -3050,6 +3065,19 @@ class LobbyActivity : BaseActivity() {
         val selectedMap = LocalGameFactory.maps.firstOrNull { it.key == requestedMapKey }
             ?: LocalGameFactory.maps.first()
         session = PlayerProfileStore.withProfiles(this, LocalGameFactory.selectMap(session, selectedMap.key))
+
+        if (onlineServerAuthority) {
+            lobbyChatController?.stop()
+            realtimeGameplaySync?.stop()
+            coordinateOnlineMatchEntry()
+            renderLobby()
+            return
+        }
+
+        if (onlineLobbyStarted && realtimePresence == null) {
+            startRealtimePresence()
+            markOnlinePresence(PLAYER_STATE_CONNECTED)
+        }
 
         if (onlineRoomState == ONLINE_ROOM_STATE_ABANDONED) {
             OnlineRoomRecovery.clearIf(this, onlinePartidaId)
@@ -3427,6 +3455,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun currentUserIsOnlineHost(): Boolean {
+        if (onlineServerProtocol && onlineHostId.isNotBlank()) return onlineTempUid == onlineHostId
         return OnlineLobbyRules.isAuthoritativeLobbyHost(
             playerId = onlineTempUid,
             activeHostId = onlineActiveHostId,
@@ -3485,6 +3514,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun maybeClaimOnlineLobbyHostHandoff() {
+        if (onlineServerAuthority || onlineServerProtocol) return
         if (
             !isFirestoreOnlineLobby() ||
             onlineRoomState !in setOf(ONLINE_ROOM_STATE_WAITING, OnlineRoomFirestore.STATE_FINISHED) ||
@@ -3707,7 +3737,7 @@ class LobbyActivity : BaseActivity() {
                     "newHost=${candidate.id} exit=$exitAfterTransfer"
             )
             RealtimeRoomAccess.transferHost(
-                database = FirebaseDatabase.getInstance(),
+                database = FirebaseEmulatorConfig.database,
                 roomId = onlinePartidaId,
                 nextHostUid = candidate.id,
                 onComplete = {
@@ -4003,7 +4033,7 @@ class LobbyActivity : BaseActivity() {
             coordinateOnlineMatchEntry()
             return
         }
-        if (FirebaseEmulatorConfig.usesAuthoritativeOnlineStart) {
+        if (onlineServerProtocol || FirebaseEmulatorConfig.usesAuthoritativeOnlineStart) {
             startOnlineRoomWithCallable(hostTieBreakChoice)
             return
         }
@@ -4065,8 +4095,9 @@ class LobbyActivity : BaseActivity() {
             "online_callable_start_requested roomId=$onlinePartidaId " +
                 "hostId=$onlineTempUid tieBreak=${hostTieBreakChoice ?: "-"}"
         )
-        onlineStartCallableClient
-            .start(onlinePartidaId, hostTieBreakChoice)
+        val startTask = if (onlineServerProtocol) ServerGameCallableClient().start(onlinePartidaId)
+            else onlineStartCallableClient.start(onlinePartidaId, hostTieBreakChoice)
+        startTask
             .addOnSuccessListener { result ->
                 onlineStartTransactionInProgress = false
                 if (isFinishing || isDestroyed) return@addOnSuccessListener
@@ -4416,7 +4447,7 @@ class LobbyActivity : BaseActivity() {
             "rtdb_match_access_sync_requested roomId=$onlinePartidaId host=$onlineTempUid match=$matchId members=${members.size}"
         )
         RealtimeRoomAccess.syncMembers(
-            database = FirebaseDatabase.getInstance(),
+            database = FirebaseEmulatorConfig.database,
             roomId = onlinePartidaId,
             hostUid = onlineTempUid,
             matchId = matchId,
@@ -4462,6 +4493,10 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun coordinateOnlineMatchEntry() {
+        if (onlineServerAuthority) {
+            enterServerGameplay()
+            return
+        }
         if (
             onlineStartedNoticeShown ||
             onlineRoomState != ONLINE_ROOM_STATE_IN_GAME ||
@@ -4702,7 +4737,7 @@ class LobbyActivity : BaseActivity() {
 
     private fun publishOnlineMatchEntryAck(matchId: String) {
         val generation = onlineLobbyGeneration
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/$onlinePartidaId/miembros/$onlineTempUid")
             .get()
             .addOnSuccessListener { snapshot ->
@@ -4901,6 +4936,26 @@ class LobbyActivity : BaseActivity() {
         startOnlineMatch()
     }
 
+    private fun enterServerGameplay() {
+        if (onlineStartedNoticeShown || onlineRoomState !in setOf(ONLINE_ROOM_STATE_IN_GAME, OnlineRoomFirestore.STATE_FINISHED)) return
+        val initial = onlineInitialMatch ?: return
+        val matchId = initial["matchId"] as? String ?: return
+        if (onlinePlayers.none { it.id == onlineTempUid && it.activeInMatch }) return
+        val base = session.copy(onlineMatchId = matchId,
+            onlinePlayerUids = activeOnlinePlayers().map { it.id },
+            playerProfiles = onlinePlayers.associate { it.name to it.profile })
+        onlineStartedNoticeShown = true; enteringOnlineMatch = true
+        cancelOnlineMatchEntryRetry(resetAttempts = true)
+        OnlineRoomRecovery.save(this, roomId = onlinePartidaId, roomCode = onlineRoomCode,
+            roomName = onlineLobbyName.ifBlank { "Sala online" }, mapKey = base.mapKey, isHost = onlineTempUid == onlineHostId)
+        stopOnlineFirestoreListenersForMatchTransition()
+        startActivity(Intent(this, ServerGameplayActivity::class.java)
+            .putExtra(EXTRA_SESSION, base)
+            .putExtra(EXTRA_PARTIDA_ID, onlinePartidaId)
+            .putExtra(ServerGameplayActivity.EXTRA_MATCH_ID, matchId)
+            .putExtra(ServerGameplayActivity.EXTRA_CREATOR_ID, onlineHostId))
+    }
+
     private fun startOnlineMatch() {
         val sharedSession = onlineInitialMatch?.let(::sessionFromInitialMatch)
         if (sharedSession == null) {
@@ -5082,6 +5137,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun ensurePrivateRolesLoaded() {
+        if (onlineServerAuthority) { coordinateOnlineMatchEntry(); return }
         val matchId = (onlineInitialMatch?.get("matchId") as? String).orEmpty()
         if (matchId.isBlank() || onlinePrivateRolesLoading) return
         if (onlinePrivateRolesMatchId == matchId && onlinePrivateRoleAssignments.isNotEmpty()) {
@@ -5337,6 +5393,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun maybeResetFinishedOnlineRoomForRematch() {
+        if (onlineServerAuthority || onlineServerProtocol) return
         if (onlineRoomState != OnlineRoomFirestore.STATE_FINISHED) {
             onlineRematchResetEligibleAtMs = 0L
             onlineRematchResetRunnable?.let { runnable ->
@@ -5577,7 +5634,7 @@ class LobbyActivity : BaseActivity() {
             "silenciados" to null,
             RealtimeAuthoritativeState.NODE to null
         )
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/$onlinePartidaId")
             .updateChildren(updates)
             .addOnSuccessListener { onComplete() }

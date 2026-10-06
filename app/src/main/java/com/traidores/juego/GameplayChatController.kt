@@ -519,7 +519,7 @@ class GameplayChatController(
             return
         }
 
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_REACTIONS_NODE")
             .child(host.onlinePlayerUid)
             .setValue(
@@ -2993,7 +2993,7 @@ class GameplayChatController(
             return
         }
         val human = GameEngine.humanPlayer(session)
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_PUBLIC_CHAT_NODE")
             .push()
             .setValue(
@@ -3056,7 +3056,7 @@ class GameplayChatController(
             return
         }
         val human = GameEngine.humanPlayer(session)
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_TRAITOR_CHAT_NODE")
             .push()
             .setValue(
@@ -3120,7 +3120,7 @@ class GameplayChatController(
             return
         }
         val human = GameEngine.humanPlayer(session)
-        FirebaseDatabase.getInstance()
+        FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_SPECTATOR_CHAT_NODE")
             .push()
             .setValue(
@@ -3169,7 +3169,7 @@ class GameplayChatController(
         OnlineDebugLog.i(
             "emote_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid} match=$matchId"
         )
-        val query = FirebaseDatabase.getInstance()
+        val query = FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_REACTIONS_NODE")
             .orderByKey()
             .limitToLast(ONLINE_REACTION_MAX_EVENTS)
@@ -3328,7 +3328,7 @@ class GameplayChatController(
     private fun startOnlineChatListener() {
         if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        val query = FirebaseDatabase.getInstance()
+        val query = FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_PUBLIC_CHAT_NODE")
             .orderByKey()
             .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
@@ -3391,7 +3391,7 @@ class GameplayChatController(
             return
         }
         OnlineDebugLog.i("traitor_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        val query = FirebaseDatabase.getInstance()
+        val query = FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_TRAITOR_CHAT_NODE")
             .orderByChild("ts")
             .limitToLast(ONLINE_CHAT_MAX_MESSAGES)
@@ -3478,7 +3478,7 @@ class GameplayChatController(
         if (GameEngine.humanPlayer(host.currentSession).alive) return
         if (!host.hasOnlineSpectatorChatAccess()) return
         OnlineDebugLog.i("spectator_chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
-        val query = FirebaseDatabase.getInstance()
+        val query = FirebaseEmulatorConfig.database
             .getReference("salas/${host.onlineRoomId}/$RTDB_SPECTATOR_CHAT_NODE")
             .orderByKey()
             .limitToLast(ONLINE_CHAT_MAX_MESSAGES)

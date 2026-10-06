@@ -21,7 +21,7 @@ class RealtimeTableSilence(
     private val isAuthority: () -> Boolean,
     private val onOwnSilenceChanged: (Boolean) -> Unit
 ) {
-    private val room = FirebaseDatabase.getInstance().getReference("salas/$roomId")
+    private val room = FirebaseEmulatorConfig.database.getReference("salas/$roomId")
     private var ownSilenceListener: ValueEventListener? = null
     private var proposalListener: ValueEventListener? = null
     private var votesListener: ValueEventListener? = null

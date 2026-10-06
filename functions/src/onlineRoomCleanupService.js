@@ -60,6 +60,7 @@ async function observeDeletedRoom({firestore, roomId, room, observedAtMs = Date.
       estado: Object.hasOwn(RETENTION_MS, room?.estado) ? room.estado : "abandonada",
       codigoSala: typeof room?.codigoSala === "string" ? room.codigoSala : "",
       actualizadaEn: Timestamp.fromMillis(observedAtMs),
+      ...(room?.authorityMode === "server" ? {authorityMode: "server", protocolVersion: 3} : {}),
     });
   } catch (error) {
     if (error.code !== 6 && error.code !== "already-exists") throw error;
@@ -70,20 +71,36 @@ async function observeDeletedRoom({firestore, roomId, room, observedAtMs = Date.
 async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orphan = null,
   archiveResult = archiveFinishedRoom}) {
   const roomRef = firestore.collection("partidas").doc(roomId);
-  const realtimeRef = database.ref(`salas/${roomId}`);
-  const realtime = (await realtimeRef.get()).val(); // A failed read aborts; never infer absence.
+  const legacyRealtimeRef = database.ref(`salas/${roomId}`);
+  const legacyRealtime = (await legacyRealtimeRef.get()).val(); // A failed read aborts; never infer absence.
   const newToken = crypto.randomUUID();
   const claim = await firestore.runTransaction(async (transaction) => {
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists && !orphan) return {eligible: false, reason: "missing-room"};
     if (roomSnapshot.exists && orphan) return {eligible: false, reason: "orphan-recreated"};
     const room = roomSnapshot.exists ? roomSnapshot.data() : orphan;
-    const [players, checkpoint] = await Promise.all([
+    const serverMode = room.authorityMode === "server" || room.protocolVersion === 3;
+    const realtime = serverMode ? (await database.ref(`onlineV3/${roomId}`).get()).val() : legacyRealtime;
+    const [players, checkpoint, outbox] = await Promise.all([
       transaction.get(roomRef.collection("jugadores")),
-      transaction.get(roomRef.collection("runtime").doc("authoritative")),
+      transaction.get(roomRef.collection(serverMode ? "servidor" : "runtime")
+        .doc(serverMode ? "current" : "authoritative")),
+      serverMode ? transaction.get(roomRef.collection("serverOutbox").doc("current")) : null,
     ]);
+    // Missing host presence is normal in V3. Never treat it as an abandoned live match.
+    if (serverMode && roomSnapshot.exists && room.estado === "en_juego" && !checkpoint.data()?.winner && !room.cleanupCompleted) {
+      return {eligible: false, reason: "server-match-active"};
+    }
+    if (serverMode && roomSnapshot.exists && outbox?.exists &&
+        outbox.data().deliveredRevision !== outbox.data().revision) {
+      return {eligible: false, reason: "server-publication-pending"};
+    }
+    const retentionRealtime = serverMode ? {...realtime, presencia: realtime?.presence} : realtime;
     const decision = roomRetention({
-      room, players: players.docs.map((doc) => doc.data()), checkpoint: checkpoint.data(), realtime, nowMs,
+      room, players: players.docs.map((doc) => doc.data()),
+      checkpoint: serverMode && checkpoint.data()?.phaseStartedAtMs ? {actualizadaEn: checkpoint.data().phaseStartedAtMs} :
+        serverMode ? null : checkpoint.data(),
+      realtime: retentionRealtime, nowMs,
     });
     if (!decision.eligible) {
       // Recover a crash between the Firestore claim and the RTDB lock. If a
@@ -105,9 +122,10 @@ async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orp
       cleanupToken: token,
       cleanupClaimedAt: FieldValue.serverTimestamp(),
     });
-    return {...decision, token, room};
+    return {...decision, token, room, serverMode};
   });
   if (!claim.eligible) return {status: "retained", reason: claim.reason};
+  const realtimeRef = claim.serverMode ? database.ref(`onlineV3/${roomId}`) : legacyRealtimeRef;
 
   // RTDB transaction serializes the final presence check with reconnects, chat,
   // state publication and the lock. Rules freeze every client write at this point.
@@ -116,8 +134,10 @@ async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orp
     if (control.cleanupState === "deleting") {
       return control.cleanupToken === claim.token ? current : undefined;
     }
-    if (!realtimeRetention(current, nowMs, claim.retentionMs).eligible) return;
-    return {...(current || {}), control: {
+    const retentionRealtime = claim.serverMode ? {...current, presencia: current?.presence} : current;
+    if (!realtimeRetention(retentionRealtime, nowMs, claim.retentionMs).eligible) return;
+    return {...(current || {}),
+      ...(claim.serverMode ? {snapshot: {...current?.snapshot, cleanupState: "deleting"}} : {}), control: {
       ...control, cleanupState: "deleting", cleanupToken: claim.token,
     }};
   }, undefined, false);
@@ -154,7 +174,7 @@ async function cleanupRoom({firestore, database, roomId, nowMs = Date.now(), orp
       if (snapshot.data()?.partidaId === roomId) transaction.delete(codeRef);
     });
   }
-  await realtimeRef.set({control: {
+  await realtimeRef.set({...(claim.serverMode ? {snapshot: {cleanupState: "deleting"}} : {}), control: {
     cleanupState: "deleting", cleanupToken: claim.token, cleanupDeletedAt: ServerValue.TIMESTAMP,
   }});
   await roomRef.set({

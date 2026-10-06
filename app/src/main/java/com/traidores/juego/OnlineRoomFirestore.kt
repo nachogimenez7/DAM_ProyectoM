@@ -143,6 +143,11 @@ object OnlineRoomFirestore {
             FIELD_LAST_SEEN_AT to FieldValue.serverTimestamp(),
             FIELD_JOINED_AT to FieldValue.serverTimestamp()
         )
+        if (BuildConfig.SERVER_ONLINE_V3) {
+            roomData["protocolVersion"] = 3
+            hostData["protocolVersion"] = 3
+            hostData[FIELD_CAN_ARBITRATE] = false
+        }
         hostData.putAll(profileFields)
         val roomCodeData = mapOf(
             "partidaId" to roomReference.id,
