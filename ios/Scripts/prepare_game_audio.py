@@ -33,6 +33,9 @@ FILES = {
     "sfx_no_death.wav": "sfx_no_death.wav",
     "sfx_vote_cast.mp3": "sfx_vote_cast.mp3",
     "sfx_tie_break.mp3": "sfx_tie_break.mp3",
+    "payador_ability.mp3": "payador_ability.mp3",
+    "oracle_ability.mp3": "oracle_ability.mp3",
+    "jester_victory.mp3": "jester_victory.mp3",
 }
 
 

@@ -50,7 +50,11 @@ public enum ClassicSave {
               roleDecks.contains(where: { savedRoles == $0.map(\.rawValue).sorted() }),
               game.players.allSatisfy({ !$0.name.isEmpty && $0.name.count <= 18 }),
               phases.contains(game.phase), game.round > 0, game.phaseIndex >= 0,
-              game.winner == ClassicGame.winner(for: game.players, deserterTeam: game.deserterTeam),
+              game.deserterReconsiderationPending ?
+                (game.winner == nil && game.human.alive && game.human.role == .deserter &&
+                 game.deserterReconsiderationAvailable &&
+                 ClassicGame.winner(for: game.players, deserterTeam: game.deserterTeam) == .traitors) :
+                game.winner == ClassicGame.winner(for: game.players, deserterTeam: game.deserterTeam),
               game.nightTarget.map(valid) ?? true, game.protectedPlayer.map(valid) ?? true,
               game.eliminationTarget.map(valid) ?? true,
               game.votes.allSatisfy({ valid($0.key) && valid($0.value) && $0.key != $0.value }),
@@ -62,6 +66,7 @@ public enum ClassicSave {
               game.phase != .mayorTieBreak || (game.tieCandidates.count >= 2 && game.living.contains { $0.role == .mayor }),
               game.phase != .oracleNight || (!game.oracleUsed && game.round > 1 && game.map == .greece && game.living.contains { $0.role == .oracle } && game.players.contains { !$0.alive }),
               game.silencedPlayer.map(valid) ?? true,
+              game.lastSilencedRounds.allSatisfy({ valid($0.key) && $0.value > 0 && $0.value <= game.round }),
               game.contrapuntoParticipants.count <= 2,
               Set(game.contrapuntoParticipants).count == game.contrapuntoParticipants.count,
               game.contrapuntoParticipants.allSatisfy(valid),

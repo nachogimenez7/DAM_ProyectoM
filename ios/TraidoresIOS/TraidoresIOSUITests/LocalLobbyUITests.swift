@@ -475,12 +475,23 @@ final class LocalLobbyUITests: XCTestCase {
         let roleStart = app.buttons["role.start"]
         XCTAssertTrue(roleStart.waitForExistence(timeout: 8))
         startMatch(app, roleStart)
-        skipToHumanNightTurn(app)
-
+        // The Detective acts as soon as night falls, without a wait first.
+        let primary = app.buttons["table.primaryAction"]
+        XCTAssertTrue(primary.waitForExistence(timeout: 8))
         let target = app.buttons["table.player.1"]
         XCTAssertTrue(waitUntilHittable(target, timeout: 6))
+        XCTAssertNotEqual(primary.label, "ESPERAR")
         target.tap()
-        app.buttons["table.primaryAction"].tap()
+        primary.tap()
+        // The magnifier is stamped on the card before the private answer.
+        // It stays for a moment before the action resolves, so poll quickly.
+        var marked = false
+        for _ in 0..<20 where !marked {
+            marked = target.label.contains("Investigación sobre")
+            if !marked { Thread.sleep(forTimeInterval: 0.05) }
+        }
+        XCTAssertTrue(marked, "La lupa debe quedar sobre la carta investigada")
+        attach(app, "Detective · marca de investigación")
 
         XCTAssertTrue(app.staticTexts["RESPUESTA PRIVADA"].waitForExistence(timeout: 3))
         let dismiss = app.buttons["table.dismissPrivateFeedback"]
@@ -871,6 +882,25 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["CHAT DEL PUEBLO"].waitForExistence(timeout: 2))
     }
 
+    /// The Payador, Oráculo and Bufón announcements, shown on demand for a screenshot.
+    func testSpecialRoleAnnouncementsLayout() throws {
+        for reveal in ["contrapunto", "oracle", "jester"] {
+            let app = launchLobby(extraArguments: ["-ui-testing-preview-reveal=\(reveal)", "-ui-testing-real-time"])
+            app.buttons["local.startGame"].tap()
+            let start = app.buttons["role.start"]
+            XCTAssertTrue(start.waitForExistence(timeout: 8))
+            startMatch(app, start)
+            let continueButton = app.buttons["table.specialReveal.continue"]
+            XCTAssertTrue(continueButton.waitForExistence(timeout: 8))
+            Thread.sleep(forTimeInterval: 1.8)
+            attach(app, "Anuncio especial · \(reveal)")
+            XCTAssertTrue(waitUntilHittable(continueButton, timeout: 3))
+            continueButton.tap()
+            XCTAssertTrue(continueButton.waitForNonExistence(timeout: 3))
+            app.terminate()
+        }
+    }
+
     private func startAndReachDay(_ app: XCUIApplication) {
         app.buttons["local.startGame"].tap()
         let start = app.buttons["role.start"]
@@ -1186,7 +1216,12 @@ final class LocalLobbyUITests: XCTestCase {
                 let voting = app.staticTexts["table.phaseTitle"].label.contains("VOTACIÓN")
                     || app.staticTexts["table.phaseTitle"].label.contains("DESEMPATE")
                 target.tap()
-                if !voting { primary.tap() }
+                if !voting {
+                    let night = ["MATAR", "SILENCIAR", "INVESTIGAR", "SALVAR", "SALVARME", "INVOCAR"].contains(primary.label)
+                    primary.tap()
+                    // The night mark lands first; the private result follows a moment later.
+                    if night { _ = app.buttons["table.dismissPrivateFeedback"].waitForExistence(timeout: 3) }
+                }
             } else {
                 primary.tap()
             }

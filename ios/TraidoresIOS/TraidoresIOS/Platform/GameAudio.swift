@@ -30,6 +30,7 @@ final class GameAudio {
     /// Android's `GameSound`, with the same files and relative volumes.
     enum Effect: CaseIterable {
         case cardDeal, nightFall, dawn, elimination, expulsion, silence, noDeath, voteCast, tieBreak
+        case oracle, payador, jester
 
         fileprivate var resource: (name: String, ext: String) {
             switch self {
@@ -42,6 +43,9 @@ final class GameAudio {
             case .noDeath: ("sfx_no_death", "wav")
             case .voteCast: ("sfx_vote_cast", "mp3")
             case .tieBreak: ("sfx_tie_break", "mp3")
+            case .oracle: ("oracle_ability", "mp3")
+            case .payador: ("payador_ability", "mp3")
+            case .jester: ("jester_victory", "mp3")
             }
         }
 

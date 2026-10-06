@@ -248,8 +248,7 @@ struct ClassicGameTests {
         var game = ClassicGame(name: "", seed: 2, trainingRole: .medic)
         let accepted52 = game.advance(expectedPhaseIndex: 0)
         #expect(accepted52)
-        let reachedMedic = game.skipPassiveNight(expectedPhaseIndex: game.phaseIndex)
-        #expect(reachedMedic)
+        // The Médico acts as soon as night falls: no passive wait before their turn.
         #expect(game.phase == .medicNight)
         #expect(game.legalTargets(for: 0).contains(0))
         let before = game
@@ -266,8 +265,7 @@ struct ClassicGameTests {
         var detective = ClassicGame(name: "", seed: 2, trainingRole: .detective)
         let accepted64 = detective.advance(expectedPhaseIndex: 0)
         #expect(accepted64)
-        let reachedDetective = detective.skipPassiveNight(expectedPhaseIndex: detective.phaseIndex)
-        #expect(reachedDetective)
+        #expect(detective.phase == .detectiveNight)
         #expect(!detective.legalTargets(for: 0).contains(0))
         let target = detective.legalTargets(for: 0).first!
         let accepted67 = detective.advance(target: target, expectedPhaseIndex: detective.phaseIndex)
@@ -290,8 +288,6 @@ struct ClassicGameTests {
         var medic = ClassicGame(name: "Humano", seed: 3, trainingRole: .medic)
         let startedMedic = medic.advance(expectedPhaseIndex: medic.phaseIndex)
         #expect(startedMedic)
-        let skippedToMedic = medic.skipPassiveNight(expectedPhaseIndex: medic.phaseIndex)
-        #expect(skippedToMedic)
         #expect(medic.phase == .medicNight)
         let cannotSkip = medic.skipPassiveNight(expectedPhaseIndex: medic.phaseIndex)
         #expect(!cannotSkip)

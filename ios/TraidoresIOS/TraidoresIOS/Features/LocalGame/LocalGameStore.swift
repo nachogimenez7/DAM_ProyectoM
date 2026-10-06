@@ -90,6 +90,12 @@ final class LocalGameStore {
         save()
     }
 
+    func expireMayorTie(revision: Int) {
+        guard var current = game, current.expireMayorTie(expectedPhaseIndex: revision) else { return }
+        game = current
+        save()
+    }
+
     func accuse(_ target: Int, revision: Int) {
         guard var current = game, current.accuse(target, expectedPhaseIndex: revision) else { return }
         game = current

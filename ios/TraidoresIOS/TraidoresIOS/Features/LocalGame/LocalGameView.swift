@@ -1453,6 +1453,10 @@ private enum DawnAnnouncement: Hashable {
     case death(player: Int)
     case silence(player: Int)
     case peaceful
+    // Special role announcements share the queue: they pause the clock the same way.
+    case oracle(player: Int)
+    case contrapunto(first: Int, second: Int)
+    case jester(player: Int)
 }
 
 extension GameMap {
@@ -1871,6 +1875,9 @@ private struct LocalTableView: View {
     @State private var remainingNightSeconds: Int?
     @State private var remainingPhaseSeconds: Int?
     @State private var nightSkipReady = false
+    // The mark of the confirmed night action (Android's CardActionMarks), stamped on the
+    // card before the private feedback and kept until the day begins.
+    @State private var stampedMark: StampedMark?
     // Android's direct vote: the chosen card shows TU VOTO ✓ and can still change
     // during a short closing window.
     @State private var votedTarget: Int?
@@ -2054,6 +2061,7 @@ private struct LocalTableView: View {
                 contrapuntoPicks = nil
                 showingEmotePalette = false
                 if store.game?.isNight == true { reviewingPlan = false }
+                if let current = store.game, !current.isNight, current.phase != .dawn { stampedMark = nil }
                 if !game.isNight && !isTalkPhase(game) {
                     showingChat = false
                     chatInputFocused = false
@@ -2085,6 +2093,7 @@ private struct LocalTableView: View {
             }
             .onChange(of: dawnAnnouncements) { _, announcements in
                 if announcements.isEmpty, let current = store.game {
+                    presentPendingTransition(using: current)
                     armTimedPhaseIfReady(current)
                 }
             }
@@ -2093,12 +2102,38 @@ private struct LocalTableView: View {
                 case .death: playEffect(.elimination)
                 case .silence: playEffect(.silence)
                 case .peaceful: playEffect(.noDeath)
+                case .oracle: playEffect(.oracle)
+                case .contrapunto: playEffect(.payador)
+                case .jester: playEffect(.jester)
                 case nil: break
                 }
             }
             .onChange(of: game.phase) { old, new in
                 if old == .voting || old == .tieVote { playEffect(.voteCast) }
                 if new == .tieVote { playEffect(.tieBreak) }
+                if new == .counterpoint, game.contrapuntoParticipants.count == 2 {
+                    dawnAnnouncements.append(.contrapunto(first: game.contrapuntoParticipants[0],
+                                                          second: game.contrapuntoParticipants[1]))
+                }
+            }
+            #if DEBUG
+            .task(id: game.phase == .assignment) {
+                // Screenshot hook for the special announcements, which a short test match rarely reaches.
+                let arguments = ProcessInfo.processInfo.arguments
+                guard game.phase != .assignment, game.round == 1, game.isNight, dawnAnnouncements.isEmpty,
+                      arguments.contains("-ui-testing"),
+                      let key = arguments.first(where: { $0.hasPrefix("-ui-testing-preview-reveal=") })?
+                        .dropFirst("-ui-testing-preview-reveal=".count) else { return }
+                switch key {
+                case "jester": dawnAnnouncements.append(.jester(player: 0))
+                case "oracle": dawnAnnouncements.append(.oracle(player: 1))
+                default: dawnAnnouncements.append(.contrapunto(first: 1, second: 2))
+                }
+            }
+            #endif
+            .onChange(of: game.specialVictories.count) { old, new in
+                guard new > old, let victory = game.specialVictories.last else { return }
+                dawnAnnouncements.append(.jester(player: victory.playerID))
             }
             .onChange(of: desiredMusic(game), initial: true) { _, music in
                 audio.setMusic(music, volume: preferences.musicVolume)
@@ -2171,6 +2206,7 @@ private struct LocalTableView: View {
     }
 
     private func playEffect(_ effect: GameAudio.Effect) {
+        vibrate(effect.haptic)
         guard preferences.effectsEnabled else { return }
         audio.play(effect, volume: preferences.effectsVolume)
     }
@@ -2232,7 +2268,8 @@ private struct LocalTableView: View {
     }
 
     private func presentPendingTransition(using game: ClassicGame) {
-        guard privateFeedback == nil, activeTransition == nil, let spec = pendingTransition else { return }
+        guard privateFeedback == nil, dawnAnnouncements.isEmpty, activeTransition == nil,
+              let spec = pendingTransition else { return }
         pendingTransition = nil
         lastTransitionKey = spec.key
         var instant = Transaction(); instant.disablesAnimations = true
@@ -2241,12 +2278,12 @@ private struct LocalTableView: View {
             transitionCurtain = false
             musicCueReached = false
         }
-        // Android's GameplaySoundResolver: nightfall into the night, and the dawn
-        // sound only when someone died (an empty night has its own sound).
+        // Android's GameplaySoundResolver: nightfall into the night and the rooster at dawn.
         let current = store.game ?? game
         if spec.period == .night {
             playEffect(.nightFall)
-        } else if current.phase == .dawn, let victim = current.nightTarget, victim != current.protectedPlayer {
+        } else if current.phase == .dawn {
+            // The rooster crows at every dawn; an empty night adds its own sound afterwards.
             playEffect(.dawn)
         }
         transitionTask?.cancel()
@@ -2320,7 +2357,7 @@ private struct LocalTableView: View {
     }
 
     private func armTimedPhaseIfReady(_ game: ClassicGame) {
-        guard isTalkPhase(game) || game.phase == .voting || game.phase == .tieVote,
+        guard isTalkPhase(game) || game.phase == .voting || game.phase == .tieVote || game.phase == .mayorTieBreak,
               activeTransition == nil, pendingTransition == nil,
               privateFeedback == nil, dawnAnnouncements.isEmpty,
               lastTransitionKey == transitionSpec(for: game).key,
@@ -2342,6 +2379,8 @@ private struct LocalTableView: View {
             }
             if phase == .discussion || phase == .counterpoint {
                 store.advance(target: nil, revision: phaseIndex)
+            } else if phase == .mayorTieBreak {
+                store.expireMayorTie(revision: phaseIndex)
             } else {
                 store.expireVoting(revision: phaseIndex)
             }
@@ -2508,6 +2547,13 @@ private struct LocalTableView: View {
         let pickable = ability != nil || (quickPick != nil && quickPickTarget == nil
             && quickPickTargets(game).contains { $0.id == player.id })
         let actionable = quickPick == nil && ability == nil && game.legalTargets(for: 0).contains(player.id)
+        let mark = markKind(on: player.id, game: game)
+        let cardSize = CGSize(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
+        let markDescription = mark.map { ". \($0.description(target: player.name))" } ?? ""
+        let badgeDescription = publicBadge(for: player, game: game).map { ", \($0.lowercased())" } ?? ""
+        let cardLabel = "\(player.name), \(player.alive ? "en la mesa" : "eliminado")" + badgeDescription + markDescription
+        let silenceCooldown = game.phase == .mercenaryNight && game.human.role == .mercenary &&
+            player.alive && player.id != 0 && game.isSilenceOnCooldown(player.id)
         return Button {
             if dismissChatKeyboard() { return }
             if ability != nil { completeAbilityPick(player, game: game); return }
@@ -2517,6 +2563,7 @@ private struct LocalTableView: View {
                 castVote(for: player.id, in: game)
             } else {
                 selected = player.id
+                vibrate(.light)
             }
         } label: {
             VStack(spacing: 0) {
@@ -2584,6 +2631,9 @@ private struct LocalTableView: View {
                             }
                         }
                         .overlay {
+                            if let mark { CardActionMarkView(kind: mark, cardSize: cardSize).id(mark) }
+                        }
+                        .overlay {
                             if !player.alive {
                                 Image("death_blood_splatter_art")
                                     .resizable().scaledToFit()
@@ -2634,12 +2684,13 @@ private struct LocalTableView: View {
         }
         // A disabled Button dims its entire label in SwiftUI. Living players
         // must remain fully visible even when this phase has no target action.
-        .buttonStyle(.plain).allowsHitTesting(actionable || pickable || chatInputFocused)
-        .opacity(!player.alive ? 0.72 : quickPick != nil && !pickable ? 0.5 : 1)
+        .buttonStyle(.plain).disabled(silenceCooldown)
+        .allowsHitTesting(actionable || pickable || chatInputFocused)
+        .opacity(silenceCooldown ? 0.45 : !player.alive ? 0.72 : quickPick != nil && !pickable ? 0.5 : 1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(player.name), \(player.alive ? "en la mesa" : "eliminado")"
-            + (publicBadge(for: player, game: game).map { ", \($0.lowercased())" } ?? ""))
-        .accessibilityValue(pickable ? "Elegir para el mensaje" : actionable ? "Objetivo disponible" : "")
+        .accessibilityLabel(cardLabel)
+        .accessibilityValue(silenceCooldown ? "No podés silenciarlo dos noches seguidas" :
+                            pickable ? "Elegir para el mensaje" : actionable ? "Objetivo disponible" : "")
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("table.player.\(player.id)")
     }
@@ -3009,8 +3060,13 @@ private struct LocalTableView: View {
                                     .stroke(phaseAccent(game.phase), lineWidth: selected == 0 ? 3 : 1.5)
                             }
                         }
+                        .overlay {
+                            if let kind = markKind(on: 0, game: game) {
+                                CardActionMarkView(kind: kind, cardSize: CGSize(width: 48, height: 76)).id(kind)
+                            }
+                        }
                         .overlay(alignment: .bottom) {
-                            if canChooseSelf {
+                            if canChooseSelf && markKind(on: 0, game: game) == nil {
                                 Text("SALVARME")
                                     .font(.system(size: 7, weight: .heavy))
                                     .foregroundStyle(.white)
@@ -3182,9 +3238,15 @@ private struct LocalTableView: View {
         quickSent += 1
     }
 
+    /// Android vibrates with its sounds and key touches only when the option is on.
+    private func vibrate(_ haptic: GameHaptic) {
+        if preferences.vibrationEnabled { haptic.play() }
+    }
+
     private func showEmote(_ emote: ProfileEmoteContent, by player: Int) {
         let bubble = EmoteBubble(emote: emote)
         withAnimation(.easeOut(duration: 0.18)) { emoteBubbles[player] = bubble }
+        if player == 0 { vibrate(.light) }
         if preferences.effectsEnabled {
             audio.playEmote(ReactionRules.soundKey(forEmoteID: emote.id), volume: preferences.effectsVolume)
         }
@@ -3248,6 +3310,24 @@ private struct LocalTableView: View {
             return
         }
         let target = selected
+        if game.isNight, let target, game.legalTargets(for: 0).contains(target),
+           let kind = CardActionMarkKind(phase: game.phase, role: game.human.role) {
+            // Stamp the mark first so the player sees whom they chose; the action and its
+            // private feedback follow once the mark has landed.
+            guard stampedMark?.round != game.round || stampedMark?.kind != kind else { return }
+            stampedMark = .init(target: target, kind: kind, round: game.round)
+            vibrate(.medium)
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 300 : 850))
+                guard let current = store.game, current.phaseIndex == game.phaseIndex else { return }
+                commitPrimaryAction(current, target: target)
+            }
+            return
+        }
+        commitPrimaryAction(game, target: target)
+    }
+
+    private func commitPrimaryAction(_ game: ClassicGame, target: Int?) {
         let targetPlayer = target.flatMap { target in game.players.first { $0.id == target } }
         let feedback: PrivateActionFeedback? = switch (game.phase, targetPlayer) {
         case (.assassinNight, let player?):
@@ -3300,6 +3380,9 @@ private struct LocalTableView: View {
             if let silenced = game.silencedPlayer, updated.players[silenced].alive {
                 dawnAnnouncements.append(.silence(player: silenced))
             }
+            if let guest = updated.oracleGuest, updated.phase == .discussion {
+                dawnAnnouncements.append(.oracle(player: guest))
+            }
         }
     }
 
@@ -3348,6 +3431,14 @@ private struct LocalTableView: View {
             SilenceRevealView(name: game.players[id].name, map: game.map, onFinished: dismissDawnAnnouncement)
         case .peaceful:
             NoDeathRevealView(map: game.map, onFinished: dismissDawnAnnouncement)
+        case .oracle(let id):
+            OracleRevealView(guest: game.players[id].name, onFinished: dismissDawnAnnouncement)
+        case .contrapunto(let first, let second):
+            ContrapuntoRevealView(first: game.players[first].name, second: game.players[second].name,
+                                  onFinished: dismissDawnAnnouncement)
+        case .jester(let id):
+            JesterVictoryView(name: game.players[id].name, roleTitle: RoleKey.jester.classicTitle(on: game.map),
+                              humanWon: id == 0, onContinue: dismissDawnAnnouncement, onLeave: dismissMatch)
         }
     }
 
@@ -3567,6 +3658,14 @@ private struct LocalTableView: View {
     }
 
     /// Public marks everyone can see on a card.
+    /// Own confirmed night action, and the Payador's public Contrapunto marks.
+    private func markKind(on id: Int, game: ClassicGame) -> CardActionMarkKind? {
+        if let stampedMark, stampedMark.target == id, stampedMark.round == game.round,
+           game.isNight || game.phase == .dawn { return stampedMark.kind }
+        if game.phase == .counterpoint, game.contrapuntoParticipants.contains(id) { return .payador }
+        return nil
+    }
+
     private func publicBadge(for player: ClassicPlayer, game: ClassicGame) -> String? {
         guard player.alive || game.oracleGuest == player.id else { return nil }
         if !game.isNight, game.silencedPlayer == player.id { return "MUDO" }
@@ -3628,7 +3727,7 @@ private struct LocalTableView: View {
             abilityBanner(title: "¿A quién señalás?",
                           detail: "Tocá una de las dos cartas: recibe un voto adicional.", cancel: nil)
         }
-        if human.alive, human.role == .mayor, game.revealedMayorID == nil,
+        if human.alive, game.silencedPlayer != human.id, human.role == .mayor, game.revealedMayorID == nil,
            [.discussion, .voting, .tieVote].contains(game.phase) {
             abilityButton("REVELARME COMO ALCALDE", symbol: "crown.fill", id: "ability.mayor") {
                 confirmingMayorReveal = true
@@ -4431,11 +4530,19 @@ private struct RoleDialogs: ViewModifier {
             } message: {
                 Text("Solo podés hacerlo una vez. Ganás si tu bando final gana y seguís con vida.")
             }
-            .onChange(of: game.specialVictories.count) { _, _ in
-                guard game.specialVictories.contains(where: { $0.playerID == 0 }) else { return }
-                showFeedback(.init(title: "¡GANASTE COMO \(RoleKey.jester.classicTitle(on: game.map).uppercased())!",
-                               message: "El pueblo te expulsó: cumpliste tu objetivo. Podés seguir mirando la partida.",
-                               systemImage: "theatermasks.fill"))
+            .alert("Elegí tu bando final", isPresented: Binding(
+                get: { game.deserterReconsiderationPending }, set: { _ in })) {
+                Button("MANTENER MI BANDO") {
+                    if let team = game.deserterTeam {
+                        store.chooseDeserterTeam(team, revision: game.phaseIndex)
+                    }
+                }
+                Button("CAMBIAR DE BANDO") {
+                    store.chooseDeserterTeam(game.deserterTeam == .town ? .traitors : .town,
+                                             revision: game.phaseIndex)
+                }
+            } message: {
+                Text("Los Traidores están por ganar. Antes de cerrar la partida podés reconsiderar una vez.")
             }
     }
 }

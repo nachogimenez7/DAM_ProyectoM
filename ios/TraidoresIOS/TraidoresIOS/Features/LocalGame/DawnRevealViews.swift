@@ -173,7 +173,7 @@ struct RevealCard: View {
 }
 
 /// Every dawn reveal sits on the same 72 % black scrim (`#B8000000`) over the table.
-private struct RevealScrim<Content: View>: View {
+struct RevealScrim<Content: View>: View {
     let opacity: Double
     @ViewBuilder let content: Content
 

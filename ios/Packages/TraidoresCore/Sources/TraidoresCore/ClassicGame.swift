@@ -52,6 +52,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var nightTarget: Int?
     public internal(set) var protectedPlayer: Int?
     public internal(set) var silencedPlayer: Int?
+    public internal(set) var lastSilencedRounds: [Int: Int] = [:]
     public internal(set) var investigations: [Investigation] = []
     public internal(set) var votes: [Int: Int] = [:]
     public internal(set) var voteRound = 0
@@ -76,6 +77,9 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public internal(set) var revealedMayorID: Int?
     public internal(set) var deserterTeam: RoleTeam?
     public internal(set) var deserterReconsiderationUsed = false
+    /// A local choice must finish before advancing when traitors would otherwise win.
+    /// Online uses the server's timed window, never this model as authority.
+    public internal(set) var deserterReconsiderationPending = false
     public internal(set) var payadorUsed = false
     public internal(set) var contrapuntoParticipants: [Int] = []
     public internal(set) var payadorPointedPlayer: Int?
@@ -113,7 +117,11 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
     public var deserterReconsiderationAvailable: Bool {
         winner == nil && living.contains { $0.role == .deserter } && deserterTeam != nil &&
-        !deserterReconsiderationUsed && living.count <= (players.count * 2 + 2) / 3
+        !deserterReconsiderationUsed && round >= 4 &&
+        (phase == .discussion || Self.winner(for: players, deserterTeam: deserterTeam) == .traitors)
+    }
+    public func isSilenceOnCooldown(_ id: Int) -> Bool {
+        lastSilencedRounds[id].map { round - $0 < 2 } ?? false
     }
     public var humanWon: Bool {
         if specialVictories.contains(where: { $0.playerID == 0 }) { return true }
@@ -136,9 +144,9 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         case investigations, votes, voteRound, tieCandidates, eliminationTarget, messages
         case suspicion, declaredDetectives, humanSpoke, humanSharedRead
         case mapConfig, difficulty, timingConfig, advancedConfig, random, messageSequence
-        case revealedMayorID, deserterTeam, deserterReconsiderationUsed
+        case revealedMayorID, deserterTeam, deserterReconsiderationUsed, deserterReconsiderationPending
         case payadorUsed, contrapuntoParticipants, payadorPointedPlayer
-        case oracleUsed, oracleGuest, specialVictories, silencedPlayer, humanAccusation, traitorMessages, testOptionsConfig, trainingRoleConfig
+        case oracleUsed, oracleGuest, specialVictories, silencedPlayer, lastSilencedRounds, humanAccusation, traitorMessages, testOptionsConfig, trainingRoleConfig
     }
 
     public init(from decoder: Decoder) throws {
@@ -169,6 +177,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         revealedMayorID = try container.decodeIfPresent(Int.self, forKey: .revealedMayorID)
         deserterTeam = try container.decodeIfPresent(RoleTeam.self, forKey: .deserterTeam)
         deserterReconsiderationUsed = try container.decodeIfPresent(Bool.self, forKey: .deserterReconsiderationUsed) ?? false
+        deserterReconsiderationPending = try container.decodeIfPresent(Bool.self, forKey: .deserterReconsiderationPending) ?? false
         payadorUsed = try container.decodeIfPresent(Bool.self, forKey: .payadorUsed) ?? false
         contrapuntoParticipants = try container.decodeIfPresent([Int].self, forKey: .contrapuntoParticipants) ?? []
         payadorPointedPlayer = try container.decodeIfPresent(Int.self, forKey: .payadorPointedPlayer)
@@ -176,6 +185,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         oracleGuest = try container.decodeIfPresent(Int.self, forKey: .oracleGuest)
         specialVictories = try container.decodeIfPresent([SpecialVictory].self, forKey: .specialVictories) ?? []
         silencedPlayer = try container.decodeIfPresent(Int.self, forKey: .silencedPlayer)
+        lastSilencedRounds = try container.decodeIfPresent([Int: Int].self, forKey: .lastSilencedRounds) ?? [:]
         humanAccusation = try container.decodeIfPresent(Int.self, forKey: .humanAccusation)
         traitorMessages = try container.decodeIfPresent([TableMessage].self, forKey: .traitorMessages)
         testOptionsConfig = try container.decodeIfPresent(LocalTestOptions.self, forKey: .testOptionsConfig)
@@ -276,14 +286,16 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                 !($0.role == .deserter && deserterTeam == .traitors) }
                 .filter { !(actor != 0 && testOptions.botsNeverKillHuman && $0.id == 0) }
                 .map(\.id)
-        case .mercenaryNight where player.role == .mercenary,
-             .detectiveNight where player.role == .detective:
+        case .mercenaryNight where player.role == .mercenary:
+            return living.filter { $0.id != actor && !isSilenceOnCooldown($0.id) }.map(\.id)
+        case .detectiveNight where player.role == .detective:
             return living.filter { $0.id != actor }.map(\.id)
         case .medicNight where player.role == .medic:
             return living.map(\.id) // Android allows self-protection and repeated protection.
         case .oracleNight where player.role == .oracle && !oracleUsed && round > 1:
             return players.filter { !$0.alive }.map(\.id)
         case .mayorTieBreak where player.role == .mayor:
+            if actor == silencedPlayer { return [] }
             return tieCandidates.filter { $0 != actor }
         case .voting:
             if actor == silencedPlayer { return [] }
@@ -300,7 +312,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     /// Every UI action carries its phase revision, so repeated/stale taps are harmless.
     @discardableResult
     public mutating func advance(target: Int? = nil, expectedPhaseIndex: Int) -> Bool {
-        guard phaseIndex == expectedPhaseIndex, winner == nil else { return false }
+        guard phaseIndex == expectedPhaseIndex, winner == nil,
+              !deserterReconsiderationPending else { return false }
         let targets = legalTargets(for: 0)
         if phase != .oracleNight && !targets.isEmpty && !targets.contains(target ?? -1) { return false }
         switch phase {
@@ -321,7 +334,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
             transition(.dawn)
         case .mayorTieBreak:
             guard human.role == .mayor, human.alive, let target, targets.contains(target),
-                  revealedMayorID == 0 else { return false }
+                  revealedMayorID == 0, silencedPlayer != 0 else { return false }
             resolveMayorTie(target)
         case .counterpoint:
             if let payador = living.first(where: { $0.role == .payador }), payador.id != 0 {
@@ -340,12 +353,17 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                 players[victim].alive = false
                 append("\(name(victim)) murió durante la noche.")
             } else { append("Amanece sin víctimas.") }
-            if let silencedPlayer, players[silencedPlayer].alive {
-                append("\(name(silencedPlayer)) no puede hablar ni votar durante el día.")
+            if let silenced = silencedPlayer {
+                if silenced == protectedPlayer || !players[silenced].alive {
+                    silencedPlayer = nil
+                } else {
+                    lastSilencedRounds[silenced] = round
+                    append("\(name(silenced)) no puede hablar ni votar durante el día.")
+                }
             }
             transition(.discussion)
             checkWinner()
-            if winner == nil {
+            if winner == nil && !deserterReconsiderationPending {
                 if let guest = oracleGuest { append("El Oráculo invocó a \(name(guest)). Hoy puede hablar, pero no votar ni usar habilidades.") }
                 botDebate()
                 botDayAbilities()
@@ -361,7 +379,14 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                 transition(.tieVote)
                 append("Empate. Voten entre \(tieCandidates.map { name($0) }.joined(separator: ", ")).")
             } else if voteRound == 2 && tieCandidates.count > 1,
-                      let mayor = living.first(where: { $0.role == .mayor }) {
+                      let mayor = players.first(where: { $0.role == .mayor }),
+                      (!mayor.alive || mayor.id == silencedPlayer),
+                      revealedMayorID != mayor.id && !(advanced.revealRolesOnDeath && !mayor.alive) {
+                eliminationTarget = nil
+                transition(.mayorTieBreak)
+                append("El empate se repitió. El Alcalde puede decidir entre los empatados.")
+            } else if voteRound == 2 && tieCandidates.count > 1,
+                      let mayor = living.first(where: { $0.role == .mayor && $0.id != silencedPlayer }) {
                 if tieCandidates.contains(mayor.id) { revealMayor(mayor.id) }
                 tieCandidates.removeAll { $0 == mayor.id }
                 if tieCandidates.count == 1 {
@@ -390,7 +415,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
                 }
             }
             checkWinner()
-            if winner == nil { round += 1; startNight() }
+            if winner == nil && !deserterReconsiderationPending { round += 1; startNight() }
         }
         return true
     }
@@ -410,6 +435,14 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         guard phaseIndex == expectedPhaseIndex, winner == nil,
               phase == .voting || phase == .tieVote else { return false }
         closeVoting(humanTarget: nil)
+        return true
+    }
+
+    @discardableResult
+    public mutating func expireMayorTie(expectedPhaseIndex: Int) -> Bool {
+        guard phaseIndex == expectedPhaseIndex, winner == nil, phase == .mayorTieBreak else { return false }
+        eliminationTarget = nil; transition(.result)
+        append("El Alcalde no decidió el empate. Nadie será expulsado.")
         return true
     }
 
@@ -521,7 +554,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     @discardableResult
     public mutating func revealMayor(expectedPhaseIndex: Int) -> Bool {
         guard phaseIndex == expectedPhaseIndex, winner == nil, human.alive, human.role == .mayor,
-              [.discussion, .voting, .tieVote, .mayorTieBreak].contains(phase), revealedMayorID == nil else { return false }
+              silencedPlayer != 0, [.discussion, .voting, .tieVote, .mayorTieBreak].contains(phase),
+              revealedMayorID == nil else { return false }
         revealMayor(0)
         return true
     }
@@ -538,6 +572,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
               team != .neutral, (deserterTeam == nil && phase == .assignment) || deserterReconsiderationAvailable else { return false }
         if deserterTeam != nil { deserterReconsiderationUsed = true }
         deserterTeam = team
+        deserterReconsiderationPending = false
         checkWinner()
         return true
     }
@@ -570,7 +605,7 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     }
 
     private mutating func revealMayor(_ id: Int) {
-        guard revealedMayorID == nil else { return }
+        guard revealedMayorID == nil, players[id].alive, silencedPlayer != id else { return }
         revealedMayorID = id
         append("\(name(id)) se reveló como Alcalde. Su voto vale doble y puede decidir el segundo empate.")
     }
@@ -646,7 +681,10 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     private mutating func transition(_ next: GamePhase) { phase = next; phaseIndex += 1 }
     private mutating func checkWinner() {
         botDeserterReconsider()
-        winner = Self.winner(for: players, deserterTeam: deserterTeam)
+        let candidate = Self.winner(for: players, deserterTeam: deserterTeam)
+        deserterReconsiderationPending = candidate == .traitors && human.alive &&
+            human.role == .deserter && deserterReconsiderationAvailable
+        winner = deserterReconsiderationPending ? nil : candidate
         if let winner { transition(.result); append("Victoria de \(winner.rawValue).") }
     }
 
@@ -660,6 +698,14 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         transition(.assassinNight)
         append("Noche \(round). \(map.title) duerme.")
         resolveBotNight()
+        // A player with a later night role acts as soon as night falls, instead of
+        // waiting on the bot-only phases before theirs. Without an action tonight
+        // the night stays on the passive wait, so dawn never comes without the timer.
+        if legalTargets(for: 0).isEmpty {
+            var probe = self
+            probe.advanceThroughPassiveNight()
+            if probe.isNight { self = probe }
+        }
     }
 
     private mutating func nextNightPhase() {

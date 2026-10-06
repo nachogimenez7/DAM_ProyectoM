@@ -100,7 +100,7 @@ struct ClassicSpecialRolesTests {
         #expect(accepted85)
     }
 
-    @Test func deserterMustChooseInitiallyAndReconsiderOnlyOnceAtCeilingThreshold() {
+    @Test func deserterMustChooseInitiallyAndReconsiderOnlyOnceFromRoundFourDuringDiscussion() {
         var match = game(.deserter, phase: .assignment)
         #expect(match.needsInitialDeserterChoice)
         let accepted91 = !match.advance(expectedPhaseIndex: 0)
@@ -114,8 +114,10 @@ struct ClassicSpecialRolesTests {
         #expect(!match.deserterReconsiderationAvailable)
         let accepted96 = !match.chooseDeserterTeam(.traitors, expectedPhaseIndex: 0)
         #expect(accepted96)
-        for id in 10..<14 { match.players[id].alive = false }
-        #expect(match.deserterReconsiderationAvailable) // ceil(14 * 2/3) = 10
+        match.phase = .discussion; match.round = 3
+        #expect(!match.deserterReconsiderationAvailable)
+        match.round = 4; match.silencedPlayer = 0
+        #expect(match.deserterReconsiderationAvailable)
         let accepted99 = match.chooseDeserterTeam(.traitors, expectedPhaseIndex: 0)
         #expect(accepted99)
         #expect(match.deserterReconsiderationUsed)
@@ -324,7 +326,7 @@ struct ClassicSpecialRolesTests {
             match.players = oldRoles.enumerated().map { .init(id: $0.offset, name: "J\($0.offset)", role: $0.element) }
             var envelope = try #require(JSONSerialization.jsonObject(with: ClassicSave.encode(match)) as? [String: Any])
             var body = try #require(envelope["game"] as? [String: Any])
-            for key in ["revealedMayorID", "deserterTeam", "deserterReconsiderationUsed", "payadorUsed", "contrapuntoParticipants", "payadorPointedPlayer", "oracleUsed", "oracleGuest", "specialVictories", "silencedPlayer", "lastSilencedRounds"] { body.removeValue(forKey: key) }
+            for key in ["revealedMayorID", "deserterTeam", "deserterReconsiderationUsed", "deserterReconsiderationPending", "payadorUsed", "contrapuntoParticipants", "payadorPointedPlayer", "oracleUsed", "oracleGuest", "specialVictories", "silencedPlayer", "lastSilencedRounds"] { body.removeValue(forKey: key) }
             envelope["game"] = body
             let restored = try ClassicSave.decode(JSONSerialization.data(withJSONObject: envelope))
             #expect(restored.revealedMayorID == nil && restored.deserterTeam == nil)
@@ -343,7 +345,7 @@ struct ClassicSpecialRolesTests {
                     if first.winner != nil { break }
                     for index in 0..<2 {
                         var match = index == 0 ? first : second
-                        if match.needsInitialDeserterChoice { _ = match.chooseDeserterTeam(.town, expectedPhaseIndex: match.phaseIndex) }
+                        if match.needsInitialDeserterChoice || match.deserterReconsiderationPending { _ = match.chooseDeserterTeam(.town, expectedPhaseIndex: match.phaseIndex) }
                         if match.phase == .mayorTieBreak { _ = match.revealMayor(expectedPhaseIndex: match.phaseIndex) }
                         let target = match.legalTargets(for: 0).first
                         _ = match.advance(target: target, expectedPhaseIndex: match.phaseIndex)
@@ -395,6 +397,7 @@ struct ClassicSpecialRolesTests {
         #expect(oracle.oracleUsed)
         #expect(oracle.oracleGuest == 7)
         var deserter = botGame(.deserter, phase: .dawn)
+        deserter.round = 4
         deserter.deserterTeam = .traitors
         for id in 10..<14 { deserter.players[id].alive = false }
         let accepted = deserter.advance(expectedPhaseIndex: 0)
@@ -472,18 +475,106 @@ struct ClassicSpecialRolesTests {
         #expect(detective.humanInvestigations.last?.suspicious == false)
     }
 
-    @Test func mercenarySilenceKeepsCurrentIOSPortTargetRules() {
+    @Test func mercenarySilenceBlocksOnlyTheFollowingNightAndPersistsInSaves() throws {
         var match = game(.mercenary, phase: .mercenaryNight)
         let accepted = match.advance(target: 1, expectedPhaseIndex: 0)
         #expect(accepted)
-        match.phase = .discussion
+        match.phase = .dawn; match.nightTarget = nil; match.protectedPlayer = nil
+        let ruleAccepted1 = match.advance(expectedPhaseIndex: match.phaseIndex)
+        #expect(ruleAccepted1)
         #expect(!match.canSpeak(1))
         match.phase = .voting
         #expect(match.legalTargets(for: 1).isEmpty)
         match.phase = .mercenaryNight; match.round = 2
-        #expect(match.legalTargets(for: 0).contains(1))
+        #expect(!match.legalTargets(for: 0).contains(1))
+        #expect(match.isSilenceOnCooldown(1))
+        #expect(try ClassicSave.decode(ClassicSave.encode(match)).lastSilencedRounds[1] == 1)
         match.round = 3
         #expect(match.legalTargets(for: 0).contains(1))
+    }
+
+    @Test func protectedOrKilledSilenceTargetDoesNotStartACooldown() {
+        for protected in [true, false] {
+            var match = game(.mercenary, phase: .dawn)
+            match.silencedPlayer = 1
+            match.protectedPlayer = protected ? 1 : nil
+            match.nightTarget = protected ? nil : 1
+            let ruleAccepted2 = match.advance(expectedPhaseIndex: match.phaseIndex)
+            #expect(ruleAccepted2)
+            #expect(match.silencedPlayer == nil)
+            #expect(match.lastSilencedRounds[1] == nil)
+        }
+    }
+
+    @Test func silencedMayorCannotRevealVoteOrDecideIncludingCorruption() {
+        var match = game(.mayor)
+        match.silencedPlayer = 0
+        let original = match
+        let ruleAccepted3 = match.revealMayor(expectedPhaseIndex: 0)
+        #expect(!ruleAccepted3)
+        #expect(match == original && !match.canSpeak(0))
+        match.phase = .voting
+        match.recordVotes([0: 1, 1: 2, 2: 1])
+        #expect(match.votes[0] == nil)
+        for candidates in [[1, 2], [0, 1]] {
+            for revealed in [false, true] {
+                var tied = original
+                tied.phase = .voteCount; tied.voteRound = 2; tied.tieCandidates = candidates
+                tied.revealedMayorID = revealed ? 0 : nil
+                let ruleAccepted4 = tied.advance(expectedPhaseIndex: tied.phaseIndex)
+                #expect(ruleAccepted4)
+                #expect(tied.phase == (revealed ? .result : .mayorTieBreak) && tied.eliminationTarget == nil)
+                if !revealed {
+                    let timedOut = tied.expireMayorTie(expectedPhaseIndex: tied.phaseIndex)
+                    #expect(timedOut && tied.phase == .result && tied.eliminationTarget == nil)
+                }
+                #expect(tied.revealedMayorID == (revealed ? 0 : nil))
+            }
+        }
+        match.phase = .mayorTieBreak; match.tieCandidates = [1, 2]; match.revealedMayorID = 0
+        #expect(match.legalTargets(for: 0).isEmpty)
+        let ruleAccepted5 = match.chooseMayorTie(1, expectedPhaseIndex: match.phaseIndex)
+        #expect(!ruleAccepted5)
+    }
+
+    @Test func oracleInvitationSurvivesTheOraclesDeathThatSameNight() throws {
+        var match = game(.oracle, phase: .oracleNight)
+        let guest = try #require(match.players.first { $0.role == .villager }?.id)
+        match.round = 2; match.players[guest].alive = false
+        let ruleAccepted6 = match.invokeOracle(guest, expectedPhaseIndex: match.phaseIndex)
+        #expect(ruleAccepted6)
+        match.nightTarget = 0; match.protectedPlayer = nil
+        let ruleAccepted7 = match.advance(expectedPhaseIndex: match.phaseIndex)
+        #expect(ruleAccepted7)
+        #expect(!match.human.alive && match.oracleUsed && match.oracleGuest == guest)
+        #expect(match.canSpeak(guest) && match.legalTargets(for: guest).isEmpty)
+    }
+
+    @Test func deserterGetsOneFinalChoiceBeforeTraitorVictory() throws {
+        for team in [RoleTeam.town, .traitors] {
+            var match = game(.deserter, phase: .dawn)
+            match.round = 4
+            var remaining = ClassicGame.roles(for: 14, map: .pampa)
+            let livingRoles: [RoleKey] = [.deserter, .mercenary, .assassin, .assassin, .villager, .villager]
+            for role in livingRoles { remaining.remove(at: try #require(remaining.firstIndex(of: role))) }
+            match.players = (livingRoles + remaining).enumerated().map { id, role in
+                .init(id: id, name: "J\(id)", role: role, alive: id < 6)
+            }
+            match.deserterTeam = .town
+            let ruleAccepted8 = match.advance(expectedPhaseIndex: match.phaseIndex)
+            #expect(ruleAccepted8)
+            #expect(match.winner == nil && match.deserterReconsiderationPending)
+            #expect(try ClassicSave.decode(ClassicSave.encode(match)).deserterReconsiderationPending)
+            let waiting = match
+            let ruleAccepted9 = match.advance(expectedPhaseIndex: match.phaseIndex)
+            #expect(!ruleAccepted9)
+            #expect(match == waiting)
+            let ruleAccepted10 = match.chooseDeserterTeam(team, expectedPhaseIndex: match.phaseIndex)
+            #expect(ruleAccepted10)
+            #expect(match.winner == .traitors && !match.deserterReconsiderationPending)
+            #expect(match.deserterReconsiderationUsed)
+            #expect(match.humanWon == (team == .traitors))
+        }
     }
 
     @Test func iosPortSaveWithoutSpecialRolesPreservesExistingPrivateState() throws {
@@ -499,7 +590,7 @@ struct ClassicSpecialRolesTests {
             _ = match.sendTraitorMessage("Elegimos juntos", expectedPhaseIndex: match.phaseIndex)
             var envelope = try #require(JSONSerialization.jsonObject(with: ClassicSave.encode(match)) as? [String: Any])
             var body = try #require(envelope["game"] as? [String: Any])
-            for key in ["revealedMayorID", "deserterTeam", "deserterReconsiderationUsed", "payadorUsed",
+            for key in ["revealedMayorID", "deserterTeam", "deserterReconsiderationUsed", "deserterReconsiderationPending", "payadorUsed",
                         "contrapuntoParticipants", "payadorPointedPlayer", "oracleUsed", "oracleGuest", "specialVictories"] {
                 body.removeValue(forKey: key)
             }

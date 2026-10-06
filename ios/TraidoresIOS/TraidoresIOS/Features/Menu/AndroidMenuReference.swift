@@ -119,7 +119,7 @@ enum AndroidMenuReference {
           "story": "Una vez juró proteger el feudo, hasta que entendió a quién estaba protegiendo realmente. Desde entonces vive entre caminos y nombres falsos, cargando con la duda de si huyó por cobardía o por lucidez.",
           "image": "rol_desertor_medieval",
           "advice": "Elige un bando y ayuda a que gane. Sobrevivir importa: no te comprometas sin mirar quién tiene ventaja.",
-          "function": "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
+          "function": "Elige un bando al comenzar. Desde la ronda 4 puede cambiar o mantener su bando una sola vez durante el debate o antes de una victoria Traidora. Incluso silenciado puede elegir; debe sobrevivir para ganar con su bando final.",
           "minimum": 14,
           "team": "Neutral"
         },
@@ -220,7 +220,7 @@ enum AndroidMenuReference {
           "story": "Abandonó la defensa de la polis cuando entendió que sus murallas protegían más orgullo que vidas. No traicionó una bandera; se negó a morir por discursos escritos por hombres que nunca pisan el campo de batalla.",
           "image": "rol_desertor_griego",
           "advice": "Elige un bando y ayuda a que gane. Sobrevivir importa: no te comprometas sin mirar quién tiene ventaja.",
-          "function": "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
+          "function": "Elige un bando al comenzar. Desde la ronda 4 puede cambiar o mantener su bando una sola vez durante el debate o antes de una victoria Traidora. Incluso silenciado puede elegir; debe sobrevivir para ganar con su bando final.",
           "minimum": 14,
           "team": "Neutral"
         },
@@ -321,7 +321,7 @@ enum AndroidMenuReference {
           "story": "Perteneció a la banda el tiempo suficiente para entender que el código tenía letra chica. Se fue antes de terminar convertida en leyenda o cadáver. Desde entonces cambia de rumbo cada vez que escucha cascos acercarse.",
           "image": "rol_desertor_gaucho",
           "advice": "Elige un bando y ayuda a que gane. Sobrevivir importa: no te comprometas sin mirar quién tiene ventaja.",
-          "function": "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
+          "function": "Elige un bando al comenzar. Desde la ronda 4 puede cambiar o mantener su bando una sola vez durante el debate o antes de una victoria Traidora. Incluso silenciado puede elegir; debe sobrevivir para ganar con su bando final.",
           "minimum": 14,
           "team": "Neutral"
         },
