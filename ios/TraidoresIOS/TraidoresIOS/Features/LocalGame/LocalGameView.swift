@@ -498,6 +498,10 @@ struct LocalLobbyView: View {
         #if DEBUG
         let appliedTestOptions = arguments.contains("-ui-testing") && arguments.contains("-ui-testing-finish-match")
             ? LocalTestOptions(botsFollowAccusation: true, botsNeverKillHuman: true, botsNeverVoteHuman: true)
+            : arguments.contains("-ui-testing") && arguments.contains("-ui-testing-force-ties")
+            ? LocalTestOptions(forceVoteTies: true, botsNeverKillHuman: true)
+            : arguments.contains("-ui-testing") && arguments.contains("-ui-testing-protected")
+            ? LocalTestOptions(botsNeverKillHuman: true)
             : testOptions
         let testSeed = arguments.contains("-ui-testing")
             ? arguments.first(where: { $0.hasPrefix("-ui-testing-seed=") })
@@ -1968,7 +1972,7 @@ private struct LocalTableView: View {
                                     .zIndex(1)
                             }
 
-                            if showingChat && (game.isNight || isTalkPhase(game)) {
+                            if showingChat && (game.isNight || isTalkPhase(game) || isVotingChat(game)) {
                                 chatPanel(game)
                                     .frame(width: min(geometry.size.width - 16, 340),
                                            height: max(220, geometry.size.height - 92
@@ -1990,6 +1994,13 @@ private struct LocalTableView: View {
                     quickRolePicker(game, alibi: alibi)
                         .transition(.opacity)
                         .zIndex(2.2)
+                }
+
+                if game.phase == .tieVote, game.winner == nil, activeTransition == nil, pendingTransition == nil,
+                   dawnAnnouncements.isEmpty, privateFeedback == nil, !showingChat {
+                    tieVoteWindow(game)
+                        .transition(.opacity)
+                        .zIndex(2.1)
                 }
 
                 if showingRole {
@@ -2067,7 +2078,7 @@ private struct LocalTableView: View {
                 showingEmotePalette = false
                 if store.game?.isNight == true { reviewingPlan = false }
                 if let current = store.game, !current.isNight, current.phase != .dawn { stampedMark = nil }
-                if !game.isNight && !isTalkPhase(game) {
+                if !game.isNight && !isTalkPhase(game) && !isVotingChat(game) {
                     showingChat = false
                     chatInputFocused = false
                     readingOlderChat = false
@@ -2555,10 +2566,15 @@ private struct LocalTableView: View {
         let cardMarks = marks(on: player.id, game: game)
         let cardSize = CGSize(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
         let markDescription = cardMarks.map { mark in
-            ". " + (mark.actor.map { "\($0): " } ?? "") + mark.kind.description(target: player.name)
+            ". " + (mark.actor.map { mark.kind == .mercenary ? "\($0) eligió silenciar a \(player.name)"
+                                                             : "\($0) eligió a \(player.name)" }
+                    ?? mark.kind.description(target: player.name))
         }.joined()
         let badgeDescription = publicBadge(for: player, game: game).map { ", \($0.lowercased())" } ?? ""
-        let cardLabel = "\(player.name), \(player.alive ? "en la mesa" : "eliminado")" + badgeDescription + markDescription
+        let teammate = teammateMark(for: player, game: game)
+        let teammateDescription = teammate == nil ? "" : ", tu compañero: \(player.role.classicTitle(on: game.map))"
+        let cardLabel = "\(player.name), \(player.alive ? "en la mesa" : "eliminado")" + teammateDescription
+            + badgeDescription + markDescription
         let silenceCooldown = game.phase == .mercenaryNight && game.human.role == .mercenary &&
             player.alive && player.id != 0 && game.isSilenceOnCooldown(player.id)
         return Button {
@@ -2640,6 +2656,9 @@ private struct LocalTableView: View {
                         .overlay {
                             if !cardMarks.isEmpty { CardActionMarksView(marks: cardMarks, cardSize: cardSize) }
                         }
+                        .overlay(alignment: .topTrailing) {
+                            if let teammate { TeammateSeal(kind: teammate).offset(x: 4, y: -4) }
+                        }
                         .overlay {
                             if !player.alive {
                                 Image("death_blood_splatter_art")
@@ -2703,7 +2722,18 @@ private struct LocalTableView: View {
     }
 
     private func publicCardImage(_ player: ClassicPlayer, game: ClassicGame) -> String {
-        !player.alive && game.advanced.revealRolesOnDeath ? player.role.classicImage(on: game.map) : "card_back_traidores"
+        // Like Android's updatePublicRoleCard: a revealed Alcalde stays face up for the rest
+        // of the match, and so does an eliminated player when roles are revealed on death.
+        game.revealedMayorID == player.id || (!player.alive && game.advanced.revealRolesOnDeath)
+            ? player.role.classicImage(on: game.map) : "card_back_traidores"
+    }
+
+    /// A traitor never forgets their partners: a small seal with the partner's mark on
+    /// their card. Nobody else sees it.
+    private func teammateMark(for player: ClassicPlayer, game: ClassicGame) -> CardActionMarkKind? {
+        let traitors: [RoleKey] = [.assassin, .spy, .mercenary]
+        guard player.id != 0, traitors.contains(game.human.role), traitors.contains(player.role) else { return nil }
+        return CardActionMarkKind(traitor: player.role)
     }
 
     private func playerNameColor(_ id: Int) -> Color {
@@ -3009,6 +3039,17 @@ private struct LocalTableView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(TraidoresTheme.text)
             roleAbilityBar(game)
+            if game.canSpeak(0) {
+                Button { openChat(focus: false) } label: {
+                    Label("CHAT DEL PUEBLO", systemImage: "bubble.left.and.bubble.right.fill")
+                        .font(.caption.weight(.heavy)).tracking(0.6)
+                        .foregroundStyle(TraidoresTheme.gold)
+                        .padding(.horizontal, 14).frame(minHeight: 36)
+                        .overlay(Capsule().stroke(TraidoresTheme.gold.opacity(0.7), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("voting.chat")
+            }
             if let remainingPhaseSeconds {
                 Text("CIERRA EN \(remainingPhaseSeconds) S")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -3056,7 +3097,9 @@ private struct LocalTableView: View {
                     if canChooseSelf { selected = 0 }
                     else { showingRole = true }
                 } label: {
-                    Image(humanCardRevealed ? game.human.role.classicImage(on: game.map) : "card_back_traidores")
+                    // A revealed Alcalde's card is public: it stays face up, as for everyone else.
+                    Image(humanCardRevealed || game.revealedMayorID == 0
+                          ? game.human.role.classicImage(on: game.map) : "card_back_traidores")
                         .resizable().scaledToFill()
                         .frame(width: 48, height: 76).clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -3092,7 +3135,8 @@ private struct LocalTableView: View {
                             Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
                                 .lineLimit(1)
                         }
-                        Text(humanCardRevealed ? game.human.role.classicTitle(on: game.map).uppercased() : "CARTA OCULTA")
+                        Text(humanCardRevealed || game.revealedMayorID == 0
+                             ? game.human.role.classicTitle(on: game.map).uppercased() : "CARTA OCULTA")
                             .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
                         Text(humanHint(game, canChooseSelf: canChooseSelf))
                             .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
@@ -3323,8 +3367,18 @@ private struct LocalTableView: View {
             guard stampedMark?.round != game.round || stampedMark?.kind != kind else { return }
             stampedMark = .init(target: target, kind: kind, round: game.round)
             vibrate(.medium)
+            // Hold the night until the last partner's dagger has landed too.
+            let partners = kind == .assassin || kind == .spy ? killPartners(game).count : 0
+            let hold = partners == 0 ? 0.85
+                : Self.partnerMarkDelay + Double(partners - 1) * Self.partnerMarkStep + 0.75
+            for order in 0..<partners {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(Self.partnerMarkDelay + Double(order) * Self.partnerMarkStep + 0.3))
+                    vibrate(.light)
+                }
+            }
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(reduceMotion ? 300 : 850))
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 300 : Int(hold * 1_000)))
                 guard let current = store.game, current.phaseIndex == game.phaseIndex else { return }
                 commitPrimaryAction(current, target: target)
             }
@@ -3659,12 +3713,55 @@ private struct LocalTableView: View {
 
 
     /// Debate and Contrapunto: the day phases where the chat is open.
+    /// Android's tie-break window over the table, with the same direct vote as the cards.
+    private func tieVoteWindow(_ game: ClassicGame) -> some View {
+        let human = game.human
+        let votable = Set(game.legalTargets(for: 0))
+        let watchNotice: String? = votable.isEmpty && votedTarget == nil
+            ? (!human.alive ? "Estás eliminado: mirá cómo vota el pueblo."
+               : "Te silenciaron: hoy no podés votar. Mirá cómo vota el resto.")
+            : nil
+        let hiddenMayor = human.alive && human.role == .mayor && game.revealedMayorID == nil
+            && game.silencedPlayer != human.id
+        return TieVoteWindow(
+            candidates: game.tieCandidates.compactMap { id in game.players.first { $0.id == id } },
+            map: game.map,
+            votable: votable,
+            votedTarget: votedTarget,
+            remainingSeconds: remainingPhaseSeconds,
+            subtitle: game.revealedMayorID == 0
+                ? "Tu voto vale doble. Elegí entre las cartas empatadas."
+                : "Votá nuevamente entre los jugadores empatados.",
+            watchNotice: watchNotice,
+            onVote: { target in
+                guard votable.contains(target) else { return }
+                vibrate(.light)
+                castVote(for: target, in: game)
+            },
+            // Like Android: the window steps aside for the chat and comes back when it closes.
+            onChat: game.canSpeak(0) ? { openChat(focus: true) } : nil,
+            onRevealMayor: hiddenMayor ? { confirmingMayorReveal = true } : nil
+        )
+    }
+
+    /// The vote and the tie-break keep the town chat in the expanded panel, as in Android.
+    private func isVotingChat(_ game: ClassicGame) -> Bool {
+        game.phase == .voting || game.phase == .tieVote
+    }
+
     private func isTalkPhase(_ game: ClassicGame) -> Bool {
         game.phase == .discussion || game.phase == .counterpoint
     }
 
     /// Public marks everyone can see on a card.
     /// Own confirmed night action, and the Payador's public Contrapunto marks.
+    private static let partnerMarkDelay = 0.6
+    private static let partnerMarkStep = 0.4
+
+    private func killPartners(_ game: ClassicGame) -> [ClassicPlayer] {
+        game.living.filter { $0.id != 0 && [.assassin, .spy].contains($0.role) }
+    }
+
     /// The marks on a card: the player's confirmed night action, the teammates' traitor
     /// actions (with their names) and the Payador's public Contrapunto.
     private func marks(on id: Int, game: ClassicGame) -> [CardActionMark] {
@@ -3674,11 +3771,13 @@ private struct LocalTableView: View {
         let stamped = stampedMark.flatMap { $0.round == game.round ? $0 : nil }
         if let stamped, stamped.target == id {
             marks.append(.init(kind: stamped.kind))
-            // Bot partners follow the player's kill choice: their daggers land with it.
+            // Bot partners follow the player's kill choice: each dagger lands a moment
+            // later, one after another, as if they were deciding too.
             if stamped.kind == .assassin || stamped.kind == .spy {
-                for partner in game.living where partner.id != 0 && [.assassin, .spy].contains(partner.role) {
+                for (order, partner) in killPartners(game).enumerated() {
                     if let kind = CardActionMarkKind(traitor: partner.role) {
-                        marks.append(.init(kind: kind, actor: partner.name))
+                        marks.append(.init(kind: kind, actor: partner.name,
+                                           delay: Self.partnerMarkDelay + Double(order) * Self.partnerMarkStep))
                     }
                 }
             }

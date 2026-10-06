@@ -134,7 +134,9 @@ public struct ClassicGame: Codable, Equatable, Sendable {
     public func canSpeak(_ id: Int) -> Bool {
         guard winner == nil, let player = players.first(where: { $0.id == id }) else { return false }
         if phase == .counterpoint { return player.alive && id != silencedPlayer && contrapuntoParticipants.contains(id) }
-        return phase == .discussion && ((player.alive && id != silencedPlayer) || oracleGuest == id)
+        // Android's canHumanChat: the town keeps talking through the vote and the tie-break.
+        return [.discussion, .voting, .tieVote].contains(phase)
+            && ((player.alive && id != silencedPlayer) || oracleGuest == id)
     }
     public var isNight: Bool { [.assassinNight, .mercenaryNight, .detectiveNight, .medicNight, .oracleNight].contains(phase) }
     public func name(_ id: Int) -> String { players.first { $0.id == id }?.name ?? "Jugador" }

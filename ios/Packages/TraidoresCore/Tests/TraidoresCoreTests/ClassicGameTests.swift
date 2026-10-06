@@ -45,9 +45,13 @@ struct ClassicGameTests {
         let silencedSent = game.sendPublicMessage("No debería salir", expectedPhaseIndex: revision)
         #expect(!silencedSent)
         game.silencedPlayer = nil
+        // Android's canHumanChat: the vote and the tie-break keep the chat; the recount does not.
         game.phase = .voting
-        let votingSent = game.sendPublicMessage("Tampoco", expectedPhaseIndex: revision)
-        #expect(!votingSent)
+        let votingSent = game.sendPublicMessage("Sigo sospechando", expectedPhaseIndex: revision)
+        #expect(votingSent)
+        game.phase = .voteCount
+        let recountSent = game.sendPublicMessage("Tampoco", expectedPhaseIndex: revision)
+        #expect(!recountSent)
     }
 
     @Test func traitorNightChatIsWritablePrivateAndSaved() throws {

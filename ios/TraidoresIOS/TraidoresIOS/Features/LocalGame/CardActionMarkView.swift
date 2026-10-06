@@ -92,16 +92,13 @@ struct CardActionMarkView: View {
             .offset(x: landed ? 0 : cardSize.width * entrance.offsetX,
                     y: landed ? 0 : cardSize.height * entrance.offsetY)
             .opacity(landed ? 1 : 0)
+            // The table disables inherited animations (`.transaction`), so the mark carries
+            // its own: this modifier sits below that one and wins.
+            .animation(reduceMotion ? .easeOut(duration: 0.2).delay(delay)
+                       : .spring(duration: entrance.duration, bounce: 0.35).delay(delay), value: landed)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-            .onAppear {
-                guard !landed else { return }
-                if reduceMotion {
-                    withAnimation(.easeOut(duration: 0.2)) { landed = true }
-                } else {
-                    withAnimation(.spring(duration: entrance.duration, bounce: 0.35).delay(delay)) { landed = true }
-                }
-            }
+            .onAppear { landed = true }
     }
 }
 
@@ -116,6 +113,8 @@ struct StampedMark: Equatable {
 struct CardActionMark: Hashable {
     let kind: CardActionMarkKind
     var actor: String?
+    /// Seconds before it lands: a partner's dagger follows the player's, as if deciding.
+    var delay: Double = 0
 }
 
 /// Up to three marks on the same card, laid out like Android's `actionMarkLayoutParams`:
@@ -132,11 +131,13 @@ struct CardActionMarksView: View {
             ForEach(Array(visible.enumerated()), id: \.element) { index, mark in
                 let layout = Self.layout(mark.kind, index: index, count: visible.count, hasRope: hasRope)
                 CardActionMarkView(kind: mark.kind, cardSize: cardSize, sizeOverride: layout.size,
-                                   restingRotation: layout.rotation, delay: Double(index) * 0.09)
+                                   restingRotation: layout.rotation, delay: max(mark.delay, Double(index) * 0.09))
                     .frame(width: cardSize.width, height: cardSize.height, alignment: layout.alignment)
                     .offset(x: cardSize.width * layout.offset.width, y: cardSize.height * layout.offset.height)
                     .overlay(alignment: layout.plateAlignment) {
-                        if let actor = mark.actor { plate(actor, kind: mark.kind, bottom: layout.plateBottom) }
+                        if let actor = mark.actor {
+                            DelayedAppearance(delay: mark.delay) { plate(actor, kind: mark.kind, bottom: layout.plateBottom) }
+                        }
                     }
             }
         }
@@ -191,5 +192,35 @@ struct CardActionMarksView: View {
             .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color(hex: "#F4D79B"), lineWidth: 1))
             .fixedSize(horizontal: true, vertical: false)
             .padding(.bottom, bottom)
+    }
+}
+
+/// The partner seal on a fellow traitor's card: their mark in a small dark red coin.
+struct TeammateSeal: View {
+    let kind: CardActionMarkKind
+
+    var body: some View {
+        Image(kind.image).resizable().scaledToFit()
+            .padding(3)
+            .frame(width: 20, height: 20)
+            .background(Color(hex: "#5A1418"), in: Circle())
+            .overlay(Circle().stroke(Color(hex: "#F4D79B"), lineWidth: 1))
+            .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Fades its content in after a delay, so a partner's name plate arrives with their mark.
+private struct DelayedAppearance<Content: View>: View {
+    let delay: Double
+    @ViewBuilder let content: Content
+    @State private var visible = false
+
+    var body: some View {
+        content
+            .opacity(visible ? 1 : 0)
+            .animation(.easeOut(duration: 0.2).delay(delay + 0.15), value: visible)
+            .onAppear { visible = true }
     }
 }

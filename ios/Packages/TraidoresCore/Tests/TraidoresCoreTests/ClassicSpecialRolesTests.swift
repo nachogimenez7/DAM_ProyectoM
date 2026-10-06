@@ -266,7 +266,8 @@ struct ClassicSpecialRolesTests {
         #expect(accepted216)
         match.phase = .voting
         #expect(match.legalTargets(for: 0).isEmpty)
-        let accepted219 = !match.sendPublicMessage("Hola", expectedPhaseIndex: 0)
+        // The guest keeps their voice for the whole day, the vote included, but never votes.
+        let accepted219 = match.sendPublicMessage("Hola", expectedPhaseIndex: 0)
         #expect(accepted219)
     }
 

@@ -772,7 +772,7 @@ final class LocalLobbyUITests: XCTestCase {
 
     /// The Alcalde reveals himself in the debate after confirming.
     func testMayorRevealsDuringTheDebate() throws {
-        let app = launchLobby(extraArguments: ["-ui-testing-role=alcalde"])
+        let app = launchLobby(extraArguments: ["-ui-testing-role=alcalde", "-ui-testing-protected"])
         startAndReachDay(app)
         let reveal = app.buttons["ability.mayor"]
         XCTAssertTrue(waitUntilHittable(reveal, timeout: 6))
@@ -1050,6 +1050,74 @@ final class LocalLobbyUITests: XCTestCase {
         add(sentence)
         next.tap()
         XCTAssertTrue(ceremony.waitForNonExistence(timeout: 5))
+    }
+
+    /// Android's tie-break window: after a tie the player votes again between the tied cards.
+    func testTieVoteWindowVotesAgainBetweenTheTied() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-role=aldeano", "-ui-testing-force-ties"])
+        startAndReachDay(app)
+        let primary = app.buttons["table.primaryAction"]
+        let unlocked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: primary)
+        XCTAssertEqual(XCTWaiter.wait(for: [unlocked], timeout: 14), .completed)
+        primary.tap()
+        XCTAssertTrue(waitForPhase(app, containing: "VOTACIÓN"))
+        let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                     "table.player.", "Objetivo disponible")).firstMatch
+        XCTAssertTrue(waitUntilHittable(target, timeout: 4))
+        target.tap()
+        let next = app.buttons["table.voteContinue"]
+        for _ in 0..<4 {
+            guard tapCeremonyButton(next, timeout: 8) else { break }
+            if app.descendants(matching: .any)["tieVote.window"].waitForExistence(timeout: 1) { break }
+        }
+        let window = app.descendants(matching: .any)["tieVote.window"]
+        XCTAssertTrue(window.waitForExistence(timeout: 6), "Tras el empate se abre la ventana de desempate")
+        XCTAssertTrue(app.staticTexts["DESEMPATE"].exists)
+        attach(app, "Ventana de desempate")
+        // CHAT steps the window aside for the town chat; closing the chat brings it back.
+        app.buttons["tieVote.chat"].tap()
+        XCTAssertTrue(window.waitForNonExistence(timeout: 2))
+        let input = app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 2))
+        input.typeText("Voto a Thiago")
+        app.buttons["chat.send"].tap()
+        attach(app, "Chat durante el desempate")
+        app.buttons["table.closeChat"].tap()
+        XCTAssertTrue(window.waitForExistence(timeout: 3))
+        let tied = window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                      "table.player.", "Objetivo disponible")).firstMatch
+        XCTAssertTrue(waitUntilHittable(tied, timeout: 3))
+        tied.tap()
+        let notice = app.staticTexts["tieVote.notice"]
+        XCTAssertTrue(notice.label.hasPrefix("Votaste a"))
+        attach(app, "Ventana de desempate · voto")
+        // The ballot closes on its own and the window gives way to the recount.
+        XCTAssertTrue(window.waitForNonExistence(timeout: 8))
+    }
+
+    /// With a partner killer, the player's dagger lands first and the partner's follows.
+    func testPartnerDaggerFollowsThePlayersChoice() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-assassin", "-ui-testing-protected"])
+        // Ten players deal an Espía next to the Asesino.
+        for _ in 0..<5 { app.buttons["lobby.addPlayer"].tap() }
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        skipToHumanNightTurn(app)
+        let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                     "table.player.", "Objetivo disponible")).firstMatch
+        XCTAssertTrue(waitUntilHittable(target, timeout: 4))
+        let id = target.identifier
+        target.tap()
+        app.buttons["table.primaryAction"].tap()
+        // The player's dagger lands first; the partner's follows before the private result.
+        let card = app.buttons[id]
+        XCTAssertTrue(card.waitForExistence(timeout: 1))
+        XCTAssertTrue(card.label.contains(" eligió a "), "La daga del compañero lleva su nombre")
+        Thread.sleep(forTimeInterval: 1.1)
+        attach(app, "Dagas del Asesino y su compañero")
+        XCTAssertTrue(app.staticTexts["VÍCTIMA ELEGIDA"].waitForExistence(timeout: 4))
     }
 
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {
