@@ -133,7 +133,7 @@ struct ContrapuntoRevealView: View {
             VStack(spacing: 0) {
                 Text("¡COMIENZA EL CONTRAPUNTO!")
                     .font(TraidoresTheme.title(21)).foregroundStyle(Color(hex: "#F1C45D"))
-                    .lineLimit(1).minimumScaleFactor(0.75)
+                    .lineLimit(2).minimumScaleFactor(0.75)
                 Text("El Payador ha elegido a dos voces")
                     .font(.footnote.bold()).foregroundStyle(Color(hex: "#CDBB95"))
                     .padding(.top, 2)
@@ -169,6 +169,8 @@ struct ContrapuntoRevealView: View {
         Text(name.uppercased())
             .font(.footnote.bold()).foregroundStyle(Color(hex: "#F4CF7E"))
             .lineLimit(2).minimumScaleFactor(0.75)
+            // The plate sits on the scene at a fixed size, as in Android.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .padding(.horizontal, 5)
             .frame(width: 112, height: 48)
             .background(Color(hex: "#ED160E09"), in: RoundedRectangle(cornerRadius: 9))
@@ -199,6 +201,7 @@ struct OracleRevealView: View {
                         Text("\(guest.uppercased())\nVOZ RECUPERADA")
                             .font(.subheadline.bold()).foregroundStyle(Color(hex: "#D8F5FF"))
                             .lineLimit(2).minimumScaleFactor(0.7)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .padding(.horizontal, 7)
                             .frame(width: 124, height: 50)
                             .background(LinearGradient(colors: [Color(hex: "#B0123145"), Color(hex: "#B04B1721")],

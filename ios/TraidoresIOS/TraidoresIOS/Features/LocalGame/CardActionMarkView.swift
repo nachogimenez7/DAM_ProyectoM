@@ -19,6 +19,16 @@ enum CardActionMarkKind: Equatable {
         }
     }
 
+    /// A teammate's traitor mark.
+    init?(traitor role: RoleKey) {
+        switch role {
+        case .assassin: self = .assassin
+        case .spy: self = .spy
+        case .mercenary: self = .mercenary
+        default: return nil
+        }
+    }
+
     var image: String {
         switch self {
         case .assassin: "action_mark_assassin"

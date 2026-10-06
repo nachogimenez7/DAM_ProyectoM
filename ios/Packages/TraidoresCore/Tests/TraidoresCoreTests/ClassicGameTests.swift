@@ -157,6 +157,24 @@ struct ClassicGameTests {
                 game.votes.values.filter { $0 == game.tieCandidates[1] }.count)
     }
 
+    // Android online CardActionMarks: a traitor sees the teammates' night actions; nobody else does.
+    @Test func teamNightMarksAreOnlyForTraitorsAtNight() {
+        var mercenary = ClassicGame(name: "Humano", seed: 7, trainingRole: .mercenary,
+                                    botNames: Array(ClassicGame.defaultBotNames.prefix(6)))
+        let started = mercenary.advance(expectedPhaseIndex: mercenary.phaseIndex)
+        #expect(started)
+        // The Mercenario acts as soon as night falls, after the bot killers chose.
+        #expect(mercenary.phase == .mercenaryNight)
+        let target = try? #require(mercenary.nightTarget)
+        let marks = mercenary.teamNightMarks(for: 0)
+        #expect(!marks.isEmpty)
+        #expect(marks.allSatisfy { $0.target == target && [.assassin, .spy].contains($0.role) && $0.actor != 0 })
+        let townie = mercenary.players.first { $0.role == .villager }!.id
+        #expect(mercenary.teamNightMarks(for: townie).isEmpty)
+        mercenary.phase = .discussion
+        #expect(mercenary.teamNightMarks(for: 0).isEmpty)
+    }
+
     @Test func forcedTiesRemainLegalAcrossTableSizes() {
         for count in [5, 7, 10, 12, 15] {
             let options = LocalTestOptions(forceVoteTies: true, botsNeverVoteHuman: true)

@@ -756,6 +756,25 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         }
     }
 
+    /// Night actions a traitor's teammates already made, as Android online shows them on the
+    /// cards (`CardActionMarks`): the killers' target and the Mercenario's silence. Only
+    /// traitors see them, only at night, and never their own.
+    public func teamNightMarks(for viewer: Int) -> [(actor: Int, role: RoleKey, target: Int)] {
+        let traitorRoles: [RoleKey] = [.assassin, .spy, .mercenary]
+        guard isNight, winner == nil, players.indices.contains(viewer),
+              traitorRoles.contains(players[viewer].role), players[viewer].alive else { return [] }
+        var marks: [(actor: Int, role: RoleKey, target: Int)] = []
+        if let nightTarget {
+            for killer in living where killer.id != viewer && [.assassin, .spy].contains(killer.role) {
+                marks.append((killer.id, killer.role, nightTarget))
+            }
+        }
+        if let silencedPlayer, let mercenary = living.first(where: { $0.role == .mercenary && $0.id != viewer }) {
+            marks.append((mercenary.id, .mercenary, silencedPlayer))
+        }
+        return marks
+    }
+
     private mutating func resolveKillVotes(humanTarget: Int?) {
         let killers = living.filter { [.assassin, .spy].contains($0.role) }
         let choices = killers.compactMap { killer -> Int? in

@@ -894,6 +894,8 @@ final class LocalLobbyUITests: XCTestCase {
             XCTAssertTrue(continueButton.waitForExistence(timeout: 8))
             Thread.sleep(forTimeInterval: 1.8)
             attach(app, "Anuncio especial · \(reveal)")
+            // With large text the panel scrolls; bring the button into view.
+            for _ in 0..<5 where !continueButton.isHittable { app.swipeUp() }
             XCTAssertTrue(waitUntilHittable(continueButton, timeout: 3))
             continueButton.tap()
             XCTAssertTrue(continueButton.waitForNonExistence(timeout: 3))

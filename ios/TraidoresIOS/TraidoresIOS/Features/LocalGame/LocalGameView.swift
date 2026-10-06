@@ -1955,9 +1955,14 @@ private struct LocalTableView: View {
                             .padding(.horizontal, 4)
                             .padding(.top, 8)
                             .padding(.bottom, footerInset)
+                            // The compact table is a fixed-size game board: it stops growing at
+                            // the largest standard size. The expanded chat and every reveal keep
+                            // the full accessibility sizes for reading.
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
 
                             if game.winner == nil {
                                 humanPanel(game)
+                                    .dynamicTypeSize(...DynamicTypeSize.xLarge)
                                     .frame(width: footerWidth)
                                     .padding(.bottom, 8)
                                     .zIndex(1)
@@ -2547,9 +2552,11 @@ private struct LocalTableView: View {
         let pickable = ability != nil || (quickPick != nil && quickPickTarget == nil
             && quickPickTargets(game).contains { $0.id == player.id })
         let actionable = quickPick == nil && ability == nil && game.legalTargets(for: 0).contains(player.id)
-        let mark = markKind(on: player.id, game: game)
+        let cardMarks = marks(on: player.id, game: game)
         let cardSize = CGSize(width: CGFloat(metrics.cardWidth), height: CGFloat(metrics.cardHeight))
-        let markDescription = mark.map { ". \($0.description(target: player.name))" } ?? ""
+        let markDescription = cardMarks.map { mark in
+            ". " + (mark.actor.map { "\($0): " } ?? "") + mark.kind.description(target: player.name)
+        }.joined()
         let badgeDescription = publicBadge(for: player, game: game).map { ", \($0.lowercased())" } ?? ""
         let cardLabel = "\(player.name), \(player.alive ? "en la mesa" : "eliminado")" + badgeDescription + markDescription
         let silenceCooldown = game.phase == .mercenaryNight && game.human.role == .mercenary &&
@@ -2631,7 +2638,7 @@ private struct LocalTableView: View {
                             }
                         }
                         .overlay {
-                            if let mark { CardActionMarkView(kind: mark, cardSize: cardSize).id(mark) }
+                            if !cardMarks.isEmpty { CardActionMarksView(marks: cardMarks, cardSize: cardSize) }
                         }
                         .overlay {
                             if !player.alive {
@@ -3061,12 +3068,11 @@ private struct LocalTableView: View {
                             }
                         }
                         .overlay {
-                            if let kind = markKind(on: 0, game: game) {
-                                CardActionMarkView(kind: kind, cardSize: CGSize(width: 48, height: 76)).id(kind)
-                            }
+                            let ownMarks = marks(on: 0, game: game)
+                            if !ownMarks.isEmpty { CardActionMarksView(marks: ownMarks, cardSize: CGSize(width: 48, height: 76)) }
                         }
                         .overlay(alignment: .bottom) {
-                            if canChooseSelf && markKind(on: 0, game: game) == nil {
+                            if canChooseSelf && marks(on: 0, game: game).isEmpty {
                                 Text("SALVARME")
                                     .font(.system(size: 7, weight: .heavy))
                                     .foregroundStyle(.white)
@@ -3659,11 +3665,33 @@ private struct LocalTableView: View {
 
     /// Public marks everyone can see on a card.
     /// Own confirmed night action, and the Payador's public Contrapunto marks.
-    private func markKind(on id: Int, game: ClassicGame) -> CardActionMarkKind? {
-        if let stampedMark, stampedMark.target == id, stampedMark.round == game.round,
-           game.isNight || game.phase == .dawn { return stampedMark.kind }
-        if game.phase == .counterpoint, game.contrapuntoParticipants.contains(id) { return .payador }
-        return nil
+    /// The marks on a card: the player's confirmed night action, the teammates' traitor
+    /// actions (with their names) and the Payador's public Contrapunto.
+    private func marks(on id: Int, game: ClassicGame) -> [CardActionMark] {
+        if game.phase == .counterpoint, game.contrapuntoParticipants.contains(id) { return [.init(kind: .payador)] }
+        guard game.isNight || game.phase == .dawn else { return [] }
+        var marks: [CardActionMark] = []
+        let stamped = stampedMark.flatMap { $0.round == game.round ? $0 : nil }
+        if let stamped, stamped.target == id {
+            marks.append(.init(kind: stamped.kind))
+            // Bot partners follow the player's kill choice: their daggers land with it.
+            if stamped.kind == .assassin || stamped.kind == .spy {
+                for partner in game.living where partner.id != 0 && [.assassin, .spy].contains(partner.role) {
+                    if let kind = CardActionMarkKind(traitor: partner.role) {
+                        marks.append(.init(kind: kind, actor: partner.name))
+                    }
+                }
+            }
+        }
+        if game.isNight {
+            for mark in game.teamNightMarks(for: 0) where mark.target == id {
+                guard let kind = CardActionMarkKind(traitor: mark.role),
+                      !marks.contains(where: { $0.actor == game.name(mark.actor) }) else { continue }
+                marks.append(.init(kind: kind, actor: game.name(mark.actor)))
+            }
+        }
+        // Android draws the killers first.
+        return marks.sorted { ($0.kind == .mercenary ? 1 : 0) < ($1.kind == .mercenary ? 1 : 0) }
     }
 
     private func publicBadge(for player: ClassicPlayer, game: ClassicGame) -> String? {
