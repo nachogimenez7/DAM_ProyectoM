@@ -39,10 +39,10 @@ function recordsForFinishedRoom(roomId, room, finishedAtMs) {
         typeof player.rolEquipo !== "string") return [];
     const special = Array.isArray(state.victoriasEspeciales) &&
       state.victoriasEspeciales.some((v) => v.jugador === member.nombre);
-    const won = special || (player.rolKey === "desertor" ?
+    const won = player.causaEliminacion !== "ABANDONO" && (special || (player.rolKey === "desertor" ?
       player.vivo === true && state.desertorBando === state.ganador :
       state.ganador === "Pueblo" ? player.rolEquipo === "Pueblo" :
-        ["asesino", "mercenario", "espia"].includes(player.rolKey));
+        ["asesino", "mercenario", "espia"].includes(player.rolKey)));
     records.push({schemaVersion: 1, uid: member.uidTemporal, matchKey: `online:${initial.matchId}`,
       origen: "online", roomId, matchId: initial.matchId, fechaLocalMs: finishedAtMs,
       mapKey: initial.mapa, mapName: initial.mapaNombre || initial.mapa,

@@ -8,5 +8,6 @@
             android:name=".GameplayMockActivity"
             android:exported="true" />
         <activity android:name=".ProfileMediaSmokeActivity" android:exported="true" />
+        <activity android:name=".ServerGameSmokeActivity" android:exported="true" />
     </application>
 </manifest>

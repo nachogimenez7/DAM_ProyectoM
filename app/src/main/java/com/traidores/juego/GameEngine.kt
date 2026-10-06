@@ -507,7 +507,7 @@ object GameEngine {
         }
         if (session.alcaldeRevealed) return session
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
-        if (!alcalde.isHuman) return session
+        if (!alcalde.isHuman || alcalde.muted) return session
         val message = "${alcalde.name} se revelo como Alcalde. Desde ahora su voto vale doble y decide los empates."
         return session.copy(
             alcaldeRevealed = true,
@@ -520,7 +520,7 @@ object GameEngine {
         if (!canResolve(session, GamePhase.ALCALDE_DESEMPATE)) return session
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
         if (!session.alcaldeRevealed || targetName !in session.alcaldeTieCandidates) return session
-        if (!alcalde.isHuman) return session
+        if (!alcalde.isHuman || alcalde.muted) return session
         val message = if (session.alcaldeCorruption) {
             "Corrupcion en el pueblo: el Alcalde se protegio y decidio expulsar a $targetName."
         } else {
@@ -537,17 +537,19 @@ object GameEngine {
     }
 
     fun chooseDesertorTeam(session: GameSession, team: String): GameSession {
+        if (session.winner.isNotBlank()) return session
         if (team != GameRules.TOWN_WINNER && team != GameRules.TRAITOR_WINNER) return session
         val desertor = session.players.firstOrNull { it.role?.key == "desertor" } ?: return session
         if (!desertor.isHuman || !desertor.alive) return session
 
         val isInitialChoice = session.desertorTeam.isBlank()
         if (!isInitialChoice && !canDesertorReconsider(session)) return session
-        return session.copy(
+        val chosen = session.copy(
             desertorTeam = team,
             desertorChangedTeam = !isInitialChoice || session.desertorChangedTeam,
             privateHint = "Desertor - Neutral. Tu bando actual es $team."
         )
+        return if (isInitialChoice) chosen else chosen.withWinnerCheck()
     }
 
     fun needsInitialDesertorChoice(session: GameSession): Boolean {
@@ -561,7 +563,8 @@ object GameEngine {
             human.alive &&
             session.desertorTeam.isNotBlank() &&
             !session.desertorChangedTeam &&
-            session.players.count { it.alive } <= GameRules.desertorSwitchThreshold(session.initialPlayerCount)
+            session.round >= GameRules.DESERTOR_RECONSIDERATION_ROUND &&
+            (session.phase == GamePhase.DIA_DEBATE || GameRules.winnerFor(session) == GameRules.TRAITOR_WINNER)
     }
 
     fun chooseContrapuntoPlayer(session: GameSession, targetName: String): GameSession {
@@ -877,8 +880,11 @@ object GameEngine {
 
     private fun resolveSecondTie(session: GameSession): GameSession {
         val candidates = session.tieVoteCandidates
-        val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" }
-        if (alcalde == null) {
+        val alcalde = session.players.firstOrNull { it.role?.key == "alcalde" }
+        val incapacityPublic = alcalde != null &&
+            ((!alcalde.alive && (session.revealRolesOnDeath || session.alcaldeRevealed)) ||
+                (alcalde.muted && session.alcaldeRevealed))
+        if (alcalde == null || incapacityPublic) {
             val message = "El empate se repitió. Nadie será expulsado esta jornada."
             return session.copy(
                 dayEliminationTarget = "",
@@ -886,6 +892,12 @@ object GameEngine {
                 alcaldeTieCandidates = emptyList()
             ).transitionTo(GamePhase.RESULTADO, message, privateRoleHint(session))
                 .withPublicHistory(message)
+        }
+
+        if (!alcalde.alive || alcalde.muted) {
+            return session.copy(dayEliminationTarget = "", tieVoteCandidates = emptyList(),
+                alcaldeTieCandidates = candidates).transitionTo(GamePhase.ALCALDE_DESEMPATE,
+                "El empate se repitió. El Alcalde puede decidir la expulsión.", privateRoleHint(session))
         }
 
         if (alcalde.name in candidates) {
@@ -1153,6 +1165,7 @@ object GameEngine {
             GamePhase.CONTRAPUNTO -> human.role?.key == "payador" &&
                 targetName in session.contrapuntoPlayers
             GamePhase.ALCALDE_DESEMPATE -> human.role?.key == "alcalde" &&
+                !human.muted &&
                 session.alcaldeRevealed &&
                 targetName in session.alcaldeTieCandidates
             GamePhase.VOTACION -> isValidVoteTarget(session, targetName, human)
@@ -2451,7 +2464,7 @@ object GameEngine {
     private fun autoRevealBotAlcalde(session: GameSession): GameSession {
         if (session.alcaldeRevealed) return session
         val alcalde = alivePlayers(session).firstOrNull { it.role?.key == "alcalde" } ?: return session
-        if (!alcalde.isBotControlled || session.round < 2) return session
+        if (!alcalde.isBotControlled || alcalde.muted || session.round < 2) return session
         val message = "${alcalde.name} se revelo como Alcalde. Su voto vale doble y decidira los empates."
         return session.copy(alcaldeRevealed = true).withPublicHistory(message)
     }
@@ -2463,7 +2476,8 @@ object GameEngine {
             !desertor.alive ||
             session.desertorChangedTeam ||
             session.desertorTeam.isBlank() ||
-            session.players.count { it.alive } > GameRules.desertorSwitchThreshold(session.initialPlayerCount)
+            session.round < GameRules.DESERTOR_RECONSIDERATION_ROUND ||
+            (session.phase != GamePhase.DIA_DEBATE && GameRules.winnerFor(session) != GameRules.TRAITOR_WINNER)
         ) {
             return session
         }

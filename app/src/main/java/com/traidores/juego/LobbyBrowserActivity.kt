@@ -402,7 +402,9 @@ class LobbyBrowserActivity : BaseActivity() {
                 existingPublicId,
                 playerName
             )
-            val connectionData = mapOf(
+            val protocolFields = if (BuildConfig.SERVER_ONLINE_V3 || roomSnapshot.getLong("protocolVersion") == 3L)
+                mapOf("protocolVersion" to 3, OnlineRoomFirestore.FIELD_CAN_ARBITRATE to false) else emptyMap()
+            val connectionData = protocolFields + mapOf(
                 OnlineRoomFirestore.FIELD_NAME to playerName,
                 OnlineRoomFirestore.FIELD_PLAYER_STATE to "conectado",
                 "listo" to false,

@@ -19,7 +19,9 @@
     "test:firestore-votes": "node scripts/with-jdk.cjs firebase emulators:exec --project traidores-local --only firestore \"node scripts/test-firestore-votes.cjs\"",
     "test:android-audit": "node scripts/with-jdk.cjs C:\\Windows\\System32\\cmd.exe /d /c gradlew.bat testDebugUnitTest assembleDebug assembleRelease lintDebug -x :app:uploadCrashlyticsMappingFileRelease --console=plain",
     "cleanup:online-stale:preview": "node scripts/cleanup-stale-online-rooms.cjs",
-    "cleanup:online-stale": "node scripts/cleanup-stale-online-rooms.cjs --apply"
+    "cleanup:online-stale": "node scripts/cleanup-stale-online-rooms.cjs --apply",
+    "test:authority": "node scripts/with-jdk.cjs firebase emulators:exec --config firebase.authority-qa.json --project traidores-local --only firestore,database \"node --test --test-concurrency=1 functions/test/onlineGameService.integration.test.js functions/test/onlineRoomCleanup.integration.test.js && node scripts/test-server-authority-rules.cjs && node scripts/test-firestore-rules.cjs && node scripts/test-database-rules.cjs\"",
+    "test:authority-http": "node scripts/with-jdk.cjs firebase emulators:exec --config firebase.authority-qa.json --project traidores-local --only auth,firestore,database,functions \"node --test functions/test/onlineGameFunctions.http.integration.test.js\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

@@ -84,7 +84,7 @@ object RoleCatalog {
         RoleDefinition(
             DESERTOR,
             "Neutral",
-            "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final.",
+            "Elige un bando al comenzar. Desde la ronda 4 puede cambiar o mantener su bando una sola vez durante el debate o antes de una victoria Traidora. Incluso silenciado puede elegir; debe sobrevivir para ganar con su bando final.",
             14
         ),
         RoleDefinition(

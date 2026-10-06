@@ -5,7 +5,7 @@ import com.google.firebase.database.*
 
 /** A server offset anchors a monotonic clock, so changing Android's date does not hide rooms. */
 internal class OnlineServerClock(private val onReady: () -> Unit) {
-    private val reference = FirebaseDatabase.getInstance().getReference(".info/serverTimeOffset")
+    private val reference = FirebaseEmulatorConfig.database.getReference(".info/serverTimeOffset")
     private var baseEpochMs: Long? = null
     private var baseElapsedMs = 0L
     private var started = false

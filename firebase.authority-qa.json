@@ -1,0 +1,46 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs22"
+  },
+  "emulators": {
+    "auth": {
+      "port": 19099
+    },
+    "functions": {
+      "port": 15001
+    },
+    "eventarc": {
+      "port": 19299
+    },
+    "tasks": {
+      "port": 19499
+    },
+    "firestore": {
+      "port": 18081
+    },
+    "database": {
+      "port": 19000
+    },
+    "hub": {
+      "port": 14400
+    },
+    "logging": {
+      "port": 14500
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}
