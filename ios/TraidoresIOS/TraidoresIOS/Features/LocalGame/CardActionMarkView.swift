@@ -83,10 +83,17 @@ struct CardActionMarkView: View {
         let rope = kind == .mercenary
         let entrance = kind.entrance
         let fraction = sizeOverride ?? (rope ? CGSize(width: 1, height: 1) : CGSize(width: 0.78, height: 0.72))
-        Image(kind.image)
-            .resizable().scaledToFit()
+        Group {
+            // Brown ropes hanging down the card: tied, so silenced.
+            if rope {
+                RopeBindMark(size: CGSize(width: cardSize.width * min(fraction.width, 1) * 0.86,
+                                          height: cardSize.height * fraction.height * 0.94))
+            } else {
+                Image(kind.image).resizable().scaledToFit()
+                    .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
+            }
+        }
             .frame(width: cardSize.width * fraction.width, height: cardSize.height * fraction.height)
-            .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
             .scaleEffect(x: landed ? 1 : entrance.scaleX, y: landed ? 1 : entrance.scaleY)
             .rotationEffect(.degrees(restingRotation + (landed ? 0 : entrance.rotation)))
             .offset(x: landed ? 0 : cardSize.width * entrance.offsetX,
@@ -158,6 +165,8 @@ struct CardActionMarksView: View {
     private static func layout(_ kind: CardActionMarkKind, index: Int, count: Int, hasRope: Bool) -> Layout {
         let rope = kind == .mercenary
         let killer = kind == .assassin || kind == .spy
+        // The ropes always hang down the whole card, behind any dagger on it.
+        if rope { return .init(size: .init(width: 1, height: 1), plateAlignment: .bottomTrailing, plateBottom: 2) }
         if count == 3 {
             return rope
                 ? .init(size: .init(width: 0.58, height: 0.9), alignment: .trailing, plateAlignment: .bottomTrailing, plateBottom: 2)
@@ -200,10 +209,16 @@ struct TeammateSeal: View {
     let kind: CardActionMarkKind
 
     var body: some View {
-        Image(kind.image).resizable().scaledToFit()
-            .padding(3)
-            .frame(width: 20, height: 20)
-            .background(Color(hex: "#5A1418"), in: Circle())
+        // The rope reads poorly this small: the Mercenario's seal is a "shh" face instead.
+        Group {
+            if kind == .mercenary {
+                RopeBindMark(size: CGSize(width: 12, height: 15))
+            } else {
+                Image(kind.image).resizable().scaledToFit().padding(3)
+            }
+        }
+            .frame(width: 22, height: 22)
+            .background(Color(hex: kind == .mercenary ? "#7B551F" : "#5A1418"), in: Circle())
             .overlay(Circle().stroke(Color(hex: "#F4D79B"), lineWidth: 1))
             .shadow(color: .black.opacity(0.6), radius: 2, y: 1)
             .allowsHitTesting(false)
@@ -222,5 +237,44 @@ private struct DelayedAppearance<Content: View>: View {
             .opacity(visible ? 1 : 0)
             .animation(.easeOut(duration: 0.2).delay(delay + 0.15), value: visible)
             .onAppear { visible = true }
+    }
+}
+
+/// The Mercenario's silence: thick brown ropes hanging down the card, twisted strands
+/// with a dark outline so they read as rope at any size.
+struct RopeBindMark: View {
+    let size: CGSize
+    var count = 2
+
+    var body: some View {
+        HStack(spacing: size.width * (count == 2 ? 0.16 : 0.12)) {
+            ForEach(0..<count, id: \.self) { _ in rope }
+        }
+        .frame(width: size.width, height: size.height)
+        .shadow(color: .black.opacity(0.85), radius: 1.5, y: 1)
+    }
+
+    private var rope: some View {
+        let width = max(size.width * (count == 2 ? 0.25 : 0.22), 3)
+        return Canvas { context, canvas in
+            let body = Path(roundedRect: CGRect(origin: .zero, size: canvas), cornerRadius: canvas.width / 2)
+            context.fill(body, with: .linearGradient(
+                Gradient(colors: [Color(hex: "#6E4318"), Color(hex: "#B97A36"), Color(hex: "#E0A65A"),
+                                  Color(hex: "#B97A36"), Color(hex: "#6E4318")]),
+                startPoint: .zero, endPoint: CGPoint(x: canvas.width, y: 0)))
+            // Twisted strands: dark diagonal grooves down the rope.
+            context.clip(to: body)
+            let step = max(canvas.width * 0.75, 2.5)
+            var y = -canvas.width
+            while y < canvas.height + canvas.width {
+                var groove = Path()
+                groove.move(to: CGPoint(x: 0, y: y))
+                groove.addLine(to: CGPoint(x: canvas.width, y: y + canvas.width * 0.9))
+                context.stroke(groove, with: .color(Color(hex: "#4A2A0C")), lineWidth: max(canvas.width * 0.16, 0.8))
+                y += step
+            }
+        }
+        .frame(width: width, height: size.height)
+        .overlay(Capsule().stroke(Color(hex: "#3A2108"), lineWidth: max(width * 0.12, 0.8)))
     }
 }

@@ -1077,12 +1077,14 @@ final class LocalLobbyUITests: XCTestCase {
         // CHAT steps the window aside for the town chat; closing the chat brings it back.
         app.buttons["tieVote.chat"].tap()
         XCTAssertTrue(window.waitForNonExistence(timeout: 2))
+        // The chat opens inside the table, as in the debate, never as a floating panel.
+        XCTAssertFalse(app.buttons["table.closeChat"].exists)
         let input = app.textFields["chat.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 2))
         input.typeText("Voto a Thiago")
         app.buttons["chat.send"].tap()
         attach(app, "Chat durante el desempate")
-        app.buttons["table.closeChat"].tap()
+        app.buttons["voting.backToVote"].tap()
         XCTAssertTrue(window.waitForExistence(timeout: 3))
         let tied = window.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
                                                       "table.player.", "Objetivo disponible")).firstMatch
@@ -1118,6 +1120,27 @@ final class LocalLobbyUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.1)
         attach(app, "Dagas del Asesino y su compañero")
         XCTAssertTrue(app.staticTexts["VÍCTIMA ELEGIDA"].waitForExistence(timeout: 4))
+    }
+
+    /// The Mercenario's silence ties brown ropes down the chosen card.
+    func testMercenaryRopesTheSilencedCard() throws {
+        let app = launchLobby(extraArguments: ["-ui-testing-mercenary", "-ui-testing-protected"])
+        for _ in 0..<2 { app.buttons["lobby.addPlayer"].tap() }
+        app.buttons["local.startGame"].tap()
+        let start = app.buttons["role.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        startMatch(app, start)
+        skipToHumanNightTurn(app)
+        let target = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@",
+                                                     "table.player.", "Objetivo disponible")).firstMatch
+        XCTAssertTrue(waitUntilHittable(target, timeout: 4))
+        target.tap()
+        app.buttons["table.primaryAction"].tap()
+        // The private result follows 0.85 s later: capture while the mark is on the card.
+        Thread.sleep(forTimeInterval: 0.1)
+        attach(app, "Sogas del Mercenario")
+        XCTAssertTrue(app.staticTexts["SILENCIO REGISTRADO"].waitForExistence(timeout: 4)
+                      || app.buttons["table.dismissPrivateFeedback"].waitForExistence(timeout: 2))
     }
 
     func testNightTransitionAppearsBeforeTheInteractiveTable() throws {

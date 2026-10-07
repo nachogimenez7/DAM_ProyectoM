@@ -1882,6 +1882,8 @@ private struct LocalTableView: View {
     // The mark of the confirmed night action (Android's CardActionMarks), stamped on the
     // card before the private feedback and kept until the day begins.
     @State private var stampedMark: StampedMark?
+    // During the vote the town chat opens inside the table, where the debate had it.
+    @State private var votingChatOpen = false
     // Android's direct vote: the chosen card shows TU VOTO ✓ and can still change
     // during a short closing window.
     @State private var votedTarget: Int?
@@ -1972,7 +1974,7 @@ private struct LocalTableView: View {
                                     .zIndex(1)
                             }
 
-                            if showingChat && (game.isNight || isTalkPhase(game) || isVotingChat(game)) {
+                            if showingChat && (game.isNight || isTalkPhase(game)) {
                                 chatPanel(game)
                                     .frame(width: min(geometry.size.width - 16, 340),
                                            height: max(220, geometry.size.height - 92
@@ -1997,7 +1999,7 @@ private struct LocalTableView: View {
                 }
 
                 if game.phase == .tieVote, game.winner == nil, activeTransition == nil, pendingTransition == nil,
-                   dawnAnnouncements.isEmpty, privateFeedback == nil, !showingChat {
+                   dawnAnnouncements.isEmpty, privateFeedback == nil, !votingChatOpen {
                     tieVoteWindow(game)
                         .transition(.opacity)
                         .zIndex(2.1)
@@ -2077,6 +2079,7 @@ private struct LocalTableView: View {
                 contrapuntoPicks = nil
                 showingEmotePalette = false
                 if store.game?.isNight == true { reviewingPlan = false }
+                votingChatOpen = false
                 if let current = store.game, !current.isNight, current.phase != .dawn { stampedMark = nil }
                 if !game.isNight && !isTalkPhase(game) && !isVotingChat(game) {
                     showingChat = false
@@ -2383,6 +2386,8 @@ private struct LocalTableView: View {
         // The Contrapunto is a short duel inside the day: half the debate, at least 15 s.
         let duration = phase == .discussion ? game.effectiveTiming.discussionSeconds
             : phase == .counterpoint ? max(15, game.effectiveTiming.discussionSeconds / 2)
+            // The tie-break gets more time to argue between the tied players.
+            : phase == .tieVote ? max(30, game.effectiveTiming.votingSeconds)
             : game.effectiveTiming.votingSeconds
         remainingPhaseSeconds = duration
         phaseCountdownTask?.cancel()
@@ -2657,7 +2662,8 @@ private struct LocalTableView: View {
                             if !cardMarks.isEmpty { CardActionMarksView(marks: cardMarks, cardSize: cardSize) }
                         }
                         .overlay(alignment: .topTrailing) {
-                            if let teammate { TeammateSeal(kind: teammate).offset(x: 4, y: -4) }
+                            // Inside the card corner: the header panel never clips it.
+                            if let teammate { TeammateSeal(kind: teammate).padding(3) }
                         }
                         .overlay {
                             if !player.alive {
@@ -2790,8 +2796,27 @@ private struct LocalTableView: View {
                 phaseSummaryPanel(game, integrated: true)
                 Rectangle().fill(TraidoresTheme.gold.opacity(0.55)).frame(height: 1)
                     .padding(.horizontal, 8)
-                votingPrompt(game)
-                    .frame(maxHeight: .infinity)
+                if votingChatOpen && game.canSpeak(0) {
+                    tableConversationPanel(game)
+                        .frame(maxHeight: .infinity)
+                    Button {
+                        chatInputFocused = false
+                        votingChatOpen = false
+                    } label: {
+                        Label(game.phase == .tieVote ? "VOLVER AL DESEMPATE" : "VOLVER A VOTAR",
+                              systemImage: "hand.tap.fill")
+                            .font(.caption.weight(.heavy)).tracking(0.6)
+                            .foregroundStyle(TraidoresTheme.ink)
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(TraidoresTheme.gold, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
+                    .accessibilityIdentifier("voting.backToVote")
+                } else {
+                    votingPrompt(game)
+                        .frame(maxHeight: .infinity)
+                }
             }
             .padding(8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2875,14 +2900,16 @@ private struct LocalTableView: View {
                     .lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 4)
                 if !game.human.alive || hasPlanChannel(game) { channelToggle(game) }
-                Button { openChat(focus: false) } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(accent)
-                        .frame(width: 25, height: 25)
+                if !isVotingChat(game) {
+                    Button { openChat(focus: false) } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(accent)
+                            .frame(width: 25, height: 25)
+                    }
+                    .accessibilityLabel("Ampliar chat")
+                    .accessibilityIdentifier("chat.expand")
                 }
-                .accessibilityLabel("Ampliar chat")
-                .accessibilityIdentifier("chat.expand")
             }
             .contentShape(Rectangle())
             .onTapGesture { chatInputFocused = false }
@@ -3639,6 +3666,12 @@ private struct LocalTableView: View {
     }
 
     private func openChat(focus: Bool) {
+        if let game = store.game, isVotingChat(game) {
+            votingChatOpen = true
+            readingOlderChat = false
+            if focus { Task { @MainActor in await Task.yield(); chatInputFocused = true } }
+            return
+        }
         showingChat = true
         readingOlderChat = false
         if focus {
@@ -3789,8 +3822,8 @@ private struct LocalTableView: View {
                 marks.append(.init(kind: kind, actor: game.name(mark.actor)))
             }
         }
-        // Android draws the killers first.
-        return marks.sorted { ($0.kind == .mercenary ? 1 : 0) < ($1.kind == .mercenary ? 1 : 0) }
+        // The ropes go underneath; the daggers land on top of them.
+        return marks.sorted { ($0.kind == .mercenary ? 0 : 1) < ($1.kind == .mercenary ? 0 : 1) }
     }
 
     private func publicBadge(for player: ClassicPlayer, game: ClassicGame) -> String? {
