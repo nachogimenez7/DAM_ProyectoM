@@ -22,6 +22,7 @@ object DrawableResourceCatalog {
         "avatar_yaguarete" -> R.drawable.avatar_yaguarete
         "avatar_nandu" -> R.drawable.avatar_nandu
         "avatar_yacare" -> R.drawable.avatar_yacare
+        "avatar_border_collie" -> R.drawable.avatar_border_collie
 
         "mapa_grecia" -> R.drawable.mapa_grecia
         "mapa_medieval" -> R.drawable.mapa_medieval

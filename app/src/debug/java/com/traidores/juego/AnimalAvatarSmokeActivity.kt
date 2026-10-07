@@ -32,7 +32,7 @@ class AnimalAvatarSmokeActivity : Activity() {
             LocalBotNameStore.save(isolated, 0, "Otro nombre")
             val renamedAgain = LocalBotNameStore.apply(isolated, renamed)
             check(renamedAgain.playerProfiles.getValue("Otro nombre").avatarKey == "avatar_carpincho")
-            "OK: random persisted; choice persisted; bot identity survives two renames; 14 animals"
+            "OK: random persisted; choice persisted; bot identity survives two renames; 15 animals"
         }.getOrElse { "FAIL: ${it.stackTraceToString()}" }
         File(cacheDir, "animal_avatar_qa.txt").writeText(result)
         android.util.Log.i("ANIMAL_AVATAR_QA", result)

@@ -7,7 +7,7 @@ class ProfileAvatarCatalogTest {
     @Test fun fourteenRosterMembersHaveUniqueAnimalsIndependentOfRoles() {
         val profiles = LocalGameFactory.botSlots().map { BotProfileFactory.profileFor(LocalGameFactory.defaultBotName(it)!!) }
         assertEquals(14, profiles.size)
-        assertEquals(ProfileAvatarCatalog.keys, profiles.map { it.avatarKey })
+        assertEquals(ProfileAvatarCatalog.keys.take(14), profiles.map { it.avatarKey })
         assertEquals(14, profiles.map { it.avatarKey }.toSet().size)
         assertEquals("avatar_hornero", BotProfileFactory.profileFor("Agus").avatarKey)
     }

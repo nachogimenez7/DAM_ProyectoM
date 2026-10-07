@@ -109,13 +109,13 @@ struct PlayModesView: View {
 /// Stable cross-platform animal identifiers, independent of names and secret roles.
 enum AnimalAvatarCatalog {
     static let keys = ["carpincho", "buho", "cuervo", "lobo", "mamona", "liebre", "puma",
-                       "zorzal", "calandria", "hornero", "zorro", "yaguarete", "nandu", "yacare"].map { "avatar_" + $0 }
+                       "zorzal", "calandria", "hornero", "zorro", "yaguarete", "nandu", "yacare", "border_collie"].map { "avatar_" + $0 }
     static let labels = ["Carpincho", "Búho", "Cuervo", "Lobo", "Mamona", "Liebre", "Puma",
-                         "Zorzal", "Calandria", "Hornero", "Zorro", "Yaguareté", "Ñandú", "Yacaré"]
+                         "Zorzal", "Calandria", "Hornero", "Zorro", "Yaguareté", "Ñandú", "Yacaré", "Border collie"]
     static func normalize(_ key: String) -> String {
         if keys.contains(key) { return key }
         let hash = key.unicodeScalars.reduce(Int64(0)) { ($0 * 31 + Int64($1.value)) % 2147483647 }
-        return keys[Int(hash % Int64(keys.count))]
+        return keys[Int(hash % 14)]
     }
     static func initialAvatar() -> String {
         let defaults = ProcessInfo.processInfo.arguments.contains("-ui-testing")
