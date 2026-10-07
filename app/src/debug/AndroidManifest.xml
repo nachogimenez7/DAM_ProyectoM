@@ -7,6 +7,7 @@
         <activity
             android:name=".GameplayMockActivity"
             android:exported="true" />
+        <activity android:name=".AnimalAvatarSmokeActivity" android:exported="true" />
         <activity android:name=".ProfileMediaSmokeActivity" android:exported="true" />
         <activity android:name=".ServerGameSmokeActivity" android:exported="true" />
     </application>

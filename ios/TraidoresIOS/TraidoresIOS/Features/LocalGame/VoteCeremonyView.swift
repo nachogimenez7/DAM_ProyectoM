@@ -197,7 +197,7 @@ struct VoteCeremonyView: View {
                                                   height: size.height - (dense ? 86 : 100), maxSize: dense ? 22 : 26)
         return VStack(spacing: 0) {
             HStack(spacing: 3) {
-                InitialAvatar(name: player.name, isHuman: player.id == game.human.id, size: dense ? 16 : 19, fill: TraidoresTheme.gold)
+                InitialAvatar(name: player.name, isHuman: player.id == game.human.id, avatarKey: player.avatarKey ?? AnimalAvatarCatalog.keys[max(0, player.id - 1) % 14], size: dense ? 16 : 19, fill: TraidoresTheme.gold)
                 Text(player.name)
                     .font(.system(size: dense ? 10 : 11, weight: .bold)).foregroundStyle(TraidoresTheme.gold)
                     .lineLimit(1).minimumScaleFactor(0.7)
@@ -219,7 +219,7 @@ struct VoteCeremonyView: View {
                                      count: sealColumns), spacing: 3) {
                 ForEach(Array(voters.enumerated()), id: \.offset) { _, voter in
                     VoteToken(name: game.advanced.showIndividualVotes ? game.name(voter) : nil,
-                              isHuman: voter == game.human.id, size: seal)
+                              isHuman: voter == game.human.id, avatarKey: game.players[voter].avatarKey ?? AnimalAvatarCatalog.keys[max(0, voter - 1) % 14], size: seal)
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
@@ -245,7 +245,7 @@ struct VoteCeremonyView: View {
                         .frame(width: 112, height: 150)
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
                 } else {
-                    InitialAvatar(name: target?.name ?? "?", isHuman: target?.id == game.human.id, size: 76, fill: TraidoresTheme.gold)
+                    InitialAvatar(name: target?.name ?? "?", isHuman: target?.id == game.human.id, avatarKey: target?.avatarKey ?? AnimalAvatarCatalog.keys[max(0, (target?.id ?? 1) - 1) % 14], size: 76, fill: TraidoresTheme.gold)
                         .transition(.opacity)
                 }
                 Image("expulsion_seal")
@@ -520,11 +520,12 @@ private struct VoteCardBackground: View {
 private struct InitialAvatar: View {
     let name: String
     var isHuman = false
+    var avatarKey: String? = nil
     let size: CGFloat
     let fill: Color
 
     var body: some View {
-        GamePlayerAvatar(name: name, isHuman: isHuman, size: size, fill: fill)
+        GamePlayerAvatar(name: name, isHuman: isHuman, size: size, avatarKey: avatarKey, fill: fill)
     }
 }
 
@@ -533,11 +534,12 @@ private struct VoteToken: View {
     /// nil when votes are secret: an anonymous seal.
     let name: String?
     var isHuman = false
+    var avatarKey: String? = nil
     let size: CGFloat
 
     var body: some View {
         if let name {
-            GamePlayerAvatar(name: name, isHuman: isHuman, size: size)
+            GamePlayerAvatar(name: name, isHuman: isHuman, size: size, avatarKey: avatarKey)
                 .overlay(Circle().stroke(Color(hex: "#FFF0C4"), lineWidth: 1.5))
         } else {
             Circle()

@@ -8,6 +8,21 @@ package com.traidores.juego
  */
 object DrawableResourceCatalog {
     fun resolve(name: String): Int = when (name) {
+        "avatar_carpincho" -> R.drawable.avatar_carpincho
+        "avatar_buho" -> R.drawable.avatar_buho
+        "avatar_cuervo" -> R.drawable.avatar_cuervo
+        "avatar_lobo" -> R.drawable.avatar_lobo
+        "avatar_mamona" -> R.drawable.avatar_mamona
+        "avatar_liebre" -> R.drawable.avatar_liebre
+        "avatar_puma" -> R.drawable.avatar_puma
+        "avatar_zorzal" -> R.drawable.avatar_zorzal
+        "avatar_calandria" -> R.drawable.avatar_calandria
+        "avatar_hornero" -> R.drawable.avatar_hornero
+        "avatar_zorro" -> R.drawable.avatar_zorro
+        "avatar_yaguarete" -> R.drawable.avatar_yaguarete
+        "avatar_nandu" -> R.drawable.avatar_nandu
+        "avatar_yacare" -> R.drawable.avatar_yacare
+
         "mapa_grecia" -> R.drawable.mapa_grecia
         "mapa_medieval" -> R.drawable.mapa_medieval
         "mapa_pampa" -> R.drawable.mapa_pampa

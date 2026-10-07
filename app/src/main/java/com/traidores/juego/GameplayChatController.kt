@@ -733,6 +733,8 @@ class GameplayChatController(
         if (!isChatOpen) return
 
         val channel = activeChatChannel()
+        val previousScrollY = chatMessagesScroll.scrollY
+        val followLatest = !chatMessagesScroll.canScrollVertically(1)
         renderChatMessages(activeChannelMessages(channel), channel)
 
         val canChat = canHumanChatInChannel(channel)
@@ -752,8 +754,10 @@ class GameplayChatController(
             chatChannelTabs.visibility = View.GONE
             chatMetaRow.visibility = View.GONE
         }
-        if (newChatMessagesWhileTyping == 0) {
+        if (newChatMessagesWhileTyping == 0 && followLatest) {
             chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
+        } else {
+            chatMessagesScroll.post { chatMessagesScroll.scrollTo(0, previousScrollY) }
         }
     }
 
@@ -4029,7 +4033,6 @@ class GameplayChatController(
                 }
                 typingBotSpeakers += speaker
                 renderChatPanel()
-                chatMessagesScroll.post { chatMessagesScroll.fullScroll(View.FOCUS_DOWN) }
             }
         }
         val runnable = object : Runnable {

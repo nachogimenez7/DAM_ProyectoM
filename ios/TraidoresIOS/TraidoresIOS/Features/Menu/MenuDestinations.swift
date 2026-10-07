@@ -106,17 +106,40 @@ struct PlayModesView: View {
     }
 }
 
+/// Stable cross-platform animal identifiers, independent of names and secret roles.
+enum AnimalAvatarCatalog {
+    static let keys = ["carpincho", "buho", "cuervo", "lobo", "mamona", "liebre", "puma",
+                       "zorzal", "calandria", "hornero", "zorro", "yaguarete", "nandu", "yacare"].map { "avatar_" + $0 }
+    static let labels = ["Carpincho", "Búho", "Cuervo", "Lobo", "Mamona", "Liebre", "Puma",
+                         "Zorzal", "Calandria", "Hornero", "Zorro", "Yaguareté", "Ñandú", "Yacaré"]
+    static func normalize(_ key: String) -> String {
+        if keys.contains(key) { return key }
+        let hash = key.unicodeScalars.reduce(Int64(0)) { ($0 * 31 + Int64($1.value)) % 2147483647 }
+        return keys[Int(hash % Int64(keys.count))]
+    }
+    static func initialAvatar() -> String {
+        let defaults = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+            ? (UserDefaults(suiteName: "com.traidores.juego.ios.ui-testing") ?? .standard) : .standard
+        if let key = defaults.string(forKey: "menu.initialAnimalAvatar"), keys.contains(key) { return key }
+        let key = keys.randomElement()!
+        defaults.set(key, forKey: "menu.initialAnimalAvatar")
+        return key
+    }
+}
+
 struct LocalMenuProfile: Codable, Equatable {
     var name = "Jugador"
     var bio = "No fui yo. Esta vez."
-    var avatar = "rol_aldeano_gaucho"
+    var avatar = AnimalAvatarCatalog.initialAvatar()
     var banner = "pampa"
     var favorite = "rol_detective_gaucho"
     var photoData: Data?
     // Shared online DTO will supply fotoPerfil; optional preserves existing local saves.
     var profilePhotoURL: String?
     static func load(_ data: Data) -> Self {
-        (try? JSONDecoder().decode(Self.self, from: data)) ?? Self()
+        var profile = (try? JSONDecoder().decode(Self.self, from: data)) ?? Self()
+        profile.avatar = AnimalAvatarCatalog.normalize(profile.avatar)
+        return profile
     }
 }
 
@@ -188,7 +211,7 @@ struct ProfileView: View {
         applyingRemoteProfile = true
         if let profile = online?.profile.profile {
           draft = LocalMenuProfile(name: profile.nombrePerfil, bio: profile.bioPerfil,
-                                 avatar: OnlineAvatarArt.asset(for: profile.avatarPerfil), banner: profile.bannerPerfil,
+                                 avatar: AnimalAvatarCatalog.normalize(profile.avatarPerfil), banner: profile.bannerPerfil,
                                  favorite: OnlineAvatarArt.asset(for: profile.rolFavoritoPerfil),
                                  profilePhotoURL: profile.avatarURL?.absoluteString)
         } else {
@@ -506,19 +529,34 @@ struct ProfileView: View {
                             }
                         }.buttonStyle(TraidoresButtonStyle()).accessibilityIdentifier("profile.removePhoto")
                     }
-                    ProfileRoleSelector(currentImage: selected == .avatar && draft.photoData != nil ? "" : (selected == .avatar ? draft.avatar : draft.favorite)) { role in
-                        if selected == .avatar {
-                            draft.avatar = role.image; draft.photoData = nil
-                            if registeredIdentity != nil, draft.profilePhotoURL != nil,
-                               online?.profile.photoUploadsAvailable == true {
-                                Task {
-                                    do { try await online?.profile.removePhoto(); applyPublishedPhoto() }
-                                    catch { profileSyncError = FirebaseAccountService.onlineError(error).message }
-                                }
+                    if selected == .avatar {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 14) {
+                            ForEach(Array(AnimalAvatarCatalog.keys.enumerated()), id: \.element) { index, key in
+                                Button {
+                                    draft.avatar = key; draft.photoData = nil
+                                    if registeredIdentity != nil, draft.profilePhotoURL != nil,
+                                       online?.profile.photoUploadsAvailable == true {
+                                        Task {
+                                            do { try await online?.profile.removePhoto(); applyPublishedPhoto() }
+                                            catch { profileSyncError = FirebaseAccountService.onlineError(error).message }
+                                        }
+                                    }
+                                    selection = nil
+                                } label: {
+                                    VStack(spacing: 7) {
+                                        ProfilePortrait(image: key).frame(width: 88, height: 88)
+                                        Text(AnimalAvatarCatalog.labels[index]).font(.caption.bold())
+                                    }.frame(maxWidth: .infinity).padding(8)
+                                        .selectionFrame(draft.avatar == key && draft.photoData == nil)
+                                }.buttonStyle(.plain).accessibilityIdentifier("profile.animal.\(key)")
+                                    .accessibilityValue(draft.avatar == key && draft.photoData == nil ? "Seleccionado" : "")
                             }
                         }
-                        else { draft.favorite = role.image }
-                        selection = nil
+                    } else {
+                        ProfileRoleSelector(currentImage: draft.favorite) { role in
+                            draft.favorite = role.image
+                            selection = nil
+                        }
                     }
                 }
             }
@@ -965,6 +1003,7 @@ struct ProfilePortrait: View {
     var photoData: Data? = nil
     var photoURL: URL? = nil
     private var focus: CGFloat {
+        if image.hasPrefix("avatar_") { return 0.5 }
         if image.contains("bufon") { return 0.24 }
         if image.contains("oraculo") { return 0.27 }
         if image.contains("asesino") || image.contains("mercenario") || image.contains("espia") { return 0.28 }
@@ -981,7 +1020,10 @@ struct ProfilePortrait: View {
     private var portrait: some View {
         GeometryReader { geometry in
             if let artwork = photoData.flatMap(UIImage.init(data:)) ?? UIImage(named: image) {
-                let width = max(geometry.size.width, geometry.size.height * artwork.size.width / artwork.size.height)
+                let animal = photoData == nil && image.hasPrefix("avatar_")
+                let width = animal
+                    ? min(geometry.size.width, geometry.size.height * artwork.size.width / artwork.size.height) * 0.92
+                    : max(geometry.size.width, geometry.size.height * artwork.size.width / artwork.size.height)
                 let height = width * artwork.size.height / artwork.size.width
                 Image(uiImage: artwork).resizable()
                     .frame(width: width, height: height)
@@ -1217,6 +1259,7 @@ struct GamePlayerAvatar: View {
     let isHuman: Bool
     let size: CGFloat
     var remoteURL: URL? = nil
+    var avatarKey: String? = nil
     var fill: Color = TraidoresTheme.gold
     @AppStorage("menu.localProfile.v1") private var storedProfile = Data()
 
@@ -1225,7 +1268,7 @@ struct GamePlayerAvatar: View {
         Group {
             if isHuman, let data = profile.photoData, let image = UIImage(data: data) {
                 Image(uiImage: image).resizable().scaledToFill()
-            } else if let remoteURL {
+            } else if let remoteURL = remoteURL ?? (isHuman ? OnlineContract.photoURL(profile.profilePhotoURL, emulatorOrigin: FirebaseSetup.storageEmulatorOrigin) : nil) {
                 AsyncImage(url: remoteURL) { phase in
                     if let image = phase.image { image.resizable().scaledToFill() }
                     else { fallback }
@@ -1236,12 +1279,9 @@ struct GamePlayerAvatar: View {
         .accessibilityHidden(true)
     }
     private var fallback: some View {
-        // Initials are decorative portrait artwork; the parent announces the full name.
-        Canvas { context, bounds in
-            context.fill(Path(ellipseIn: CGRect(origin: .zero, size: bounds)), with: .color(fill))
-            let initial = Text(String(name.prefix(1)).uppercased())
-                .font(.system(size: size * 0.55, weight: .bold)).foregroundStyle(TraidoresTheme.ink)
-            context.draw(initial, at: CGPoint(x: bounds.width / 2, y: bounds.height / 2))
-        }.frame(width: size, height: size)
+        let key = isHuman ? profile.avatar : (avatarKey ?? AnimalAvatarCatalog.keys.first!)
+        return ProfilePortrait(image: AnimalAvatarCatalog.normalize(key))
+            .frame(width: size, height: size)
     }
+
 }

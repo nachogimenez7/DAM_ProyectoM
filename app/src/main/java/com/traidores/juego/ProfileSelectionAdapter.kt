@@ -17,6 +17,7 @@ data class ProfileSelectionOption(
 
 enum class ProfileSelectionDisplay {
     ROLE,
+    AVATAR,
     BANNER
 }
 
@@ -36,7 +37,7 @@ class ProfileSelectionAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): OptionViewHolder {
         val layout = when (display) {
-            ProfileSelectionDisplay.ROLE -> R.layout.item_profile_role_selection
+            ProfileSelectionDisplay.ROLE, ProfileSelectionDisplay.AVATAR -> R.layout.item_profile_role_selection
             ProfileSelectionDisplay.BANNER -> R.layout.item_profile_banner_selection
         }
         return OptionViewHolder(
@@ -48,7 +49,21 @@ class ProfileSelectionAdapter(
         val option = options[position]
         val selected = option.key == selectedKey
 
+        holder.image.scaleType = if (display == ProfileSelectionDisplay.AVATAR) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+        holder.image.layoutParams = holder.image.layoutParams.apply {
+            val density = holder.image.resources.displayMetrics.density
+            width = (82 * density).toInt()
+            height = ((if (display == ProfileSelectionDisplay.AVATAR) 82 else 104) * density).toInt()
+        }
         holder.image.setImageResource(option.drawableRes)
+        if (display == ProfileSelectionDisplay.AVATAR) {
+            holder.image.background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(android.graphics.Color.parseColor("#211B12"))
+            }
+            holder.image.clipToOutline = true
+            ProfilePortraitRenderer.alignArtwork(holder.image, 0.5f)
+        }
         holder.title.text = option.title
         holder.subtitle.text = option.subtitle.uppercase()
         holder.state.text = if (selected) "SELECCIONADO" else "ELEGIR"

@@ -53,6 +53,7 @@ extension OnlineFeature {
 
 enum OnlineAvatarArt {
     static func key(for asset: String) -> String {
+        if AnimalAvatarCatalog.keys.contains(asset) { return asset }
         let parts = asset.split(separator: "_").map(String.init)
         guard parts.count == 3, parts[0] == "rol" else { return "pampa_aldeano" }
         let map = switch parts[2] { case "griego": "grecia"; case "medieval": "medieval"; default: "pampa" }
@@ -67,6 +68,7 @@ enum OnlineAvatarArt {
 
     /// Android's `ProfileRoleCatalog` key (`pampa_policia`) to the role artwork in the catalog.
     static func asset(for key: String) -> String {
+        if AnimalAvatarCatalog.keys.contains(key) { return key }
         let normalized = legacy[key] ?? key
         let parts = normalized.split(separator: "_", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return "rol_aldeano_gaucho" }
@@ -87,7 +89,7 @@ struct OnlinePortrait: View {
     var localPhoto: Data? = nil
 
     var body: some View {
-        ProfilePortrait(image: OnlineAvatarArt.asset(for: avatarKey), photoData: localPhoto, photoURL: photoURL)
+        ProfilePortrait(image: AnimalAvatarCatalog.normalize(avatarKey), photoData: localPhoto, photoURL: photoURL)
         .frame(width: size, height: size)
         .clipShape(Circle())
         .overlay(Circle().stroke(TraidoresTheme.border, lineWidth: 1))

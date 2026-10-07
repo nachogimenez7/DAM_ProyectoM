@@ -110,7 +110,7 @@ struct TieVoteWindow: View {
                 Image("card_back_traidores").resizable().scaledToFit()
                     .frame(width: 52, height: 70)
                     .overlay(alignment: .top) {
-                        GamePlayerAvatar(name: player.name, isHuman: isHuman, size: 30).padding(.top, 8)
+                        GamePlayerAvatar(name: player.name, isHuman: isHuman, size: 30, avatarKey: player.avatarKey ?? AnimalAvatarCatalog.keys[max(0, player.id - 1) % 14]).padding(.top, 8)
                     }
                     .frame(width: 58, height: 74)
                 Text(player.name)

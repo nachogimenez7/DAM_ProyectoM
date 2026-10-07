@@ -1035,7 +1035,7 @@ class ProfileActivity : BaseActivity() {
         ) {
             return true
         }
-        val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+        val avatarEntry = ProfileAvatarCatalog.find(draftProfile.avatarKey)
         val fallbackRes = DrawableResourceCatalog.resolveOrPlaceholder(
             avatarEntry.role.imageResName
         )
@@ -1300,7 +1300,7 @@ class ProfileActivity : BaseActivity() {
             // en vez de centerCrop plano: consistencia visual y evita que la version
             // ampliada muestre la imagen sin recortar dentro del marco circular.
             if (!showingLocalPhoto) {
-                val avatarEntry = ProfileRoleCatalog.find(draftProfile.avatarKey)
+                val avatarEntry = ProfileAvatarCatalog.find(draftProfile.avatarKey)
                 alignAvatarToFocus(expandedAvatar, avatarEntry.verticalFocus)
             }
         }

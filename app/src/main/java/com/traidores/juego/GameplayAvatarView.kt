@@ -9,7 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 
-/** Avatar compacto del gameplay: foto del humano local o inicial como fallback seguro. */
+/** Shared gameplay identity: profile photo or animal, with initials only as a fallback. */
 class GameplayAvatarView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -61,7 +61,7 @@ class GameplayAvatarView @JvmOverloads constructor(
         initialView.textSize = textSizeSp
 
         val profile = player?.let { PlayerProfileStore.profileFor(context, session, it) }
-        val avatarEntry = profile?.let { ProfileRoleCatalog.find(it.avatarKey) }
+        val avatarEntry = profile?.let { ProfileAvatarCatalog.find(it.avatarKey) }
         val fallbackRes = avatarEntry?.role?.imageResName
             ?.let(DrawableResourceCatalog::resolve)
             ?.takeIf { it != 0 }
@@ -75,8 +75,14 @@ class GameplayAvatarView @JvmOverloads constructor(
                     fallbackDrawableRes = fallbackRes
                 )
             )
-        photoView.visibility = if (showingPhoto) View.VISIBLE else View.GONE
-        initialView.visibility = if (showingPhoto) View.GONE else View.VISIBLE
+        val showingAvatar = profile != null
+        if (showingAvatar && !showingPhoto) {
+            photoView.scaleType = ImageView.ScaleType.FIT_CENTER
+            photoView.setImageResource(fallbackRes)
+            ProfilePortraitRenderer.alignArtwork(photoView, 0.5f)
+        }
+        photoView.visibility = if (showingAvatar) View.VISIBLE else View.GONE
+        initialView.visibility = if (showingAvatar) View.GONE else View.VISIBLE
         contentDescription = if (showingPhoto) {
             "Foto de perfil de ${player.name}"
         } else {

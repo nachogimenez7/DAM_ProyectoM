@@ -207,7 +207,7 @@ object PlayerPublicIdentity {
             FIELD_PROFILE_NAME to safeName,
             FIELD_ROOM_NAME to RoomDisplayNames.withPublicId(safeName, safePublicId),
             FIELD_PROFILE_BIO to safeBio,
-            FIELD_PROFILE_AVATAR to ProfileRoleCatalog.find(profile.avatarKey).key,
+            FIELD_PROFILE_AVATAR to ProfileAvatarCatalog.find(profile.avatarKey).key,
             FIELD_PROFILE_PLAY_GAMES_AVATAR to if (safePublicId.isBlank()) {
                 ""
             } else {

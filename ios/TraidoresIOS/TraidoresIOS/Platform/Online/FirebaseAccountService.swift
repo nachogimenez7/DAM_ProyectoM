@@ -324,7 +324,7 @@ final class FirebasePublicProfileService: PublicProfileService {
 
     private func confirm(_ value: PublicProfile) {
         let cached = LocalMenuProfile(name: value.nombrePerfil, bio: value.bioPerfil,
-                                      avatar: OnlineAvatarArt.asset(for: value.avatarPerfil), banner: value.bannerPerfil,
+                                      avatar: AnimalAvatarCatalog.normalize(value.avatarPerfil), banner: value.bannerPerfil,
                                       favorite: OnlineAvatarArt.asset(for: value.rolFavoritoPerfil),
                                       profilePhotoURL: value.avatarURL?.absoluteString)
         let defaults = UserDefaults.menuStore

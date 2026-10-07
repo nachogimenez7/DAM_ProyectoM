@@ -88,6 +88,7 @@ struct LocalLobbyView: View {
     @State private var reportingProblem = false
     @State private var blockedPracticeRole: String?
     @State private var botNames = Array(ClassicGame.defaultBotNames.prefix(4))
+    @State private var botAvatarKeys = Array(AnimalAvatarCatalog.keys.prefix(4))
     @AppStorage("menu.localProfile.v1", store: .menuStore) private var storedProfile = Data()
     /// The player appears with their profile name, like Android (never a generic «Vos»).
     private var humanName: String {
@@ -338,7 +339,9 @@ struct LocalLobbyView: View {
         HStack(spacing: 8) {
             Button {
                 guard botNames.count + 1 < ClassicGame.maximumPlayers else { return }
-                botNames.append(ClassicGame.defaultBotNames[botNames.count])
+                guard let slot = AnimalAvatarCatalog.keys.indices.first(where: { !botAvatarKeys.contains(AnimalAvatarCatalog.keys[$0]) }) else { return }
+                botNames.append(ClassicGame.defaultBotNames[slot])
+                botAvatarKeys.append(AnimalAvatarCatalog.keys[slot])
             } label: {
                 Label("AGREGAR", systemImage: "person.badge.plus")
             }
@@ -349,6 +352,7 @@ struct LocalLobbyView: View {
             Button {
                 guard botNames.count + 1 > ClassicGame.minimumPlayers else { return }
                 botNames.removeLast()
+                botAvatarKeys.removeLast()
             } label: {
                 Label("QUITAR", systemImage: "person.badge.minus")
             }
@@ -403,14 +407,7 @@ struct LocalLobbyView: View {
             playerRow(humanName, human: true)
             ForEach(Array(botNames.enumerated()), id: \.offset) { index, botName in
                 HStack(spacing: 10) {
-                    Circle()
-                        .fill(TraidoresTheme.border)
-                        .frame(width: 34, height: 34)
-                        .overlay {
-                            Text(String(botName.prefix(1)).uppercased())
-                                .font(.headline)
-                                .foregroundStyle(TraidoresTheme.ink)
-                        }
+                    GamePlayerAvatar(name: botName, isHuman: false, size: 34, avatarKey: botAvatarKeys[index])
                     Button {
                         editingBot = index
                         editedName = botName
@@ -432,6 +429,7 @@ struct LocalLobbyView: View {
                     Button {
                         guard botNames.count + 1 > ClassicGame.minimumPlayers else { return }
                         botNames.remove(at: index)
+                        botAvatarKeys.remove(at: index)
                     } label: {
                         Image(systemName: "person.fill.xmark")
                             .frame(width: 40, height: 40)
@@ -513,7 +511,7 @@ struct LocalLobbyView: View {
         #endif
         // A bot never shares the player's name: it takes a spare one instead.
         let tableBots = botNames.map { $0.caseInsensitiveCompare(humanName) == .orderedSame ? "Nico" : $0 }
-        store.start(name: humanName, map: selectedMap, difficulty: difficulty, botNames: tableBots,
+        store.start(name: humanName, map: selectedMap, difficulty: difficulty, botNames: tableBots, botAvatarKeys: botAvatarKeys,
                     timing: timing, advanced: advanced, testOptions: appliedTestOptions,
                     trainingRole: trainingRole, seed: testSeed ?? .random(in: .min ... .max))
         playing = store.game != nil
@@ -528,6 +526,7 @@ struct LocalLobbyView: View {
 
     private func resetLobby() {
         botNames = Array(ClassicGame.defaultBotNames.prefix(4))
+        botAvatarKeys = Array(AnimalAvatarCatalog.keys.prefix(4))
         timing = .normal
         advanced = .standard
         testOptions = .standard
@@ -2676,7 +2675,7 @@ private struct LocalTableView: View {
                 }
                 HStack(spacing: 3) {
                     GamePlayerAvatar(name: player.name, isHuman: player.id == game.human.id,
-                                     size: min(18, CGFloat(metrics.nameHeight)))
+                                     size: min(18, CGFloat(metrics.nameHeight)), avatarKey: player.avatarKey ?? AnimalAvatarCatalog.keys[max(0, player.id - 1) % 14])
                     Text(player.name).font(.system(size: metrics.nameTextSize, weight: .bold))
                         .foregroundStyle(player.alive ? playerNameColor(player.id) : playerNameColor(player.id).opacity(0.8))
                         .strikethrough(!player.alive).lineLimit(1).minimumScaleFactor(0.65)
@@ -3021,9 +3020,9 @@ private struct LocalTableView: View {
         if spectating(game) { return spectatorMessages }
         // Every night's plan, oldest first, so the whole strategy can be reread.
         if planReview(game) { return game.privateChatMessages.sorted { $0.id < $1.id } }
-        let publicMessages = game.messages.filter { $0.round == game.round && $0.id != 1 }
+        let publicMessages = game.messages.filter { $0.id != 1 }
         guard game.isNight else { return publicMessages }
-        let nightEvents = publicMessages.filter { $0.speaker == nil }
+        let nightEvents = publicMessages.filter { $0.round == game.round && $0.speaker == nil }
         guard [.assassin, .mercenary, .spy].contains(game.human.role) else { return nightEvents }
         return (nightEvents + game.privateChatMessages.filter { $0.round == game.round })
             .sorted { $0.id < $1.id }
@@ -4266,7 +4265,7 @@ private struct LocalTableView: View {
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 7) {
-                        ForEach(visibleMessages.suffix(100)) { message in
+                        ForEach(visibleMessages) { message in
                             chatMessage(message, game: game)
                                 .id(message.id)
                         }
@@ -4274,8 +4273,8 @@ private struct LocalTableView: View {
                     }
                     .padding(.vertical, 5)
                 }
-                .simultaneousGesture(DragGesture(minimumDistance: 18).onEnded { value in
-                    if value.translation.height > 24 { readingOlderChat = true }
+                .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { value in
+                    if value.translation.height > 8 { readingOlderChat = true }
                 })
                 .scrollDismissesKeyboard(.interactively)
                 .onTapGesture { chatInputFocused = false }
@@ -4376,7 +4375,7 @@ private struct LocalTableView: View {
                 if mine { Spacer(minLength: 28) }
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
-                        GamePlayerAvatar(name: game.name(speaker), isHuman: mine, size: 16)
+                        GamePlayerAvatar(name: game.name(speaker), isHuman: mine, size: 16, avatarKey: game.players[speaker].avatarKey ?? AnimalAvatarCatalog.keys[max(0, speaker - 1) % 14])
                         Text(game.name(speaker).uppercased())
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(mine ? TraidoresTheme.ink : playerNameColor(speaker))

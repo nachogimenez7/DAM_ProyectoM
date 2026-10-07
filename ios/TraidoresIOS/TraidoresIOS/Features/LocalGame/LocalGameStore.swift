@@ -39,13 +39,13 @@ final class LocalGameStore {
         catch { errorMessage = "No se pudo recuperar la partida guardada. Podés comenzar una nueva." }
     }
 
-    func start(name: String, map: GameMap = .pampa, difficulty: BotDifficulty, botNames: [String],
+    func start(name: String, map: GameMap = .pampa, difficulty: BotDifficulty, botNames: [String], botAvatarKeys: [String] = [],
                timing: GameTimingConfig, advanced: AdvancedGameConfig,
                testOptions: LocalTestOptions = .standard, trainingRole: RoleKey? = nil,
                seed: UInt64 = .random(in: .min ... .max)) {
         game = ClassicGame(name: name, seed: seed, trainingRole: trainingRole, map: map, difficulty: difficulty,
                            timing: timing, advanced: advanced, testOptions: testOptions,
-                           botNames: botNames)
+                           botNames: botNames, botAvatarKeys: botAvatarKeys)
         startedAt = Date()
         finishedAt = nil
         // Capture ownership when starting, never when showing the result. Old saves and

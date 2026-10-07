@@ -29,7 +29,7 @@ class ProfileSelectionActivity : BaseActivity() {
             RoleMap.GREECE to findViewById<Button>(R.id.btnMapGreece),
             RoleMap.MEDIEVAL to findViewById<Button>(R.id.btnMapMedieval)
         )
-        val selectedEntry = ProfileRoleCatalog.find(selectedKey)
+        val selectedEntry = if (mode == SelectionMode.AVATAR) ProfileAvatarCatalog.find(selectedKey) else ProfileRoleCatalog.find(selectedKey)
         val normalizedSelectedKey = selectedEntry.key
         var selectedMap = selectedEntry.map
 
@@ -64,7 +64,7 @@ class ProfileSelectionActivity : BaseActivity() {
             }
         }
 
-        mapSelector.visibility = if (mode.display == ProfileSelectionDisplay.ROLE) {
+        mapSelector.visibility = if (mode == SelectionMode.FAVORITE_ROLE) {
             View.VISIBLE
         } else {
             View.GONE
@@ -86,8 +86,11 @@ class ProfileSelectionActivity : BaseActivity() {
         mode: SelectionMode,
         selectedMap: RoleMap
     ): List<ProfileSelectionOption> {
+        if (mode == SelectionMode.AVATAR) return ProfileAvatarCatalog.entries.map { entry ->
+            ProfileSelectionOption(entry.key, entry.role.name, "AVATAR", DrawableResourceCatalog.resolveOrPlaceholder(entry.key))
+        }
         return when (mode.display) {
-            ProfileSelectionDisplay.ROLE -> ProfileRoleCatalog.entriesForMap(selectedMap)
+            ProfileSelectionDisplay.ROLE, ProfileSelectionDisplay.AVATAR -> ProfileRoleCatalog.entriesForMap(selectedMap)
                 .map { entry ->
                     ProfileSelectionOption(
                         key = entry.key,
@@ -118,8 +121,8 @@ class ProfileSelectionActivity : BaseActivity() {
         AVATAR(
             MODE_AVATAR,
             "FOTO DE PERFIL",
-            "Elige el personaje que representara tu perfil.",
-            ProfileSelectionDisplay.ROLE
+            "Elegí el animal que te representará en el perfil y en la partida.",
+            ProfileSelectionDisplay.AVATAR
         ),
         BANNER(
             MODE_BANNER,

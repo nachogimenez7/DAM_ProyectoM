@@ -208,7 +208,7 @@ struct MatchResultView: View {
                 .foregroundStyle(Color(hex: "#F3D488"))
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: metrics.roleHeight * textScale)
-            GamePlayerAvatar(name: player.name, isHuman: player.id == game.human.id, size: 24)
+            GamePlayerAvatar(name: player.name, isHuman: player.id == game.human.id, size: 24, avatarKey: player.avatarKey ?? AnimalAvatarCatalog.keys[max(0, player.id - 1) % 14])
                 .padding(.top, 4)
         }
         .padding(.horizontal, 4).padding(.vertical, 2)

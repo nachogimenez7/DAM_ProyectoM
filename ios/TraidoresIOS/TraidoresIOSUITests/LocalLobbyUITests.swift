@@ -62,10 +62,9 @@ final class LocalLobbyUITests: XCTestCase {
         let avatar = app.buttons["profile.avatar"]
         for _ in 0..<4 where !avatar.isHittable { app.swipeUp() }
         avatar.tap()
-        XCTAssertTrue(app.buttons["profile.map.medieval"].waitForExistence(timeout: 3))
-        app.buttons["profile.map.medieval"].tap()
-        XCTAssertTrue(app.buttons["profile.choice.medieval.aldeano"].waitForExistence(timeout: 3))
-        app.buttons["profile.choice.medieval.aldeano"].tap()
+        XCTAssertTrue(app.buttons["profile.animal.avatar_carpincho"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["profile.map.medieval"].exists)
+        app.buttons["profile.animal.avatar_carpincho"].tap()
         app.buttons["profile.banner"].tap()
         app.buttons["profile.banner.grecia"].tap()
         app.buttons["profile.favorite"].tap()
@@ -86,8 +85,8 @@ final class LocalLobbyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["profile.save"].exists)
         for _ in 0..<5 where !app.buttons["profile.avatar"].isHittable { app.swipeDown() }
         app.buttons["profile.avatar"].tap()
-        XCTAssertEqual(app.buttons["profile.choice.medieval.aldeano"].value as? String, "Seleccionado")
-        app.buttons["profile.choice.medieval.aldeano"].tap()
+        XCTAssertEqual(app.buttons["profile.animal.avatar_carpincho"].value as? String, "Seleccionado")
+        app.buttons["profile.animal.avatar_carpincho"].tap()
         app.buttons["profile.banner"].tap()
         XCTAssertEqual(app.buttons["profile.banner.grecia"].value as? String, "Seleccionado")
         app.buttons["profile.banner.grecia"].tap()

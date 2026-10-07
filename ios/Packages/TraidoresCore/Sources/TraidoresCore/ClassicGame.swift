@@ -6,6 +6,7 @@ public struct ClassicPlayer: Codable, Equatable, Identifiable, Sendable {
     public let name: String
     public let role: RoleKey
     public internal(set) var alive = true
+    public internal(set) var avatarKey: String? = nil
 }
 
 public struct Investigation: Codable, Equatable, Sendable {
@@ -203,7 +204,8 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         timing: GameTimingConfig = .normal,
         advanced: AdvancedGameConfig = .standard,
         testOptions: LocalTestOptions = .standard,
-        botNames: [String] = Array(Self.defaultBotNames.prefix(4))
+        botNames: [String] = Array(Self.defaultBotNames.prefix(4)),
+        botAvatarKeys: [String] = []
     ) {
         var random = ClassicRandom(state: seed)
         let cleanBots = botNames.prefix(Self.maximumPlayers - 1).enumerated().map { index, value in
@@ -225,7 +227,15 @@ public struct ClassicGame: Codable, Equatable, Sendable {
         }
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(18))
         let names = [cleanName.isEmpty ? "Vos" : cleanName] + filledBots
-        players = roles.enumerated().map { ClassicPlayer(id: $0.offset, name: names[$0.offset], role: $0.element) }
+        let animalKeys = ["carpincho", "buho", "cuervo", "lobo", "mamona", "liebre", "puma", "zorzal", "calandria", "hornero", "zorro", "yaguarete", "nandu", "yacare"].map { "avatar_" + $0 }
+        players = roles.enumerated().map { index, role in
+            var player = ClassicPlayer(id: index, name: names[index], role: role)
+            if index > 0 {
+                let requested = botAvatarKeys.indices.contains(index - 1) ? botAvatarKeys[index - 1] : ""
+                player.avatarKey = animalKeys.contains(requested) ? requested : animalKeys[(index - 1) % animalKeys.count]
+            }
+            return player
+        }
         mapConfig = map
         self.difficulty = difficulty
         timingConfig = timing.normalized
