@@ -28,3 +28,16 @@ for (index, name) in names.enumerated() {
     let contents = "{\"images\":[{\"filename\":\"\(filename)\",\"idiom\":\"universal\"}],\"info\":{\"author\":\"xcode\",\"version\":1}}"
     try contents.write(to: assetDir.appendingPathComponent("Contents.json"), atomically: true, encoding: .utf8)
 }
+
+// The fifteenth portrait is a standalone source, preserving the approved atlas unchanged.
+let dogSource = root.appendingPathComponent("assets/avatars_animales/avatar_border_collie.png")
+if FileManager.default.fileExists(atPath: dogSource.path) {
+    let directory = root.appendingPathComponent("ios/TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/avatar_border_collie.imageset")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    for output in [root.appendingPathComponent("app/src/main/res/drawable-nodpi/avatar_border_collie.png"),
+                   directory.appendingPathComponent("avatar_border_collie.png")] {
+        try Data(contentsOf: dogSource).write(to: output)
+    }
+    let contents = #"{"images":[{"filename":"avatar_border_collie.png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#
+    try contents.write(to: directory.appendingPathComponent("Contents.json"), atomically: true, encoding: .utf8)
+}

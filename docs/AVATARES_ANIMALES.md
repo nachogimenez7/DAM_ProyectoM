@@ -55,3 +55,19 @@ respaldo. Quitar a otro bot no cambia los avatares de los restantes.
 - Swift: `AnimalAvatarTests` (identidades, nombres diferentes, claves explícitas y guardados).
 - iOS UI: `testLocalProfileSavesNameAvatarBannerAndFavorite`, actualizado para seleccionar
   un animal y verificar que el rol favorito siga siendo independiente.
+
+## Avatar 15: Border collie
+
+Se añade `avatar_border_collie` (Border collie) al final del selector en ambas plataformas.
+Es elegible para la asignación inicial aleatoria y se muestra con el mismo renderer en
+perfil y gameplay. Los 14 integrantes originales conservan sus identidades. La migración
+de claves de roles conserva el módulo 14 original para no cambiar avatares de perfiles remotos antiguos.
+
+Fuente independiente: `assets/avatars_animales/avatar_border_collie.png`. La herramienta
+integrada `imagegen` generó el retrato tomando el lobo aprobado como referencia de estilo.
+Prompt final: border collie clásico blanco y negro, retrato de cabeza y pecho en tres
+cuartos mirando a la derecha, ilustración pintada con pinceladas de carta vintage,
+fondo pampeano de pastizales ocres y cielo azul con nubes cálidas, ojos atentos,
+anatomía natural, margen para orejas y hocico dentro del recorte circular, sin
+marco, texto, collar ni acabado fotográfico o 3D. El exportador copia esta fuente
+a Android e iOS sin modificar los retratos anteriores.
