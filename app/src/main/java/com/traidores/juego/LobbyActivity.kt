@@ -1078,7 +1078,7 @@ class LobbyActivity : BaseActivity() {
             isClickable = true
             isFocusable = true
             contentDescription = "Ver perfil de ${player.name}"
-            val avatarEntry = ProfileRoleCatalog.find(
+            val avatarEntry = ProfileAvatarCatalog.find(
                 onlinePlayer?.profile?.avatarKey.orEmpty().ifBlank { "aldeana" }
             )
             addView(FrameLayout(this@LobbyActivity).apply {
@@ -3228,7 +3228,7 @@ class LobbyActivity : BaseActivity() {
             bio = document.getString(PlayerPublicIdentity.FIELD_PROFILE_BIO)
                 ?.take(40)
                 .orEmpty(),
-            avatarKey = ProfileRoleCatalog.find(avatarKey).key,
+            avatarKey = ProfileAvatarCatalog.find(avatarKey).key,
             profilePhotoUrl = PlayGamesProfileAvatar.normalize(
                 document.getString(PlayerPublicIdentity.FIELD_PROFILE_PHOTO).orEmpty()
             ),

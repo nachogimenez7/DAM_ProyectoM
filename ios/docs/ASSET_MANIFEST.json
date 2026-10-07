@@ -2,9 +2,9 @@
   {
     "source": "app/src/main/res/drawable/rol_aldeano_gaucho.webp",
     "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/rol_aldeano_gaucho.imageset/rol_aldeano_gaucho.png",
-    "sourceSHA256": "7055b3fc3dd1038a34e59871c535961950d70c9805288103d0b38ba1b10a9015",
-    "destinationSHA256": "c46326496ff994349cdc3ac578d758a155f1e7337f482a77db0e1a5129384f2d",
-    "operation": "WebP to PNG; no resize"
+    "sourceSHA256": "763b68098d815550f54648ef66596789f9136a0fd64c17c5401b88465797ac83",
+    "destinationSHA256": "128eace78e8c505e347189a0e3e05911854cc50735506fd04268975fd8dd30fa",
+    "operation": "Updated approved role artwork; PNG master to lossless WebP; iOS PNG copied without resize"
   },
   {
     "source": "app/src/main/res/drawable/rol_asesino_gaucho.webp",
@@ -88,6 +88,370 @@
     "destination": "TraidoresIOS/TraidoresIOS/Resources/menu_music.mp3",
     "sourceSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
     "destinationSHA256": "1ea4112413362e49ab77753033f300bfcbe7fdff5b6c998a84c11b976e0835ae",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/bandido_splash_medallion.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/bandido_splash_medallion.imageset/bandido_splash_medallion@3x.png",
+    "sourceSHA256": "d24059f3d7f69e309cf091d30e095e59c7d36e74cef4302059cd5a804916d2ce",
+    "destinationSHA256": "b64dc2a464f4d7e11637621709b95ce8b51b205ff4fc5c2ef3c63f229a79f13f",
+    "operation": "resize 700→576 px (192 pt @3x, Android splash icon size) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-xxhdpi/ui_frame_event_pampa.9.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/ui_frame_event_pampa.imageset/ui_frame_event_pampa@3x.png",
+    "sourceSHA256": "08a515a777f2ffd666b95df343f49d871ef98ee0e39cc257b68135d755759565",
+    "destinationSHA256": "29db44be1e0240f3b1fca85a75901fc711e484f062185549f89a2defb2779ea2",
+    "operation": "9-patch: 1 px guide border removed, stretch/padding regions hardcoded in DawnRevealViews.swift (Scripts/export_nine_patch_frames.swift)"
+  },
+  {
+    "source": "app/src/main/res/drawable-xxhdpi/ui_frame_event_grecia.9.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/ui_frame_event_grecia.imageset/ui_frame_event_grecia@3x.png",
+    "sourceSHA256": "851378b16bc00d2190749c19d25301fb73dbbcda1041613f426eb33159ac3d32",
+    "destinationSHA256": "d38c9e615b68ca08e3db2e8d7c40688f71595dc23f0c90f6346ea963837870c9",
+    "operation": "9-patch: 1 px guide border removed, stretch/padding regions hardcoded in DawnRevealViews.swift (Scripts/export_nine_patch_frames.swift)"
+  },
+  {
+    "source": "app/src/main/res/drawable-xxhdpi/ui_frame_event_medieval.9.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/ui_frame_event_medieval.imageset/ui_frame_event_medieval@3x.png",
+    "sourceSHA256": "5e676840929a49a12743b35083ecb14351b6650b5bc24e79ff7c9a2c087b7cf2",
+    "destinationSHA256": "9125641b11d4ad2696ffba22ebff7066f69c25df68ef9e8e78032acd93177bf5",
+    "operation": "9-patch: 1 px guide border removed, stretch/padding regions hardcoded in DawnRevealViews.swift (Scripts/export_nine_patch_frames.swift)"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/no_death_sun_rural.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/no_death_sun_rural.imageset/no_death_sun_rural@3x.png",
+    "sourceSHA256": "3ebc10b5caa26f5f04686db39406735c1a17680665fd10829779dedcebdd435a",
+    "destinationSHA256": "939e166acd20c392a3d7dd4fbce6f720c6889e4cfcd5bcb4f8472c70ed933c1f",
+    "operation": "resize 640→408 px (136 pt @3x, Android noDeathSunCore size) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/boot_windup.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/boot_windup.imageset/boot_windup@3x.png",
+    "sourceSHA256": "23d45fa25ae8d54f1666f1a87c633b3bb2109e0823bb94e072a1aa494c83ba45",
+    "destinationSHA256": "fc9c76bd90c0cdd56efa4aa72061efd019ebae9e2cf2d959cb384c7d3e4c10d7",
+    "operation": "WebP to PNG; resize 574→450 px wide (150 dp @3x, Android voteKickBoot) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/ic_kicking_boot.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/ic_kicking_boot.imageset/ic_kicking_boot@3x.png",
+    "sourceSHA256": "a9b147aca4eb05a89e4838ce1a1c0233272ad72b58387a6600f34061309216f9",
+    "destinationSHA256": "5ec3b0353bc7dbd3ef4ee1b02753c7b88ed29dd1acbc65d9b5842a762bed1929",
+    "operation": "WebP to PNG; resize 574→450 px wide (150 dp @3x) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/boot_recoil.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/boot_recoil.imageset/boot_recoil@3x.png",
+    "sourceSHA256": "f44f1e9ff61ab8558c472e7012a578049d6cff6800baeba00e5fd41b29ef1296",
+    "destinationSHA256": "0e0d32601125e93db5870eeb9644ba8e9651a707ac813108430537ccc4011e6a",
+    "operation": "WebP to PNG; resize 574→450 px wide (150 dp @3x) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/impact_dust.png",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/impact_dust.imageset/impact_dust@3x.png",
+    "sourceSHA256": "b8e6281e1b99a4a1497a4b6efa9c968c16ca1ea3b7175f066f60a19c93e1bd35",
+    "destinationSHA256": "1059ddd767d206abf2e643e34c83c9bae475d408b5e51a0ac55b8ebbc2d33bbd",
+    "operation": "copy as @3x; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/expulsion_seal.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/expulsion_seal.imageset/expulsion_seal@3x.png",
+    "sourceSHA256": "774d4a874025d6e3ce4430ce0d1334a54ad2a433d1fb0e16257be689cf1f0374",
+    "destinationSHA256": "f5bc26f9acf4725ef4ac109cc7e77509e63c81b32eec0ac8580a2954bbabe1c1",
+    "operation": "WebP to PNG; resize 384→192 px (seal stamped at up to 2.1× its 42 dp) with sips"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/winner_ceremony_background.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/winner_ceremony_background.imageset/winner_ceremony_background.png",
+    "sourceSHA256": "94e4420eb01477e1b7c7dffbc05dedc09bbc9ecef1e5daeea47e204d90e5669e",
+    "destinationSHA256": "1a1d323f2deec14285a38e34e299bfdfa50f917b9f763fe78913427609d83a43",
+    "operation": "WebP to PNG with sips; no resize; original Android artwork"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_angry.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_angry.mp3",
+    "sourceSHA256": "cedd0afc42c0c471fed1d93378e74bd8eec7681e382a5149b02f3f33bbf6f1a1",
+    "destinationSHA256": "cedd0afc42c0c471fed1d93378e74bd8eec7681e382a5149b02f3f33bbf6f1a1",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_happy.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_happy.mp3",
+    "sourceSHA256": "981a6e0b972258abcb6e91be3babb856e0a9cfe0a7656ff7da5d286590862e84",
+    "destinationSHA256": "981a6e0b972258abcb6e91be3babb856e0a9cfe0a7656ff7da5d286590862e84",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_desertor_lengua.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_desertor_lengua.m4a",
+    "sourceSHA256": "4c3c4b7167efa7da69fc49efb71417026dcc83845c863c488ad5f1bc1d80d74c",
+    "destinationSHA256": "80bfe4695d23c1348d8e0832903b2579234aa7b0229b7cd61b71f939a9bc2a17",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_dormida.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_dormida.mp3",
+    "sourceSHA256": "84011c56ed701d034bccdfb790b10700da7d85eaffa507b53a4341173c8a52dc",
+    "destinationSHA256": "84011c56ed701d034bccdfb790b10700da7d85eaffa507b53a4341173c8a52dc",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_genio.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_genio.m4a",
+    "sourceSHA256": "7ca61660049ec53f1bf159912eed22a8818dcd59d6b01a428658e269da7b5c52",
+    "destinationSHA256": "c84767155be9051d7ddf3b1769f46c7d936944f61509ca206420af047567c5f6",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_hermosa_manana.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_hermosa_manana.mp3",
+    "sourceSHA256": "0ca5eed4bf36c6ed093837d616c54ccb1855bc077f849b6819128242bd66392b",
+    "destinationSHA256": "0ca5eed4bf36c6ed093837d616c54ccb1855bc077f849b6819128242bd66392b",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_mate.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_mate.m4a",
+    "sourceSHA256": "da572c73ddbb9b06c92ab7808199ce70449a966e224e91e74b61c87074820fc5",
+    "destinationSHA256": "dcbd0b331d799bf3cf38597d1cd6d8dbcd1f508e14b455c89c2db9604ec6561b",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_medico_timido.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_medico_timido.m4a",
+    "sourceSHA256": "ecfa0ab4a9cfdf4149d57af90ca6eb8dd398392aa11615df592ff47f15ec88dc",
+    "destinationSHA256": "ca1a97bd3f572dd29ffe1551c514836915fc7a4b9ffa0be9bffdc82d488a752a",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_oraculo_mmm_nie.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_oraculo_mmm_nie.m4a",
+    "sourceSHA256": "ba0782a59a90ac91d17232ba151f405260d077cc19fbe2feb495795d53c65f9c",
+    "destinationSHA256": "aff20af9027d79f697ed43055b76d13553666c32bb6eede0a128dd064bcad38a",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_premium_six_seven.ogg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_premium_six_seven.m4a",
+    "sourceSHA256": "222276f8fffa01458f65d68511a0c645ffe16d7a7cab65e084a863045ebab196",
+    "destinationSHA256": "b19086411f1d491cecf0a4aa4efb05fdddc29a78e57e2d9b3aedb56bf05f4348",
+    "operation": "ffmpeg Ogg Vorbis -> AAC 128 kbps (AVAudioPlayer has no Ogg decoder)"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_sad.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_sad.mp3",
+    "sourceSHA256": "3e2f387b8a00fc5e3f5849545d5fbd6546abe811da960a81deda4e418eeeb604",
+    "destinationSHA256": "3e2f387b8a00fc5e3f5849545d5fbd6546abe811da960a81deda4e418eeeb604",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_emote_suspicious.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_emote_suspicious.mp3",
+    "sourceSHA256": "d159cde10fc856fa1e677a66e44c80df3057894f96f60882e7d1f9fbac3c9126",
+    "destinationSHA256": "d159cde10fc856fa1e677a66e44c80df3057894f96f60882e7d1f9fbac3c9126",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_assassin.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_assassin.imageset/action_mark_assassin.png",
+    "sourceSHA256": "785089c7131aa16cbb0e478ddeacdb73d34c829714704f691b3811a687710655",
+    "destinationSHA256": "7180bae884ca7d3af8fb52b5f0ff7aff24ffd4f7499b5ce088a1288b97af4d1b",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_detective.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_detective.imageset/action_mark_detective.png",
+    "sourceSHA256": "02c504b0427ff681b12fca8a62e6d41fd594925b985fe62c994d9b9c92b2e238",
+    "destinationSHA256": "9b4b8fa3ef720805760f84896fc60f4bfdf8b55781a77e58bbdbfb2d5be64f87",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_medic.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_medic.imageset/action_mark_medic.png",
+    "sourceSHA256": "17ce1f57e043ab101ffc2d78cce20e73458805c610a4c596a065d00766be2571",
+    "destinationSHA256": "4c652a88f33dd5a5620debe8c04d4ddaaab9bed69551bb66090feec514926100",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_mercenary.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_mercenary.imageset/action_mark_mercenary.png",
+    "sourceSHA256": "a29bc97fd4a8282c12be48eab27b9e286ee5c6f0f41e3de79d367d851fed9bdd",
+    "destinationSHA256": "27474ed35b0527bc8c56213ed0511dad1e7f524434fd035bb7eb98178cb2893f",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_oracle.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_oracle.imageset/action_mark_oracle.png",
+    "sourceSHA256": "f20e75a75fdc6b43095fedb4d43e8dd30033de735d17894c33338d64749bb421",
+    "destinationSHA256": "37312c6341ce2da95a3bf520918f6b3686b7d5d93358e5ecc13d54143a91f4d8",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_payador.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_payador.imageset/action_mark_payador.png",
+    "sourceSHA256": "b844958a6c1ad94a8c147d30a02b0887fa986418dcc34215ef746c418f67f67c",
+    "destinationSHA256": "a2203cfbe753be760509b8f20cf6dff05181a1ea7c92d20af619eb5f7c45f36c",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/action_mark_spy.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/action_mark_spy.imageset/action_mark_spy.png",
+    "sourceSHA256": "cbdcdb23f475744b01d9706311f6acec9ae1982158591072ea8134afa8808503",
+    "destinationSHA256": "96ac9e0689d04c6bc42f040e6a19227f2831c2d49b433f6b70e31ae2e0eee81d",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/payador_contrapunto_scene.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/payador_contrapunto_scene.imageset/payador_contrapunto_scene.png",
+    "sourceSHA256": "32ecd6f001376d93f5326c91821566ea4b784d2ee31ecf5467f76eb5cdc52bd4",
+    "destinationSHA256": "b71a53c49c9ea8c03def4c17d4fd2f4b0758d37fe965e1fe83a1a5756c634a49",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/oracle_return_scene.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/oracle_return_scene.imageset/oracle_return_scene.png",
+    "sourceSHA256": "ff6cdea84cac3fc9d9dced63ca05c3b83ab3b201ce87cfd75e2f063f8bb00a85",
+    "destinationSHA256": "c29434033b4a7693fb6f756884bd912feeaf27b791ed76d3a8163c8422e39fda",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/jester_victory_scene.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/jester_victory_scene.imageset/jester_victory_scene.png",
+    "sourceSHA256": "b708b17e2334fbd9923d1bae1413360213ba2b99ae5f29cd0101141a2a19a343",
+    "destinationSHA256": "189f328eb26cef014b9a0dffe7da52e9d2a13a211ac127a592d1db818bbde0cd",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/drawable-nodpi/jester_horn_illustrated.webp",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/jester_horn_illustrated.imageset/jester_horn_illustrated.png",
+    "sourceSHA256": "9774a87fba3d09033db0eba907878f30d3ed3828c41828f55517dbd72bdd013c",
+    "destinationSHA256": "f326927092649cb4f0b3fec179761c4f6dcc227916be6fcd790253ab4ecbe7ee",
+    "operation": "sips WebP to PNG; no resize"
+  },
+  {
+    "source": "app/src/main/res/raw/day_music_pampa.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/day_music_pampa.mp3",
+    "sourceSHA256": "b3a5c8077b5c9999c9f02d6c427e68ea02f240f893639e2c5c000f980cdd789b",
+    "destinationSHA256": "b3a5c8077b5c9999c9f02d6c427e68ea02f240f893639e2c5c000f980cdd789b",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/day_music_greece.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/day_music_greece.mp3",
+    "sourceSHA256": "f5e34adaf12ac3920a3c7fe272a2be31ff64277bcfbc4689dfdc06d8009f533c",
+    "destinationSHA256": "f5e34adaf12ac3920a3c7fe272a2be31ff64277bcfbc4689dfdc06d8009f533c",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/day_music_medieval.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/day_music_medieval.mp3",
+    "sourceSHA256": "f21788de7c072ae90f8fd0294b3761db714802d18d0fef937d375af975e1ef48",
+    "destinationSHA256": "f21788de7c072ae90f8fd0294b3761db714802d18d0fef937d375af975e1ef48",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/night_phase_music.mpeg",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/night_phase_music.mp3",
+    "sourceSHA256": "36b622f567994352cb587e214326cec47306d11d506178fffd5ea4cf22fa5f8e",
+    "destinationSHA256": "36b622f567994352cb587e214326cec47306d11d506178fffd5ea4cf22fa5f8e",
+    "operation": "copy; renamed extension only"
+  },
+  {
+    "source": "app/src/main/res/raw/victory_music_town.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/victory_music_town.mp3",
+    "sourceSHA256": "4699656368881cd36d3455795a14a13f54efdc5270a8c42f2843a5b7bbcf0691",
+    "destinationSHA256": "4699656368881cd36d3455795a14a13f54efdc5270a8c42f2843a5b7bbcf0691",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/victory_music_traitors.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/victory_music_traitors.mp3",
+    "sourceSHA256": "e88a6583a11ed071798378a14557dfd33323dca4735fb00c0c26e5932d1ffe33",
+    "destinationSHA256": "e88a6583a11ed071798378a14557dfd33323dca4735fb00c0c26e5932d1ffe33",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_card_deal.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_card_deal.mp3",
+    "sourceSHA256": "17baffa5eecec8dd6fbd4a7581339c2a4527e5c0aef1ba7314410dc81a9221db",
+    "destinationSHA256": "17baffa5eecec8dd6fbd4a7581339c2a4527e5c0aef1ba7314410dc81a9221db",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_night_fall.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_night_fall.mp3",
+    "sourceSHA256": "84cef8f97f08623b80dc08dd65bd02a84284934e2ce4ed13965e4affddb30d8f",
+    "destinationSHA256": "84cef8f97f08623b80dc08dd65bd02a84284934e2ce4ed13965e4affddb30d8f",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_dawn.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_dawn.mp3",
+    "sourceSHA256": "8613ef25fd938bb3b8d4718684533cff82bd8131619ab1fc596d9847f5ebc62a",
+    "destinationSHA256": "8613ef25fd938bb3b8d4718684533cff82bd8131619ab1fc596d9847f5ebc62a",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_death_elevenlabs.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_death_elevenlabs.mp3",
+    "sourceSHA256": "d108e5a1d10d9d95b821e6417b297e08187fad7b0016546ff59ce2db07d8df40",
+    "destinationSHA256": "d108e5a1d10d9d95b821e6417b297e08187fad7b0016546ff59ce2db07d8df40",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_elimination.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_elimination.mp3",
+    "sourceSHA256": "ec0d8a58d19521abd2ceac8abff277daee75cd070d4d8f19e2b6e3be7dec9b05",
+    "destinationSHA256": "ec0d8a58d19521abd2ceac8abff277daee75cd070d4d8f19e2b6e3be7dec9b05",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_expulsion.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_expulsion.mp3",
+    "sourceSHA256": "481df6451321e8618935b957bf9273791861da6c5c3ef3c9ef61eb8340cbbb62",
+    "destinationSHA256": "481df6451321e8618935b957bf9273791861da6c5c3ef3c9ef61eb8340cbbb62",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_no_death.wav",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_no_death.wav",
+    "sourceSHA256": "27d638d14abd98cad5273b21c916521c456f1109ff44a2a023a2f4219d292153",
+    "destinationSHA256": "27d638d14abd98cad5273b21c916521c456f1109ff44a2a023a2f4219d292153",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_vote_cast.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_vote_cast.mp3",
+    "sourceSHA256": "ea858643d01edad5a3c6dd1681efc910b684847c4060e8bd9703c214b94865fe",
+    "destinationSHA256": "ea858643d01edad5a3c6dd1681efc910b684847c4060e8bd9703c214b94865fe",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/sfx_tie_break.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/sfx_tie_break.mp3",
+    "sourceSHA256": "1a03250f3b596c9ab9d8950dbc1f147cfd7fc01a7f3bed19309de1c8dc0999ef",
+    "destinationSHA256": "1a03250f3b596c9ab9d8950dbc1f147cfd7fc01a7f3bed19309de1c8dc0999ef",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/payador_ability.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/payador_ability.mp3",
+    "sourceSHA256": "a8f22d460198ab2f752427d61c8053236767b5516c7bf4f3295726365323b344",
+    "destinationSHA256": "a8f22d460198ab2f752427d61c8053236767b5516c7bf4f3295726365323b344",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/oracle_ability.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/oracle_ability.mp3",
+    "sourceSHA256": "9c8c69fa28db328e5c45f6725d5f41a6d6c8d1374e4a24fb48ebbd942514b63d",
+    "destinationSHA256": "9c8c69fa28db328e5c45f6725d5f41a6d6c8d1374e4a24fb48ebbd942514b63d",
+    "operation": "copy"
+  },
+  {
+    "source": "app/src/main/res/raw/jester_victory.mp3",
+    "destination": "TraidoresIOS/TraidoresIOS/Resources/GameAudio/jester_victory.mp3",
+    "sourceSHA256": "eed50b172f3b2b3938aed807628ef60534cf5cbae717654406308db769094692",
+    "destinationSHA256": "eed50b172f3b2b3938aed807628ef60534cf5cbae717654406308db769094692",
     "operation": "copy"
   }
 ]

@@ -40,7 +40,7 @@ object LocalBotNameStore {
             val previousProfile = session.playerProfiles[player.name]
                 ?: session.playerProfiles[defaultName]
                 ?: BotProfileFactory.profileFor(defaultName)
-            updatedProfiles[finalName] = previousProfile.copy(name = finalName)
+            updatedProfiles[finalName] = previousProfile.copy(name = finalName, avatarKey = ProfileAvatarCatalog.forBotSlot(slot))
             player.copy(
                 name = finalName,
                 initial = initialFor(finalName)

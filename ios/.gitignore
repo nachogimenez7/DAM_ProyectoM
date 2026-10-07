@@ -4,6 +4,7 @@
 **/xcuserdata/
 **/*.xcuserstate
 **/Local.xcconfig
-**/GoogleService-Info.plist
+# Firebase client config is tracked, like app/google-services.json: it holds public
+# identifiers, not secrets (access is enforced by the rules and App Check).
 **/*.p8
 **/*.p12

@@ -93,6 +93,26 @@ public struct AdvancedGameConfig: Codable, Equatable, Sendable {
     }
 }
 
+public struct LocalTestOptions: Codable, Equatable, Sendable {
+    public var quickMatch: Bool
+    public var botsFollowAccusation: Bool
+    public var forceVoteTies: Bool
+    public var botsNeverKillHuman: Bool
+    public var botsNeverVoteHuman: Bool
+
+    public init(quickMatch: Bool = false, botsFollowAccusation: Bool = false,
+                forceVoteTies: Bool = false, botsNeverKillHuman: Bool = false,
+                botsNeverVoteHuman: Bool = false) {
+        self.quickMatch = quickMatch
+        self.botsFollowAccusation = botsFollowAccusation
+        self.forceVoteTies = forceVoteTies
+        self.botsNeverKillHuman = botsNeverKillHuman
+        self.botsNeverVoteHuman = botsNeverVoteHuman
+    }
+
+    public static let standard = Self()
+}
+
 public struct RoleDefinition: Identifiable, Sendable {
     public let id: RoleKey
     public let title: String
@@ -132,7 +152,7 @@ public enum RoleCatalog {
         .init(id: .mercenary, title: "Mercenario", team: .traitors, minimumPlayers: 7,
               instructions: "Forma parte del bando traidor. Puede impedir que una víctima hable o vote durante el día siguiente."),
         .init(id: .deserter, title: "Desertor", team: .neutral, minimumPlayers: 14,
-              instructions: "Elige un bando al comenzar. Puede reconsiderarlo una sola vez cuando quedan aproximadamente dos tercios de los jugadores iniciales y debe sobrevivir para ganar con su bando final."),
+              instructions: "Elige un bando al comenzar. Desde la ronda 4 puede cambiar o mantener su bando una sola vez durante el debate o antes de una victoria Traidora. Incluso silenciado puede elegir; debe sobrevivir para ganar con su bando final."),
         .init(id: .payador, title: "Payador", team: .town, minimumPlayers: 8, exclusiveMap: .pampa,
               instructions: "Una vez por partida elige dos participantes para un Contrapunto. Solo esos dos pueden hablar; al terminar señala a uno, que recibe un voto adicional."),
         .init(id: .jester, title: "Bufón", team: .neutral, minimumPlayers: 8, exclusiveMap: .medieval,

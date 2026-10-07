@@ -1,5 +1,24 @@
 # Plan técnico: Traidores Android → iOS nativo
 
+## Prioridad vigente — 29 de septiembre de 2026
+
+Por decisión del usuario, se pospone **todo** el gameplay, tanto lógica como presentación. Se conserva el avance existente sin continuar sus ajustes. El orden actual es:
+
+1. Menú, catálogo de roles por mapa y ayuda/tutorial, usando Android como referencia.
+2. Perfil y recorrido previo a la partida online (crear sala, buscar partida, ingresar código y lobby).
+3. Retomar y terminar gameplay contra IA.
+4. Solo después, gameplay online.
+
+Actualización 1 de octubre de 2026: el usuario pidió retomar el pulido visual y de fluidez del gameplay contra IA antes de terminar el recorrido online previo; el plan está en [GAMEPLAY_PULIDO_IOS.md](GAMEPLAY_PULIDO_IOS.md). El gameplay online sigue al final.
+
+Se integró `origin/main` hasta `83318f3` (Android 0.1.49, 1 de octubre de 2026) en `ios-port`. Las secciones históricas siguientes siguen siendo referencia técnica, no autorización para adelantar gameplay.
+
+Avance del menú: catálogo por mapa con las 27 entradas de Android, ayuda desplegable y tutorial repetible; opciones persistentes de música/volumen y lectura del menú; pantalla Acerca de con versión y enlaces; redacción de comentarios que abre el correo sin enviar automáticamente. Efectos, vibración, notificaciones e idiomas no se presentan como implementados. Perfil y acceso/cuentas online siguen pendientes.
+
+Primer bloque de perfil implementado: edición local de nombre/frase, avatar entre los 27 personajes, seis banners de Android y rol favorito por mapa. Guardado explícito persistente, vista previa y estado de cambios sin guardar. No crea UID público, no concede logros y no modifica las partidas; cuentas, progreso, fotos personales, emoticonos y estilos de perfil siguen pendientes.
+
+El perfil se amplió después para seguir la composición completa de Android, con modo de edición, cuatro estilos, veinte emotes, catálogo de diez logros y foto nativa del iPhone. Las diferencias funcionales restantes están inventariadas en `PARIDAD_MENU_PERFIL_IOS.md`; no se considera terminada la paridad mientras falten cuenta, progreso e integraciones.
+
 Preparado el 18 de septiembre de 2026. Actualizado tras aprobación de la etapa 1: **menú primero, gameplay local contra IA después, online al final**. El proyecto SwiftUI ya tiene estructura y menú; la compilación iOS y la validación visual esperan Xcode. Las secciones de protocolo/Firebase se conservan como requisitos del online futuro.
 
 ## 1. Diagnóstico y alcance comprobado

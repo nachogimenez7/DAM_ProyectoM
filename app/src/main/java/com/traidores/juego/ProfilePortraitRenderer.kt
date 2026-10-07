@@ -7,7 +7,7 @@ import android.widget.ImageView
 /** Keeps illustrated faces in the same frame in the Profile, menu and online identity. */
 internal object ProfilePortraitRenderer {
     fun render(context: Context, image: ImageView, avatarKey: String, publishedPhoto: String) {
-        val entry = ProfileRoleCatalog.find(avatarKey)
+        val entry = ProfileAvatarCatalog.find(avatarKey)
         val fallback = DrawableResourceCatalog.resolveOrPlaceholder(entry.role.imageResName)
         fun artwork() {
             image.scaleType = ImageView.ScaleType.MATRIX
@@ -22,6 +22,9 @@ internal object ProfilePortraitRenderer {
     }
 
     fun alignArtwork(image: ImageView, verticalFocus: Float) {
+        // Animal portraits are already framed: contain them instead of applying the role-card zoom.
+        image.scaleType = ImageView.ScaleType.MATRIX
+        val animal = verticalFocus == 0.5f
         val expected = image.drawable
         image.post {
             if (image.drawable !== expected || image.scaleType != ImageView.ScaleType.MATRIX) return@post
@@ -29,8 +32,10 @@ internal object ProfilePortraitRenderer {
             val width = drawable.intrinsicWidth.toFloat()
             val height = drawable.intrinsicHeight.toFloat()
             if (width <= 0 || height <= 0 || image.width <= 0 || image.height <= 0) return@post
-            val scale = maxOf(image.width / width, image.height / height) * 1.12f
-            val top = (image.height / 2f - height * scale * verticalFocus.coerceIn(0f, 1f))
+            val scale = if (animal) minOf(image.width / width, image.height / height) * 0.92f
+                else maxOf(image.width / width, image.height / height) * 1.12f
+            val top = if (animal) (image.height - height * scale) / 2f
+                else (image.height / 2f - height * scale * verticalFocus.coerceIn(0f, 1f))
                 .coerceIn(image.height - height * scale, 0f)
             image.imageMatrix = Matrix().apply {
                 setScale(scale, scale)

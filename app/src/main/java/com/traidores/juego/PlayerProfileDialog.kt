@@ -330,7 +330,7 @@ object PlayerProfileDialog {
     }
 
     private fun identityRow(activity: Activity, profile: PlayerProfile, compact: Boolean): View {
-        val avatarEntry = ProfileRoleCatalog.find(profile.avatarKey)
+        val avatarEntry = ProfileAvatarCatalog.find(profile.avatarKey)
         val useLocalPhoto = hasLocalPhotoFor(activity, profile)
         val playGamesAvatarUri = if (useLocalPhoto) "" else profile.publicAvatarUri
         val cosmeticTheme = CosmeticPilot.normalizeTheme(profile.cosmeticThemeId)
@@ -942,6 +942,10 @@ object PlayerProfileDialog {
     }
 
     private fun alignAvatarToFocus(image: ImageView, verticalFocus: Float) {
+        if (verticalFocus == 0.5f) {
+            ProfilePortraitRenderer.alignArtwork(image, verticalFocus)
+            return
+        }
         image.post {
             val drawable = image.drawable ?: return@post
             val drawableWidth = drawable.intrinsicWidth.toFloat()

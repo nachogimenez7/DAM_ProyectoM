@@ -1,11 +1,14 @@
 import SwiftUI
 
 private enum MenuRoute: Hashable {
-    case play, roles, help, options, profile, about
+    case play, roles, help, options, profile, about, feedback
 }
 
 struct MenuView: View {
+    @AppStorage("menu.localProfile.v1") private var localProfileData = Data()
     @Environment(MenuPreferences.self) private var preferences
+    /// Already resolved by `GamePreferencesBridge` at the root.
+    @Environment(\.dynamicTypeSize) private var textSize
 
     var body: some View {
         NavigationStack {
@@ -33,6 +36,13 @@ struct MenuView: View {
                         .frame(minHeight: geometry.size.height)
                         .frame(maxWidth: .infinity)
                     }
+                    // Scrolled content fades under the status bar instead of colliding with it.
+                    LinearGradient(colors: [.black.opacity(0.8), .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: geometry.safeAreaInsets.top + 20)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -44,15 +54,10 @@ struct MenuView: View {
                     case .help: HelpView()
                     case .options: OptionsView()
                     case .profile:
-                        MenuPage(title: "Perfil") {
-                            InformationCard(title: "Tu identidad en la mesa", message: "El perfil llegará con las primeras partidas. Por ahora podés explorar los roles, las reglas y las opciones del menú.")
-                        }
+                        ProfileView()
                     case .about:
-                        MenuPage(title: "Bandido Games") {
-                            Image("bandido_menu_medallion").resizable().scaledToFit()
-                                .frame(height: 130).frame(maxWidth: .infinity).accessibilityHidden(true)
-                            InformationCard(title: "Traidores", message: "Un juego de deducción social. Observá, escuchá y elegí en quién confiar.\n\nDesconfía de todos.")
-                        }
+                        AboutView()
+                    case .feedback: SupportMessageView(feedback: true)
                     }
                 }
                 .toolbar(.hidden, for: .navigationBar)
@@ -67,34 +72,48 @@ struct MenuView: View {
                     Image("bandido_menu_medallion").resizable().scaledToFit()
                         .frame(width: 38, height: 38).accessibilityHidden(true)
                     Text("Bandido Games").font(TraidoresTheme.title(16, relativeTo: .subheadline))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 }
                 .foregroundStyle(TraidoresTheme.gold)
                 .frame(minHeight: 44)
             }
             .accessibilityLabel("Acerca de Bandido Games")
+            .accessibilityShowsLargeContentViewer()
+            .accessibilityIdentifier("menu.about")
             Spacer(minLength: 0)
             NavigationLink(value: MenuRoute.profile) {
-                Image(systemName: "person.crop.circle")
-                    .font(.title2).frame(width: 44, height: 44)
-                    .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                let profile = LocalMenuProfile.load(localProfileData)
+                ProfilePortrait(image: profile.avatar, photoData: profile.photoData, photoURL: OnlineContract.photoURL(profile.profilePhotoURL, emulatorOrigin: FirebaseSetup.storageEmulatorOrigin))
+                    .frame(width: 44, height: 44)
+                    .overlay(Circle().stroke(TraidoresTheme.gold, lineWidth: 1.5))
             }
             .accessibilityLabel("Abrir perfil")
+            .accessibilityShowsLargeContentViewer()
+            .accessibilityIdentifier("menu.profile")
         }
     }
 
     private var title: some View {
         VStack(spacing: 8) {
+            // At accessibility sizes the emblem shrinks so JUGAR stays near the first screen.
             Image("logo_traidores_clean").resizable().scaledToFit()
-                .frame(width: 90, height: 100).accessibilityHidden(true)
+                .frame(width: textSize.isAccessibilitySize ? 64 : 90,
+                       height: textSize.isAccessibilitySize ? 72 : 100)
+                .accessibilityHidden(true)
+            // The wordmark is a logo: it may grow a little but never breaks mid-word.
             Text("TRAIDORES")
                 .font(TraidoresTheme.title(42, relativeTo: .largeTitle))
                 .foregroundStyle(TraidoresTheme.gold)
-                .multilineTextAlignment(.center)
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .shadow(color: .black, radius: 8, y: 4)
                 .accessibilityAddTraits(.isHeader)
             Text("VERSIÓN EN DESARROLLO")
                 .font(.caption2.weight(.semibold)).tracking(1.5)
                 .foregroundStyle(TraidoresTheme.gold)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                 .padding(.horizontal, 12).padding(.vertical, 5)
                 .background(TraidoresTheme.panel, in: Capsule())
             Text("Desconfía de todos.")
@@ -110,14 +129,24 @@ struct MenuView: View {
                 preferences.musicEnabled.toggle()
             } label: {
                 Image(systemName: preferences.musicEnabled ? "speaker.wave.2" : "speaker.slash")
-                    .font(.title3).frame(width: 48, height: 48)
+                    .font(.system(size: 20, weight: .medium)).frame(width: 48, height: 48)
                     .background(TraidoresTheme.panel, in: RoundedRectangle(cornerRadius: 10))
             }
             .accessibilityLabel(preferences.musicEnabled ? "Silenciar música" : "Activar música")
             .accessibilityValue(preferences.musicEnabled ? "Activada" : "Silenciada")
+            .accessibilityShowsLargeContentViewer()
+            .accessibilityIdentifier("menu.music")
             Spacer()
-            Text("Bandido Games · iOS")
-                .font(.caption).foregroundStyle(TraidoresTheme.secondary)
+            NavigationLink(value: MenuRoute.feedback) {
+                Text("COMENTARIOS / ERRORES")
+                    .lineLimit(2).minimumScaleFactor(0.75).multilineTextAlignment(.trailing)
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+                .font(.caption.bold()).foregroundStyle(TraidoresTheme.gold)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("menu.feedback")
         }
     }
 

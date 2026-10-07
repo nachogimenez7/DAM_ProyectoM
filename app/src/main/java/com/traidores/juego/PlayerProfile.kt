@@ -39,7 +39,7 @@ object PlayerProfileStore {
     private const val PREF_FAVORITE_ROLE = "profile_favorite_role"
     private const val PREF_ACHIEVEMENTS = "profile_achievements"
     private const val DEFAULT_BIO = "No fui yo. Esta vez."
-    private const val DEFAULT_AVATAR_KEY = "aldeana"
+    private const val DEFAULT_AVATAR_KEY = "avatar_carpincho"
     private const val DEFAULT_BANNER_KEY = "pampa"
     private const val DEFAULT_ROLE_KEY = "detective"
     private const val ACHIEVEMENT_SEPARATOR = "|"
@@ -48,6 +48,7 @@ object PlayerProfileStore {
     fun loadHumanProfile(context: Context): PlayerProfile {
         AchievementTracker.ensureProfileOpened(context)
         val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val avatar = ProfileAvatarCatalog.getOrCreate(context)
         val fallbackName = preferences
             .getString(OpcionesActivity.PREF_PLAYER_NAME, "")
             .orEmpty()
@@ -70,9 +71,7 @@ object PlayerProfileStore {
                 ?: preferences.getString(PREF_NAME, fallbackName).orEmpty().ifBlank { fallbackName },
             publicId = PlayerPublicIdentity.currentPublicId(context),
             bio = preferences.getString(PREF_BIO, DEFAULT_BIO).orEmpty(),
-            avatarKey = preferences.getString(PREF_AVATAR, DEFAULT_AVATAR_KEY)
-                .orEmpty()
-                .ifBlank { DEFAULT_AVATAR_KEY },
+            avatarKey = avatar,
             bannerKey = ProfileCustomizationCatalog.normalizeBannerKey(
                 preferences.getString(PREF_BANNER, DEFAULT_BANNER_KEY)
                     .orEmpty()
@@ -163,7 +162,7 @@ object PlayerProfileStore {
             editor.putString(OpcionesActivity.PREF_PLAYER_NAME, it)
         }
         editor.putString(PREF_BIO, bio)
-        avatarKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_AVATAR, it) }
+        avatarKey.takeIf { it.isNotBlank() }?.let { editor.putString(PREF_AVATAR, ProfileAvatarCatalog.normalize(it)) }
         playGamesAvatarUri?.let {
             editor.putString(
                 ProfileActivity.PREF_PLAY_GAMES_AVATAR_URI,
@@ -230,14 +229,16 @@ object BotProfileFactory {
         "Si sobrevive dos dias, empieza a dar miedo.",
         "Nunca admite estar perdido, solo estar observando."
     )
-    private val avatarKeys = ProfileRoleCatalog.entries.map { it.key }
+    private val avatarKeys = ProfileAvatarCatalog.keys
     private val bannerKeys = ProfileCustomizationCatalog.banners.map { it.key }
     private val favoriteRoles = ProfileRoleCatalog.entries.map { it.key }
     private val achievementIds = ProfileCustomizationCatalog.achievements.map { it.id }
     private val emoteIds = EmoteCatalog.all.map { it.id }
 
     fun profileFor(name: String): PlayerProfile {
-        return roster[name] ?: generatedProfile(name)
+        val profile = roster[name] ?: generatedProfile(name)
+        val slot = LocalGameFactory.botSlots().firstOrNull { LocalGameFactory.defaultBotName(it) == name }
+        return profile.copy(avatarKey = slot?.let(ProfileAvatarCatalog::forBotSlot) ?: profile.avatarKey)
     }
 
     private fun generatedProfile(name: String): PlayerProfile {
