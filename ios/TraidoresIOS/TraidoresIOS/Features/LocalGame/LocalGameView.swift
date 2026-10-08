@@ -1909,6 +1909,11 @@ private struct LocalTableView: View {
     // Android's ESPECTADORES channel: eliminated players talk among themselves.
     @State private var spectatorChannel = false
     @State private var spectatorMessages: [TableMessage] = []
+    // Android's spectator choice: once the human is out and the match goes on, offer to keep
+    // watching (with shortened timers) or to go back to the lobby.
+    @State private var spectatorChoiceOffered = false
+    @State private var showingSpectatorChoice = false
+    @State private var spectatorFastForward = false
     // Android: by day a traitor can reopen the killers' night chat to review the plan.
     @State private var reviewingPlan = false
     @AppStorage("menu.profileEmotes") private var profileEmoteIDs =
@@ -2193,6 +2198,24 @@ private struct LocalTableView: View {
             .modifier(roleDialogs(game))
             .task(id: botEmoteKey(game)) { await runBotEmotes(for: game) }
             .onChange(of: game.human.alive) { _, alive in if !alive { spectatorChannel = true } }
+            .onChange(of: shouldOfferSpectatorChoice(game), initial: true) { _, offer in
+                guard offer else { return }
+                spectatorChoiceOffered = true
+                // Hold the clocks while the player reads, like Android's pauseCountdown().
+                nightCountdownTask?.cancel(); nightSkipTask?.cancel()
+                phaseCountdownTask?.cancel()
+                remainingNightSeconds = nil; remainingPhaseSeconds = nil
+                nightSkipReady = false
+                showingSpectatorChoice = true
+            }
+            .gameDialog(isPresented: $showingSpectatorChoice) {
+                GameDialogCard(title: "TE ELIMINARON",
+                               message: "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver a la sala.",
+                               negative: "VOLVER A LA SALA", positive: "SEGUIR MIRANDO",
+                               onNegative: { showingSpectatorChoice = false; dismissMatch() },
+                               onPositive: { continueWatching() },
+                               identifier: "table.spectatorChoice") { EmptyView() }
+            }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
             // Haptics follow Android's "Vibración al interactuar" (off by default): picking a
             // target, each new period, the last seconds of a timer and the end of the match.
@@ -2335,15 +2358,16 @@ private struct LocalTableView: View {
         nightSkipTask?.cancel()
         nightSkipReady = false
         let phaseIndex = game.phaseIndex
-        let duration = game.effectiveTiming.nightSeconds
+        let duration = spectatorFastForward ? min(game.effectiveTiming.nightSeconds, 5) : game.effectiveTiming.nightSeconds
         remainingNightSeconds = duration
+        let skipsAutomatically = game.testOptions.quickMatch || spectatorFastForward
         if game.legalTargets(for: 0).isEmpty {
             nightSkipTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(game.testOptions.quickMatch ? 1_200 : 3_500))
+                try? await Task.sleep(for: .milliseconds(skipsAutomatically ? 1_200 : 3_500))
                 guard !Task.isCancelled, let current = store.game,
                       current.phaseIndex == phaseIndex, current.isNight,
                       current.legalTargets(for: 0).isEmpty else { return }
-                if current.testOptions.quickMatch {
+                if skipsAutomatically {
                     transitionCurtain = true
                     store.skipPassiveNight(revision: phaseIndex)
                     clearCurtainIfPeriodUnchanged(from: current)
@@ -2368,7 +2392,7 @@ private struct LocalTableView: View {
 
     private func armNightPhaseIfReady(_ game: ClassicGame) {
         guard game.isNight, activeTransition == nil, pendingTransition == nil,
-              privateFeedback == nil,
+              privateFeedback == nil, !showingSpectatorChoice,
               lastTransitionKey == transitionSpec(for: game).key,
               remainingNightSeconds == nil else { return }
         startNightCountdown(for: game)
@@ -2377,17 +2401,18 @@ private struct LocalTableView: View {
     private func armTimedPhaseIfReady(_ game: ClassicGame) {
         guard isTalkPhase(game) || game.phase == .voting || game.phase == .tieVote || game.phase == .mayorTieBreak,
               activeTransition == nil, pendingTransition == nil,
-              privateFeedback == nil, dawnAnnouncements.isEmpty,
+              privateFeedback == nil, dawnAnnouncements.isEmpty, !showingSpectatorChoice,
               lastTransitionKey == transitionSpec(for: game).key,
               remainingPhaseSeconds == nil else { return }
         let phaseIndex = game.phaseIndex
         let phase = game.phase
         // The Contrapunto is a short duel inside the day: half the debate, at least 15 s.
-        let duration = phase == .discussion ? game.effectiveTiming.discussionSeconds
+        let fullDuration = phase == .discussion ? game.effectiveTiming.discussionSeconds
             : phase == .counterpoint ? max(15, game.effectiveTiming.discussionSeconds / 2)
             // The tie-break gets more time to argue between the tied players.
             : phase == .tieVote ? max(30, game.effectiveTiming.votingSeconds)
             : game.effectiveTiming.votingSeconds
+        let duration = spectatorFastForward ? min(fullDuration, 8) : fullDuration
         remainingPhaseSeconds = duration
         phaseCountdownTask?.cancel()
         phaseCountdownTask = Task { @MainActor in
@@ -3525,6 +3550,30 @@ private struct LocalTableView: View {
         case .jester(let id):
             JesterVictoryView(name: game.players[id].name, roleTitle: RoleKey.jester.classicTitle(on: game.map),
                               humanWon: id == 0, onContinue: dismissDawnAnnouncement, onLeave: dismissMatch)
+        }
+    }
+
+    /// Android's maybeOfferSpectatorChoice: only once, never over a reveal, a transition, the
+    /// vote ceremony or the result, and not for the Jester who already got his own choice.
+    private func shouldOfferSpectatorChoice(_ game: ClassicGame) -> Bool {
+        !spectatorChoiceOffered && !showingSpectatorChoice
+            && !game.human.alive && game.winner == nil
+            && game.phase != .assignment && game.phase != .dawn
+            && game.phase != .voteCount && game.phase != .result
+            && !game.specialVictories.contains(where: { $0.playerID == 0 })
+            && dawnAnnouncements.isEmpty && privateFeedback == nil
+            && activeTransition == nil && pendingTransition == nil && !transitionCurtain
+    }
+
+    /// Android's enterSpectatorFastForward: the phases run on short clocks from now on.
+    private func continueWatching() {
+        showingSpectatorChoice = false
+        spectatorFastForward = true
+        guard let current = store.game else { return }
+        if current.isNight {
+            armNightPhaseIfReady(current)
+        } else {
+            armTimedPhaseIfReady(current)
         }
     }
 

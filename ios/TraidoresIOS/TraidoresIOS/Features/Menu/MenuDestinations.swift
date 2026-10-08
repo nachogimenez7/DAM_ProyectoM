@@ -1034,22 +1034,30 @@ struct ProfilePortrait: View {
     }
 }
 
-/// Shared with the match: the animated «6 7» alternates its two frames.
+/// Shared with the match: the animated «6 7» swaps its two frames every 0.13 s with a pop and tilt on
+/// each swap, for as long as it is on screen. It is drawn from the clock (not from state changes or
+/// animations), so a table that disables animations cannot freeze it. With Reduce Motion it only
+/// swaps frames slowly, without the pop and tilt. UI tests keep it still.
 struct ProfileEmoteImage: View {
     let emote: ProfileEmoteContent
     @Environment(\.reduceAnimations) private var reduceMotion
-    @State private var frame = "a"
+
+    private static let stillForTests = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+
     var body: some View {
-        if emote.animated {
-            Image("\(emote.image)_\(frame)").resizable().scaledToFit()
-                .task(id: reduceMotion) {
-                    frame = "a"
-                    guard !reduceMotion else { return }
-                    for next in ["a", "b", "a", "b"] {
-                        frame = next
-                        do { try await Task.sleep(for: .milliseconds(110)) } catch { return }
-                    }
-                }.accessibilityHidden(true)
+        if emote.animated && !Self.stillForTests {
+            TimelineView(.periodic(from: .now, by: reduceMotion ? 0.5 : 0.065)) { context in
+                let tick = Int(context.date.timeIntervalSinceReferenceDate / (reduceMotion ? 0.5 : 0.065))
+                let swap = reduceMotion ? tick : tick / 2
+                let odd = swap % 2 == 1
+                let popped = !reduceMotion && tick % 2 == 0
+                Image("\(emote.image)_\(odd ? "b" : "a")").resizable().scaledToFit()
+                    .scaleEffect(popped ? 1.18 : 1)
+                    .rotationEffect(.degrees(reduceMotion ? 0 : (odd ? -8 : 8)))
+            }
+            .accessibilityHidden(true)
+        } else if emote.animated {
+            Image("\(emote.image)_a").resizable().scaledToFit().accessibilityHidden(true)
         } else {
             Image(emote.image).resizable().scaledToFit().accessibilityHidden(true)
         }
