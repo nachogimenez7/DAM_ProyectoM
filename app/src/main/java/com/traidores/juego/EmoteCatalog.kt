@@ -1,8 +1,11 @@
 package com.traidores.juego
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.AnimationDrawable
+import android.view.View
+import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 
 enum class EmoteCategory(
@@ -316,8 +319,64 @@ object EmoteCatalog {
 
 fun ImageView.setEmoteImageResource(imageRes: Int, loop: Boolean = false) {
     setImageResource(imageRes)
-    (drawable as? AnimationDrawable)?.isOneShot = !loop
+    stopEmotePop()
+    val animation = drawable as? AnimationDrawable
+    if (animation != null) {
+        // Animated emotes (6 7) keep moving while they are on screen, with a small pop and
+        // tilt on every frame swap; with "reducir efectos" they stay on their first frame.
+        if (VisualEffectsPreferences.isReduced(context)) {
+            animation.isOneShot = true
+            return
+        }
+        animation.isOneShot = false
+        animation.start()
+        startEmotePop()
+        return
+    }
     (drawable as? Animatable)?.start()
+}
+
+private const val EMOTE_POP_PERIOD_MS = 260L
+
+private fun ImageView.startEmotePop() {
+    val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = EMOTE_POP_PERIOD_MS
+        repeatCount = ValueAnimator.INFINITE
+        interpolator = LinearInterpolator()
+        addUpdateListener { running ->
+            val phase = running.animatedFraction
+            val odd = phase >= 0.5f
+            val local = if (odd) (phase - 0.5f) * 2f else phase * 2f
+            val pop = if (local < 0.5f) local * 2f else (1f - local) * 2f
+            val scale = 1f + 0.18f * pop
+            scaleX = scale
+            scaleY = scale
+            rotation = (if (odd) -8f else 8f) * pop
+        }
+    }
+    setTag(R.id.emote_pop_animator, animator)
+    addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(view: View) {
+            if (!animator.isStarted) animator.start()
+        }
+
+        override fun onViewDetachedFromWindow(view: View) {
+            animator.cancel()
+            view.removeOnAttachStateChangeListener(this)
+            view.scaleX = 1f
+            view.scaleY = 1f
+            view.rotation = 0f
+        }
+    })
+    if (isAttachedToWindow) animator.start()
+}
+
+private fun ImageView.stopEmotePop() {
+    (getTag(R.id.emote_pop_animator) as? ValueAnimator)?.cancel()
+    setTag(R.id.emote_pop_animator, null)
+    scaleX = 1f
+    scaleY = 1f
+    rotation = 0f
 }
 
 object EmoteLoadout {
