@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catálogo visual</title>
+<style>
+  :root { --bg:#0b0709; --card:#1b0e13; --card2:#24121a; --gold:#e6bf73; --red:#a33a43; --text:#fff0cc; --muted:#b9a58a; --ok:#7fc58a; --todo:#e8a14b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px 16px 56px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif; }
+  .wrap { max-width:1040px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.note { color:var(--muted); font-size:13px; margin:0 0 20px; max-width:720px; }
+  .prices { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:28px; }
+  .prices div { background:var(--card2); border-radius:12px; padding:12px; font-size:13px; }
+  .prices b { display:block; font-size:20px; color:var(--gold); margin-top:2px; }
+  section.pack { background:var(--card); border:1px solid #3a2228; border-radius:18px; padding:18px; margin-bottom:26px; }
+  section.pack.main { border-color:var(--gold); background:linear-gradient(170deg,#2c1119,#150a0e); }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .head h2 { margin:0; font-size:19px; }
+  .head small { color:var(--muted); font-size:13px; display:block; margin-top:2px; }
+  .buy { background:var(--gold); color:#2a0e14; font-weight:800; border-radius:12px; padding:10px 18px; font-size:17px; white-space:nowrap; }
+  h3 { font-size:11px; letter-spacing:.14em; text-transform:uppercase; margin:16px 0 8px; color:var(--gold); }
+  h3.out { color:var(--muted); }
+  .grid { display:flex; flex-wrap:wrap; gap:10px; }
+  .it { width:104px; text-align:center; font-size:12px; }
+  .it .box { width:104px; height:104px; border-radius:12px; background:#140a0e center/cover; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; border:1px solid #3a2228; }
+  .it .box img { width:92px; height:92px; object-fit:contain; }
+  .it.wide { width:218px; } .it.wide .box { width:218px; height:73px; }
+  .it .lbl { margin-top:5px; line-height:1.25; }
+  .it .lbl small { display:block; color:var(--muted); font-size:11px; }
+  .out .box, .it.out .box { opacity:.75; filter:grayscale(.5); }
+  .it.out .lbl { color:var(--muted); }
+  .flag { position:absolute; left:4px; top:4px; font-size:10px; font-weight:700; border-radius:6px; padding:1px 5px; background:var(--todo); color:#2a1604; }
+  .flag.ok { background:var(--ok); color:#0e2a14; }
+  .ph { border:2px dashed var(--todo); background:linear-gradient(135deg,#8c2634,#2a0e14,#e6bf7366); }
+  .avatar { position:relative; width:104px; height:104px; }
+  .avatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .avatar .photo { inset:15px; width:74px; height:74px; border-radius:50%; object-fit:cover; }
+  .noads { width:104px; height:104px; border-radius:12px; border:1px solid var(--gold); background:#2c1119; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; color:var(--gold); font-size:13px; gap:2px; }
+  .noads span { font-size:30px; }
+  .free { background:var(--card2); border-radius:14px; padding:14px; margin-bottom:26px; }
+  .legend { font-size:12px; color:var(--muted); margin-bottom:20px; }
+  .legend .flag { position:static; display:inline-block; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  td, th { text-align:left; padding:7px 8px; border-bottom:1px solid #2e1a21; }
+  th { color:var(--gold); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+
+  .view { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+  .pf { --c1:#62e9ff; --surf:rgba(27,35,67,.92); width:230px; border:2px solid var(--c1); border-radius:16px; overflow:hidden; background-size:cover; background-position:center; position:relative; text-align:center; padding-bottom:12px; }
+  .pf::before { content:""; position:absolute; inset:0; background:rgba(0,0,0,.30); }
+  .pf > * { position:relative; }
+  .pf .bn { height:72px; background-size:cover; background-position:center; border-bottom:2px solid var(--c1); }
+  .pf .av { position:relative; width:92px; height:92px; margin:-40px auto 4px; }
+  .pf .av img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .pf .av .photo { inset:11px; width:70px; height:70px; border-radius:50%; object-fit:cover; border:2px solid var(--c1); }
+  .pf .av .ring { inset:0; }
+  .pf .nm { font-weight:700; font-size:15px; } .pf .nm img { width:20px; vertical-align:-4px; margin-left:4px; }
+  .pf .sub { font-size:11px; color:#ddd; margin:2px 0 6px; }
+  .pf .panel { background:var(--surf); border:1px solid var(--c1); border-radius:10px; margin:0 10px; padding:6px; display:flex; gap:4px; justify-content:center; }
+  .pf .panel img { width:40px; height:40px; object-fit:contain; }
+  .pf .cap { position:absolute; right:6px; top:6px; z-index:2; font-size:10px; background:#000a; padding:1px 6px; border-radius:6px; }
+  .cap2 { font-size:11px; color:var(--muted); text-align:center; margin-top:4px; width:230px; }
+  .chat { width:250px; background:var(--surf,rgba(27,35,67,.92)); border:1px solid var(--c1,#62e9ff); border-radius:12px; padding:8px 10px; display:flex; gap:10px; align-items:center; font-size:12px; margin-bottom:8px; }
+  .chat img { width:62px; height:62px; object-fit:contain; flex:none; }
+  .chat b { display:block; font-size:11px; color:var(--c1,#62e9ff); }
+  .sizes { display:flex; gap:14px; align-items:flex-end; background:#140a0e; border:1px solid #3a2228; border-radius:12px; padding:10px 14px; }
+  .sizes .av2 { position:relative; } .sizes .av2 img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .sizes .av2 .photo { border-radius:50%; object-fit:cover; }
+  .sizes small { display:block; text-align:center; font-size:10px; color:var(--muted); margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Catálogo inicial: qué trae cada producto</h1>
+<p class="note">Borrador para decidir. Todos los jugadores arrancan de cero. Compras permanentes y solo cosméticas; el precio real lo informa la tienda (Play/Apple).
+El pack incluye quitar publicidad por decisión del usuario del 8/10/2026.</p>
+
+<div class="prices">
+  <div>Sello del Pueblo<b>USD 4,99</b></div>
+  <div>Memes Pampeanos<b>USD 1,99</b></div>
+  <div>Estilo Espacial<b>USD 1,49</b></div>
+  <div>Estilo Abismo Real<b>USD 1,49</b></div>
+  <div>Estilo Forja Infernal<b>USD 1,49</b></div>
+  <div>Los 3 estilos (opcional)<b>USD 2,99</b></div>
+</div>
+<div class="legend"><span class="flag ok">listo</span> arte terminado · <span class="flag">a hacer</span> falta crear o rehacer</div>
+
+<!-- GRATIS -->
+<div class="free">
+  <h3 style="margin-top:0">Gratis para todos al empezar</h3>
+<h3 style="margin-top:0">Cómo se ve</h3><div class="view"><div><div class="pf" style="background-image:url('../../app/src/main/res/drawable/fondo_menu.webp');--c1:#62e9ff;--surf:rgba(27,35,67,.92)"><span class="cap">Gratis</span>
+<div class="bn" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_pampa.webp')"></div>
+<div class="av"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_puma.png" alt=""></div>
+<div class="nm">Tu nombre</div><div class="sub">Rol favorito · Alcalde</div>
+<div class="panel"><img src="../../app/src/main/res/drawable-nodpi/reaction_angry.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_sad.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_happy.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_suspicious.webp" alt=""></div></div><div class="cap2">Estilo Clásico, banner Pampa, emotes de rol, sin marco ni insignia</div></div></div>
+  <h3>Piezas</h3>
+  <div class="grid">
+    <div class="it"><div class="box" style="background-image:url('../../app/src/main/res/drawable/fondo_menu.webp')"></div><div class="lbl">Estilo Clásico</div></div>
+    <div class="it"><div class="box"><img src="../../app/src/main/res/drawable-nodpi/reaction_angry.webp" alt=""></div><div class="lbl">12 emotes de rol<small>griego · asesino · gaucho</small></div></div>
+    <div class="it wide"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_pampa.webp')"></div><div class="lbl">3 banners de paisaje<small>Pampa · Grecia · Medieval</small></div></div>
+    <div class="it"><div class="box"><img src="../../app/src/main/res/drawable-nodpi/avatar_puma.png" alt=""></div><div class="lbl">15 avatares animales</div></div>
+  </div>
+</div>
+
+<!-- PACK -->
+<section class="pack main">
+  <div class="head">
+    <div><h2>Pack «Sello del Pueblo»</h2><small>12 beneficios: 11 piezas cosméticas + sin publicidad · compra única</small></div>
+    <div class="buy">USD 4,99</div>
+  </div>
+  <h3>Incluye</h3>
+  <div class="grid">
+    <div class="it"><div class="box ph"><span class="flag">a hacer</span></div><div class="lbl">Estilo Sello Carmesí<small>falta el fondo</small></div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><div class="avatar"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_border_collie.png" alt=""><img src="../../assets/pack_bienvenida/concepto_estilo/marco_perfil.png" alt=""></div></div><div class="lbl">Marco<small>bronce y carmesí</small></div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../assets/pack_bienvenida/concepto_estilo/insignia_apoyo.png" alt=""></div><div class="lbl">Insignia «T»<small>sello de cera</small></div></div>
+    <div class="it"><div class="box"><div class="noads"><span>🚫</span>SIN<br>PUBLICIDAD</div></div><div class="lbl">Sin publicidad<small>según qué anuncios existan</small></div></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div class="it wide"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_asesino_medieval.webp')"><span class="flag ok">listo</span></div><div class="lbl">Banner Asesino medieval</div></div>
+    <div class="it wide"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_medico_pampeano.webp')"><span class="flag ok">listo</span></div><div class="lbl">Banner Médica pampeana</div></div>
+    <div class="it wide"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_oraculo_griego.webp')"><span class="flag ok">listo</span></div><div class="lbl">Banner Oráculo griego</div></div>
+  </div>
+  <div class="grid" style="margin-top:12px">
+    <div class="it"><div class="box"><span class="flag">mejorado</span><img src="../../ios/TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/reaction_premium_genio.imageset/reaction_premium_genio.png" alt=""></div><div class="lbl">Genio<small>texto más chico (iOS)</small></div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_medico_timido.webp" alt=""></div><div class="lbl">Médico tímido</div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_desertor_lengua.webp" alt=""></div><div class="lbl">Cualquiera</div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_oraculo_mmm_nie.webp" alt=""></div><div class="lbl">Mmmm… ñe</div></div>
+    <div class="it"><div class="box"><span class="flag">mejorar</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_six_seven_a.png" alt=""></div><div class="lbl">6 7<small>animación y sonido</small></div></div>
+  </div>
+  <h3>Cómo se ve</h3><div class="view"><div><div class="pf" style="background:linear-gradient(160deg,#3a141c,#12080b);--c1:#e6bf73;--surf:rgba(55,19,26,.94)"><span class="cap">Con el pack</span>
+<div class="bn" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_asesino_medieval.webp')"></div>
+<div class="av"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_border_collie.png" alt=""><img class="ring" src="../../assets/pack_bienvenida/concepto_estilo/marco_perfil.png" alt=""></div>
+<div class="nm">Tu nombre<img src="../../assets/pack_bienvenida/concepto_estilo/insignia_apoyo.png" alt=""></div><div class="sub">Rol favorito · Alcalde</div>
+<div class="panel"><img src="../../ios/TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/reaction_premium_genio.imageset/reaction_premium_genio.png" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_medico_timido.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_desertor_lengua.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_oraculo_mmm_nie.webp" alt=""></div></div><div class="cap2">Estilo Sello Carmesí (fondo provisorio), marco, insignia, banner y emotes legendarios</div></div><div><div class="sizes">
+<div><div class="av2" style="width:96px;height:96px"><img class="photo" style="inset:11px;width:74px;height:74px" src="../../app/src/main/res/drawable-nodpi/avatar_zorro.png" alt=""><img src="../../assets/pack_bienvenida/concepto_estilo/marco_perfil.png" alt=""></div><small>Perfil 96</small></div>
+<div><div class="av2" style="width:56px;height:56px"><img class="photo" style="inset:6px;width:44px;height:44px" src="../../app/src/main/res/drawable-nodpi/avatar_zorro.png" alt=""><img src="../../assets/pack_bienvenida/concepto_estilo/marco_perfil.png" alt=""></div><small>Tarjeta 56</small></div>
+<div><div class="av2" style="width:36px;height:36px"><img class="photo" style="inset:4px;width:28px;height:28px" src="../../app/src/main/res/drawable-nodpi/avatar_zorro.png" alt=""><img src="../../assets/pack_bienvenida/concepto_estilo/marco_perfil.png" alt=""></div><small>Mesa 36</small></div>
+<div style="width:1px;background:#3a2228;align-self:stretch"></div>
+<div><img src="../../assets/pack_bienvenida/concepto_estilo/insignia_apoyo.png" width="40" alt=""><small>40</small></div>
+<div><img src="../../assets/pack_bienvenida/concepto_estilo/insignia_apoyo.png" width="24" alt=""><small>24</small></div>
+<div><img src="../../assets/pack_bienvenida/concepto_estilo/insignia_apoyo.png" width="16" alt=""><small>16</small></div>
+</div><div class="cap2" style="width:auto">Marco e insignia a tamaño real de perfil, tarjeta y mesa: a tamaño chico se pierde el detalle (por eso hacen falta versiones pequeñas)</div></div><div><div class="chat" style="--c1:#e6bf73;--surf:rgba(55,19,26,.94)"><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_six_seven_a.png" alt=""><div><b>Tu nombre</b>6 7 (animado, con sonido)</div></div>
+<div class="chat" style="--c1:#e6bf73;--surf:rgba(55,19,26,.94)"><img src="../../ios/TraidoresIOS/TraidoresIOS/Resources/Assets.xcassets/reaction_premium_genio.imageset/reaction_premium_genio.png" alt=""><div><b>Tu nombre</b>Genio (texto más chico; probar en iOS)</div></div>
+<div class="cap2" style="width:250px">Así llegan los emotes al chat de la mesa</div></div></div>
+  <h3 class="out">Queda afuera del pack</h3>
+  <div class="grid out">
+    <div class="it out"><div class="box"><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_mate.webp" alt=""></div><div class="lbl">Memes Pampeanos<small>1,99 aparte</small></div></div>
+    <div class="it out"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_space.webp')"></div><div class="lbl">Espacial<small>1,49 aparte</small></div></div>
+    <div class="it out"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_sea.webp')"></div><div class="lbl">Abismo Real<small>1,49 aparte</small></div></div>
+    <div class="it out"><div class="box" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_fire.webp')"></div><div class="lbl">Forja Infernal<small>1,49 aparte</small></div></div>
+  </div>
+</section>
+
+<!-- MEMES -->
+<section class="pack">
+  <div class="head">
+    <div><h2>Memes Pampeanos</h2><small>3 emotes · compra única</small></div>
+    <div class="buy">USD 1,99</div>
+  </div>
+  <h3>Incluye</h3>
+  <div class="grid">
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_hermosa_manana.webp" alt=""></div><div class="lbl">Hermosa mañana, ¿verdad?</div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_mate.webp" alt=""></div><div class="lbl">Ruidito de mate</div></div>
+    <div class="it"><div class="box"><span class="flag ok">listo</span><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_dormida.webp" alt=""></div><div class="lbl">Me duermo zzz</div></div>
+  </div>
+  <h3>Cómo se ve</h3><div class="view"><div>
+<div class="chat"><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_hermosa_manana.webp" alt=""><div><b>Tu nombre</b>Hermosa mañana, ¿verdad?</div></div>
+<div class="chat"><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_mate.webp" alt=""><div><b>Tu nombre</b>Ruidito de mate</div></div>
+<div class="chat"><img src="../../app/src/main/res/drawable-nodpi/reaction_premium_dormida.webp" alt=""><div><b>Tu nombre</b>Me duermo zzz</div></div></div></div>
+  <h3 class="out">Queda afuera</h3>
+  <p style="color:var(--muted);font-size:13px;margin:0">Los 5 emotes legendarios, marco, insignia, banners y sin publicidad: solo en el pack.</p>
+</section>
+
+<!-- ESTILOS -->
+<section class="pack">
+  <div class="head">
+    <div><h2>Estilos de perfil</h2><small>Cada uno cambia fondo y colores del perfil y menús · compra única</small></div>
+    <div class="buy">1,49 c/u · los 3: 2,99</div>
+  </div>
+  <h3>Cada estilo, por separado</h3>
+  <div class="grid">
+    <div class="it wide"><div class="box" style="height:110px;background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_space.webp')"><span class="flag ok">listo</span></div><div class="lbl">Espacial<small>USD 1,49</small></div></div>
+    <div class="it wide"><div class="box" style="height:110px;background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_sea.webp')"><span class="flag ok">listo</span></div><div class="lbl">Abismo Real<small>USD 1,49</small></div></div>
+    <div class="it wide"><div class="box" style="height:110px;background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_fire.webp')"><span class="flag ok">listo</span></div><div class="lbl">Forja Infernal<small>USD 1,49</small></div></div>
+  </div>
+  <h3>Cómo se ve</h3><div class="view"><div><div class="pf" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_space.webp');--c1:#62e9ff;--surf:rgba(27,35,67,.92)"><span class="cap">Espacial</span>
+<div class="bn" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_grecia.webp')"></div>
+<div class="av"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_lobo.png" alt=""></div>
+<div class="nm">Tu nombre</div><div class="sub">Rol favorito · Alcalde</div>
+<div class="panel"><img src="../../app/src/main/res/drawable-nodpi/reaction_angry.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_sad.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_happy.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_suspicious.webp" alt=""></div></div><div class="cap2">Cian y violeta</div></div><div><div class="pf" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_sea.webp');--c1:#3de6e0;--surf:rgba(11,52,64,.93)"><span class="cap">Abismo Real</span>
+<div class="bn" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_grecia.webp')"></div>
+<div class="av"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_lobo.png" alt=""></div>
+<div class="nm">Tu nombre</div><div class="sub">Rol favorito · Alcalde</div>
+<div class="panel"><img src="../../app/src/main/res/drawable-nodpi/reaction_angry.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_sad.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_happy.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_suspicious.webp" alt=""></div></div><div class="cap2">Turquesa y dorado</div></div><div><div class="pf" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_background_fire.webp');--c1:#ff6a32;--surf:rgba(53,17,13,.94)"><span class="cap">Forja Infernal</span>
+<div class="bn" style="background-image:url('../../app/src/main/res/drawable-nodpi/profile_banner_grecia.webp')"></div>
+<div class="av"><img class="photo" src="../../app/src/main/res/drawable-nodpi/avatar_lobo.png" alt=""></div>
+<div class="nm">Tu nombre</div><div class="sub">Rol favorito · Alcalde</div>
+<div class="panel"><img src="../../app/src/main/res/drawable-nodpi/reaction_angry.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_sad.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_happy.webp" alt=""><img src="../../app/src/main/res/drawable-nodpi/reaction_suspicious.webp" alt=""></div></div><div class="cap2">Naranja y dorado</div></div></div>
+  <h3 class="out">Queda afuera</h3>
+  <p style="color:var(--muted);font-size:13px;margin:0">El estilo Sello Carmesí (solo en el pack). El estilo Clásico es gratis.</p>
+</section>
+
+<section class="pack">
+  <h2 style="margin:0 0 6px;font-size:17px">Quién puede conseguir qué</h2>
+  <table>
+    <tr><th>Cosmético</th><th>Gratis</th><th>Pack 4,99</th><th>Suelto</th></tr>
+    <tr><td>Estilo Clásico</td><td>Sí</td><td>—</td><td>—</td></tr>
+    <tr><td>Estilo Sello Carmesí</td><td>—</td><td>Sí</td><td>No</td></tr>
+    <tr><td>Estilos Espacial / Abismo / Forja</td><td>—</td><td>—</td><td>1,49 c/u o 2,99 los tres</td></tr>
+    <tr><td>Marco e insignia</td><td>—</td><td>Sí</td><td>No</td></tr>
+    <tr><td>3 banners de escena</td><td>—</td><td>Sí</td><td>No</td></tr>
+    <tr><td>3 banners de paisaje</td><td>Sí</td><td>—</td><td>—</td></tr>
+    <tr><td>12 emotes de rol</td><td>Sí</td><td>—</td><td>—</td></tr>
+    <tr><td>5 emotes legendarios</td><td>—</td><td>Sí</td><td>No</td></tr>
+    <tr><td>3 emotes memes</td><td>—</td><td>—</td><td>1,99 (Memes Pampeanos)</td></tr>
+    <tr><td>Sin publicidad</td><td>—</td><td>Sí</td><td>No</td></tr>
+    <tr><td>15 avatares animales</td><td>Sí</td><td>—</td><td>—</td></tr>
+  </table>
+</section>
+</div>
+</body>
+</html>
