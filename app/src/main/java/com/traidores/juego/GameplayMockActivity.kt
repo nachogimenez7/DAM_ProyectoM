@@ -8564,7 +8564,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 }
             }
         }
-        PlayerProfileDialog.showMini(this, profile, actions)
+        // Una sola tarjeta con todo el perfil, como en iOS (antes: mini + "PERFIL COMPLETO").
+        PlayerProfileDialog.showFull(this, profile, canEdit = false, actions = actions)
     }
 
     private fun showEliminatedPlayerCard(player: GamePlayer) {
