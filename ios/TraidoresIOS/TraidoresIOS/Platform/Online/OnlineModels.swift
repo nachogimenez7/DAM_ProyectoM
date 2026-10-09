@@ -28,6 +28,12 @@ enum OnlineAccessState: Equatable, Sendable {
     case failed(OnlineError)
 }
 
+/// Account statistics shown in a profile. The backend maintains them; clients only read and echo them.
+struct ProfileStats: Equatable, Sendable {
+    let matches: Int
+    let wins: Int
+}
+
 struct PublicProfile: Equatable, Sendable {
     let uid: String
     let publicId: String?
@@ -42,6 +48,7 @@ struct PublicProfile: Equatable, Sendable {
 
     var emotesPerfil: [String] = []
     var temaCosmeticoPerfil = "classic"
+    var estadisticas: ProfileStats? = nil
 
     var avatarURL: URL? { fotoPerfil ?? fotoPlayGames }
 
@@ -122,6 +129,13 @@ struct RoomPlayer: Identifiable, Equatable, Sendable {
     var fotoPlayGames: URL? = nil
     // Missing on legacy Android documents; new iOS clients explicitly publish false.
     var canArbitrate = true
+    // Public profile as published in the member document (the same fields Android reads).
+    var bioPerfil = ""
+    var bannerPerfil: String? = nil
+    var rolFavoritoPerfil: String? = nil
+    var temaCosmeticoPerfil = "classic"
+    var emotesPerfil: [String] = []
+    var estadisticas: ProfileStats? = nil
 
     var avatarURL: URL? { fotoPerfil ?? fotoPlayGames }
 }

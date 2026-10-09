@@ -23,6 +23,16 @@ struct PlayerProfileSnapshot: Identifiable, Equatable {
     var matches: Int?
     var wins: Int?
     var styleRaw = "classic"
+    /// Only meaningful for other online players (see `ProfileModerationActions`).
+    var isMuted = false
+}
+
+/// Actions on another online player, shown at the bottom of their profile window.
+struct ProfileModerationActions {
+    /// The caller updates the store and the snapshot (`isMuted`); the window stays open.
+    let toggleMute: () -> Void
+    /// The caller closes the window and opens its report dialog.
+    let report: () -> Void
 }
 
 extension PlayerProfileSnapshot {
@@ -132,6 +142,7 @@ enum BotProfileCatalog {
 /// figures. Sections without data are left out instead of showing placeholders.
 struct PlayerProfileCard: View {
     let profile: PlayerProfileSnapshot
+    var moderation: ProfileModerationActions? = nil
     let onClose: () -> Void
     @Environment(\.reduceAnimations) private var reduceMotion
     @State private var shown = false
@@ -185,6 +196,7 @@ struct PlayerProfileCard: View {
             if !achievements.isEmpty { achievementsRow }
             if !emotes.isEmpty { emotesRow }
             statsRow
+            if let moderation { moderationRow(moderation) }
             Button("CERRAR", action: onClose)
                 .buttonStyle(GameDialogButtonStyle(strong: true))
                 .accessibilityIdentifier("table.playerProfile.close")
@@ -192,7 +204,10 @@ struct PlayerProfileCard: View {
         }
         .padding(EdgeInsets(top: 12, leading: 14, bottom: 14, trailing: 14))
         .frame(maxWidth: 400)
+        // The style's surface is translucent in some styles and the screen below showed through,
+        // so an opaque base goes behind it (the later `.background` sits behind the earlier one).
         .background(style.surface, in: RoundedRectangle(cornerRadius: 18))
+        .background(TraidoresTheme.ink, in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(accent, lineWidth: 1.5))
     }
 
@@ -317,6 +332,33 @@ struct PlayerProfileCard: View {
                 .accessibilityLabel("\(matches) partidas, \(wins) victorias")
             } else {
                 Text("Sin datos todavía").font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+            }
+        }
+    }
+
+    private func moderationRow(_ actions: ProfileModerationActions) -> some View {
+        section("ACCIONES SOBRE ESTE JUGADOR") {
+            VStack(spacing: 8) {
+                Button(action: actions.toggleMute) {
+                    Text(profile.isMuted ? "VOLVER A ESCUCHAR" : "SILENCIAR PARA MÍ")
+                }
+                .buttonStyle(GameDialogButtonStyle(strong: false))
+                .accessibilityIdentifier("table.playerProfile.mute")
+                Text(profile.isMuted ? "No ves su chat. Solo lo ves vos."
+                                     : "Deja de mostrarte su chat. Solo lo ves vos.")
+                    .font(.caption2).foregroundStyle(TraidoresTheme.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center).multilineTextAlignment(.center)
+                Button(action: actions.report) {
+                    Text("REPORTAR")
+                        .font(.subheadline.bold()).tracking(0.6)
+                        .foregroundStyle(Color(hex: "#FFB4AB"))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color(hex: "#351616"), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "#8F2633")))
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("table.playerProfile.report")
             }
         }
     }
