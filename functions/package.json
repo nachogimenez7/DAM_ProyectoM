@@ -7,16 +7,17 @@
   },
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "node --test test/onlineStartCore.unit.test.js test/onlineStartCallable.unit.test.js test/onlineRoomCleanup.unit.test.js test/accountHistory.unit.test.js test/onlineGameCore.unit.test.js test/onlineGameDelivery.unit.test.js test/onlineGameFunctions.unit.test.js test/onlineGameRecovery.unit.test.js",
+    "test:unit": "node --test test/onlineStartCore.unit.test.js test/onlineStartCallable.unit.test.js test/onlineRoomCleanup.unit.test.js test/accountHistory.unit.test.js test/onlineGameCore.unit.test.js test/onlineGameDelivery.unit.test.js test/onlineGameFunctions.unit.test.js test/onlineGameRecovery.unit.test.js test/purchaseService.unit.test.js",
     "test:integration": "node --test test/onlineStartService.integration.test.js test/onlineRoomCleanup.integration.test.js",
     "simulate:start": "node scripts/simulateOnlineStart.js --runs 5",
-    "check": "node --check src/onlineStartCore.js && node --check src/onlineStartService.js && node --check src/index.js && node --check scripts/simulateOnlineStart.js && node --check src/onlineRoomCleanupPolicy.js && node --check src/onlineRoomCleanupService.js && node --check src/accountHistoryService.js && node --check src/onlineGameCore.js && node --check src/onlineGameService.js && node --check src/onlineGameDelivery.js && node --check src/onlineGameFunctions.js && node --check src/onlineRequestLimiter.js && node --check src/onlineGameRecovery.js",
+    "check": "node --check src/onlineStartCore.js && node --check src/onlineStartService.js && node --check src/index.js && node --check scripts/simulateOnlineStart.js && node --check src/onlineRoomCleanupPolicy.js && node --check src/onlineRoomCleanupService.js && node --check src/accountHistoryService.js && node --check src/onlineGameCore.js && node --check src/onlineGameService.js && node --check src/onlineGameDelivery.js && node --check src/onlineGameFunctions.js && node --check src/onlineRequestLimiter.js && node --check src/onlineGameRecovery.js && node --check src/purchaseService.js",
     "test:history": "node --test test/accountHistory.unit.test.js test/accountHistory.integration.test.js",
     "test:server": "node --test --test-concurrency=1 test/onlineGameService.integration.test.js test/onlineGameRecovery.integration.test.js"
   },
   "dependencies": {
     "firebase-admin": "13.10.0",
-    "firebase-functions": "7.3.2"
+    "firebase-functions": "7.3.2",
+    "google-auth-library": "10.9.1"
   },
   "overrides": {
     "uuid": "11.1.1"

@@ -32,8 +32,16 @@ class WinnerResultsRenderer(
     private val eliminatedPlayers: TextView,
     private val timeline: TextView,
     private val roleImageFor: (GameRole?) -> Int,
+    private val cosmeticThemeFor: (String) -> String = { CosmeticPilot.THEME_CLASSIC },
     private val sessionProvider: () -> GameSession
 ) {
+    /** Festejos of the cards from the last [render]; the activity plays them once the ceremony is on screen. */
+    internal var festejos: List<FestejoTarget> = emptyList()
+        private set
+    private var festejoCards = mutableListOf<FestejoTarget>()
+    private var festejosEnabled = true
+    private var festejoCardIndex = 0
+
     fun render(
         players: List<GamePlayer>,
         summary: GameSummaryPresentation,
@@ -47,8 +55,21 @@ class WinnerResultsRenderer(
         val winnerNames = (players + specialWinners).map { it.name }.toSet()
         val allWinners = sessionProvider().players.filter { it.name in winnerNames }
         cards.removeAllViews()
-        val cardViews = renderCards(allWinners, factionAccent, "EQUIPO GANADOR")
-        val losingCardViews = renderCards(losingPlayers, Color.parseColor("#A89A82"), "EQUIPO PERDEDOR", compact = true)
+        festejoCards = mutableListOf()
+        festejoCardIndex = 0
+        festejosEnabled = winnerKey != GameRules.CANCELLED_WINNER
+        val cardViews = renderCards(allWinners, factionAccent, "EQUIPO GANADOR", won = true)
+        val losingCardViews = renderCards(losingPlayers, Color.parseColor("#A89A82"), "EQUIPO PERDEDOR", compact = true, won = false)
+        festejos = festejoCards
+        if (festejos.isNotEmpty()) {
+            // Stickers stick out over the card corner and cards jump: nothing in between may clip them.
+            fun unclip(v: View) {
+                (v as? android.view.ViewGroup)?.let { g -> g.clipChildren = false; g.clipToPadding = false; for (i in 0 until g.childCount) unclip(g.getChildAt(i)) }
+            }
+            unclip(cards)
+            var up = cards.parent
+            repeat(2) { (up as? android.view.ViewGroup)?.let { it.clipChildren = false; it.clipToPadding = false }; up = up?.parent }
+        }
         rounds.text = statText(summary.roundsPlayed.toString(), "RONDAS")
         duration.text = statText(summary.durationLabel, "TIEMPO")
         eliminatedCount.text = statText(summary.eliminated.toString(), "ELIM.")
@@ -111,7 +132,7 @@ class WinnerResultsRenderer(
         }
     }
 
-    private fun renderCards(players: List<GamePlayer>, borderColor: Int, title: String, compact: Boolean = false): List<View> {
+    private fun renderCards(players: List<GamePlayer>, borderColor: Int, title: String, compact: Boolean = false, won: Boolean = true): List<View> {
         if (players.isEmpty()) return emptyList()
 
         val cardViews = mutableListOf<View>()
@@ -148,7 +169,7 @@ class WinnerResultsRenderer(
                 }
             )
             rowPlayers.forEach { player ->
-                createCard(player, if (compact) maxOf(players.size, 5) else players.size, borderColor).also {
+                createCard(player, if (compact) maxOf(players.size, 5) else players.size, borderColor, won = won).also {
                     cardViews += it
                     row.addView(it)
                 }
@@ -212,7 +233,8 @@ class WinnerResultsRenderer(
         player: GamePlayer,
         winnerCount: Int,
         borderColor: Int,
-        forceFullColor: Boolean = false
+        forceFullColor: Boolean = false,
+        won: Boolean = true
     ): View {
         val metrics = when {
             winnerCount == 1 -> intArrayOf(176, 112, 150, 18, 13, 24, 19)
@@ -256,6 +278,7 @@ class WinnerResultsRenderer(
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
+        addFestejo(player, cardFrame, metrics[1], won)
         container.addView(cardFrame, LinearLayout.LayoutParams(dp(metrics[1]), dp(metrics[2])))
 
         val playerName = resultLabel(
@@ -279,6 +302,32 @@ class WinnerResultsRenderer(
             bind(sessionProvider(), player, player.name.take(1), 12f)
         }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { topMargin = dp(4) })
         return container
+    }
+
+    /** Puts the sticker of the player's equipped style on the card (nothing for Clásico). */
+    private fun addFestejo(player: GamePlayer, cardFrame: FrameLayout, cardWidthDp: Int, wonRaw: Boolean) {
+        if (!festejosEnabled) return
+        val won = wonRaw && !VictoryFestejo.forcedLose(context)
+        val style = VictoryFestejo.styleFor(context, cosmeticThemeFor(player.name), festejoCardIndex++)
+        val drawable = VictoryFestejo.drawableFor(style, won) ?: return
+        val kind = VictoryFestejo.kindFor(style, won) ?: return
+        val particles = FestejoParticlesView(context, kind)
+        cardFrame.addView(particles, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val size = minOf(78, cardWidthDp - 6)
+        val overflow = dp(size / 4)
+        val sticker = ImageView(context).apply {
+            setImageResource(drawable)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        cardFrame.addView(sticker, FrameLayout.LayoutParams(dp(size), dp(size)).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            marginEnd = -overflow
+            bottomMargin = -overflow / 2
+        })
+        cardFrame.clipChildren = false
+        sticker.rotation = FestejoPlayer.STICKER_TILT
+        festejoCards += FestejoTarget(sticker, cardFrame, particles, kind)
     }
 
     private fun factionAccent(winnerKey: String): Int {
@@ -309,13 +358,10 @@ class WinnerResultsRenderer(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(height)
         )
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            this,
-            7,
-            textSize.coerceAtLeast(7),
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
+        // With 13+ cards the size is 7sp or less: autosize needs a max strictly above its min of 7sp.
+        if (textSize > 7) {
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 7, textSize, 1, TypedValue.COMPLEX_UNIT_SP)
+        }
     }
 
     private fun dp(value: Int): Int =

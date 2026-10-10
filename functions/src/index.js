@@ -148,3 +148,45 @@ exports.borrarHistorialCuentaV1 = require("firebase-functions/v1").region("south
     try { await getStorage().bucket(bucket).deleteFiles({prefix: `profilePhotos/${user.uid}/`, force: true}); }
     catch (error) { if (Number(error.code) !== 404) throw error; }
   });
+
+// Permanent cosmetic purchases. The phone sends the Play token; Google confirms it here.
+const {FieldValue} = require("firebase-admin/firestore");
+const {GoogleAuth} = require("google-auth-library");
+const {PurchaseError, verifyAndGrant, revokeVoided, createPlayApi} = require("./purchaseService");
+let playApi;
+function purchasesApi() {
+  playApi ||= createPlayApi({auth: new GoogleAuth({scopes: ["https://www.googleapis.com/auth/androidpublisher"]})});
+  return playApi;
+}
+
+exports.validarCompraV1 = onCall({
+  region: "southamerica-west1", enforceAppCheck: true, timeoutSeconds: 30, memory: "256MiB", maxInstances: 5,
+}, async (request) => {
+  const token = request.auth && request.auth.token;
+  if (!token || (token.firebase?.sign_in_provider === "anonymous" && !token.email)) {
+    throw new HttpsError("unauthenticated", "Iniciá sesión con tu cuenta para comprar.");
+  }
+  const data = request.data && typeof request.data === "object" ? request.data : {};
+  try {
+    return await verifyAndGrant({firestore: getFirestore(), playApi: purchasesApi(), uid: request.auth.uid,
+      productId: data.productId, purchaseToken: data.purchaseToken, nowMs: Date.now(), FieldValue});
+  } catch (error) {
+    if (!(error instanceof PurchaseError)) {
+      logger.error("purchase_validation_failed", {message: error.message});
+      throw new HttpsError("internal", "No pudimos validar la compra. Probá de nuevo.");
+    }
+    const code = {"unauthenticated": "unauthenticated", "pending": "failed-precondition",
+      "play-unavailable": "unavailable"}[error.code] || "permission-denied";
+    throw new HttpsError(code, error.message, {reason: error.code});
+  }
+});
+
+// Refunds and chargebacks: Google lists voided purchases for 30 days; check the last 3 daily.
+exports.revisarComprasAnuladasV1 = onSchedule({
+  region: "southamerica-east1", schedule: "every day 06:00", timeZone: "America/Argentina/Buenos_Aires",
+  timeoutSeconds: 120, memory: "256MiB", maxInstances: 1, retryCount: 1,
+}, async () => {
+  const result = await revokeVoided({firestore: getFirestore(), playApi: purchasesApi(),
+    sinceMs: Date.now() - 3 * 24 * 3600 * 1000, FieldValue});
+  logger.info("purchases_voided_checked", result);
+});

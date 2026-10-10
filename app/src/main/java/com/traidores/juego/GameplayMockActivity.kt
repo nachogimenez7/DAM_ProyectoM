@@ -1152,7 +1152,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             eliminatedPlayers = winnerSummaryHighlight,
             timeline = winnerSummaryTimeline,
             roleImageFor = ::roleImageFor,
-            sessionProvider = { session }
+            sessionProvider = { session },
+            cosmeticThemeFor = ::cosmeticThemeForPlayer
         )
 
         applyGameplayTextScale()
@@ -2798,8 +2799,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (!isOnlineGameplay()) {
             AchievementTracker.recordMatchIfNeeded(this, session)
         }
-        MatchHistoryStore.record(this, session,
+        val newlyFinished = MatchHistoryStore.record(this, session,
             if (!isOnlineGameplay() && intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) historyOwnerUid else "")
+        if (newlyFinished && intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) {
+            InterstitialAds.onMatchCompleted(this)
+        }
         if (intent.getStringExtra(EXTRA_DEBUG_CHAT_PREVIEW).isNullOrBlank()) {
             GameAnalytics.matchStarted(this, session, isOnlineGameplay())
         }
@@ -10786,6 +10790,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         // La ceremonia comunica el resultado de la partida. Los efectos reducidos pueden quitar
         // partículas decorativas, pero no deben convertir esta presentación en un salto.
         val shouldAnimate = animate
+        val festejos = winnerResultsRenderer.festejos
+        val reducedMotion = VisualEffectsPreferences.isReduced(this)
+        if (!shouldAnimate || reducedMotion) FestejoPlayer.settle(festejos) else FestejoPlayer.hide(festejos)
         if (!shouldAnimate) {
             winnerRevealAnimator.show(cardViews, animate = false) {}
             playVictoryMusicWithAutoReturn()
@@ -10795,7 +10802,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
         playVictoryMusicWithAutoReturn()
         scheduleWinnerAutoReturn()
-        winnerRevealAnimator.show(cardViews, animate = true) {}
+        winnerRevealAnimator.show(cardViews, animate = true) {
+            if (!reducedMotion && isWinnerRevealVisible) FestejoPlayer.play(festejos, startDelayMs = 500L)
+        }
     }
 
     private fun toggleWinnerChronicle() {
@@ -11341,7 +11350,9 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         if (isOnlineGameplay() && onlineRecoveredDirectly) {
             openLobbyAfterDirectRecovery()
         }
-        finish()
+        // vs IA only: online players see the video after leaving the room (online menu).
+        if (!isOnlineGameplay() && session.winner.isNotBlank()) InterstitialAds.maybeShow(this) { finish() }
+        else finish()
     }
 
     private fun openLobbyAfterDirectRecovery() {

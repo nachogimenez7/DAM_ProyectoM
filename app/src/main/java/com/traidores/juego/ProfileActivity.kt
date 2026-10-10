@@ -21,6 +21,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.RelativeLayout
 import android.widget.TextView
 import com.traidores.juego.GameToast as Toast
 import androidx.activity.OnBackPressedCallback
@@ -165,6 +166,7 @@ class ProfileActivity : BaseActivity() {
         }
         renderProfile()
         setEditing(restoredEditing)
+        setUpStorePreview()
         ensureNumericPublicId()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -688,15 +690,57 @@ class ProfileActivity : BaseActivity() {
         applyProfileCosmeticTheme()
     }
 
-    private fun localProfileTheme(): String =
-        if (preferences.getBoolean("support_pack_local_preview", false)) {
-            CosmeticPilot.THEME_SUPPORT_PREVIEW
-        } else {
-            CosmeticPilot.selectedTheme(this)
+    /** Set when the store's «Probar» opens this screen: show that style, change and save nothing. */
+    private val storePreviewTheme: String? by lazy {
+        intent.getStringExtra(EXTRA_STORE_PREVIEW_THEME)?.let { CosmeticPilot.normalizeTheme(it) }
+    }
+
+    private fun localProfileTheme(): String = storePreviewTheme ?: CosmeticPilot.selectedTheme(this)
+
+    private fun setUpStorePreview() {
+        val theme = storePreviewTheme ?: return
+        editProfileButton.visibility = View.GONE
+        profileDecorationRow.setOnClickListener(null)
+        profileDecorationButton.visibility = View.GONE
+        val root = (findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as? RelativeLayout) ?: return
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(14), dp(10), dp(14), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F0140F0A")); setStroke(dp(2), CosmeticPilot.accentColor(theme)); cornerRadius = dp(14).toFloat()
+            }
         }
+        val title = TextView(this).apply {
+            text = "VISTA PREVIA · ${CosmeticPilot.displayName(theme).uppercase()}"
+            setTextColor(CosmeticPilot.accentColor(theme)); textSize = 14f; gravity = Gravity.CENTER
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(this@ProfileActivity, R.font.bree_serif)
+        }
+        bar.addView(title)
+        val festejos = listOfNotNull(VictoryFestejo.drawableFor(theme, true)?.to("ganar"), VictoryFestejo.drawableFor(theme, false)?.to("perder"))
+        if (festejos.isNotEmpty()) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, dp(6), 0, dp(6)) }
+            festejos.forEach { (res, label) ->
+                row.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+                    addView(ImageView(this@ProfileActivity).apply { setImageResource(res); contentDescription = "Festejo al $label" }, LinearLayout.LayoutParams(dp(54), dp(54)))
+                    addView(TextView(this@ProfileActivity).apply { text = label; textSize = 11f; setTextColor(getColor(R.color.text_secondary)); gravity = Gravity.CENTER })
+                }, LinearLayout.LayoutParams(dp(80), -2))
+            }
+            bar.addView(row)
+        }
+        bar.addView(Button(this).apply {
+            text = "VOLVER A LA TIENDA"; isAllCaps = false; textSize = 13f
+            setBackgroundResource(R.drawable.bg_winner_action_primary); setTextColor(Color.parseColor("#211407"))
+            setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(-1, dp(44)))
+        root.addView(bar, RelativeLayout.LayoutParams(-1, -2).apply {
+            addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); setMargins(dp(14), 0, dp(14), dp(14))
+        })
+    }
 
     private fun applySupportPreview(frame: View, theme: String) {
-        val supportPreview = theme == CosmeticPilot.THEME_SUPPORT_PREVIEW
+        val supportPreview = CosmeticPilot.hasSealPack(theme)
         frame.foreground = if (supportPreview) getDrawable(R.drawable.profile_support_frame) else null
         (frame as? FrameLayout)?.foregroundGravity = Gravity.FILL
         val inset = dp(if (supportPreview) 11 else if (frame === profileAvatarFrame) 5 else 4)
@@ -759,7 +803,7 @@ class ProfileActivity : BaseActivity() {
         }
         applySupportPreview(profileAvatarFrame, theme)
         findViewById<View>(R.id.profileSupportPreviewBadge).visibility =
-            if (theme == CosmeticPilot.THEME_SUPPORT_PREVIEW) View.VISIBLE else View.GONE
+            if (CosmeticPilot.hasSealPack(theme)) View.VISIBLE else View.GONE
         profileDecorationRow.contentDescription =
             "Elegir decoración. Actual: ${CosmeticPilot.displayName(theme)}"
         profileDecorationButton.contentDescription = profileDecorationRow.contentDescription
@@ -1504,7 +1548,7 @@ class ProfileActivity : BaseActivity() {
             CosmeticPilot.THEME_SPACE to "ESPACIAL · Órbita violeta",
             CosmeticPilot.THEME_SEA to "MAR · Abismo Real",
             CosmeticPilot.THEME_FIRE to "LAVA · Forja Infernal",
-            CosmeticPilot.THEME_SUPPORT_PREVIEW to "PACK DE APOYO · prueba local"
+            CosmeticPilot.THEME_SELLO to "SELLO · Carmesí del Pueblo"
         )
         var previewTheme = currentTheme
         val themeButtons = linkedMapOf<String, TextView>()
@@ -1571,7 +1615,7 @@ class ProfileActivity : BaseActivity() {
             addView(ImageView(this@ProfileActivity).apply {
                 tag = "support_preview_badge"
                 setImageResource(R.drawable.profile_support_badge)
-                contentDescription = "Insignia del pack de apoyo"
+                contentDescription = "Insignia del Sello Carmesí"
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 visibility = View.GONE
             }, LinearLayout.LayoutParams(dp(42), dp(42)))
@@ -1731,12 +1775,9 @@ class ProfileActivity : BaseActivity() {
             negativeLabel = "CANCELAR",
             positiveLabel = "EQUIPAR",
             onPositive = {
-                val supportPreview = previewTheme == CosmeticPilot.THEME_SUPPORT_PREVIEW
-                preferences.edit().putBoolean("support_pack_local_preview", supportPreview).apply()
-                if (!supportPreview) {
-                    CosmeticPilot.selectTheme(this, previewTheme)
-                    profileCloudSyncPending = true
-                }
+                preferences.edit().remove("support_pack_local_preview").apply()
+                CosmeticPilot.selectTheme(this, previewTheme)
+                profileCloudSyncPending = true
                 renderProfile()
                 Toast.makeText(
                     this,
@@ -1786,7 +1827,7 @@ class ProfileActivity : BaseActivity() {
         applySupportPreview(previewAvatarFrame, selectedTheme)
         (previewAvatarFrame.parent as? ViewGroup)
             ?.findViewWithTag<View>("support_preview_badge")?.visibility =
-            if (selectedTheme == CosmeticPilot.THEME_SUPPORT_PREVIEW) View.VISIBLE else View.GONE
+            if (CosmeticPilot.hasSealPack(selectedTheme)) View.VISIBLE else View.GONE
         previewName.background = if (decorated) {
             CosmeticPilot.namePlate(this, selectedTheme)
         } else {

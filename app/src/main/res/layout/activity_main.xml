@@ -144,17 +144,17 @@
             style="@style/BtnGold"
             android:text="@string/btn_play" />
 
+        <!-- TIENDA -->
+        <Button
+            android:id="@+id/btnStore"
+            style="@style/BtnDark"
+            android:text="@string/btn_store" />
+
         <!-- ROLES -->
         <Button
             android:id="@+id/btnRoles"
             style="@style/BtnDark"
             android:text="@string/btn_roles" />
-
-        <!-- AYUDA -->
-        <Button
-            android:id="@+id/btnHelp"
-            style="@style/BtnDark"
-            android:text="@string/btn_help" />
 
         <!-- OPCIONES -->
         <Button

@@ -116,7 +116,7 @@ service cloud.firestore {
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && validProfileEmotes(data)
         && (!('temaCosmeticoPerfil' in data)
-          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
+          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire', 'sello'])
         && validProfileStats(data)
         && data.actualizadaEn == request.time;
     }
@@ -725,7 +725,7 @@ service cloud.firestore {
         && isOptionalString(data, 'rolFavoritoPerfil', 40)
         && validProfileEmotes(data)
         && (!('temaCosmeticoPerfil' in data)
-          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire'])
+          || data.temaCosmeticoPerfil in ['classic', 'space', 'sea', 'fire', 'sello'])
         && (!('publicId' in data) || validPublicId(data.publicId))
         && data.uidTemporal == uidTemporal
         && (!('puedeArbitrar' in data) || data.puedeArbitrar is bool)
@@ -986,19 +986,26 @@ service cloud.firestore {
       allow update: if roomClientWriteAllowed(partidaId)
           && serverRoomFieldsUnchanged()
           && (request.resource.data.get('cleanupState', '') == resource.data.get('cleanupState', '')
-        && (stableHostRematchReset()
-        || (
-          (
-            // The common host/configuration branch must run before the costly
-            // transfer checks; preserve headroom under Firestore's expression limit.
-            activeHostCanUpdateRoom()
-          || clientStateSelfPublish(partidaId)
-          || waitingPlayerCountUpdate(partidaId)
-          || handoffUpdate(partidaId)
-          || stableLobbyHostTransfer(partidaId)
-          )
-          && validRoomPostUpdate(request.resource.data)
-        )));
+        // Only the stable host transfer changes hostId. Routing on that one comparison keeps
+        // a real-size room under Firestore's 1000-expression limit: evaluating every branch
+        // before the transfer exhausted it and denied «Pasar anfitrión» (seen 10/10/2026).
+        && (
+          (request.resource.data.hostId != resource.data.hostId
+            && stableLobbyHostTransfer(partidaId)
+            && validRoomPostUpdate(request.resource.data))
+          || (request.resource.data.hostId == resource.data.hostId
+            && (stableHostRematchReset()
+            || (
+              (
+                // The common host/configuration branch first: it is the most frequent.
+                activeHostCanUpdateRoom()
+              || clientStateSelfPublish(partidaId)
+              || waitingPlayerCountUpdate(partidaId)
+              || handoffUpdate(partidaId)
+              )
+              && validRoomPostUpdate(request.resource.data)
+            )))
+        ));
       // El anfitrion (activo o estable) puede borrar la sala por completo cuando queda
       // vacia: esperando, y ya sin ningun otro jugador conectado (ese chequeo se hace en
       // el cliente antes de dejar el lobby; el ultimo anfitrion en pie es siempre quien
@@ -1450,6 +1457,15 @@ service cloud.firestore {
       // El dueño necesita borrar su perfil antes de eliminar Firebase Auth. Si se cerrara
       // primero la cuenta, perdería el permiso y el documento quedaría huérfano.
       allow delete: if isSelf(uidTemporal);
+    }
+
+    // Purchase entitlements: written only by validarCompraV1 after Google confirms the purchase.
+    match /derechos/{uid} {
+      allow get: if isSelf(uid) && isRegistered();
+      allow list, write: if false;
+    }
+    match /compras/{purchaseId} {
+      allow read, write: if false;
     }
 
     // Private account history. Online results and counters are only written by the backend.

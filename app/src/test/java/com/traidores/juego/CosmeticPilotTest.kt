@@ -12,7 +12,8 @@ class CosmeticPilotTest {
             CosmeticPilot.THEME_CLASSIC,
             CosmeticPilot.THEME_SPACE,
             CosmeticPilot.THEME_SEA,
-            CosmeticPilot.THEME_FIRE
+            CosmeticPilot.THEME_FIRE,
+            CosmeticPilot.THEME_SELLO
         )
 
         themes.forEach { theme ->

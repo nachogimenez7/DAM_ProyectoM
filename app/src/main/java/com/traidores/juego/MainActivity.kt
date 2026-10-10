@@ -71,7 +71,7 @@ class MainActivity : BaseActivity() {
         // Bind main buttons
         val btnPlay: Button = findViewById(R.id.btnPlay)
         val btnRoles: Button = findViewById(R.id.btnRoles)
-        val btnHelp: Button = findViewById(R.id.btnHelp)
+        val btnStore: Button = findViewById(R.id.btnStore)
         val btnOptions: Button = findViewById(R.id.btnOptions)
         val btnFeedback: Button = findViewById(R.id.btnFeedback)
         val btnAbout: View = findViewById(R.id.btnAbout)
@@ -121,8 +121,8 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, RolesActivity::class.java))
         }
 
-        btnHelp.setOnClickListener {
-            startActivity(Intent(this, AyudaActivity::class.java))
+        btnStore.setOnClickListener {
+            startActivity(Intent(this, StoreActivity::class.java))
         }
 
         btnOptions.setOnClickListener {
@@ -152,6 +152,7 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        InterstitialAds.start(this)
         PlayGamesIdentity.ensureLinked(this)
         getSharedPreferences(ProfileActivity.PREFS_NAME, MODE_PRIVATE)
             .registerOnSharedPreferenceChangeListener(portraitPreferencesListener)

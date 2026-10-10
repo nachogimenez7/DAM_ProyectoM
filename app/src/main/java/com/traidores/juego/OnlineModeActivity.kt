@@ -126,6 +126,12 @@ class OnlineModeActivity : BaseActivity() {
         verifyOnlineAccess()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Back from a room: the video is shown here, never inside the lobby or the match.
+        InterstitialAds.maybeShowAfterLeavingRoom(this)
+    }
+
     override fun onStop() {
         accessCheckGeneration += 1
         accessCheckInProgress = false

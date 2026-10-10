@@ -12,7 +12,7 @@ class GameplayParityActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val phase = ServerGamePhase.valueOf(intent.getStringExtra("phase") ?: "DIA_DEBATE")
-        val names = listOf("Nacho", "Thiago", "Lautaro", "Valen", "Mora", "Gael", "Dante", "Alma")
+        val names = listOf("Nacho", "Thiago", "Lautaro", "Valen", "Mora", "Gael", "Dante", "Alma", "Bruno", "Cata", "Dario", "Emi", "Fede", "Gise", "Hugo").take(intent.getIntExtra("count", 8))
         val expulsion = intent.getBooleanExtra("expulsion", false)
         val victory = phase == ServerGamePhase.FINALIZADA
         val players = names.mapIndexed { i, name -> ServerGamePlayer("visual-$i", i, name, "", !(expulsion && i == 1), false, if (expulsion && i == 1) "VOTE" else "NONE", if (victory || expulsion && i == 1) (if (i == 0) "medico" else if (i == 1) "asesino" else "aldeano") else null) }

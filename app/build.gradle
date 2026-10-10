@@ -22,6 +22,13 @@ def serverOnlineV3 = providers.gradleProperty('traidoresServerOnlineV3').orElse(
 // Release never inherits the QA flag above: the beta plays the host-authority online. A V3
 // release needs this separate, explicit property (decision of 9/10/2026).
 def releaseServerOnlineV3 = providers.gradleProperty('traidoresReleaseServerOnlineV3').orElse('false').get().toBoolean()
+// AdMob. Debug always uses Google's public test ads. Release shows ads only when both real IDs are
+// passed (traidoresAdmobAppId / traidoresAdmobInterstitialId); without them ads stay off.
+def admobTestAppId = 'ca-app-pub-3940256099942544~3347511713'
+def admobTestInterstitialId = 'ca-app-pub-3940256099942544/1033173712'
+def admobAppId = providers.gradleProperty('traidoresAdmobAppId').orElse('').get()
+def admobInterstitialId = providers.gradleProperty('traidoresAdmobInterstitialId').orElse('').get()
+def releaseAdsConfigured = !admobAppId.isEmpty() && !admobInterstitialId.isEmpty()
 def isolatedQaApp = providers.gradleProperty('traidoresIsolatedQaApp').orElse('false').get().toBoolean()
 def cloudQaApp = providers.gradleProperty('traidoresCloudQaApp').orElse('false').get().toBoolean()
 if (cloudQaApp && (!isolatedQaApp || onlineAuthorityEmulatorEnabled || !serverOnlineV3)) {
@@ -55,6 +62,11 @@ android {
     buildTypes {
         debug {
             buildConfigField 'boolean', 'CLOUD_QA_APP', cloudQaApp.toString()
+            buildConfigField 'boolean', 'ADS_ENABLED', (!isolatedQaApp).toString()
+            // -PtraidoresAdsDemo=true: a test ad after every finished match, to preview how ads feel.
+            buildConfigField 'boolean', 'ADS_DEMO', providers.gradleProperty('traidoresAdsDemo').orElse('false').get()
+            buildConfigField 'String', 'ADMOB_INTERSTITIAL_ID', "\"${admobTestInterstitialId}\""
+            manifestPlaceholders = [admobAppId: admobTestAppId]
             if (isolatedQaApp) {
                 applicationIdSuffix = '.v3qa'
                 resValue 'string', 'app_name', 'Traidores V3 · Prueba'
@@ -67,6 +79,10 @@ android {
         }
         release {
             buildConfigField 'boolean', 'SERVER_ONLINE_V3', releaseServerOnlineV3.toString()
+            buildConfigField 'boolean', 'ADS_ENABLED', releaseAdsConfigured.toString()
+            buildConfigField 'boolean', 'ADS_DEMO', 'false'
+            buildConfigField 'String', 'ADMOB_INTERSTITIAL_ID', "\"${releaseAdsConfigured ? admobInterstitialId : ''}\""
+            manifestPlaceholders = [admobAppId: releaseAdsConfigured ? admobAppId : admobTestAppId]
             buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR', 'false'
             buildConfigField 'String', 'FIREBASE_EMULATOR_HOST', '""'
             minifyEnabled = true
@@ -112,6 +128,9 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.android.gms:play-services-games-v2:22.0.0'
+    implementation 'com.google.android.gms:play-services-ads:24.4.0'
+    implementation 'com.google.android.ump:user-messaging-platform:3.2.0'
+    implementation 'com.android.billingclient:billing:8.0.0'
     debugImplementation 'com.google.firebase:firebase-appcheck-debug'
 
     testImplementation 'junit:junit:4.13.2'

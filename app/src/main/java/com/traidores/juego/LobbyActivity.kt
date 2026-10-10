@@ -162,9 +162,16 @@ class LobbyActivity : BaseActivity() {
     private var onlineStartedMatchCancellationInProgress = false
     private var ownPlayerListener: ListenerRegistration? = null
     private var ownRoomBanListener: ListenerRegistration? = null
+    // Set once the exit is committed (never reset). The online menu may resume before this
+    // screen stops, so the "left the room" mark for the video is raised here, not in onStop.
     private var leavingOnlineLobby = false
+        set(value) {
+            if (value && !field && isFirestoreOnlineLobby()) InterstitialAds.onLeftOnlineRoom()
+            field = value
+        }
     private var enteringOnlineMatch = false
     private var returnedFromOnlineMatch = false
+    private var guestAdCheckPending = false
     private var onlineRematchReactivationInProgress = false
     private var onlineRematchReactivationCompleted = false
     private var onlineHostHandoffInProgress = false
@@ -505,6 +512,7 @@ class LobbyActivity : BaseActivity() {
             if (enteringOnlineMatch) {
                 returnedFromOnlineMatch = true
                 onlineRematchReactivationCompleted = false
+                guestAdCheckPending = true
             }
             enteringOnlineMatch = false
             lobbyRealtimeAccessReady = false
@@ -2652,6 +2660,10 @@ class LobbyActivity : BaseActivity() {
             onlineRematchReactivationCompleted = true
             returnedFromOnlineMatch = false
         }
+        if (guestAdCheckPending && ownPlayer?.activeInMatch == true) {
+            guestAdCheckPending = false
+            startButton.postDelayed({ maybeShowGuestAdAfterMatch() }, GUEST_AD_SETTLE_MS)
+        }
         val visiblePlayers = activeOnlinePlayers()
         OnlineDebugLog.i(
             "lobby_players_snapshot roomId=$onlinePartidaId source=$source pending=$pendingWrites players=${onlinePlayers.size} active=${visiblePlayers.size} connected=${visiblePlayers.count(::isOnlinePlayerConnected)} ready=${visiblePlayers.count { it.ready }}"
@@ -3430,6 +3442,21 @@ class LobbyActivity : BaseActivity() {
             positiveLabel = "VOLVER A JUGAR ONLINE",
             onPositive = { finish() }
         ).setCancelable(false)
+    }
+
+    /**
+     * Back from a match, a guest may see the video before tapping LISTO. Never the host: with the
+     * host-authority online, the host's covered screen would hand the room to someone else.
+     * Every condition is checked again at the last moment, after the lobby has settled.
+     */
+    private fun maybeShowGuestAdAfterMatch() {
+        if (isFinishing || isDestroyed || !onlineLobbyStarted || leavingOnlineLobby || enteringOnlineMatch) return
+        if (onlineServerProtocol || currentUserIsOnlineHost() || onlineActiveHostId == onlineTempUid) return
+        // Right after a match the room may still read finished; a new match must not be starting.
+        if (onlineRoomState == ONLINE_ROOM_STATE_IN_GAME) return
+        val own = onlinePlayers.firstOrNull { it.id == onlineTempUid } ?: return
+        if (own.ready || !own.activeInMatch) return
+        InterstitialAds.maybeShow(this)
     }
 
     private fun onlineLobbyHint(): String {
@@ -7649,6 +7676,7 @@ class LobbyActivity : BaseActivity() {
     }
 
     companion object {
+        private const val GUEST_AD_SETTLE_MS = 1_500L
         const val EXTRA_SESSION = "extra_session"
         const val EXTRA_LOBBY_MODE = "extra_lobby_mode"
         const val EXTRA_LOBBY_NAME = "extra_lobby_name"

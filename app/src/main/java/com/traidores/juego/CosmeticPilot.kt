@@ -20,6 +20,7 @@ object CosmeticPilot {
     const val THEME_SPACE = "space"
     const val THEME_SEA = "sea"
     const val THEME_FIRE = "fire"
+    const val THEME_SELLO = "sello"
     const val DEFAULT_THEME = THEME_CLASSIC
 
     const val accentCyan = "#62E9FF"
@@ -68,7 +69,7 @@ object CosmeticPilot {
 
     fun normalizeTheme(theme: String?): String? {
         return theme?.takeIf {
-            it == THEME_CLASSIC || it == THEME_SPACE || it == THEME_SEA || it == THEME_FIRE
+            it == THEME_CLASSIC || it == THEME_SPACE || it == THEME_SEA || it == THEME_FIRE || it == THEME_SELLO
         }
     }
 
@@ -91,6 +92,7 @@ object CosmeticPilot {
         THEME_SPACE -> "Espacial"
         THEME_SEA -> "Abismo Real"
         THEME_FIRE -> "Forja Infernal"
+        THEME_SELLO -> "Sello Carmesí"
         else -> "Clásico"
     }
 
@@ -102,6 +104,7 @@ object CosmeticPilot {
         THEME_SPACE -> R.drawable.profile_background_space
         THEME_SEA -> R.drawable.profile_background_sea
         THEME_FIRE -> R.drawable.profile_background_fire
+        THEME_SELLO -> R.drawable.profile_background_sello
         else -> R.drawable.fondo_menu
     }
 
@@ -109,6 +112,7 @@ object CosmeticPilot {
         when (normalizeTheme(theme)) {
             THEME_SEA -> "#34000000"
             THEME_FIRE -> "#26000000"
+            THEME_SELLO -> "#2E000000"
             THEME_SPACE -> "#26000000"
             else -> "#52000000"
         }
@@ -313,8 +317,11 @@ object CosmeticPilot {
         }
     }
 
+    /** Sello Carmesí also brings the avatar frame and badge of the pack (still reachable as the old local preview). */
+    fun hasSealPack(theme: String?): Boolean = theme == THEME_SELLO || theme == THEME_SUPPORT_PREVIEW
+
     private fun palette(theme: String?): CosmeticPalette = when (theme) {
-        THEME_SUPPORT_PREVIEW -> CosmeticPalette(
+        THEME_SUPPORT_PREVIEW, THEME_SELLO -> CosmeticPalette(
             primary = Color.parseColor("#E6BF73"),
             secondary = Color.parseColor("#A33A43"),
             text = Color.parseColor("#FFF0CC"),

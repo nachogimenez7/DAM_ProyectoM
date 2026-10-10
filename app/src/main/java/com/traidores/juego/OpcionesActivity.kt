@@ -251,6 +251,9 @@ class OpcionesActivity : BaseActivity() {
 
         seekMusic.setOnSeekBarChangeListener(volumeListener(PREF_MUSIC_VOLUME))
         seekVoices.setOnSeekBarChangeListener(volumeListener(PREF_VOICE_VOLUME))
+        findViewById<Button>(R.id.btnHelpOptions).setOnClickListener {
+            startActivity(android.content.Intent(this, AyudaActivity::class.java))
+        }
         btnAbout.setOnClickListener {
             startActivity(Intent(this, AcercaDeActivity::class.java))
         }

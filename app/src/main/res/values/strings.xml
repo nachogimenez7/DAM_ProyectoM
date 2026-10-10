@@ -8,6 +8,7 @@
     <string name="btn_play">JUGAR</string>
     <string name="btn_roles">ROLES</string>
     <string name="btn_help">AYUDA</string>
+    <string name="btn_store">TIENDA</string>
     <string name="btn_options">OPCIONES</string>
     <string name="tutorial_open">VER TUTORIAL BREVE</string>
     <string name="tutorial_progress">PASO %1$d DE %2$d</string>
