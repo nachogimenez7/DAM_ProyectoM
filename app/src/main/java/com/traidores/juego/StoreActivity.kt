@@ -373,8 +373,9 @@ internal object NoAdsStrip {
             this.text = "✕"; textSize = 18f; setTextColor(activity.getColor(R.color.text_secondary)); gravity = android.view.Gravity.CENTER
             contentDescription = "Cerrar"; setOnClickListener { content.removeView(strip) }
         }, android.widget.LinearLayout.LayoutParams(dp(44), dp(44)))
-        val navBar = androidx.core.view.ViewCompat.getRootWindowInsets(content)
-            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
+        // The insets may not be delivered yet when the screen has just resumed: keep clear of a 3-button bar.
+        val navBar = (androidx.core.view.ViewCompat.getRootWindowInsets(content)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())?.bottom ?: 0).coerceAtLeast(dp(48))
         content.addView(strip, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
             setMargins(dp(14), 0, dp(14), dp(14) + navBar)
         })
