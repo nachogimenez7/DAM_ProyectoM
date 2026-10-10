@@ -5,7 +5,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
 
-internal data class ServerChatMessage(val id: String, val uid: String, val text: String, val timestampMs: Long)
+internal data class ServerChatMessage(val id: String, val uid: String, val text: String, val timestampMs: Long, val phaseIndex: Int = -1, val round: Int = 0)
 
 /** A bounded query and a 16-slot ring per player/channel; no Firestore write per message. */
 internal class ServerGameChat(
@@ -33,7 +33,7 @@ internal class ServerGameChat(
                     val actor = child.child("actorUid").getValue(String::class.java) ?: return@mapNotNull null
                     val text = child.child("text").getValue(String::class.java)?.takeIf { it.length in 1..300 } ?: return@mapNotNull null
                     val time = child.child("ts").getValue(Long::class.java) ?: return@mapNotNull null
-                    ServerChatMessage(child.key.orEmpty(), actor, text, time)
+                    ServerChatMessage(child.key.orEmpty(), actor, text, time, child.child("phaseIndex").getValue(Int::class.java) ?: -1)
                 }.sortedBy { it.timestampMs }
                 OnlineNetworkMetrics.count("v3_chat_recibido")
                 onMessages(messages)
@@ -42,6 +42,7 @@ internal class ServerGameChat(
                 if (generation == expected) { stop(); onMessages(emptyList()); onError(error.toException()) }
             }
         }
+        OnlineNetworkMetrics.count("v3_chat_suscripcion")
         query = next; listener = receive; next.addValueEventListener(receive)
     }
     fun send(text: String, state: ServerGameSnapshot, nowMs: Long?): Task<Void> {

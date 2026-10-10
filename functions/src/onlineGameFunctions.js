@@ -7,13 +7,18 @@ const {OnlineStartError} = require("./onlineStartCore");
 const {GameActionError} = require("./onlineGameCore");
 const {enforceRequestLimit} = require("./onlineRequestLimiter");
 const {startServerMatch, submitServerAction, expireServerPhase, recoverServerPhase,
-  publishServerOutbox, prepareServerRematch, leaveServerMatch} = require("./onlineGameService");
+  publishServerOutbox, prepareServerRematch, leaveServerMatch, EARLY_DEADLINE_WAIT_MS} = require("./onlineGameService");
 
 const CALLABLE_REGION = "southamerica-west1";
 const TASK_REGION = "southamerica-east1";
 const DEADLINE_FUNCTION = "resolverFaseV3";
+// Verified production runtime identity. The worker accepts only internal task delivery.
+const DEADLINE_INVOKER = "99323018581-compute@developer.gserviceaccount.com";
 const CALLABLE_OPTIONS = Object.freeze({region: CALLABLE_REGION, enforceAppCheck: true,
   timeoutSeconds: 30, memory: "256MiB", minInstances: 0, maxInstances: 4});
+// V3 is local-only while the beta uses host authority. Keep burst concurrency, but
+// reserve no idle instances. Re-enabling warm Cloud instances requires a new decision.
+const ACTION_OPTIONS = Object.freeze({...CALLABLE_OPTIONS, cpu: 1, concurrency: 20, minInstances: 0});
 
 function objectData(data, fields) {
   if (!data || typeof data !== "object" || Array.isArray(data) ||
@@ -57,7 +62,8 @@ function createDeadlineEnqueuer(functions) {
 }
 
 // Dependencies are resolved on invocation, not on deploy-time function discovery.
-function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logger, now = Date.now}) {
+function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logger, now = Date.now,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))}) {
   async function limitedRequest(request) {
     const uid = authenticated(request);
     try {
@@ -72,7 +78,8 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
       logger.info("online_v3_operation", {operation, roomId, durationMs: now() - startedAt,
         transactionAttempts: result.transactionAttempts || 0, changed: result.changed === true,
         published: result.published === true, changedPublic: result.changedPublic === true,
-        changedPrivate: result.changedPrivate || 0, projectionBytes: result.projectionBytes || 0});
+        changedPrivate: result.changedPrivate || 0, projectionBytes: result.projectionBytes || 0,
+        reusedDelivery: result.reusedDelivery === true, realtimeAttempts: result.realtimeAttempts || 0});
       return result;
     } catch (error) {
       // Never log intentions, names, roles, tokens or private projections.
@@ -83,24 +90,42 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
   }
   const publish = (roomId) => publishServerOutbox({firestore: getFirestore(), database: getDatabase(),
     roomId, enqueueDeadline});
+  // Publishing from the callable that committed the change removes the Firestore-trigger
+  // hop (and its cold start) from every visible answer. The publisher is idempotent and
+  // already runs concurrently with the trigger for deadlines/recovery; the trigger stays
+  // as the durable fallback, so a failure here never fails the accepted intention.
+  // Publication metrics stay in the operation log; clients keep the previous response shape.
+  function clientResponse(result) {
+    const {transactionAttempts, published, changedPublic, changedPrivate, projectionBytes, reusedDelivery,
+      realtimeAttempts, stale, ...response} = result;
+    return response;
+  }
+  async function publishNow(roomId, result) {
+    if (result.changed === false || ["already_started", "already_left"].includes(result.status)) return result;
+    try {
+      return {...result, ...(await publish(roomId))};
+    } catch (error) {
+      logger.warn("online_v3_inline_publish_failed", {roomId, code: error.code || "unknown"});
+      return result;
+    }
+  }
 
   const iniciarPartidaV3 = onCall(CALLABLE_OPTIONS, async (request) => {
     // Auth and envelope shape reject without reads; even game-rule rejections consume the UID bucket.
     authenticated(request);
     const {roomId} = objectData(request.data, ["roomId"]);
     const requesterId = await limitedRequest(request);
-    const result = await measured("start", roomId, () => startServerMatch({firestore: getFirestore(),
-      roomId, requesterId, nowMs: now()}), true);
-    const {transactionAttempts, ...response} = result;
-    return response;
+    const result = await measured("start", roomId, async () => publishNow(roomId,
+      await startServerMatch({firestore: getFirestore(), roomId, requesterId, nowMs: now()})), true);
+    return clientResponse(result);
   });
-  const accionPartidaV3 = onCall(CALLABLE_OPTIONS, async (request) => {
+  const accionPartidaV3 = onCall(ACTION_OPTIONS, async (request) => {
     authenticated(request);
     const {roomId, ...action} = objectData(request.data,
       ["roomId", "matchId", "phaseIndex", "requestId", "action", "targetUid", "team"]);
     const requesterId = await limitedRequest(request);
-    const result = await measured("action", roomId, () => submitServerAction({firestore: getFirestore(),
-      roomId, requesterId, action, nowMs: now()}), true);
+    const result = await measured("action", roomId, async () => publishNow(roomId,
+      await submitServerAction({firestore: getFirestore(), roomId, requesterId, action, nowMs: now()})), true);
     return result.receipt;
   });
   const recuperarFaseV3 = onCall({...CALLABLE_OPTIONS, maxInstances: 2}, async (request) => {
@@ -129,8 +154,9 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
     const data = objectData(request.data, ["roomId", "matchId"]);
     matchAndPhase({...data, phaseIndex: 0});
     const requesterId = await limitedRequest(request);
-    return measured("leave", data.roomId, () => leaveServerMatch({firestore: getFirestore(),
-      ...data, requesterId, nowMs: now()}), true);
+    const result = await measured("leave", data.roomId, async () => publishNow(data.roomId,
+      await leaveServerMatch({firestore: getFirestore(), ...data, requesterId, nowMs: now()})), true);
+    return clientResponse(result);
   });
   const publicarPartidaV3 = onDocumentWritten({document: "partidas/{roomId}/serverOutbox/current",
     region: CALLABLE_REGION, retry: true, timeoutSeconds: 60, memory: "256MiB", minInstances: 0, maxInstances: 2},
@@ -141,7 +167,7 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
     if (before?.generation === after.generation && before?.revision === after.revision) return;
     return measured("publish", event.params.roomId, () => publish(event.params.roomId));
   });
-  const resolverFaseV3 = onTaskDispatched({region: TASK_REGION, invoker: "private",
+  const resolverFaseV3 = onTaskDispatched({region: TASK_REGION, invoker: DEADLINE_INVOKER,
     timeoutSeconds: 60, memory: "256MiB", minInstances: 0, maxInstances: 2,
     retryConfig: {maxAttempts: 8, minBackoffSeconds: 1, maxBackoffSeconds: 10, maxDoublings: 4},
     rateLimits: {maxConcurrentDispatches: 20, maxDispatchesPerSecond: 20}}, async (request) => {
@@ -151,7 +177,12 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
       throw new HttpsError("invalid-argument", "El vencimiento no es válido.");
     }
     return measured("deadline", roomId, async () => {
-      const result = await expireServerPhase({firestore: getFirestore(), roomId, token, nowMs: now()});
+      let result = await expireServerPhase({firestore: getFirestore(), roomId, token, nowMs: now()});
+      // A slightly early delivery waits here: the queue backoff would add 1-10 s to the phase.
+      if (result.retryAfterMs && result.retryAfterMs <= EARLY_DEADLINE_WAIT_MS) {
+        await sleep(result.retryAfterMs + 20);
+        result = await expireServerPhase({firestore: getFirestore(), roomId, token, nowMs: now()});
+      }
       if (result.retryAfterMs) throw new HttpsError("unavailable", "La fase todavía no venció.");
       // Repair after a previous attempt committed but its publication/next enqueue failed.
       const publication = await publish(roomId);
@@ -162,4 +193,4 @@ function createServerEndpoints({getFirestore, getDatabase, enqueueDeadline, logg
 }
 
 module.exports = {createServerEndpoints, createDeadlineEnqueuer, gameCallableError,
-  CALLABLE_REGION, TASK_REGION, DEADLINE_FUNCTION};
+  CALLABLE_REGION, TASK_REGION, DEADLINE_FUNCTION, DEADLINE_INVOKER};

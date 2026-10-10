@@ -1,7 +1,7 @@
 "use strict";
 const fs = require("node:fs");
 const {initializeTestEnvironment, assertFails, assertSucceeds} = require("@firebase/rules-unit-testing");
-const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs} = require("firebase/firestore");
+const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, deleteField, writeBatch} = require("firebase/firestore");
 (async () => {
   const env = await initializeTestEnvironment({projectId: "traidores-local",
     firestore: {rules: fs.readFileSync("firestore.rules", "utf8")}, database: {rules: fs.readFileSync("database.rules.json", "utf8")}});
@@ -18,12 +18,19 @@ const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs} = require
         estado: "conectado", uidTemporal: "host", protocolVersion: 3, puedeArbitrar: false, listo: false});
       await setDoc(doc(db, `partidas/${room}/servidor/current`), {secretRoles: ["host=alcalde", "bob=asesino"]});
       await setDoc(doc(db, `partidas/${room}/serverOutbox/current`), {privateRoles: true});
-      await ctx.database().ref(`${path}/snapshot`).set({public: {fase: "DIA_DEBATE", limiteFaseEpochMs: Date.now() + 120000}, private: {
+      await ctx.database().ref(`${path}/snapshot`).set({delivery: {matchId: "match", generation: 1, revision: 5},
+        public: {fase: "DIA_DEBATE", limiteFaseEpochMs: Date.now() + 120000}, private: {
         host: {rolKey: "alcalde"}, bob: {rolKey: "asesino"}, guest: {rolKey: "aldeano"}}, permissions: {
         host: {member: true, matchId: "match", phaseIndex: 5, alive: true, publicChat: true, traitor: false, deadChat: false},
         bob: {member: true, matchId: "match", phaseIndex: 5, alive: true, publicChat: true, traitor: true, traitorChat: true},
         guest: {member: true, matchId: "match", phaseIndex: 5, alive: false, publicChat: true, deadChat: true}}});
     });
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), "config/onlineV3"), {enabled:false,minVersionCode:52});
+    });
+    await pass(getDoc(doc(env.unauthenticatedContext().firestore(), "config/onlineV3")));
+    await deny(setDoc(doc(env.authenticatedContext("host").firestore(), "config/onlineV3"), {enabled:true,minVersionCode:1}));
+    await deny(getDocs(collection(env.unauthenticatedContext().firestore(), "config")));
     const host = env.authenticatedContext("host"), bob = env.authenticatedContext("bob"), dead = env.authenticatedContext("guest");
     const outsider = env.authenticatedContext("outsider"), anonymous = env.unauthenticatedContext();
     await pass(getDoc(doc(host.firestore(), `partidas/${room}`)));
@@ -35,6 +42,8 @@ const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs} = require
     await deny(getDocs(collection(host.firestore(), `partidas/${room}/servidor`)));
     await deny(setDoc(doc(host.firestore(), "onlineMaintenance/serverAuthority"), {enabled: true}));
     await deny(getDoc(doc(host.firestore(), "onlineMaintenance/serverAuthority")));
+    await deny(setDoc(doc(host.firestore(), "onlineMaintenance/serverRecovery"), {cursor: null}));
+    await deny(getDoc(doc(host.firestore(), "onlineMaintenance/serverRecovery")));
     await deny(updateDoc(doc(host.firestore(), `partidas/${room}`), {hostVersion: 2}));
     await deny(updateDoc(doc(host.firestore(), `partidas/${room}`), {authorityMode: "client"}));
     await deny(deleteDoc(doc(host.firestore(), `partidas/${room}`)));
@@ -47,6 +56,8 @@ const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs} = require
     await deny(host.database().ref(`${path}/snapshot/private/bob`).once("value"));
     await deny(host.database().ref(path).once("value"));
     await deny(host.database().ref(`${path}/snapshot`).once("value"));
+    await deny(host.database().ref(`${path}/snapshot/delivery`).once("value"));
+    await deny(host.database().ref(`${path}/snapshot/delivery`).update({revision: 100}));
     await deny(host.database().ref(`${path}/snapshot/private`).once("value"));
     await deny(host.database().ref(`${path}/snapshot/permissions/bob`).once("value"));
     await deny(host.database().ref(`${path}/snapshot/public`).update({ganador: "Pueblo"}));
@@ -103,17 +114,71 @@ const {doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs} = require
     await deny(send(dead, "muertos", {...message, actorUid: "guest"}));
     // Once the server has revoked the previous match, the rematch lobby can accept ready updates again.
     await env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), `partidas/${room}`), {
-      authorityMode: "lobby", estado: "esperando"}));
+      authorityMode: "lobby", estado: "esperando", nombre: "Sala prueba", codigoSala: "ABC234",
+      mapa: "pampa", mapaNombre: "Pampa", hostNombre: "Anfitrion", modoPrueba: false, origen: "rules-test",
+      partidaInicialCreada: false, jugadoresEsperados: 5, maxJugadores: 5, jugadoresActuales: 1,
+      serverGeneration: 2, rematchGeneration: 2, rematchOf: "old-match", preparedMatchId: "new-match"}));
     await pass(updateDoc(doc(host.firestore(), `partidas/${room}/jugadores/host`), {listo: true}));
     await deny(updateDoc(doc(host.firestore(), `partidas/${room}/jugadores/host`), {puedeArbitrar: true}));
     await deny(updateDoc(doc(host.firestore(), `partidas/${room}/jugadores/host`), {protocolVersion: 2}));
+    await deny(updateDoc(doc(host.firestore(), `partidas/${room}/jugadores/host`), {protocolVersion: deleteField()}));
+    const hostPlayer = doc(host.firestore(), `partidas/${room}/jugadores/host`);
+    const {protocolVersion: hostProtocol, ...hostWithoutProtocol} = (await getDoc(hostPlayer)).data();
+    await deny(setDoc(hostPlayer, hostWithoutProtocol));
+    const member = {activoEnPartida: true, nombre: "Jugador", estado: "conectado", uidTemporal: "bob",
+      esHost: false, puedeArbitrar: false, listo: false};
+    const bobPlayer = doc(bob.firestore(), `partidas/${room}/jugadores/bob`);
+    await deny(setDoc(bobPlayer, member));
+    await deny(setDoc(bobPlayer, {...member, protocolVersion: 2}));
+    await pass(setDoc(bobPlayer, {...member, protocolVersion: 3}));
+    await pass(updateDoc(bobPlayer, {listo: true}));
+    await deny(updateDoc(bobPlayer, {protocolVersion: deleteField()}));
+    await deny(setDoc(bobPlayer, {...member, listo: true}));
+    await deny(updateDoc(doc(host.firestore(), bobPlayer.path), {protocolVersion: deleteField()}));
+    await pass(updateDoc(doc(host.firestore(), bobPlayer.path), {activoEnPartida: false})); // Host moderation still works.
+    const lobby = doc(host.firestore(), `partidas/${room}`);
+    // First prove that the host's normal lobby update is valid for this complete fixture.
+    await pass(updateDoc(lobby, {jugadoresEsperados: 6, maxJugadores: 6}));
+    for (const [key, value] of Object.entries({authorityMode: "client", protocolVersion: 2,
+      estado: "en_juego", partidaInicialCreada: true, preparedMatchId: "forged-match",
+      serverGeneration: 3, rematchGeneration: 3, rematchOf: "forged-old-match",
+      partidaInicial: {mapa: "pampa"}, estadoPartida: {ganador: "Pueblo"}})) {
+      await deny(updateDoc(lobby, {[key]: value}));
+      if (key !== "partidaInicial" && key !== "estadoPartida") await deny(updateDoc(lobby, {[key]: deleteField()}));
+    }
+    const downgrade = writeBatch(host.firestore());
+    downgrade.update(lobby, {protocolVersion: deleteField(), authorityMode: deleteField(), serverGeneration: deleteField()});
+    downgrade.update(doc(host.firestore(), `partidas/${room}/jugadores/host`), {listo: true});
+    await deny(downgrade.commit());
+    await deny(setDoc(lobby, {nombre: "Sala sustituida"}));
+    await deny(deleteDoc(lobby)); // Cannot delete/recreate a rematch as legacy.
+    const current = (await getDoc(lobby)).data();
+    const fresh = doc(host.firestore(), `${lobby.path}-fresh`);
+    const {authorityMode, preparedMatchId, serverGeneration, rematchGeneration, rematchOf, ...initial} = current;
+    await pass(setDoc(fresh, initial)); // New V3 lobbies still work before their first start.
+    await deny(setDoc(doc(host.firestore(), `${lobby.path}-forged`), {...initial, authorityMode: "server"}));
+    await deny(setDoc(doc(host.firestore(), `${lobby.path}-forged`), {...initial, preparedMatchId: "forged-match"}));
+    await pass(deleteDoc(fresh));
+    // The parent need not exist yet: getAfter must enforce V3 in a room/player batch too.
+    const atomicRoom = doc(host.firestore(), `${lobby.path}-atomic`);
+    const creator = {...hostWithoutProtocol, esHost: true};
+    const missingProtocol = writeBatch(host.firestore());
+    missingProtocol.set(atomicRoom, initial);
+    missingProtocol.set(doc(host.firestore(), `${atomicRoom.path}/jugadores/host`), creator);
+    await deny(missingProtocol.commit());
+    const validProtocol = writeBatch(host.firestore());
+    validProtocol.set(atomicRoom, initial);
+    validProtocol.set(doc(host.firestore(), `${atomicRoom.path}/jugadores/host`), {...creator, protocolVersion: 3});
+    await pass(validProtocol.commit());
     console.log(`Server authority rules: ${checks} checks passed.`);
   } finally {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.database().ref(path).remove();
-      for (const p of ["servidor/current", "serverOutbox/current", "jugadores/host", ""]) {
+      for (const p of ["servidor/current", "serverOutbox/current", "jugadores/host", "jugadores/bob", ""]) {
         await deleteDoc(doc(ctx.firestore(), `partidas/${room}${p ? `/${p}` : ""}`));
       }
+      await deleteDoc(doc(ctx.firestore(), `partidas/${room}-atomic/jugadores/host`));
+      await deleteDoc(doc(ctx.firestore(), `partidas/${room}-atomic`));
     });
     await env.cleanup();
   }

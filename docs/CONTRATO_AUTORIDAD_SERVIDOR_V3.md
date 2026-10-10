@@ -27,6 +27,11 @@ usando su protocolo hasta que terminen. Publicar Functions por sí solo no migra
 - Oráculo: una invitación válida se resuelve usando quienes estaban vivos al empezar la
   noche. Si el Oráculo muere esa noche, el invitado conserva el derecho a hablar en el debate.
   No vota ni actúa, y el permiso vence al terminar ese debate.
+- Desertor sin elección inicial: al vencer `REPARTO`, el servidor elige `Pueblo` o
+  `Traidores` con `crypto.randomInt(2)` y persiste la elección en la misma transacción
+  que abre la primera noche. No usa código de sala, nombres ni un hash calculable por
+  clientes. Los reintentos de esa transacción reutilizan la misma extracción privada.
+  Una elección explícita anterior se conserva; después, no responder conserva el bando.
 - Desertor: antes de cerrar una victoria de Traidores, si está vivo, eligió bando, no usó
   su reconsideración y la ronda es `>= 4`, se abre una ventana obligatoria de resolución.
   También puede revisar durante `DIA_DEBATE` desde la ronda 4 (tres días completos).
@@ -34,8 +39,16 @@ usando su protocolo hasta que terminen. Publicar Functions por sí solo no migra
   esta decisión privada. Puede mantener o cambiar; ambas consumen el único uso. El plazo es
   `votacionSeg` de esa sala. Vencer equivale a mantener y no suma AFK. Se reevalúa el ganador
   inmediatamente. Una victoria de Pueblo nunca espera esa ventana.
+  La ventana guarda internamente su fase de retorno. Si un abandono rompe la paridad,
+  se cierra sin consumir el cambio ni modificar el bando: desde `AMANECER` abre debate;
+  desde `RESULTADO` abre la noche de la ronda siguiente. Otras fases interrumpidas por
+  abandono recuperan su tiempo restante y las intenciones de quienes siguen en la sala.
+  No repite resolución nocturna, recuento, expulsión ni AFK. Una salida que mantiene la
+  paridad no reabre la ventana ni extiende su plazo.
 - Salida voluntaria durante la partida: eliminación inmediata con causa `ABANDONO`;
-  no concede victoria de bando ni especial. Perder conexión permite volver y no es
+  no concede victoria de bando ni especial y se registra como derrota en historial y
+  estadísticas. Se aplica también a quien ya murió o al Bufón previamente expulsado:
+  salir antes del final no permite esquivar una derrota. Perder conexión permite volver y no es
   una salida voluntaria. Salir después del resultado no reescribe la victoria ya obtenida.
 - Una victoria legítima por abandono masivo mediante AFK cuenta para historial y
   estadísticas; la cancelación cuando todos son expulsados por AFK no cuenta.
@@ -80,6 +93,33 @@ resuelven por el servidor. La UI debe representar explícitamente `NOCHE` y
 `DESERTOR_RECONSIDERACION`; no convertirlas a fases desconocidas con un fallback local.
 
 ## Persistencia, privacidad y plazos
+
+### Presentación del resultado diurno (8/10)
+
+La eliminación por voto se aplica al **entrar en RESULTADO**, tanto por mayoría
+como por decisión/corrupción del Alcalde. Una publicación coherente trae muerte,
+causa `VOTE`, `DAY_EXPULSION`, rol público si corresponde y victoria especial del
+Bufón. No se elimina a nadie durante el recuento. El ganador se evalúa al vencer
+RESULTADO; un abandono durante esa fase ya considera al expulsado muerto.
+
+Con expulsión, el plazo es `max(transitionSeconds, 8)` segundos; con Bufón,
+`max(transitionSeconds, 12)`. Sin expulsión conserva `transitionSeconds`.
+`victoriasEspeciales` es público desde la expulsión del Bufón, incluso con roles
+ocultos; el bando del Desertor conserva su privacidad hasta el final.
+El recién expulsado no puede enviar al chat de muertos durante RESULTADO.
+
+El cliente presenta el resultado al recibirlo: mantiene la carta del expulsado y
+los textos anteriores hasta el impacto de la bota. El rol público aparece dentro
+de la ceremonia, y el Bufón después de la expulsión. Esta retención solo afecta
+presentación; permisos e intenciones usan siempre el snapshot real. La publicación
+es atómica, pero la recepción entre teléfonos depende de la red y no es simultánea
+al milisegundo. No hay nuevas publicaciones ni sincronización por animación.
+
+Reingreso con evento visto: cuadro final sin repetir sonido ni ceremonia; con
+evento nuevo y poco tiempo: versión comprimida o cuadro final. Las ceremonias del
+amanecer pueden seguir durante el debate, con continuación automática y un máximo
+de seis segundos por ceremonia. No se pausa el reloj ni se tapa un plazo vencido.
+Recuento agregado, roles y ventanas públicas conservan las restricciones de V3.
 
 - Firestore: `partidas/{roomId}/servidor/current`, estado completo exclusivo de Admin;
   `partidas/{roomId}/serverOutbox/current`, publicación y vencimiento durables. Reglas
@@ -139,7 +179,11 @@ de hasta 2 s y hasta tres intentos por fase. iOS todavía debe integrar esta ló
 
 `onlineMaintenance/serverAuthority.enabled=true` es una llave exclusiva de Admin
 para permitir inicios nuevos. Si falta o vale false, el modo no se inicia. Deshabilitarla
-no detiene partidas existentes ni rompe sus reintentos. **No se habilitó en producción.**
+no detiene partidas existentes ni rompe sus reintentos. Las listas Admin opcionales
+`allowedHostUids` y `allowedRoomIds` restringen los inicios a cuentas y salas de QA;
+una lista vacía o mal formada no autoriza ningún inicio. Se verificaron en Cloud el
+7/10 con una sala temporal; al terminar se restauró el gate cerrado. No hay apertura
+general de V3. Ver `docs/DESPLIEGUE_V3_CLOUD_2026-10-07.md`.
 
 La revancha crea otro `matchId` y una generación nueva, limpia poderes/acciones,
 marca a todos como no listos y conserva el historial de la partida anterior. El lobby
@@ -184,8 +228,16 @@ La revisión pública solo aumenta con cambios públicos; cada revisión privada
 aumenta únicamente si cambian los datos de ese UID. Los recibos de las callables
 usan la revisión pública, nunca el contador secreto del motor. Una acción privada
 no provoca entrega del listener público ni otra tarea para el mismo plazo.
-Los anuncios usan `eventosPublicos: [{codigo, ronda, jugadores, texto}]`, acotados
-a 60; Android/iOS deben presentar estos eventos sin inventar resultados.
+Los anuncios usan `eventosPublicos: [{seq, codigo, ronda, jugadores, texto}]`. `seq`
+es entero positivo, estrictamente creciente por partida; no se reinicia al recortar
+el anillo interno de 60 eventos. La proyección transmite solamente la ronda actual.
+Los códigos incluyen `AFK_EXPULSION` (con UID), `NIGHT_START`, `COUNTERPOINT_OPEN`
+(con participantes), `DESERTER_WINDOW`, `DESERTER_WINDOW_CLOSED`, `VICTORY`,
+`MATCH_CANCELLED` y `MAYOR_NO_DECISION`, además de los anuncios de votos/Oráculo.
+No se crean eventos por intenciones secretas. Android/iOS presentan esos eventos sin
+inventar resultados; efectos una sola vez por `matchId + seq`, cambios de fase por
+`matchId + phaseIndex`. Guardar el último `seq` recibido al reconectar/recrear la
+pantalla. Un nuevo `matchId` descarta ese cursor y todas las intenciones anteriores.
 
 Los logs `online_v3_operation` incluyen tiempo, intentos de transacción, cambios
 públicos/privados y `projectionBytes`. Este último mide JSON del snapshot final,
@@ -257,6 +309,12 @@ ni reglas en paralelo. No hace falta volver a decidir las reglas confirmadas.
 
 ## Cliente Android y chat: avance del 6 de octubre
 
+**Estado posterior, 8 de octubre:** Android ya reutiliza el layout y los animadores
+de la mesa habitual. La descripción de pantalla experimental de este apartado
+documenta el estado del día 6, no el actual. Ver `VENTANAS_V3_ANDROID_2026-10-08.md`
+y `PARIDAD_MESA_V3_ANDROID_2026-10-08.md`. iOS también cuenta con un adaptador V3
+en desarrollo; la prueba mixta y la habilitación Release siguen pendientes.
+
 Esta entrega añade una pantalla **experimental separada**, `ServerGameplayActivity`.
 Es una presentación funcional del protocolo, con Firebase SDK real, no un motor local:
 recibe tres proyecciones coherentes y envía intenciones. Aún falta integrar la presentación
@@ -284,6 +342,12 @@ habitual del gameplay; no representa una migración visual terminada ni habilita
 
 ### Chat acotado y permisos
 
+**Actualización del 8/10 — Android:** el chat público permite escribir durante
+`DIA_DEBATE`, `VOTACION` y `DESEMPATE_VOTACION` a miembros vivos y no silenciados.
+En `CONTRAPUNTO`, solamente a sus participantes. El muerto invitado por el Oráculo
+conserva voz solo en el debate. Recuento, decisión del Alcalde y resultado son de
+solo lectura en el canal público; los canales privados siguen sus permisos propios.
+
 `onlineV3/{roomId}/chat/{publico|traidores|muertos}/{uid}_{slot}` conserva hasta
 16 posiciones por UID y canal. Se sobrescribe una posición propia; nunca se permite
 sobrescribir la de otro jugador. Para 15 jugadores son como máximo 240 mensajes por
@@ -301,6 +365,33 @@ La publicación de `REPARTO` o `LOBBY` con nuevo `matchId` limpia chat, ledger y
 anterior **en la misma transacción RTDB que publica las nuevas proyecciones**. Así, un
 jugador que pasa a Traidores en la revancha no recibe el chat secreto de la partida previa.
 Las publicaciones normales siguen usando la transacción del snapshot, sin descargar chat.
+
+### Emotes V3: protocolo del 8/10
+
+`permissions/{uid}.reactions` habilita a miembros vivos y no silenciados durante
+debate, Contrapunto, votación, recuento, segunda votación y desempate del Alcalde.
+El usuario confirmó que **el silencio también bloquea emotes**, incluida la mesa común.
+No se permiten al finalizar la partida. Un miembro puede recibir aunque no pueda enviar.
+
+`onlineV3/{room}/reactions/{uid}_{slot}` contiene exclusivamente
+`{actorUid, matchId, phaseIndex, slot, emoteId, ts}`. Hay ocho slots por UID.
+Cada envío actualiza atómicamente esa posición y `reactionRate/{uid}`; las reglas
+validan propietario, pertenencia, permiso, partida, fase, plazo, timestamp del servidor,
+catálogo cerrado de doce emotes base, diez segundos entre envíos y dos usos por ronda.
+La modificación aislada de mensaje o ledger se rechaza. Premium y «6 7» quedan fuera.
+
+Android reutiliza la paleta y las burbujas de la mesa común. Añade un listener RTDB
+indexado por `ts`, limitado a 40 elementos, solamente en primer plano y fases de
+reacción. Al reconectar escucha desde la hora del servidor actual, sin animar el
+anillo antiguo. Deduplica por `matchId:actorUid:slot:ts` y absorbe la corrección
+del timestamp optimista del SDK del mismo slot dentro del intervalo mínimo.
+El nuevo matchId limpia reacciones y ledger junto al chat y la presencia.
+
+No hay callable ni escritura Firestore por emote: una lectura del ledger y una
+actualización RTDB de dos rutas por envío. El tráfico se distribuye entre miembros.
+La medición con 5/10/15 receptores está en
+`AJUSTES_MESA_EMOTES_V3_ANDROID_2026-10-08.md`: es JSON de SDK en emulador por
+ronda de máxima participación, no la factura ni los bytes de una partida completa.
 
 ### Pruebas y reproducción Android
 
@@ -342,12 +433,51 @@ El helper nunca cambia `app/google-services.json`. No subir el archivo temporal
 ### Pendiente antes de habilitar V3
 
 1. Completar integración visual Android y revisar accesibilidad de la pantalla habitual.
-2. Adaptar el cliente iOS al mismo protocolo, incluyendo coherencia de permisos/fase,
-   reconsideración, salida, recuperación y revancha; probar Android + iOS juntos.
-3. Medir sesiones completas y reconexiones de 5/10/15, incluidos chats y fotos; los
-   tamaños de fixture/logs todavía no equivalen al consumo facturado.
+2. Para la beta iOS (no bloquea publicar Android): completar la validación del
+   adaptador V3, permisos/fase, reconsideración, salida, recuperación y revancha;
+   probar Android + iOS juntos.
+3. Repetir la medición Cloud de sesiones completas y reconexiones de 5/10/15 con
+   esta entrega, incluidos chats y fotos. Ver `MEDICION_V3_BETA_ANDROID.md` para la
+   medición anterior; los tamaños de fixture/logs no equivalen al consumo facturado.
 4. Ensayo controlado de Tasks/IAM y alertas/reparación cuando se agotan los reintentos.
 5. Despliegue gradual y gate, una vez que estas pruebas estén aprobadas.
 
 Claude puede revisar el contrato de cliente, permisos por fase y limpieza de chat de la
 revancha. No hace falta volver a decidir las reglas ya confirmadas por el usuario.
+
+
+## Correcciones de la revisión del 6 de octubre
+
+La revancha `authorityMode=lobby` permite configuración, presencia y «listo», pero
+el cliente no puede cambiar/eliminar `authorityMode`, `protocolVersion`, `estado`,
+`partidaInicialCreada`, `partidaInicial`, `estadoPartida`, `preparedMatchId`,
+`serverGeneration`, `rematchGeneration` ni `rematchOf`, ni borrar y recrear la sala
+como legacy. El backend conserva inicio, generación y reset. Las reglas también
+impiden crear una sala con marcadores de autoridad o revancha falsificados. El
+cliente que ya reconoció V3 rechaza una sala degradada, sin arrancar el motor local.
+
+En toda sala con `protocolVersion=3`, cada alta o actualización de
+`jugadores/{uid}` debe conservar `protocolVersion=3` y `puedeArbitrar=false`.
+Ningún participante ni el creador pueden quitar la versión al editar o sustituir
+el documento. Se comprueba la sala con `getAfter`, también cuando sala y creador
+se crean juntos. Los documentos legacy conservan la versión opcional. Esto no
+bloquea «listo», presencia ni expulsión desde el lobby.
+
+Todo vencimiento que devuelve `changed:true` aumenta `phaseIndex` o fija ganador,
+y una fase activa nueva tiene un plazo futuro. El motor y la transacción verifican
+esta invariante antes de escribir. Si un estado corrupto no puede avanzar, el cron
+registra `online_v3_recovery_stuck` y no escribe estado/outbox ni lo publica; solamente
+puede guardar el cursor del lote. Requiere alerta y reparación operativa antes de
+habilitar producción: el registro por sí solo no crea una política de alerta.
+
+Android conserva el ensamblado de las tres proyecciones y su piso de fase/revisión
+entre reconexiones. Guarda el cursor de presentación en el estado de la Activity;
+no repite anuncios de accesibilidad ya vistos. En la entrega del día 6 todavía
+faltaba la integración visual habitual; los avances Android del día 8 están
+documentados en `PARIDAD_MESA_V3_ANDROID_2026-10-08.md`.
+
+Al reconectar, la mesa se reconstruye desde el snapshot coherente actual
+(jugadores, fase, roles visibles, condición propia y resultado). Los eventos de
+la ronda actual sirven para presentación; no son un registro necesario para
+reconstruir fases o eliminaciones. No se reproducen eventos de rondas que el
+cliente no presenció. El adaptador iOS debe seguir el mismo criterio.

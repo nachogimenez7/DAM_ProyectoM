@@ -82,8 +82,10 @@ class VoteResultAnimator(
     private var shakeAnimator: ObjectAnimator? = null
     private var flashView: View? = null
     private var flyingCard: View? = null
+    private var serverCeremony = false
 
     fun show(session: GameSession) {
+        serverCeremony = false
         presentationReady = false
         cancelAnimations()
         // Vaciar la grilla ANTES de tocar columnCount (evita estados invalidos del GridLayout).
@@ -195,12 +197,139 @@ class VoteResultAnimator(
         }
     }
 
+    /** Aggregate V3 results contain no voter identities. Presentation never resolves the vote. */
+    fun showServerTotals(session: GameSession, totals: Map<String, Int>, heading: String, message: String) {
+        serverCeremony = false
+        cancelAnimations(); presentationReady = false
+        cardHolders.clear(); cards.removeAllViews(); applyPanelMode(expulsion = false)
+        overlay.visibility = View.VISIBLE; overlay.alpha = 1f
+        boot.visibility = View.INVISIBLE; dust.visibility = View.INVISIBLE
+        title.text = heading; subtitle.text = message
+        setNotice("La identidad de los votantes permanece oculta.")
+        val candidates = session.players.filter { it.name in totals || it.name == session.dayEliminationTarget }
+        cards.columnCount = recountColumnCount(candidates.size.coerceAtLeast(1))
+        val (width, height) = recountCardSize(candidates.size.coerceAtLeast(1))
+        candidates.forEachIndexed { index, player ->
+            val holder = createVoteCard(session, player, dense = candidates.size > 4)
+            val count = totals[player.name] ?: 0
+            holder.total.text = "$count " + if (count == 1) "voto" else "votos"
+            cardHolders[player.name] = holder
+            cards.addView(holder.root, GridLayout.LayoutParams(GridLayout.spec(index / cards.columnCount),
+                GridLayout.spec(index % cards.columnCount)).apply {
+                this.width = dp(width); this.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                setMargins(dp(4), dp(4), dp(4), dp(4))
+            })
+            holder.root.minimumHeight = dp(height)
+        }
+        if (candidates.isEmpty()) addEmptyVoteMessage()
+        EssentialViewAnimation.reveal(panel, 300L, fromScale = 0.96f)
+        setContinueReady("CONTINUAR")
+    }
+
     fun showNoExpulsion() {
         cancelScheduled()
         title.text = "EL PUEBLO NO LLEGÓ A UN ACUERDO"
         subtitle.text = "Nadie será expulsado esta jornada."
         setNotice("La noche volverá a caer sobre el pueblo.")
         setContinueReady("CONTINUAR")
+    }
+
+    /** Same art, bounded by the server deadline. No phase callbacks or local vote resolution. */
+    internal fun showServerExpulsion(session: GameSession, mode: ServerGameTablePresentation.ExpulsionMode,
+                            durationMs: Long, onFinished: () -> Unit) {
+        prepareServerResult()
+        serverCeremony = true
+        if (mode == ServerGameTablePresentation.ExpulsionMode.FULL) {
+            playExpulsion(session, onFinished)
+            return
+        }
+        val player = session.players.firstOrNull { it.name == session.dayEliminationTarget }
+            ?: return onFinished()
+        cards.columnCount = 1
+        val holder = createExpulsionCard(session, player)
+        cardHolders[player.name] = holder
+        cards.addView(holder.root, GridLayout.LayoutParams().apply {
+            width = dp(176); height = dp(218); setMargins(dp(6), dp(6), dp(6), dp(6))
+        })
+        title.text = if (session.alcaldeCorruption) "CORRUPCIÓN EN EL PUEBLO" else "EXPULSIÓN"
+        subtitle.text = "El pueblo ha tomado su decisión."
+        setNotice("${player.name} será expulsado del pueblo.")
+        if (mode == ServerGameTablePresentation.ExpulsionMode.STATIC) {
+            if (session.revealRolesOnDeath) revealStaticRole(holder, player)
+            else holder.total.text = "EXPULSADO"
+            boot.setImageResource(R.drawable.ic_kicking_boot)
+            boot.visibility = View.VISIBLE; boot.alpha = 1f; boot.translationX = 0f; boot.rotation = 0f
+            overlay.post {
+                if (overlay.visibility == View.VISIBLE && cardHolders[player.name] === holder)
+                    boot.translationX = serverBootContact(holder)
+            }
+            title.text = "${player.name.uppercase()}\nFUE EXPULSADO"
+            subtitle.text = if (session.revealRolesOnDeath) "${player.name} era ${player.role?.name}." else "Su carta permanece oculta."
+            setNotice("El pueblo dictó su sentencia.")
+            setContinueReady("CONTINUAR")
+            return
+        }
+        // Reconnection/latency may leave only part of RESULTADO. Keep entrance,
+        // authorized role, boot impact and exit, without crossing its deadline.
+        val budget = durationMs.coerceIn(1800L, 3500L)
+        EssentialViewAnimation.reveal(holder.root, (budget * .12).toLong(), fromScale = .86f)
+        if (session.revealRolesOnDeath) schedule((budget * .23).toLong()) {
+            title.text = "CARTA REVELADA"
+            subtitle.text = "${player.name} era ${player.role?.name}."
+            revealStaticRole(holder, player)
+        }
+        schedule((budget * .5).toLong()) {
+            boot.setImageResource(R.drawable.boot_windup)
+            boot.visibility = View.VISIBLE; boot.translationX = serverBootContact(holder); boot.rotation = -18f
+            EssentialViewAnimation.reveal(boot, durationMs = (budget * .12).toLong(), fromScale = .72f)
+        }
+        schedule((budget * .66).toLong()) {
+            boot.setImageResource(R.drawable.ic_kicking_boot)
+            onImpact?.invoke(); playImpactFlash(); playImpactDust(holder)
+            title.text = "${player.name.uppercase()}\nFUE EXPULSADO"
+            subtitle.text = if (session.revealRolesOnDeath) "Su carta ya fue revelada." else "Su carta permanece oculta."
+            setNotice("El pueblo dictó su sentencia.")
+            EssentialViewAnimation.flyOut(holder.root, -overlay.width * .9f, -overlay.height * .18f,
+                (budget * .17).toLong()) { holder.root.visibility = View.INVISIBLE; boot.visibility = View.INVISIBLE }
+        }
+        schedule(budget) { setContinueReady("CONTINUAR"); onFinished() }
+    }
+
+    fun showServerNoExpulsion(session: GameSession, totals: Map<String, Int>) {
+        showServerTotals(session, totals, "RESULTADO DEL DÍA", "")
+        showNoExpulsion()
+    }
+
+    private fun addEmptyVoteMessage() {
+        cards.columnCount = 1
+        cards.addView(emptyVoteMessage(), GridLayout.LayoutParams().apply {
+            width = dp(200)
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+            setMargins(dp(6), dp(6), dp(6), dp(6))
+        })
+    }
+
+    private fun prepareServerResult() {
+        cancelAnimations(); cardHolders.clear(); cards.removeAllViews(); applyPanelMode(expulsion = true)
+        presentationReady = false
+        overlay.visibility = View.VISIBLE; overlay.alpha = 1f
+        panel.alpha = 1f; panel.scaleX = 1f; panel.scaleY = 1f
+        boot.visibility = View.INVISIBLE; dust.visibility = View.INVISIBLE
+        continueButton.visibility = View.INVISIBLE; continueButton.isEnabled = false
+    }
+
+    private fun revealStaticRole(holder: VoteCardHolder, player: GamePlayer) {
+        holder.avatar.visibility = View.GONE
+        holder.roleImage.setImageResource(roleImageFor(player.role))
+        holder.roleImage.visibility = View.VISIBLE; holder.roleImage.alpha = 1f
+        holder.roleImage.scaleX = 1f; holder.roleImage.scaleY = 1f
+        holder.total.text = player.role?.name.orEmpty()
+    }
+
+    private fun serverBootContact(holder: VoteCardHolder): Float {
+        val origin = IntArray(2); val card = IntArray(2)
+        overlay.getLocationOnScreen(origin); holder.root.getLocationOnScreen(card)
+        return (card[0] - origin[0] + holder.root.width - overlay.width - dp(44 + BOOT_CONTACT_OVERLAP_DP)).toFloat()
     }
 
     fun playExpulsion(session: GameSession, onFinished: () -> Unit) {
@@ -315,6 +444,7 @@ class VoteResultAnimator(
         flyingCard = null
         panel.animate().cancel()
         continueButton.animate().cancel()
+        EssentialViewAnimation.clear(panel, continueButton, boot, dust)
         boot.animate().cancel()
         dust.animate().cancel()
         dust.visibility = View.INVISIBLE
@@ -436,7 +566,9 @@ class VoteResultAnimator(
         } else {
             "SENTENCIA DEL PUEBLO"
         }
-        subtitle.text = if (session.revealRolesOnDeath) {
+        subtitle.text = if (serverCeremony && session.revealRolesOnDeath) {
+            "$targetName fue revelado. La sentencia está por cumplirse."
+        } else if (session.revealRolesOnDeath) {
             "$targetName fue revelado y expulsado."
         } else {
             "La carta de $targetName permanece oculta."

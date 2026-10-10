@@ -225,7 +225,10 @@ class LobbyActivity : BaseActivity() {
             if (!onlineLobbyStarted || !isFirestoreOnlineLobby() || isFinishing || isDestroyed) {
                 return
             }
-            if (currentUserIsOnlineHost()) {
+            // A V3 room in play belongs to the server: its rules deny lobby writes, and
+            // the lease (a host-relay mechanism of the previous protocol) is meaningless.
+            val serverMatchInPlay = onlineServerProtocol && onlineRoomState == ONLINE_ROOM_STATE_IN_GAME
+            if (currentUserIsOnlineHost() && !serverMatchInPlay) {
                 refreshOnlineLobbyHostLease()
             }
             onlineHostLeaseHandler.postDelayed(this, OnlineFirestorePolicy.HOST_LEASE_REFRESH_MS)
@@ -268,6 +271,8 @@ class LobbyActivity : BaseActivity() {
         onlineLobbyConfig = OnlineLobbyConfig.fromSession(session)
         onlineLobbyName = intent.getStringExtra(EXTRA_LOBBY_NAME).orEmpty()
         onlinePartidaId = intent.getStringExtra(EXTRA_PARTIDA_ID).orEmpty()
+        onlineServerProtocol = onlineServerProtocol || OnlineRoomRecovery.load(this)
+            ?.let { it.roomId == onlinePartidaId && it.serverProtocol } == true
         onlineRoomCode = intent.getStringExtra(EXTRA_ROOM_CODE).orEmpty()
         recoveringOnlineMatch = intent.getBooleanExtra(EXTRA_RECOVERING_ONLINE, false)
         returnedFromOnlineMatch = intent.getBooleanExtra(EXTRA_RETURNED_FROM_ONLINE_MATCH, false)
@@ -1109,7 +1114,7 @@ class LobbyActivity : BaseActivity() {
                         else -> 0.4f
                     }
                     contentDescription = if (showingPlayGamesPhoto) {
-                        "Foto de Play Juegos de ${player.name}"
+                        "Foto de perfil de ${player.name}"
                     } else {
                         "Avatar ilustrado de ${player.name}"
                     }
@@ -2944,7 +2949,14 @@ class LobbyActivity : BaseActivity() {
     }
 
     private fun applyOnlineRoomSnapshot(snapshot: DocumentSnapshot) {
+        if (!ServerRoomProtocol.compatible(snapshot.getLong("protocolVersion"), snapshot.getString("authorityMode"),
+                snapshot.getLong("serverGeneration"), onlineServerProtocol)) {
+            showOnlineRemovalDialog("Esta sala perdió el protocolo del servidor. Volvé a entrar en una sala compatible.",
+                title = "Sala incompatible")
+            return
+        }
         onlineServerProtocol = snapshot.getLong("protocolVersion") == 3L || BuildConfig.SERVER_ONLINE_V3
+        if (onlineServerProtocol) OnlineRoomRecovery.rememberServerProtocol(this, onlinePartidaId)
         onlineServerAuthority = snapshot.getString("authorityMode") == "server"
         val previousActiveHostId = onlineActiveHostId
         val previousLobbyConfig = onlineLobbyConfig
@@ -3441,10 +3453,14 @@ class LobbyActivity : BaseActivity() {
                         "$disconnected jugadores están desconectados. Sus lugares quedan reservados."
                     missing > 0 -> getString(R.string.lobby_hint_online_invite)
                     else -> getString(R.string.lobby_hint_online_ready)
-                }
+                } + hostStabilityLine()
             }
         }
     }
+
+    // The previous protocol still depends on the host's phone; only the host sees this.
+    private fun hostStabilityLine(): String =
+        if (!onlineServerProtocol && currentUserIsOnlineHost()) "\n" + getString(R.string.lobby_hint_online_host_stability) else ""
 
     private fun currentMaxPlayers(): Int {
         return if (isFirestoreOnlineLobby()) {
@@ -4949,6 +4965,18 @@ class LobbyActivity : BaseActivity() {
         OnlineRoomRecovery.save(this, roomId = onlinePartidaId, roomCode = onlineRoomCode,
             roomName = onlineLobbyName.ifBlank { "Sala online" }, mapKey = base.mapKey, isHost = onlineTempUid == onlineHostId)
         stopOnlineFirestoreListenersForMatchTransition()
+        if (!recoveringOnlineMatch) {
+            // Same opening as the usual online match: the dealing screen first (card backs
+            // only, the role arrives later from the server), then the table.
+            startActivity(Intent(this, AssigningRolesActivity::class.java)
+                .putExtra(EXTRA_SESSION, base)
+                .putExtra(AssigningRolesActivity.EXTRA_ONLINE_PARTIDA_ID, onlinePartidaId)
+                .putExtra(AssigningRolesActivity.EXTRA_ONLINE_PLAYER_ID, onlineTempUid)
+                .putExtra(AssigningRolesActivity.EXTRA_ONLINE_IS_HOST, currentUserIsOnlineHost())
+                .putExtra(AssigningRolesActivity.EXTRA_SERVER_MATCH_ID, matchId)
+                .putExtra(AssigningRolesActivity.EXTRA_SERVER_CREATOR_ID, onlineHostId))
+            return
+        }
         startActivity(Intent(this, ServerGameplayActivity::class.java)
             .putExtra(EXTRA_SESSION, base)
             .putExtra(EXTRA_PARTIDA_ID, onlinePartidaId)

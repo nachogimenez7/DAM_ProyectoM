@@ -1,0 +1,151 @@
+{
+ "public": {
+  "protocolVersion": 3,
+  "authorityMode": "server",
+  "versionEstado": 3,
+  "matchId": "match-1",
+  "revision": 1,
+  "fase": "REPARTO",
+  "phaseIndex": 0,
+  "ronda": 1,
+  "limiteFaseEpochMs": 1800000030000,
+  "anuncioPublico": "Dios preparo una partida online. En juego: 2 Aldeanos, 1 Detective, 1 Medico, 1 Asesino, 1 Alcalde, 1 Payador, 1 Mercenario. Todos conocen la composicion; las identidades siguen ocultas.",
+  "alcaldeCorrupcion": false,
+  "rondaVoto": 0,
+  "jugadores": [
+   {
+    "uidTemporal": "p0",
+    "orden": 0,
+    "nombre": "J0",
+    "publicId": "1",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p1",
+    "orden": 1,
+    "nombre": "J1",
+    "publicId": "2",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p2",
+    "orden": 2,
+    "nombre": "J2",
+    "publicId": "3",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p3",
+    "orden": 3,
+    "nombre": "J3",
+    "publicId": "4",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p4",
+    "orden": 4,
+    "nombre": "J4",
+    "publicId": "5",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p5",
+    "orden": 5,
+    "nombre": "J5",
+    "publicId": "6",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p6",
+    "orden": 6,
+    "nombre": "J6",
+    "publicId": "7",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p7",
+    "orden": 7,
+    "nombre": "J7",
+    "publicId": "8",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   }
+  ]
+ },
+ "private": {
+  "p3": {
+   "matchId": "match-1",
+   "phaseIndex": 0,
+   "rolesVisibles": [
+    {
+     "orden": 3,
+     "rolKey": "asesino",
+     "rolNombre": "Asesino",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_asesino_gaucho"
+    },
+    {
+     "orden": 4,
+     "rolKey": "mercenario",
+     "rolNombre": "Mercenario",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_mercenario_gaucho"
+    }
+   ],
+   "revision": 1
+  },
+  "p0": {
+   "matchId": "match-1",
+   "phaseIndex": 0,
+   "rolesVisibles": [
+    {
+     "orden": 0,
+     "rolKey": "aldeano",
+     "rolNombre": "Aldeano",
+     "rolEquipo": "Pueblo",
+     "rolImagen": "rol_aldeano_gaucho"
+    }
+   ],
+   "revision": 1
+  }
+ },
+ "permissions": {
+  "p3": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 0,
+   "name": "J3",
+   "alive": true,
+   "traitor": true,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": false
+  },
+  "p0": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 0,
+   "name": "J0",
+   "alive": true,
+   "traitor": false,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": false
+  }
+ }
+}

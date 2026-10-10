@@ -1,11 +1,190 @@
 import XCTest
 
-/// Online screens against the in-memory services (`-ui-testing-online <scenario>`): no
-/// Firebase, no network. Covers access, account, rooms, lobby, errors with retry and the
-/// accessibility audit of every screen and dialog.
+/// Screen tests use explicit in-memory scenarios. Opt-in testServer* cases instead use
+/// the actual Firebase SDK, rules and V3 callables against isolated local emulators.
 final class OnlineFlowUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    // Real Firebase SDK + rules + callable tests on the isolated local emulator set.
+    // The loopback controller only creates/advances fixtures; app actions go to V3.
+    func testServerChatVoteAndSingleNightAnnouncement() throws {
+        let (app, fixture) = try launchServerMatch()
+        _ = try serverFixture("phase", ["phase": "NOCHE", "role": "aldeano"])
+        XCTAssertTrue(app.staticTexts["match.announcement"].waitUntil(timeout: 10) { $0.label == "Noche 1" })
+        XCTAssertFalse(element(app, "match.event").exists, "NIGHT_START has no duplicate toast")
+        XCTAssertFalse(app.staticTexts["Ya no tenés acceso a esta partida."].exists)
+        _ = try serverFixture("phase", ["phase": "DIA_DEBATE", "role": "aldeano"])
+        app.buttons["match.chat"].tap()
+        let input = app.textFields["match.chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap(); input.typeText("Mensaje real del debate")
+        app.buttons["ENVIAR"].tap()
+        XCTAssertTrue(app.staticTexts["Mensaje real del debate"].waitForExistence(timeout: 10))
+        let chat = try serverFixture("status")["chat"] as? [String: Any]
+        XCTAssertNotNil(chat?["publico"], "message persisted in RTDB through rules")
+        app.buttons["CERRAR"].tap()
+        _ = try serverFixture("phase", ["phase": "VOTACION", "role": "aldeano"])
+        let vote = app.buttons["match.action.votar:"]
+        XCTAssertTrue(vote.waitForExistence(timeout: 10)); vote.tap()
+        let uid = fixture["uid"] as! String
+        let other = String(uid.dropLast()) + "1"
+        app.buttons["match.player.\(other)"].tap()
+        XCTAssertTrue(app.staticTexts["match.status"].waitUntil(timeout: 15) { $0.label.contains("Acción registrada: tu voto") })
+        let actions = try serverFixture("status")["confirmed"] as? [[String: Any]]
+        XCTAssertEqual(actions?.first?["action"] as? String, "votar")
+        XCTAssertEqual(actions?.first?["targetUid"] as? String, other)
+        attach(app, "server-v3-vote-confirmed")
+    }
+
+    func testServerDeserterInitialRoundFourAndFinalWindow() throws {
+        let (app, _) = try launchServerMatch()
+        _ = try serverFixture("phase", ["phase": "REPARTO", "role": "desertor"])
+        let initial = app.buttons["match.action.desertor_initial:Pueblo"]
+        XCTAssertTrue(initial.waitForExistence(timeout: 10), app.debugDescription); initial.tap()
+        app.buttons["matchDeserterDialog.positive"].tap()
+        XCTAssertTrue(app.staticTexts["match.deserter.team"].waitUntil(timeout: 15) { $0.label.contains("PUEBLO") })
+        XCTAssertEqual(try serverFixture("status")["team"] as? String, "Pueblo")
+        _ = try serverFixture("phase", ["phase": "DIA_DEBATE", "role": "desertor", "team": "Pueblo", "round": 3])
+        XCTAssertTrue(app.staticTexts["match.announcement"].waitUntil(timeout: 10) { $0.label.contains("DIA_DEBATE") })
+        XCTAssertFalse(app.buttons["match.action.desertor_rethink:mantener"].exists)
+        _ = try serverFixture("phase", ["phase": "DIA_DEBATE", "role": "desertor", "team": "Pueblo", "round": 4, "muted": true])
+        let keep = app.buttons["match.action.desertor_rethink:mantener"]
+        XCTAssertTrue(keep.waitForExistence(timeout: 10)); keep.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "consume tu única revisión")).firstMatch.exists)
+        app.buttons["matchDeserterDialog.positive"].tap()
+        XCTAssertTrue(keep.waitForNonExistence(timeout: 15))
+        XCTAssertEqual(try serverFixture("status")["used"] as? Bool, true)
+        _ = try serverFixture("phase", ["phase": "DESERTOR_RECONSIDERACION", "role": "desertor", "team": "Pueblo", "round": 4])
+        let change = app.buttons["match.action.desertor_rethink:Traidores"]
+        XCTAssertTrue(change.waitForExistence(timeout: 10)); change.tap()
+        app.buttons["matchDeserterDialog.positive"].tap()
+        XCTAssertTrue(element(app, "match.result").waitForExistence(timeout: 15))
+        XCTAssertEqual(try serverFixture("status")["team"] as? String, "Traidores")
+        attach(app, "server-v3-deserter-final")
+    }
+
+    func testServerPrivateChatsAndDeadAbandonment() throws {
+        let (app, _) = try launchServerMatch()
+        _ = try serverFixture("phase", ["phase": "NOCHE", "role": "asesino"])
+        app.buttons["match.chat"].tap()
+        let traitors = app.segmentedControls.buttons["TRAIDORES"]
+        XCTAssertTrue(traitors.waitForExistence(timeout: 10)); traitors.tap()
+        let input = app.textFields["match.chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10), app.debugDescription); input.tap(); input.typeText("Canal traidor")
+        app.buttons["ENVIAR"].tap()
+        XCTAssertTrue(app.staticTexts["Canal traidor"].waitForExistence(timeout: 10))
+        app.buttons["CERRAR"].tap()
+        _ = try serverFixture("phase", ["phase": "DIA_DEBATE", "role": "aldeano", "dead": true])
+        app.buttons["match.chat"].tap()
+        let dead = app.segmentedControls.buttons["ESPECTADORES"]
+        XCTAssertTrue(dead.waitForExistence(timeout: 10)); dead.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 10)); input.tap(); input.typeText("Canal de muertos")
+        app.buttons["ENVIAR"].tap()
+        XCTAssertTrue(app.staticTexts["Canal de muertos"].waitForExistence(timeout: 10))
+        app.buttons["CERRAR"].tap()
+        app.buttons["match.leave"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "cuenta como derrota")).firstMatch.exists)
+        app.buttons["matchLeaveDialog.positive"].tap()
+        XCTAssertTrue(app.buttons["online.joinCode"].waitForExistence(timeout: 15))
+        let result = try serverFixture("status")
+        XCTAssertEqual(result["active"] as? Bool, false)
+        XCTAssertEqual(result["deathCause"] as? String, "ABANDONO")
+    }
+
+    func testServerRematchAndReentryAfterResult() throws {
+        let (app, _) = try launchServerMatch()
+        _ = try serverFixture("phase", ["phase": "FINALIZADA", "role": "aldeano"])
+        XCTAssertTrue(element(app, "match.result").waitForExistence(timeout: 15))
+        let previous = try serverFixture("status")["matchId"] as? String
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10)); app.buttons["menu.play"].tap()
+        XCTAssertTrue(app.buttons["play.online"].waitForExistence(timeout: 5)); app.buttons["play.online"].tap()
+        let recover = app.buttons["online.recover"]
+        XCTAssertTrue(recover.waitForExistence(timeout: 15)); recover.tap()
+        XCTAssertTrue(element(app, "match.result").waitForExistence(timeout: 15))
+        app.buttons["match.rematch"].tap()
+        XCTAssertTrue(app.staticTexts["lobby.online.code"].waitForExistence(timeout: 20), "same room after clean LOBBY publication")
+        XCTAssertFalse(app.buttons["match.role"].exists, "previous private role no longer on screen")
+        XCTAssertEqual(try serverFixture("status")["phase"] as? String, "LOBBY")
+        XCTAssertNotEqual(try serverFixture("status")["matchId"] as? String, previous)
+        attach(app, "server-v3-rematch-lobby")
+    }
+
+    func testServerDawnUsesPublicRoleAndEventsDoNotReplay() throws {
+        let (app, _) = try launchServerMatch(realTimeReveals: true)
+        _ = try serverFixture("phase", ["phase": "AMANECER", "role": "aldeano", "event": "NIGHT_DEATH", "revealRole": false])
+        let reveal = element(app, "table.dawnAnnouncement")
+        XCTAssertTrue(reveal.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["ROL OCULTO"].exists, "reveal must not use a private role")
+        let next = app.buttons["table.dawnContinue"]
+        XCTAssertTrue(next.waitUntil(timeout: 10) { $0.exists && $0.isEnabled })
+        attach(app, "server-v3-public-dawn-reveal")
+        next.tap()
+        XCTAssertTrue(reveal.waitForNonExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(try serverFixture("status")["phase"] as? String, "AMANECER", "animation completion does not arbitrate")
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10)); app.buttons["menu.play"].tap()
+        XCTAssertTrue(app.buttons["play.online"].waitForExistence(timeout: 5)); app.buttons["play.online"].tap()
+        let recover = app.buttons["online.recover"]
+        XCTAssertTrue(recover.waitForExistence(timeout: 15)); recover.tap()
+        XCTAssertTrue(app.buttons["match.role"].waitForExistence(timeout: 15))
+        XCTAssertFalse(reveal.exists, "persisted matchId + seq prevents replay after relaunch")
+        _ = try serverFixture("phase", ["phase": "DIA_DEBATE", "role": "aldeano", "event": "ORACLE_INVITATION"])
+        XCTAssertTrue(reveal.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["¡UNA VOZ REGRESA!"].exists)
+        app.buttons["table.specialReveal.continue"].tap()
+        XCTAssertTrue(reveal.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(try serverFixture("status")["phase"] as? String, "DIA_DEBATE")
+    }
+
+    private func serverFixture(_ operation: String, _ fields: [String: Any] = [:]) throws -> [String: Any] {
+        guard ProcessInfo.processInfo.environment["TRAIDORES_IOS_V3_NATIVE_TEST"] == "1" else {
+            throw XCTSkip("Requires isolated emulators and ios/Scripts/server_v3_native_harness.cjs")
+        }
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:29888/\(operation)")!)
+        request.httpMethod = "POST"; request.httpBody = try JSONSerialization.data(withJSONObject: fields)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let done = expectation(description: "Fixture \(operation)")
+        var result: Result<[String: Any], Error>?
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            defer { done.fulfill() }
+            do {
+                if let error { throw error }
+                let value = try JSONSerialization.jsonObject(with: data ?? Data()) as! [String: Any]
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw NSError(domain: "V3NativeFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: value.description])
+                }
+                result = .success(value)
+            } catch { result = .failure(error) }
+        }.resume()
+        wait(for: [done], timeout: 30)
+        return try XCTUnwrap(result).get()
+    }
+
+    private func launchServerMatch(realTimeReveals: Bool = false) throws -> (XCUIApplication, [String: Any]) {
+        let fixture = try serverFixture("setup")
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-firebase-emulator-host", "127.0.0.1",
+            "-firebase-emulator-ports", "29099,28081,25001,29000", "-firebase-ui-reset-auth", "YES",
+            "-firebase-emulator-email", fixture["email"] as! String, "-firebase-emulator-password", fixture["password"] as! String]
+        if realTimeReveals { app.launchArguments.append("-ui-testing-real-time") }
+        app.launch()
+        XCTAssertTrue(app.buttons["menu.play"].waitForExistence(timeout: 10)); app.buttons["menu.play"].tap()
+        app.buttons["play.online"].tap()
+        let join = app.buttons["online.joinCode"]
+        XCTAssertTrue(join.waitUntil(timeout: 15) { $0.isEnabled }); join.tap()
+        let code = app.textFields["join.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5)); code.tap(); code.typeText(fixture["code"] as! String)
+        app.buttons["joinDialog.positive"].tap()
+        let ready = app.buttons["lobby.online.ready"]
+        XCTAssertTrue(ready.waitForExistence(timeout: 15)); ready.tap()
+        let start = app.buttons["lobby.online.start"]
+        XCTAssertTrue(start.waitUntil(timeout: 15) { $0.isEnabled }); start.tap()
+        XCTAssertTrue(app.buttons["match.role"].waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertFalse(app.staticTexts["Ya no tenés acceso a esta partida."].exists)
+        return (app, fixture)
     }
 
     func testNativeHistoryAndPhotosAgainstEmulators() throws {
@@ -169,9 +348,8 @@ final class OnlineFlowUITests: XCTestCase {
         ready.tap()
         XCTAssertTrue(app.buttons["YA NO ESTOY LISTO"].waitForExistence(timeout: 3))
 
-        let greeceVote = app.buttons["lobby.online.vote.grecia"]
-        greeceVote.tap()
-        XCTAssertTrue(greeceVote.waitUntil { $0.label.hasPrefix("Grecia, 2 votos") }, greeceVote.label)
+        // Only the host picks the map.
+        XCTAssertFalse(app.buttons["lobby.online.map.grecia"].isEnabled)
 
         app.buttons["lobby.online.leave"].tap()
         XCTAssertTrue(app.buttons["leaveDialog.positive"].waitForExistence(timeout: 3))
@@ -262,6 +440,9 @@ final class OnlineFlowUITests: XCTestCase {
         XCTAssertEqual(reveal.value as? String, "0")
         reveal.switches.firstMatch.tap()
         XCTAssertTrue(app.staticTexts["lobby.online.rules"].waitUntil { $0.label.hasPrefix("Roles al morir: Sí") })
+        let greece = app.buttons["lobby.online.map.grecia"]
+        greece.tap()
+        XCTAssertTrue(greece.waitUntil { $0.label == "Grecia, mapa de la sala" }, greece.label)
         try audit(app, "Lobby anfitrión")
         attach(app, "online-lobby-host")
     }
@@ -358,9 +539,14 @@ final class OnlineFlowUITests: XCTestCase {
                                                 "UICTContentSizeCategoryAccessibilityXXXL"])
         let join = app.buttons["online.joinCode"]
         XCTAssertTrue(join.waitUntil { $0.isEnabled })
-        try audit(app, "Online AX5")
+        // At AX5 the identity card fills the viewport. Audit the visible card and then
+        // check the controls after scrolling them into view, instead of black offscreen crops.
+        try audit(app, "Online AX5", scrolled: true)
         attach(app, "online-hub-ax5")
-        XCTAssertTrue(scrollTo(join, in: app))
+        XCTAssertTrue(scrollTo(join, in: app, fullyVisible: true))
+        // A second audit on this same scrolled screen reuses the first audit's
+        // element rectangles/crops on iOS 27. Review this viewport in its screenshot.
+        attach(app, "online-hub-controls-ax5")
         join.tap()
         let field = app.textFields["join.code"]
         XCTAssertTrue(field.waitForExistence(timeout: 3))
@@ -415,11 +601,15 @@ final class OnlineFlowUITests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
-    private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
-        for _ in 0..<8 where !(element.exists && element.isHittable) {
+    private func scrollTo(_ element: XCUIElement, in app: XCUIApplication, fullyVisible: Bool = false) -> Bool {
+        func visible() -> Bool {
+            guard element.exists, element.isHittable else { return false }
+            return !fullyVisible || (element.frame.minY >= 120 && element.frame.maxY <= app.frame.maxY - 44)
+        }
+        for _ in 0..<8 where !visible() {
             app.swipeUp()
         }
-        return element.exists && element.isHittable
+        return visible()
     }
 
     /// Replaces the text and waits until the field shows it (codes are uppercased as typed).
@@ -453,7 +643,7 @@ final class OnlineFlowUITests: XCTestCase {
     private func audit(_ app: XCUIApplication, _ screen: String, scrolled: Bool = false,
                        dialog: Bool = false) throws {
         // Let pushes, dialogs and loading states settle: mid-animation frames read as low contrast.
-        sleep(1)
+        sleep(scrolled ? 2 : 1)
         // "Text clipped" is left out: across runs it flagged different, fully visible texts on
         // these screens (room names, button labels, two-line messages), never the same one
         // twice. Truncation is reviewed instead in the attached screenshots, including AX5.
@@ -465,9 +655,15 @@ final class OnlineFlowUITests: XCTestCase {
             // Behind a dialog the screen below shows dimmed through the scrim; VoiceOver rightly
             // skips it, which the audit reports as text it cannot reach.
             if dialog, issue.auditType == .elementDetection, issue.element == nil { return true }
+            // iOS also audits black crops of controls outside the viewport at AX5.
+            // The AX5 test checks their visibility and captures them after scrolling.
+            if issue.auditType == .contrast, let frame = issue.element?.frame {
+                let visible = frame.intersection(app.frame)
+                if visible.isNull || visible.height < min(20, frame.height * 0.25) { return true }
+            }
             if scrolled, issue.auditType == .contrast, let frame = issue.element?.frame, frame.minY < 120 { return true }
             let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)' [\($0.identifier)]" } ?? "—"
-            print("ONLINE AUDIT[\(screen)] \(issue.auditType) · \(issue.compactDescription) · \(element)")
+            print("ONLINE AUDIT[\(screen)] \(issue.auditType) · \(issue.compactDescription) · \(element) \(String(describing: issue.element?.frame))")
             return false
         }
     }

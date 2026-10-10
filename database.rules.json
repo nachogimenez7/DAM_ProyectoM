@@ -557,6 +557,41 @@
               ".validate": false
             }
           }
+        },
+        "reactions": {
+          ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true",
+          ".indexOn": [
+            "ts"
+          ],
+          "$reactionId": {
+            ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('reactions').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting' && newData.exists()",
+            ".validate": "newData.hasChildren(['actorUid','matchId','phaseIndex','slot','emoteId','ts']) && newData.child('actorUid').val() === auth.uid && (!data.exists() || data.child('actorUid').val() === auth.uid) && newData.child('matchId').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('matchId').val() && newData.child('phaseIndex').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('phaseIndex').val() && root.child('onlineV3').child($roomId).child('snapshot').child('public').child('limiteFaseEpochMs').val() > now && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 8 && newData.child('slot').val() % 1 === 0 && $reactionId === auth.uid + '_' + newData.child('slot').val() && (newData.child('emoteId').val() === 'griego_enojado' || newData.child('emoteId').val() === 'griego_triste' || newData.child('emoteId').val() === 'griego_contento' || newData.child('emoteId').val() === 'griego_sospechoso' || newData.child('emoteId').val() === 'medieval_enojado' || newData.child('emoteId').val() === 'medieval_triste' || newData.child('emoteId').val() === 'medieval_contento' || newData.child('emoteId').val() === 'medieval_sospechoso' || newData.child('emoteId').val() === 'gaucho_enojado' || newData.child('emoteId').val() === 'gaucho_triste' || newData.child('emoteId').val() === 'gaucho_contento' || newData.child('emoteId').val() === 'gaucho_sospechoso') && newData.child('ts').val() === now && newData.parent().parent().child('reactionRate').child(auth.uid).child('reactionId').val() === $reactionId && newData.parent().parent().child('reactionRate').child(auth.uid).child('slot').val() === newData.child('slot').val() && newData.parent().parent().child('reactionRate').child(auth.uid).child('ts').val() === now",
+            "actorUid": {},
+            "matchId": {},
+            "phaseIndex": {},
+            "slot": {},
+            "emoteId": {},
+            "ts": {},
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "reactionRate": {
+          "$uid": {
+            ".read": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && auth.uid === $uid",
+            ".write": "auth != null && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('member').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('reactions').val() === true && root.child('onlineV3').child($roomId).child('snapshot').child('cleanupState').val() !== 'deleting' && auth.uid === $uid && newData.exists() && (!data.exists() || now >= data.child('ts').val() + 10000)",
+            ".validate": "newData.hasChildren(['reactionId','slot','ts','round','uses','matchId']) && newData.child('ts').val() === now && newData.child('matchId').val() === root.child('onlineV3').child($roomId).child('snapshot').child('permissions').child(auth.uid).child('matchId').val() && newData.child('round').val() === root.child('onlineV3').child($roomId).child('snapshot').child('public').child('ronda').val() && newData.child('uses').isNumber() && newData.child('uses').val() >= 1 && newData.child('uses').val() <= 2 && ((!data.exists() || data.child('round').val() !== newData.child('round').val() || data.child('matchId').val() !== newData.child('matchId').val()) && newData.child('uses').val() === 1 || data.exists() && data.child('round').val() === newData.child('round').val() && data.child('matchId').val() === newData.child('matchId').val() && newData.child('uses').val() === data.child('uses').val() + 1) && newData.child('slot').isNumber() && newData.child('slot').val() >= 0 && newData.child('slot').val() < 8 && newData.child('slot').val() % 1 === 0 && newData.child('slot').val() === (data.exists() ? (data.child('slot').val() + 1) % 8 : 0) && newData.child('reactionId').val() === auth.uid + '_' + newData.child('slot').val() && newData.parent().parent().child('reactions').child(newData.child('reactionId').val()).child('actorUid').val() === auth.uid && newData.parent().parent().child('reactions').child(newData.child('reactionId').val()).child('slot').val() === newData.child('slot').val() && newData.parent().parent().child('reactions').child(newData.child('reactionId').val()).child('ts').val() === now",
+            "reactionId": {},
+            "slot": {},
+            "ts": {},
+            "round": {},
+            "uses": {},
+            "matchId": {},
+            "$other": {
+              ".validate": false
+            }
+          }
         }
       }
     }

@@ -12,6 +12,7 @@ const {createServerEndpoints} = require("../src/onlineGameFunctions");
 const {cleanupRoom} = require("../src/onlineRoomCleanupService");
 const {DAY_MS} = require("../src/onlineRoomCleanupPolicy");
 const {requestLimitId, CAPACITY, REFILL_MS} = require("../src/onlineRequestLimiter");
+const {readServerDelivery} = require("../src/onlineGameDelivery");
 const projectId = "traidores-local";
 let app, firestore, database;
 const rooms = [], accounts = [];
@@ -66,6 +67,21 @@ test("V3 requires compatible clients, hides secrets from lobby and preserves sta
   assert.equal((await firestore.collection(`partidas/${roomId}/repartos`).get()).size, 0);
 });
 
+test("restricted rollout permits only its hosts and rooms, while disabling it preserves ongoing matches", async () => {
+  const roomId = await seed(5), gate = firestore.doc(AUTHORITY_GATE);
+  for (const limits of [{allowedHostUids: []}, {allowedHostUids: ["p1"]}, {allowedHostUids: "host"},
+    {allowedHostUids: ["host"], allowedRoomIds: ["another-room"]}, {allowedRoomIds: []}, {allowedRoomIds: roomId}]) {
+    await gate.set({enabled: true, ...limits});
+    await assert.rejects(begin(roomId), e => e.code === "server-mode-unavailable");
+    assert.equal((await firestore.doc(`partidas/${roomId}/servidor/current`).get()).exists, false);
+  }
+  await gate.set({enabled: true, allowedHostUids: ["host"], allowedRoomIds: [roomId]});
+  const first = await begin(roomId);
+  await gate.set({enabled: false, allowedHostUids: [], allowedRoomIds: []});
+  assert.equal((await begin(roomId)).matchId, first.matchId);
+  assert.equal((await expire(roomId, await state(roomId))).changed, true);
+});
+
 test("durable outbox survives enqueue failure and updates only acting player's private projection", async () => {
   const roomId = await seed(8); await begin(roomId);
   const queued = new Map();
@@ -103,6 +119,123 @@ test("concurrent same request, task retries and old deadlines resolve only once"
   assert.equal(ended.filter((r) => r.changed).length, 1);
   assert.equal((await state(roomId)).phaseIndex, current.phaseIndex + 1);
   assert.equal((await expire(roomId, current)).changed, false);
+});
+
+test("a crash after RTDB commit repairs only the acknowledgement without reading or transacting the full table", async () => {
+  const roomId = await seed(15); await begin(roomId);
+  const refs = {doc: (path) => firestore.doc(path),
+    runTransaction: async () => {throw new Error("acknowledgement-outage");}};
+  const tasks = new Set();
+  const enqueueDeadline = async ({id}) => {tasks.add(id);};
+  await assert.rejects(publishServerOutbox({firestore: refs, database, roomId, enqueueDeadline}), /acknowledgement-outage/);
+  const before = (await database.ref(`onlineV3/${roomId}`).get()).val();
+  assert.equal(before.snapshot.delivery.revision, 1);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 0);
+  const noWholeTable = {app: database.app, ref: (path) => {
+    const ref = database.ref(path);
+    const fail = () => {throw new Error("must-not-download-or-write-table");};
+    return {child: (key) => ({toString: () => ref.child(key).toString(), get: fail}), get: fail,
+      transaction: fail, parent: {transaction: fail}};
+  }};
+  const retry = await publishServerOutbox({firestore, database: noWholeTable, roomId,
+    enqueueDeadline: () => {throw new Error("must-not-enqueue-again");}});
+  assert.equal(retry.reusedDelivery, true); assert.equal(retry.published, false);
+  assert.deepEqual((await database.ref(`onlineV3/${roomId}`).get()).val(), before);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 1);
+  assert.equal(tasks.size, 1);
+});
+
+test("an unavailable delivery check leaves the outbox pending and retries the complete publication", async () => {
+  const roomId = await seed(5); await begin(roomId);
+  await assert.rejects(publishServerOutbox({firestore, database, roomId,
+    readDelivery: async () => {throw new Error("delivery-check-outage");},
+    enqueueDeadline: () => {throw new Error("must-not-enqueue");}}), /delivery-check-outage/);
+  assert.equal((await database.ref(`onlineV3/${roomId}`).get()).exists(), false);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 0);
+  assert.equal((await publishServerOutbox({firestore, database, roomId, enqueueDeadline: async () => {}})).published, true);
+});
+
+test("simultaneous publishers preserve public and personal revisions, task identity and all authorized players", async () => {
+  const roomId = await seed(15); await begin(roomId);
+  const tasks = new Set(), enqueueDeadline = async ({id}) => {
+    if (tasks.has(id)) {const e = new Error("duplicate"); e.code = 6; throw e;}
+    tasks.add(id);
+  };
+  const publications = await Promise.all(Array.from({length: 6}, async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {return await publishServerOutbox({firestore, database, roomId, enqueueDeadline});}
+      catch (e) {if (e.code !== "publication-pending" || attempt >= 3) throw e;}
+    }
+  }));
+  assert.equal(publications.filter(p => p.published).length, 1);
+  const result = (await database.ref(`onlineV3/${roomId}/snapshot`).get()).val();
+  assert.equal(result.delivery.revision, 1); assert.equal(result.public.revision, 1);
+  assert.equal(Object.keys(result.private).length, 15);
+  assert.ok(Object.values(result.private).every(p => p.revision === 1));
+  assert.equal(tasks.size, 1);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 1);
+});
+
+test("a publisher whose preflight raced a commit verifies the server and avoids a redundant RTDB write", async () => {
+  const roomId = await seed(8); await begin(roomId);
+  const failedAcknowledgement = {doc: (path) => firestore.doc(path),
+    runTransaction: async () => {throw new Error("ack-outage");}};
+  await assert.rejects(publishServerOutbox({firestore: failedAcknowledgement, database, roomId,
+    enqueueDeadline: async () => {}}), /ack-outage/);
+  const before = (await database.ref(`onlineV3/${roomId}`).get()).val();
+  let reads = 0;
+  const result = await publishServerOutbox({firestore, database, roomId, enqueueDeadline: async () => {},
+    readDelivery: async (args) => ++reads === 1 ? null : readServerDelivery(args)});
+  assert.equal(reads, 2); assert.equal(result.published, false); assert.equal(result.reusedDelivery, true);
+  assert.ok(result.realtimeAttempts > 0);
+  assert.deepEqual((await database.ref(`onlineV3/${roomId}`).get()).val(), before);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 1);
+});
+
+test("an optimistic SDK checkpoint cannot acknowledge a publication that never committed on the server", async () => {
+  const roomId = await seed(5); await begin(roomId);
+  const outbox = (await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data();
+  const key = require("../src/onlineGameService").taskId(roomId, outbox.generation, outbox.token);
+  const optimistic = {generation: outbox.generation, syncRevision: outbox.revision,
+    delivery: {matchId: outbox.token.matchId, generation: outbox.generation, revision: outbox.revision, queuedTaskId: key}};
+  const cachedOnly = {ref: () => ({child: () => ({get: async () => ({val: () => key})}),
+    parent: {transaction: async (merge) => {
+      assert.equal(merge({snapshot: optimistic}), undefined);
+      return {committed: false, snapshot: {child: () => ({val: () => optimistic})}};
+    }}})};
+  await assert.rejects(publishServerOutbox({firestore, database: cachedOnly, roomId,
+    readDelivery: async () => null, enqueueDeadline: async () => {}}), e => e.code === "publication-pending");
+  assert.equal((await database.ref(`onlineV3/${roomId}`).get()).exists(), false);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 0);
+  assert.equal((await publishServerOutbox({firestore, database, roomId, enqueueDeadline: async () => {}})).published, true);
+});
+
+test("an older publication cannot replace or acknowledge a newer committed generation", async () => {
+  const roomId = await seed(5); await begin(roomId);
+  const future = {generation: 3, syncRevision: 1, delivery: {generation: 3, revision: 1, matchId: "new-match"},
+    public: {matchId: "new-match", fase: "LOBBY"}};
+  await database.ref(`onlineV3/${roomId}/snapshot`).set(future);
+  const publication = await publishServerOutbox({firestore, database, roomId,
+    enqueueDeadline: () => {throw new Error("must-not-enqueue-old-task");}});
+  assert.equal(publication.stale, true);
+  assert.deepEqual((await database.ref(`onlineV3/${roomId}/snapshot`).get()).val(), future);
+  assert.equal((await firestore.doc(`partidas/${roomId}/serverOutbox/current`).get()).data().deliveredRevision, 0);
+});
+
+test("legacy snapshots without a delivery checkpoint still publish accepted secret actions", async () => {
+  const roomId = await seed(8); await begin(roomId); await expire(roomId, await state(roomId));
+  let enqueues = 0;
+  const enqueueDeadline = async () => {enqueues++;};
+  await publishServerOutbox({firestore, database, roomId, enqueueDeadline});
+  await database.ref(`onlineV3/${roomId}/snapshot/delivery`).remove();
+  const current = await state(roomId), killer = current.players.find(p => p.role.key === "asesino"),
+    target = current.players.find(p => p.role.key === "aldeano");
+  await action(roomId, killer.uid, current, "matar", {targetUid: target.uid});
+  const publication = await publishServerOutbox({firestore, database, roomId, enqueueDeadline});
+  assert.equal(publication.changedPublic, false); assert.equal(publication.changedPrivate, 1);
+  assert.equal(enqueues, 1);
+  const delivered = (await database.ref(`onlineV3/${roomId}/snapshot/delivery`).get()).val();
+  assert.equal(delivered.revision, (await state(roomId)).revision);
 });
 
 test("server deadlines finish without host advancement and final history is idempotent", async () => {
@@ -151,7 +284,7 @@ test("outbox coalesces unprocessed actions and repairs a crash after task enqueu
     if (tasks.has(id)) { const error = new Error("duplicate"); error.code = "functions/task-already-exists"; throw error; }
     tasks.add(id);
   };
-  const interruptedDatabase = {ref: (path) => {
+  const interruptedDatabase = {app: database.app, ref: (path) => {
     const real = database.ref(path);
     return {get: () => real.get(), child: (key) => real.child(key),
       parent: {transaction: () => Promise.reject(new Error("write-outage"))},
@@ -307,17 +440,29 @@ test("rematch archives before reset, relocks until publication and makes old tas
   await database.ref(`onlineV3/${roomId}`).update({
     "chat/traidores/host_0": {actorUid: "host", matchId: old.matchId, text: "old team secret", ts: now},
     "chatRate/host": {messageId: "host_0", slot: 0, channel: "traidores", ts: now},
+    "reactions/host_0": {actorUid: "host", matchId: old.matchId, phaseIndex: old.phaseIndex, slot: 0, emoteId: "griego_contento", ts: now},
+    "reactionRate/host": {reactionId: "host_0", slot: 0, uses: 2, round: old.round, matchId: old.matchId, ts: now},
   });
   const prepared = await prepareServerRematch(data);
   assert.equal(prepared.matchId, "next-real-match"); assert.equal(prepared.generation, 2);
   assert.equal((await firestore.doc(`partidas/${roomId}`).get()).data().authorityMode, "server");
   await assert.rejects(begin(roomId), (e) => e.code === "publication-pending");
   assert.equal((await prepareServerRematch(data)).status, "already_prepared");
-  await publishServerOutbox({firestore, database, roomId, enqueueDeadline: async () => {throw new Error("no-lobby-task");}});
+  const failedAcknowledgement = {doc: (path) => firestore.doc(path),
+    runTransaction: async () => {throw new Error("lobby-ack-outage");}};
+  await assert.rejects(publishServerOutbox({firestore: failedAcknowledgement, database, roomId,
+    enqueueDeadline: async () => {throw new Error("no-lobby-task");}}), /lobby-ack-outage/);
+  assert.equal((await firestore.doc(`partidas/${roomId}`).get()).data().authorityMode, "server");
+  assert.equal((await database.ref(`onlineV3/${roomId}/snapshot/private`).get()).exists(), false);
+  const repaired = await publishServerOutbox({firestore, database, roomId,
+    enqueueDeadline: async () => {throw new Error("no-lobby-task");}});
+  assert.equal(repaired.reusedDelivery, true);
   assert.equal((await firestore.doc(`partidas/${roomId}`).get()).data().authorityMode, "lobby");
   assert.equal((await database.ref(`onlineV3/${roomId}/snapshot/private`).get()).exists(), false);
   assert.equal((await database.ref(`onlineV3/${roomId}/chat`).get()).exists(), false);
   assert.equal((await database.ref(`onlineV3/${roomId}/chatRate`).get()).exists(), false);
+  assert.equal((await database.ref(`onlineV3/${roomId}/reactions`).get()).exists(), false);
+  assert.equal((await database.ref(`onlineV3/${roomId}/reactionRate`).get()).exists(), false);
   const members = await firestore.collection(`partidas/${roomId}/jugadores`).get();
   assert.ok(members.docs.every((p) => p.data().listo === false));
   await leaveServerMatch({...data, matchId: prepared.matchId, requesterId: "p1"});

@@ -433,6 +433,7 @@ struct ProfileView: View {
                 .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("profile.edit")
         }
+        .onlineScrollEdges()
         .onSubmit { editingText = false }
         .onAppear {
             guard !initialized else { return }
@@ -634,12 +635,12 @@ struct ProfileView: View {
     private func stat(_ label: String) -> some View {
         let history = accountHistory
         let confirmed = history?.status == .ready
-        let value = !confirmed ? "—" : label == "Partidas" ? String(history?.matches ?? 0)
+        let value = !confirmed ? "Sin datos" : label == "Partidas" ? String(history?.matches ?? 0)
             : label == "Victorias" ? String(history?.wins ?? 0)
             : "\(Int((Double(history?.wins ?? 0) * 100 / Double(max(1, history?.matches ?? 0))).rounded()))%"
         return VStack(spacing: 6) {
             // Explicit colours: inherited ones could resolve to dark text on the dark card.
-            Text(value).font(.title2.bold()).foregroundStyle(style.text)
+            Text(value).font(confirmed ? .title2.bold() : .caption.bold()).foregroundStyle(style.text)
             Text(label).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
                 .foregroundStyle(TraidoresTheme.secondary)
         }

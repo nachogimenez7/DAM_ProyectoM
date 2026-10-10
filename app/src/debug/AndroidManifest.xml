@@ -9,6 +9,9 @@
             android:exported="true" />
         <activity android:name=".AnimalAvatarSmokeActivity" android:exported="true" />
         <activity android:name=".ProfileMediaSmokeActivity" android:exported="true" />
+        <activity android:name=".GameplayParityActivity" android:exported="true" />
         <activity android:name=".ServerGameSmokeActivity" android:exported="true" />
+        <activity android:name=".CloudQaLaunchActivity" android:exported="true" />
+        <receiver android:name=".CloudQaMetricsReceiver" android:exported="true" />
     </application>
 </manifest>

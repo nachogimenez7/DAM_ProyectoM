@@ -34,6 +34,7 @@ struct OnlineModeView: View {
                         .frame(maxWidth: .infinity, minHeight: geometry.size.height)
                 }
                 .scrollBounceBehavior(.basedOnSize)
+                .onlineScrollEdges()
             }
             backButton
         }
@@ -259,7 +260,7 @@ private struct OnlineIdentityCard: View {
             if !identity.isRegistered {
                 Divider().overlay(TraidoresTheme.border)
                 Text("Con una cuenta elegís tu nombre, creás salas y tenés tu número.")
-                    .font(.footnote).foregroundStyle(TraidoresTheme.secondary)
+                    .font(.footnote).foregroundStyle(TraidoresTheme.text)
                     .multilineTextAlignment(.center)
                 Button(action: manageAccount) {
                     Text("CREAR CUENTA O ENTRAR").font(.subheadline.bold()).tracking(0.6)
@@ -318,8 +319,14 @@ enum OnlineBootstrap {
         #endif
         guard FirebaseSetup.options != nil else { return nil }
         let profile = FirebasePublicProfileService()
-        let rooms = UnavailableIOSRooms()
-        return OnlineServices(account: FirebaseAccountService(profiles: profile), profile: profile,
-                              directory: rooms, room: rooms, roomsAvailable: false, history: FirebaseAccountHistory())
+        let account = FirebaseAccountService(profiles: profile)
+        guard FirebaseSetup.serverRoomsEnabled else {
+            let rooms = UnavailableIOSRooms()
+            return OnlineServices(account: account, profile: profile, directory: rooms, room: rooms,
+                                  roomsAvailable: false, history: FirebaseAccountHistory())
+        }
+        let rooms = FirebaseRooms(account: account, profiles: profile)
+        return OnlineServices(account: account, profile: profile, directory: rooms, room: rooms,
+                              history: FirebaseAccountHistory())
     }
 }

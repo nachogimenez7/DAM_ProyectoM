@@ -63,6 +63,8 @@
     <string name="lobby_hint_online_in_game">Partida online iniciada.</string>
     <string name="lobby_hint_online_invite">Compartí el código para que se sumen.</string>
     <string name="lobby_hint_online_ready">Sala completa. Toquen LISTO para arrancar.</string>
+    <string name="lobby_hint_online_host_stability">Sos el anfitrión: mantené el juego abierto hasta el final.</string>
+    <string name="online_create_host_stability">Para una partida estable, recomendamos que el anfitrión tenga buena conexión y mantenga el juego abierto hasta el final.</string>
 
     <string name="lobby_start_local">INICIAR PARTIDA</string>
     <string name="lobby_start_waiting_host">ESPERANDO AL ANFITRIÓN</string>

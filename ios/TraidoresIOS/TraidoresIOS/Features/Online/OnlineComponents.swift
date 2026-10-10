@@ -111,6 +111,12 @@ struct OnlinePanel: ViewModifier {
 
 extension View {
     func onlinePanel() -> some View { modifier(OnlinePanel()) }
+
+    /// Keep readable text at the scroll boundary when large type puts controls there.
+    @ViewBuilder func onlineScrollEdges() -> some View {
+        if #available(iOS 26.0, *) { scrollEdgeEffectHidden() }
+        else { self }
+    }
 }
 
 struct OnlineSectionLabel: View {

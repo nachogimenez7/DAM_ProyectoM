@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Base64
 import android.widget.TextView
+import android.widget.Button
+import android.widget.LinearLayout
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.AppCheckToken
@@ -33,18 +35,24 @@ class ServerGameSmokeActivity : Activity() {
                 override fun getExpireTimeMillis() = System.currentTimeMillis() + 3600000
             }) }
         }
-        Thread {
+        val launch = { Thread {
             try {
                 val room = requireNotNull(intent.getStringExtra("room"))
                 Tasks.await(FirebaseAuth.getInstance().signInWithEmailAndPassword(
                     requireNotNull(intent.getStringExtra("email")), requireNotNull(intent.getStringExtra("password"))), 30, TimeUnit.SECONDS)
-                val started = Tasks.await(ServerGameCallableClient().start(room), 30, TimeUnit.SECONDS)
-                val match = (started as? OnlineStartCallableResult.Accepted)?.matchId ?: error("V3 start not accepted")
+                val openLobby = intent.getBooleanExtra("open_lobby", false)
+                val recoverOnly = intent.getBooleanExtra("recover_only", false)
+                val startedMatch = if (openLobby || recoverOnly) "" else {
+                    val started = Tasks.await(ServerGameCallableClient().start(room), 30, TimeUnit.SECONDS)
+                    (started as? OnlineStartCallableResult.Accepted)?.matchId ?: error("V3 start not accepted")
+                }
                 val snapshot = Tasks.await(FirebaseFirestore.getInstance().document("partidas/$room").get(), 30, TimeUnit.SECONDS)
-                val identity = GameSession(code = snapshot.getString("codigoSala").orEmpty(), mapKey = "pampa", mapName = "Pampa", players = emptyList())
+                val match = if (recoverOnly) requireNotNull(snapshot.getString("partidaInicial.matchId")) else startedMatch
+                val mapKey = snapshot.getString("mapa") ?: "pampa"
+                val identity = GameSession(code = snapshot.getString("codigoSala").orEmpty(), mapKey = mapKey, mapName = mapKey, players = emptyList())
                 android.util.Log.i("TRAIDORES_V3_QA", "V3 QA ENTER accepted")
                 runOnUiThread {
-                    val route = if (intent.getBooleanExtra("via_lobby", false))
+                    val route = if (openLobby || intent.getBooleanExtra("via_lobby", false))
                         Intent(this, LobbyActivity::class.java)
                             .putExtra(LobbyActivity.EXTRA_LOBBY_MODE, LobbyActivity.MODE_ONLINE_CREATE)
                             .putExtra(LobbyActivity.EXTRA_LOBBY_NAME, "QA Android")
@@ -61,6 +69,17 @@ class ServerGameSmokeActivity : Activity() {
                 android.util.Log.e("TRAIDORES_V3_QA", "V3 QA FAIL", error)
                 runOnUiThread { label.text = "V3 QA FAIL: ${error.message}" }
             }
-        }.start()
+        }.start() }
+        if (intent.getBooleanExtra("interactive", false) && !intent.getBooleanExtra("open_lobby", false)) {
+            label.text = "PRUEBA V3\n\nVas a jugar con cuatro participantes automáticos. Leé tu rol y usá los botones de cada fase."
+            label.setPadding(32, 48, 32, 32)
+            val screen = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 96, 24, 32) }
+            setContentView(screen)
+            screen.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            screen.addView(Button(this).apply {
+                text = "EMPEZAR PARTIDA"
+                setOnClickListener { isEnabled = false; label.text = "Conectando partida…"; launch() }
+            })
+        } else launch()
     }
 }

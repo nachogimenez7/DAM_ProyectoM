@@ -7,7 +7,8 @@ data class OnlineRecoveredRoom(
     val roomCode: String,
     val roomName: String,
     val mapKey: String,
-    val isHost: Boolean
+    val isHost: Boolean,
+    val serverProtocol: Boolean = false
 )
 
 object OnlineRoomRecovery {
@@ -21,6 +22,7 @@ object OnlineRoomRecovery {
     private const val PREF_ROOM_NAME = "online_recovery_room_name"
     private const val PREF_MAP_KEY = "online_recovery_map_key"
     private const val PREF_IS_HOST = "online_recovery_is_host"
+    private const val PREF_SERVER_PROTOCOL = "online_recovery_server_protocol"
 
     fun save(
         context: Context,
@@ -31,13 +33,16 @@ object OnlineRoomRecovery {
         isHost: Boolean
     ) {
         if (roomId.isBlank()) return
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val knownServerProtocol = prefs.getString(PREF_ROOM_ID, "") == roomId && prefs.getBoolean(PREF_SERVER_PROTOCOL, false)
+        prefs
             .edit()
             .putString(PREF_ROOM_ID, roomId)
             .putString(PREF_ROOM_CODE, roomCode)
             .putString(PREF_ROOM_NAME, roomName)
             .putString(PREF_MAP_KEY, mapKey)
             .putBoolean(PREF_IS_HOST, isHost)
+            .putBoolean(PREF_SERVER_PROTOCOL, knownServerProtocol)
             .apply()
     }
 
@@ -50,8 +55,15 @@ object OnlineRoomRecovery {
             roomCode = prefs.getString(PREF_ROOM_CODE, "").orEmpty(),
             roomName = prefs.getString(PREF_ROOM_NAME, "Sala online").orEmpty(),
             mapKey = prefs.getString(PREF_MAP_KEY, "pampa").orEmpty(),
-            isHost = prefs.getBoolean(PREF_IS_HOST, false)
+            isHost = prefs.getBoolean(PREF_IS_HOST, false),
+            serverProtocol = prefs.getBoolean(PREF_SERVER_PROTOCOL, false)
         )
+    }
+
+    fun rememberServerProtocol(context: Context, roomId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getString(PREF_ROOM_ID, "") == roomId && !prefs.getBoolean(PREF_SERVER_PROTOCOL, false))
+            prefs.edit().putBoolean(PREF_SERVER_PROTOCOL, true).apply()
     }
 
     fun clear(context: Context) {
@@ -62,6 +74,7 @@ object OnlineRoomRecovery {
             .remove(PREF_ROOM_NAME)
             .remove(PREF_MAP_KEY)
             .remove(PREF_IS_HOST)
+            .remove(PREF_SERVER_PROTOCOL)
             .apply()
     }
 

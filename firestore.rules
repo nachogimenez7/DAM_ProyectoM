@@ -2,6 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Rollout switch is public and read-only. Only administrators can change it.
+    match /config/onlineV3 {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
     function signedIn() {
       return request.auth != null;
     }
@@ -251,11 +257,27 @@ service cloud.firestore {
         && get(roomPath).data.get('authorityMode', '') != 'server');
     }
 
+    function serverRoomFieldsUnchanged() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !changed.hasAny(['authorityMode', 'protocolVersion', 'preparedMatchId',
+          'serverGeneration', 'rematchOf', 'rematchGeneration'])
+        && (resource.data.get('protocolVersion', 0) != 3
+          || !changed.hasAny(['estado', 'partidaInicialCreada', 'partidaInicial', 'estadoPartida']));
+    }
+
     function validPlayerJoin(partidaId) {
       let room = getAfter(/databases/$(database)/documents/partidas/$(partidaId)).data;
       return room.estado == 'esperando'
         && room.get('limpiezaPendiente', false) == false
         && request.resource.data.get('esHost', false) == (request.auth.uid == room.hostId);
+    }
+
+    function validPlayerRoomProtocol(partidaId) {
+      // getAfter también valida el alta atómica de sala y creador. En salas legacy
+      // la versión sigue siendo opcional; en V3 no puede quitarla ningún cliente.
+      let room = getAfter(/databases/$(database)/documents/partidas/$(partidaId)).data;
+      return room.get('protocolVersion', 0) != 3
+        || request.resource.data.get('protocolVersion', 0) == 3;
     }
 
     function validPlayerSelfUpdate(partidaId) {
@@ -949,21 +971,31 @@ service cloud.firestore {
           && (isRegistered()
         && !isGloballyBanned()
         && !('cleanupState' in request.resource.data)
+        && !request.resource.data.keys().hasAny(['authorityMode', 'preparedMatchId',
+          'serverGeneration', 'rematchOf', 'rematchGeneration'])
+        && (!('protocolVersion' in request.resource.data)
+          || (request.resource.data.protocolVersion == 3
+            && request.resource.data.estado == 'esperando'
+            && request.resource.data.partidaInicialCreada == false
+            && !request.resource.data.keys().hasAny(['partidaInicial', 'estadoPartida'])))
         && validRoomBase(request.resource.data)
         && request.resource.data.hostId == request.auth.uid
         && request.resource.data.hostActivoId == request.auth.uid
         && request.resource.data.get('limpiezaPendiente', false) == false);
 
       allow update: if roomClientWriteAllowed(partidaId)
+          && serverRoomFieldsUnchanged()
           && (request.resource.data.get('cleanupState', '') == resource.data.get('cleanupState', '')
         && (stableHostRematchReset()
         || (
           (
-            clientStateSelfPublish(partidaId)
+            // The common host/configuration branch must run before the costly
+            // transfer checks; preserve headroom under Firestore's expression limit.
+            activeHostCanUpdateRoom()
+          || clientStateSelfPublish(partidaId)
           || waitingPlayerCountUpdate(partidaId)
           || handoffUpdate(partidaId)
           || stableLobbyHostTransfer(partidaId)
-          || activeHostCanUpdateRoom()
           )
           && validRoomPostUpdate(request.resource.data)
         )));
@@ -972,6 +1004,7 @@ service cloud.firestore {
       // el cliente antes de dejar el lobby; el ultimo anfitrion en pie es siempre quien
       // desencadena esto).
       allow delete: if roomClientWriteAllowed(partidaId)
+          && resource.data.get('authorityMode', '') != 'lobby'
           && (signedIn()
         && (
           (
@@ -997,6 +1030,7 @@ service cloud.firestore {
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
           && validPlayerJoin(partidaId)
+          && validPlayerRoomProtocol(partidaId)
           && validPlayerDocument(request.resource.data, uidTemporal));
 
         allow update: if roomClientWriteAllowed(partidaId)
@@ -1005,6 +1039,7 @@ service cloud.firestore {
           || isRoomStableHostAfter(partidaId))
           && !isGloballyBanned()
           && !isBannedFromRoom(partidaId)
+          && validPlayerRoomProtocol(partidaId)
           && validPlayerDocument(request.resource.data, uidTemporal));
 
         allow delete: if roomClientWriteAllowed(partidaId)

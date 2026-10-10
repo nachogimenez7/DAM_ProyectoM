@@ -19,11 +19,23 @@ if (!(firebaseEmulatorHost ==~ /[A-Za-z0-9.:-]+/)) {
 
 def profileStorageEnabled = providers.gradleProperty('traidoresProfileStorage').orElse('true').get().toBoolean()
 def serverOnlineV3 = providers.gradleProperty('traidoresServerOnlineV3').orElse('false').get().toBoolean()
+// Release never inherits the QA flag above: the beta plays the host-authority online. A V3
+// release needs this separate, explicit property (decision of 9/10/2026).
+def releaseServerOnlineV3 = providers.gradleProperty('traidoresReleaseServerOnlineV3').orElse('false').get().toBoolean()
+def isolatedQaApp = providers.gradleProperty('traidoresIsolatedQaApp').orElse('false').get().toBoolean()
+def cloudQaApp = providers.gradleProperty('traidoresCloudQaApp').orElse('false').get().toBoolean()
+if (cloudQaApp && (!isolatedQaApp || onlineAuthorityEmulatorEnabled || !serverOnlineV3)) {
+    throw new GradleException('Cloud QA requiere app separada, V3 y emuladores deshabilitados')
+}
+if (isolatedQaApp && !onlineAuthorityEmulatorEnabled && !cloudQaApp) {
+    throw new GradleException('La app QA separada requiere emuladores o Cloud QA explícito')
+}
 
 android {
     namespace = 'com.traidores.juego'
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
     compileSdk {
         version = release(36) {
@@ -36,12 +48,17 @@ android {
         applicationId = "com.traidores.juego"
         minSdk = 24
         targetSdk = 36
-        versionCode = 51
-        versionName = "0.1.50"
+        versionCode = 53
+        versionName = "0.1.52"
     }
 
     buildTypes {
         debug {
+            buildConfigField 'boolean', 'CLOUD_QA_APP', cloudQaApp.toString()
+            if (isolatedQaApp) {
+                applicationIdSuffix = '.v3qa'
+                resValue 'string', 'app_name', 'Traidores V3 · Prueba'
+            }
             buildConfigField 'boolean', 'SERVER_ONLINE_V3', serverOnlineV3.toString()
             buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR',
                 onlineAuthorityEmulatorEnabled.toString()
@@ -49,7 +66,7 @@ android {
                 "\"${firebaseEmulatorHost}\""
         }
         release {
-            buildConfigField 'boolean', 'SERVER_ONLINE_V3', 'false'
+            buildConfigField 'boolean', 'SERVER_ONLINE_V3', releaseServerOnlineV3.toString()
             buildConfigField 'boolean', 'USE_ONLINE_AUTHORITY_EMULATOR', 'false'
             buildConfigField 'String', 'FIREBASE_EMULATOR_HOST', '""'
             minifyEnabled = true

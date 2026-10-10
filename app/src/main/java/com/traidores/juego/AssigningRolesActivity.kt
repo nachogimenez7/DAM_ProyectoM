@@ -54,6 +54,25 @@ class AssigningRolesActivity : BaseActivity() {
     private var exitConfirmationDialog: AlertDialog? = null
 
     private val openGameRunnable = Runnable { openGame() }
+    // V3: listen to this player's projection while the cards are dealt, so the table opens with
+    // its data already cached instead of drawing placeholders first. Read-only; rules still apply.
+    private val serverPrewarm = mutableListOf<Pair<com.google.firebase.database.DatabaseReference,
+        com.google.firebase.database.ValueEventListener>>()
+
+    private fun prewarmServerMatch() {
+        val roomId = intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty()
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid.orEmpty()
+        if (intent.getStringExtra(EXTRA_SERVER_MATCH_ID).isNullOrBlank() || roomId.isBlank() || uid.isBlank()) return
+        val root = FirebaseEmulatorConfig.database.getReference("onlineV3/$roomId/snapshot")
+        for (path in listOf("public", "private/$uid", "permissions/$uid")) {
+            val listener = object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) = Unit
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) = Unit
+            }
+            val ref = root.child(path)
+            ref.addValueEventListener(listener); serverPrewarm += ref to listener
+        }
+    }
     private val startDealingRunnable = Runnable {
         if (!leavingScreen && !isFinishing && !isDestroyed) startDealingAnimation()
     }
@@ -89,6 +108,7 @@ class AssigningRolesActivity : BaseActivity() {
             setOnClickListener { handleAssigningBack() }
         }
 
+        prewarmServerMatch()
         val presentationStartDelayMs = intent
             .getLongExtra(EXTRA_PRESENTATION_START_DELAY_MS, 0L)
             .coerceIn(0L, OnlineLobbyEntryGate.MAX_PRESENTATION_WAIT_MS)
@@ -667,6 +687,17 @@ class AssigningRolesActivity : BaseActivity() {
             finish()
             return
         }
+        val serverMatchId = intent.getStringExtra(EXTRA_SERVER_MATCH_ID).orEmpty()
+        if (serverMatchId.isNotBlank() && session != null) {
+            // V3: the server owns roles and phases; only the presentation passes through here.
+            startActivity(Intent(this, ServerGameplayActivity::class.java)
+                .putExtra(LobbyActivity.EXTRA_SESSION, session)
+                .putExtra(LobbyActivity.EXTRA_PARTIDA_ID, intent.getStringExtra(EXTRA_ONLINE_PARTIDA_ID).orEmpty())
+                .putExtra(ServerGameplayActivity.EXTRA_MATCH_ID, serverMatchId)
+                .putExtra(ServerGameplayActivity.EXTRA_CREATOR_ID, intent.getStringExtra(EXTRA_SERVER_CREATOR_ID).orEmpty()))
+            finish()
+            return
+        }
         val safeSession = session ?: LocalGameFactory.assignRoles(LocalGameFactory.createSession())
         startActivity(
             Intent(this, GameplayMockActivity::class.java)
@@ -761,6 +792,8 @@ class AssigningRolesActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        // The table attached its own listeners by now; the SDK keeps the data it already has.
+        serverPrewarm.forEach { (ref, listener) -> ref.removeEventListener(listener) }; serverPrewarm.clear()
         handler.removeCallbacks(openGameRunnable)
         handler.removeCallbacks(startDealingRunnable)
         scaleIndependentRunnables.forEach(handler::removeCallbacks)
@@ -789,6 +822,8 @@ class AssigningRolesActivity : BaseActivity() {
         private const val EXIT_CONFIRMATION_RETRY_MS = 250L
         private const val DEALING_STATUS_MESSAGE = "¡Buena suerte con tu rol!"
         const val EXTRA_ONLINE_PARTIDA_ID = "extra_online_partida_id"
+        const val EXTRA_SERVER_MATCH_ID = "extra_server_match_id"
+        const val EXTRA_SERVER_CREATOR_ID = "extra_server_creator_id"
         const val EXTRA_ONLINE_PLAYER_ID = "extra_online_player_id"
         const val EXTRA_ONLINE_IS_HOST = "extra_online_is_host"
         const val EXTRA_PRESENTATION_START_DELAY_MS = "extra_presentation_start_delay_ms"

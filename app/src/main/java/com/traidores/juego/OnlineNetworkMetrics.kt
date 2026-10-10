@@ -23,7 +23,7 @@ internal object OnlineNetworkMetrics {
         counts.clear()
     }
 
-    @Synchronized fun count(name: String) { counts[name] = (counts[name] ?: 0L) + 1L }
+    @Synchronized fun count(name: String, amount: Int = 1) { counts[name] = (counts[name] ?: 0L) + amount.coerceAtLeast(0) }
     @Synchronized fun duration(name: String, elapsedMs: Long) {
         val samples = timings.getOrPut(name) { mutableListOf() }
         if (samples.size == 256) samples.removeAt(0)

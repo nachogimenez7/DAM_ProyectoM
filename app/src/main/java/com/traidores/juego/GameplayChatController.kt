@@ -42,9 +42,26 @@ import com.google.firebase.database.ValueEventListener
 
 class GameplayChatController(
     private val host: ChatHost,
-    private val root: RelativeLayout
+    private val root: RelativeLayout,
+    private val dataSource: ChatDataSource? = null
 ) {
+    val isExpandedOpen: Boolean get() = isChatOpen
     fun refreshUi() = renderChatPanel()
+
+    /** External transport: drawing stays here; permissions and writes stay with its protocol. */
+    interface ChatDataSource {
+        fun allowedChannels(): Set<ChatChannel>
+        fun canSend(channel: ChatChannel): Boolean
+        fun select(channel: ChatChannel)
+        fun onVisibilityChanged(open: Boolean) {}
+        fun send(channel: ChatChannel, text: String, complete: (Boolean) -> Unit)
+    }
+
+    private fun syncDataSourceChannel() {
+        val source = dataSource ?: return
+        if (selectedChatChannel !in source.allowedChannels()) selectedChatChannel = ChatChannel.PUBLICO
+        source.select(activeChatChannel())
+    }
 
     interface ChatHost {
         var currentSession: GameSession
@@ -297,6 +314,7 @@ class GameplayChatController(
                     GameplayTableUi.isNightPhase(initialSession.phase) -> ChatChannel.TRAIDORES
                 else -> ChatChannel.PUBLICO
             }
+        syncDataSourceChannel()
         wasHumanAlive = humanAlive
         wasOracleInvitedToPublicChat = oracleInvited
         lastObservedPhaseIndex = initialSession.phaseIndex
@@ -372,7 +390,8 @@ class GameplayChatController(
         wasHumanAlive = humanAlive
         wasOracleInvitedToPublicChat = oracleInvited
         lastObservedPhaseIndex = session.phaseIndex
-        if (host.isOnlineGameplay() && realtimeAccessReady) {
+        syncDataSourceChannel()
+        if (dataSource == null && host.isOnlineGameplay() && realtimeAccessReady) {
             // El rol del humano puede llegar despues de onCreate (reconstruccion online),
             // y la muerte puede llegar en una actualizacion posterior. Ambos listeners
             // condicionales se auto-protegen contra una doble suscripcion.
@@ -390,6 +409,7 @@ class GameplayChatController(
     fun onRealtimeAccessReady() {
         if (!host.isOnlineGameplay()) return
         realtimeAccessReady = true
+        if (dataSource != null) { syncDataSourceChannel(); renderChatPanel(); return }
         startOnlineChatListener()
         startOnlineTraitorChatListener()
         startOnlineSpectatorChatListener()
@@ -424,7 +444,7 @@ class GameplayChatController(
         if (isChatOpen || isClosingForInteractivePhase || !host.canOpenExpandedChat()) return
         GameplayEffects.play(root.context, GameplayEffect.PANEL)
         isChatOpen = true
-        unreadMessagesOnOpen = unreadChatCount
+        unreadMessagesOnOpen = (unreadChatCount - CHAT_AMBIENT_MAX_MESSAGES).coerceAtLeast(0)
         unreadChatCount = 0
         newChatMessagesWhileTyping = 0
         lastSeenChatCount = host.currentSession.chatHistory.size
@@ -499,6 +519,7 @@ class GameplayChatController(
     }
 
     fun sendOnlineReaction(playerName: String, emoteId: String) {
+        if (dataSource != null) return
         if (!host.isOnlineGameplay()) return
         if (!realtimeAccessReady) {
             host.showToast("Reconectando la partida...")
@@ -713,6 +734,7 @@ class GameplayChatController(
         }
         btnToggleChat.alpha = if (isChatOpen) 1f else 0.82f
         updateChatToggleContentDescription()
+        dataSource?.onVisibilityChanged(isChatOpen)
     }
 
     private fun resetChatPanelTransform() {
@@ -2448,7 +2470,7 @@ class GameplayChatController(
                 "Tocá una carta para votar. Podés cambiar hasta el cierre."
             GamePhase.RECUENTO_VOTOS -> "RECUENTO · DÍA ${session.round}" to
                 session.publicAnnouncement.ifBlank { "El pueblo espera el resultado." }
-            GamePhase.RESULTADO -> "FIN DE LA PARTIDA" to
+            GamePhase.RESULTADO -> (if (dataSource != null && session.winner.isBlank()) "RESULTADO · DÍA ${session.round}" else "FIN DE LA PARTIDA") to
                 session.publicAnnouncement.ifBlank { "La mesa ya tiene un ganador." }
         }
     }
@@ -2515,6 +2537,7 @@ class GameplayChatController(
 
     private fun applySelectedChatChannel(channel: ChatChannel) {
         selectedChatChannel = channel
+        syncDataSourceChannel()
         showOnlyEvents = false
         lastExpandedChatRenderKey = ""
         lastAmbientFeedRenderKey = ""
@@ -2932,6 +2955,19 @@ class GameplayChatController(
             return
         }
         val rawMessage = chatInput.text.toString()
+        if (dataSource != null) {
+            val channel = activeChatChannel()
+            if (!canHumanChatInChannel(channel)) { host.showToast(blockedChatMessage(session, channel)); return }
+            if (rawMessage.isBlank()) return
+            dataSource.send(channel, rawMessage) { accepted ->
+                if (accepted && chatInput.text.toString() == rawMessage) {
+                    GameplayEffects.play(root.context, GameplayEffect.CHAT)
+                    clearChatComposerAfterSend()
+                }
+                renderChatPanel()
+            }
+            return
+        }
         if (host.isOnlineGameplay()) {
             if (!realtimeAccessReady) {
                 GameplayEffects.play(root.context, GameplayEffect.ERROR)
@@ -3164,6 +3200,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineReactionListener() {
+        if (dataSource != null) return
         if (!realtimeAccessReady || !host.isOnlineGameplay() || host.onlineRoomId.isBlank()) return
         val matchId = host.currentSession.onlineMatchId
         if (matchId.isBlank()) return
@@ -3330,6 +3367,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineChatListener() {
+        if (dataSource != null) return
         if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineChatListener != null) return
         OnlineDebugLog.i("chat_listener_start roomId=${host.onlineRoomId} uid=${host.onlinePlayerUid}")
         val query = FirebaseEmulatorConfig.database
@@ -3390,6 +3428,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineTraitorChatListener() {
+        if (dataSource != null) return
         if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineTraitorChatListener != null) return
         if (!GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(host.currentSession))) {
             return
@@ -3478,6 +3517,7 @@ class GameplayChatController(
     }
 
     private fun startOnlineSpectatorChatListener() {
+        if (dataSource != null) return
         if (!realtimeAccessReady || !host.isOnlineGameplay() || onlineSpectatorChatListener != null) return
         if (GameEngine.humanPlayer(host.currentSession).alive) return
         if (!host.hasOnlineSpectatorChatAccess()) return
@@ -4258,11 +4298,7 @@ class GameplayChatController(
 
     private fun renderPrivateChatBackgrounds(theme: PrivateChatTheme) {
         val traitors = theme == PrivateChatTheme.TRAITORS
-        val writable = if (traitors) {
-            GameEngine.canHumanChatTraitor(host.currentSession)
-        } else {
-            GameEngine.canHumanChatSpectator(host.currentSession)
-        }
+        val writable = canHumanChatInChannel(if (traitors) ChatChannel.TRAIDORES else ChatChannel.ESPECTADORES)
         val bg = Color.parseColor(if (traitors) "#11090B" else "#09121F")
         val panel = Color.parseColor(if (traitors) "#2A1518" else "#14243A")
         val panelDeep = Color.parseColor(if (traitors) "#1C0E10" else "#0E1B2B")
@@ -4358,6 +4394,7 @@ class GameplayChatController(
     }
 
     private fun activeChatChannel(): ChatChannel {
+        dataSource?.let { return selectedChatChannel.takeIf { channel -> channel in it.allowedChannels() } ?: ChatChannel.PUBLICO }
         val session = host.currentSession
         if (canUseSpectatorChatUi(session)) {
             return if (selectedChatChannel == ChatChannel.PUBLICO) {
@@ -4382,6 +4419,7 @@ class GameplayChatController(
         channel: ChatChannel,
         session: GameSession = host.currentSession
     ): Boolean {
+        dataSource?.let { return realtimeAccessReady && it.canSend(channel) }
         return when (channel) {
             ChatChannel.PUBLICO -> GameEngine.canHumanChat(session)
             ChatChannel.TRAIDORES -> GameEngine.canHumanChatTraitor(session)
@@ -4411,10 +4449,12 @@ class GameplayChatController(
     }
 
     private fun canUseTraitorChatUi(session: GameSession): Boolean {
+        dataSource?.let { return ChatChannel.TRAIDORES in it.allowedChannels() }
         return GameEngine.canSeeTraitorChat(GameEngine.humanPlayer(session))
     }
 
     private fun canUseSpectatorChatUi(session: GameSession): Boolean {
+        dataSource?.let { return ChatChannel.ESPECTADORES in it.allowedChannels() }
         return (host.isOnlineGameplay() || session.onlineTestMode) &&
             GameEngine.canSeeSpectatorChat(GameEngine.humanPlayer(session))
     }

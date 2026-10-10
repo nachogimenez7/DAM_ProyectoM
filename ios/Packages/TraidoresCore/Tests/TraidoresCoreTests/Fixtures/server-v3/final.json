@@ -1,0 +1,257 @@
+{
+ "public": {
+  "protocolVersion": 3,
+  "authorityMode": "server",
+  "versionEstado": 3,
+  "matchId": "match-1",
+  "revision": 10,
+  "fase": "FINALIZADA",
+  "phaseIndex": 5,
+  "ronda": 1,
+  "anuncioPublico": "Victoria de Traidores.",
+  "ganador": "Traidores",
+  "eventosPublicos": [
+   {
+    "seq": 1,
+    "codigo": "NIGHT_START",
+    "ronda": 1,
+    "texto": "Noche 1."
+   },
+   {
+    "seq": 2,
+    "codigo": "NIGHT_DEATH",
+    "ronda": 1,
+    "jugadores": [
+     "p0"
+    ],
+    "texto": "J0 murió durante la noche."
+   },
+   {
+    "seq": 3,
+    "codigo": "VOTE_OPEN",
+    "ronda": 1,
+    "texto": "El pueblo decide a quién expulsar."
+   },
+   {
+    "seq": 4,
+    "codigo": "PLAYER_LEFT",
+    "ronda": 1,
+    "jugadores": [
+     "p1"
+    ],
+    "texto": "J1 abandonó la partida."
+   },
+   {
+    "seq": 5,
+    "codigo": "PLAYER_LEFT",
+    "ronda": 1,
+    "jugadores": [
+     "p4"
+    ],
+    "texto": "J4 abandonó la partida."
+   },
+   {
+    "seq": 6,
+    "codigo": "PLAYER_LEFT",
+    "ronda": 1,
+    "jugadores": [
+     "p5"
+    ],
+    "texto": "J5 abandonó la partida."
+   },
+   {
+    "seq": 7,
+    "codigo": "PLAYER_LEFT",
+    "ronda": 1,
+    "jugadores": [
+     "p6"
+    ],
+    "texto": "J6 abandonó la partida."
+   },
+   {
+    "seq": 8,
+    "codigo": "PLAYER_LEFT",
+    "ronda": 1,
+    "jugadores": [
+     "p7"
+    ],
+    "texto": "J7 abandonó la partida."
+   },
+   {
+    "seq": 9,
+    "codigo": "VICTORY",
+    "ronda": 1,
+    "texto": "Victoria de Traidores."
+   }
+  ],
+  "alcaldeCorrupcion": false,
+  "rondaVoto": 1,
+  "jugadores": [
+   {
+    "uidTemporal": "p0",
+    "orden": 0,
+    "nombre": "J0",
+    "publicId": "1",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "NIGHT",
+    "rolKey": "aldeano",
+    "rolNombre": "Aldeano",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_aldeano_gaucho"
+   },
+   {
+    "uidTemporal": "p1",
+    "orden": 1,
+    "nombre": "J1",
+    "publicId": "2",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "ABANDONO",
+    "rolKey": "policia",
+    "rolNombre": "Comisario",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_detective_gaucho"
+   },
+   {
+    "uidTemporal": "p2",
+    "orden": 2,
+    "nombre": "J2",
+    "publicId": "3",
+    "vivo": true,
+    "muteado": true,
+    "causaEliminacion": "NONE",
+    "rolKey": "medico",
+    "rolNombre": "Médica",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_medico_gaucho"
+   },
+   {
+    "uidTemporal": "p3",
+    "orden": 3,
+    "nombre": "J3",
+    "publicId": "4",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE",
+    "rolKey": "asesino",
+    "rolNombre": "Asesino",
+    "rolEquipo": "Traidores",
+    "rolImagen": "rol_asesino_gaucho"
+   },
+   {
+    "uidTemporal": "p4",
+    "orden": 4,
+    "nombre": "J4",
+    "publicId": "5",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "ABANDONO",
+    "rolKey": "mercenario",
+    "rolNombre": "Mercenario",
+    "rolEquipo": "Traidores",
+    "rolImagen": "rol_mercenario_gaucho"
+   },
+   {
+    "uidTemporal": "p5",
+    "orden": 5,
+    "nombre": "J5",
+    "publicId": "6",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "ABANDONO",
+    "rolKey": "alcalde",
+    "rolNombre": "Alcaldesa",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_alcalde_gaucho"
+   },
+   {
+    "uidTemporal": "p6",
+    "orden": 6,
+    "nombre": "J6",
+    "publicId": "7",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "ABANDONO",
+    "rolKey": "payador",
+    "rolNombre": "Payador",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_payador_gaucho"
+   },
+   {
+    "uidTemporal": "p7",
+    "orden": 7,
+    "nombre": "J7",
+    "publicId": "8",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "ABANDONO",
+    "rolKey": "aldeano",
+    "rolNombre": "Aldeano",
+    "rolEquipo": "Pueblo",
+    "rolImagen": "rol_aldeano_gaucho"
+   }
+  ]
+ },
+ "private": {
+  "p3": {
+   "matchId": "match-1",
+   "phaseIndex": 5,
+   "rolesVisibles": [
+    {
+     "orden": 3,
+     "rolKey": "asesino",
+     "rolNombre": "Asesino",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_asesino_gaucho"
+    },
+    {
+     "orden": 4,
+     "rolKey": "mercenario",
+     "rolNombre": "Mercenario",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_mercenario_gaucho"
+    }
+   ],
+   "revision": 1
+  },
+  "p2": {
+   "matchId": "match-1",
+   "phaseIndex": 5,
+   "rolesVisibles": [
+    {
+     "orden": 2,
+     "rolKey": "medico",
+     "rolNombre": "Médica",
+     "rolEquipo": "Pueblo",
+     "rolImagen": "rol_medico_gaucho"
+    }
+   ],
+   "revision": 1
+  }
+ },
+ "permissions": {
+  "p3": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 5,
+   "name": "J3",
+   "alive": true,
+   "traitor": true,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": false
+  },
+  "p2": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 5,
+   "name": "J2",
+   "alive": true,
+   "traitor": false,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": false
+  }
+ }
+}
