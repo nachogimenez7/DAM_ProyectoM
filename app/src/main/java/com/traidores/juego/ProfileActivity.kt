@@ -1552,6 +1552,12 @@ class ProfileActivity : BaseActivity() {
         )
         var previewTheme = currentTheme
         val themeButtons = linkedMapOf<String, TextView>()
+        var cosmeticDialog: android.app.Dialog? = null
+        // A style that needs a purchase sends the player to the store instead of equipping it.
+        val syncAction = {
+            cosmeticDialog?.findViewById<Button>(R.id.gameDialogPositive)?.text =
+                if (StoreLocks.isLocked(this, previewTheme)) "VER EN LA TIENDA" else "EQUIPAR"
+        }
 
         val previewBackground = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -1731,6 +1737,7 @@ class ProfileActivity : BaseActivity() {
                             previewStyleName = previewStyleName,
                             previewBubble = previewBubble
                         )
+                        syncAction()
                     }
                 }
                 themeButtons[theme] = option
@@ -1768,13 +1775,17 @@ class ProfileActivity : BaseActivity() {
             previewStyleName = previewStyleName,
             previewBubble = previewBubble
         )
-        GameDialog.custom(
+        cosmeticDialog = GameDialog.custom(
             activity = this,
             contentView = scroll,
             widthDp = 460,
             negativeLabel = "CANCELAR",
             positiveLabel = "EQUIPAR",
             onPositive = {
+                if (StoreLocks.isLocked(this, previewTheme)) {
+                    startActivity(Intent(this, StoreActivity::class.java))
+                    return@custom
+                }
                 preferences.edit().remove("support_pack_local_preview").apply()
                 CosmeticPilot.selectTheme(this, previewTheme)
                 profileCloudSyncPending = true
@@ -1786,6 +1797,7 @@ class ProfileActivity : BaseActivity() {
                 ).show()
             }
         )
+        syncAction()
     }
 
     private fun refreshCosmeticPreview(
@@ -1853,6 +1865,7 @@ class ProfileActivity : BaseActivity() {
             val equipped = theme == equippedTheme
             button.text = buildString {
                 if (selected) append("● ")
+                if (StoreLocks.isLocked(this@ProfileActivity, theme)) append("🔒 ")
                 append(label)
                 if (equipped) append(" · EQUIPADO")
             }

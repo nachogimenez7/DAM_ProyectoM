@@ -34,6 +34,10 @@ internal object InterstitialAdPolicy {
             state.matchesSinceAd >= MATCHES_PER_AD &&
             nowMs - state.lastAdAtMs >= MIN_GAP_MS
 
+    /** The "¿Cansado de los videos?" strip follows every 2nd video, with no daily limit. */
+    const val ADS_PER_STRIP = 2
+    fun stripDue(adsShown: Int): Boolean = adsShown > 0 && adsShown % ADS_PER_STRIP == 0
+
     fun afterAd(state: State, nowMs: Long): State =
         state.copy(matchesSinceAd = 0, lastAdAtMs = nowMs, adsShown = state.adsShown + 1)
 }
@@ -103,7 +107,9 @@ internal object InterstitialAds {
         ad = null
         ready.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() {
-                save(activity, InterstitialAdPolicy.afterAd(load(activity), System.currentTimeMillis()))
+                val after = InterstitialAdPolicy.afterAd(load(activity), System.currentTimeMillis())
+                save(activity, after)
+                if (InterstitialAdPolicy.stripDue(after.adsShown)) NoAdsStrip.markPending(activity)
             }
             override fun onAdDismissedFullScreenContent() { finish() }
             override fun onAdFailedToShowFullScreenContent(error: AdError) {

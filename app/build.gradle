@@ -52,6 +52,8 @@ android {
 
     defaultConfig {
         buildConfigField 'boolean', 'PROFILE_STORAGE_ENABLED', profileStorageEnabled.toString()
+        // Styles other than Clásico need a purchase only once Play Console sells them: keep false until then.
+        buildConfigField 'boolean', 'STORE_LOCKS_ENABLED', providers.gradleProperty('traidoresStoreLocks').orElse('false').get()
         applicationId = "com.traidores.juego"
         minSdk = 24
         targetSdk = 36

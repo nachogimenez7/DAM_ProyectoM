@@ -130,6 +130,7 @@ class OnlineModeActivity : BaseActivity() {
         super.onResume()
         // Back from a room: the video is shown here, never inside the lobby or the match.
         InterstitialAds.maybeShowAfterLeavingRoom(this)
+        NoAdsStrip.showIfPending(this)
     }
 
     override fun onStop() {

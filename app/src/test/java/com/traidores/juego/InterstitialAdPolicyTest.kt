@@ -30,4 +30,13 @@ class InterstitialAdPolicyTest {
     @Test fun adFreeAccountsNeverSeeAds() {
         assertFalse(InterstitialAdPolicy.isDue(after(10), nowMs = 10_000_000L, adFree = true))
     }
+
+    @Test
+    fun stripFollowsEverySecondVideoWithNoDailyLimit() {
+        assertFalse(InterstitialAdPolicy.stripDue(0))
+        assertFalse(InterstitialAdPolicy.stripDue(1))
+        assertTrue(InterstitialAdPolicy.stripDue(2))
+        assertFalse(InterstitialAdPolicy.stripDue(3))
+        assertTrue(InterstitialAdPolicy.stripDue(4))
+    }
 }

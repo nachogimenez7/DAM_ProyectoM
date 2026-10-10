@@ -599,6 +599,7 @@ class LobbyActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         MusicManager.playMenuMusic(this)
+        NoAdsStrip.showIfPending(this)
     }
 
     override fun onDestroy() {

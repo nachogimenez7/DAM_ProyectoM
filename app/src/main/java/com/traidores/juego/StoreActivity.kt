@@ -311,3 +311,72 @@ class StoreActivity : BaseActivity() {
 
 /** Opens the profile showing a style that is not equipped; used by the store's «Probar». */
 internal const val EXTRA_STORE_PREVIEW_THEME = "extra_store_preview_theme"
+
+/** Which styles need a purchase. Off in release until Play Console sells them (see STORE_LOCKS_ENABLED). */
+internal object StoreLocks {
+    fun isLocked(context: android.content.Context, theme: String): Boolean {
+        if (!BuildConfig.STORE_LOCKS_ENABLED) return false
+        val needed = when (theme) {
+            CosmeticPilot.THEME_SELLO -> "estilo_sello"
+            CosmeticPilot.THEME_FIRE -> "estilo_forja_infernal"
+            CosmeticPilot.THEME_SEA -> "estilo_abismo_real"
+            CosmeticPilot.THEME_SPACE -> "estilo_espacial"
+            else -> return false
+        }
+        return !AccountEntitlements.has(context, needed)
+    }
+}
+
+/**
+ * «¿Cansado de los videos?»: a small strip, never a window. It follows every 2nd video, once
+ * the player is back on a lobby screen, and can be closed. No daily limit.
+ */
+internal object NoAdsStrip {
+    private const val PREFS = "traidores_ads"
+    private const val KEY = "strip_pending"
+
+    fun markPending(context: android.content.Context) =
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean(KEY, true).apply()
+
+    fun showIfPending(activity: android.app.Activity) {
+        val prefs = activity.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY, false)) return
+        prefs.edit().putBoolean(KEY, false).apply()
+        if (AdFreeEntitlement.isAdFree(activity)) return
+        val content = activity.findViewById<android.widget.FrameLayout>(android.R.id.content) ?: return
+        val d = activity.resources.displayMetrics.density
+        fun dp(v: Int) = (v * d).toInt()
+        val strip = android.widget.LinearLayout(activity).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(6), dp(10))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.parseColor("#F0231810")); setStroke(dp(2), android.graphics.Color.parseColor("#E6BF73")); cornerRadius = dp(14).toFloat()
+            }
+            elevation = dp(8).toFloat()
+        }
+        val text = android.widget.LinearLayout(activity).apply { orientation = android.widget.LinearLayout.VERTICAL }
+        text.addView(android.widget.TextView(activity).apply {
+            this.text = "¿Cansado de los videos?"; textSize = 14f; setTextColor(android.graphics.Color.parseColor("#FFF0C7"))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        })
+        text.addView(android.widget.TextView(activity).apply {
+            this.text = "«Sin anuncios», para siempre."; textSize = 12f; setTextColor(activity.getColor(R.color.text_secondary))
+        })
+        strip.addView(text, android.widget.LinearLayout.LayoutParams(0, -2, 1f))
+        strip.addView(android.widget.Button(activity).apply {
+            this.text = "VER"; isAllCaps = false; textSize = 13f
+            setBackgroundResource(R.drawable.bg_winner_action_primary); setTextColor(android.graphics.Color.parseColor("#211407"))
+            setOnClickListener { content.removeView(strip); activity.startActivity(android.content.Intent(activity, StoreActivity::class.java)) }
+        }, android.widget.LinearLayout.LayoutParams(dp(64), dp(40)).apply { marginStart = dp(8) })
+        strip.addView(android.widget.TextView(activity).apply {
+            this.text = "✕"; textSize = 18f; setTextColor(activity.getColor(R.color.text_secondary)); gravity = android.view.Gravity.CENTER
+            contentDescription = "Cerrar"; setOnClickListener { content.removeView(strip) }
+        }, android.widget.LinearLayout.LayoutParams(dp(44), dp(44)))
+        val navBar = androidx.core.view.ViewCompat.getRootWindowInsets(content)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
+        content.addView(strip, android.widget.FrameLayout.LayoutParams(-1, -2, android.view.Gravity.BOTTOM).apply {
+            setMargins(dp(14), 0, dp(14), dp(14) + navBar)
+        })
+    }
+}
