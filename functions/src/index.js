@@ -15,6 +15,7 @@ const {OnlineStartError} = require("./onlineStartCore");
 const {startOnlineMatch} = require("./onlineStartService");
 const {createServerEndpoints, createDeadlineEnqueuer} = require("./onlineGameFunctions");
 const {requestLimitId} = require("./onlineRequestLimiter");
+const {createServerRecoveryFunction} = require("./onlineGameRecovery");
 
 function adminAppOptions() {
   if (process.env.FUNCTIONS_EMULATOR !== "true") return undefined;
@@ -30,6 +31,8 @@ if (getApps().length === 0) initializeApp(adminAppOptions());
 
 Object.assign(exports, createServerEndpoints({getFirestore, getDatabase, logger,
   enqueueDeadline: (task) => createDeadlineEnqueuer(getFunctions())(task)}));
+exports.repararPartidasV3 = createServerRecoveryFunction({getFirestore, getDatabase, logger,
+  enqueueDeadline: (task) => createDeadlineEnqueuer(getFunctions())(task)});
 
 function callableError(error) {
   if (!(error instanceof OnlineStartError)) {

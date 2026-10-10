@@ -136,6 +136,36 @@ class OnlineModeActivity : BaseActivity() {
         super.onStop()
     }
 
+    private var betaAccess: OnlineBetaPolicy.Access? = null
+    private var betaAccessUid: String? = null
+    private var betaConfigRequest: com.google.android.gms.tasks.Task<com.google.firebase.firestore.DocumentSnapshot>? = null
+    private fun verifyBetaConfig(generation: Int) {
+        if (!BuildConfig.SERVER_ONLINE_V3 || BuildConfig.USE_ONLINE_AUTHORITY_EMULATOR) {
+            betaAccess = OnlineBetaPolicy.Access.OPEN
+            confirmIdentity(generation); return
+        }
+        if (betaAccess != null && betaAccessUid == FirebaseAuth.getInstance().currentUser?.uid) {
+            confirmIdentity(generation); return
+        }
+        // Reuse the request when returning from a dialog; one read per screen entry.
+        val task = betaConfigRequest ?: firestore.document("config/onlineV3").get(Source.SERVER).also {
+            betaConfigRequest = it
+        }
+        task.addOnSuccessListener { doc ->
+            if (generation != accessCheckGeneration || isFinishing || isDestroyed) return@addOnSuccessListener
+            betaAccess = OnlineBetaPolicy.access(doc.getBoolean("enabled") == true,
+                doc.getLong("minVersionCode"), BuildConfig.VERSION_CODE,
+                FirebaseAuth.getInstance().currentUser?.uid, doc.get("allowedUids"))
+            betaAccessUid = FirebaseAuth.getInstance().currentUser?.uid
+            confirmIdentity(generation)
+        }.addOnFailureListener {
+            if (generation != accessCheckGeneration || isFinishing || isDestroyed) return@addOnFailureListener
+            betaAccess = OnlineBetaPolicy.Access.MAINTENANCE
+            betaAccessUid = FirebaseAuth.getInstance().currentUser?.uid
+            confirmIdentity(generation)
+        }
+    }
+
     private fun verifyOnlineAccess() {
         if (accessCheckInProgress) return
         val generation = ++accessCheckGeneration
@@ -153,7 +183,7 @@ class OnlineModeActivity : BaseActivity() {
                 accessCheckInProgress = false
                 accessFailureCount = 0
                 clearOnlineAccessRetry()
-                confirmIdentity(generation)
+                verifyBetaConfig(generation)
             },
             onBlocked = blocked@{ ban ->
                 if (!isCurrentAttempt()) return@blocked
@@ -204,7 +234,7 @@ class OnlineModeActivity : BaseActivity() {
                 if (guest) "" else (data["bioPerfil"] as? String).orEmpty(),
                 if (guest) "" else (data["bannerPerfil"] as? String).orEmpty()))
             identityCard.visibility = View.VISIBLE
-            showOnlineAccessStatus(null)
+            showOnlineAccessStatus(betaAccess?.let(OnlineBetaPolicy::message)?.takeIf { it.isNotBlank() })
             setOnlineActionsEnabled(true)
             refreshRecoveredRoomButton()
             ProfilePhotoStorage.sync(this)
@@ -240,10 +270,11 @@ class OnlineModeActivity : BaseActivity() {
     }
 
     private fun setOnlineActionsEnabled(enabled: Boolean) {
-        if (::btnCreate.isInitialized) btnCreate.isEnabled = enabled
-        if (::btnJoinCode.isInitialized) btnJoinCode.isEnabled = enabled
+        val newRooms = enabled && (!BuildConfig.SERVER_ONLINE_V3 || betaAccess == OnlineBetaPolicy.Access.OPEN)
+        if (::btnCreate.isInitialized) btnCreate.isEnabled = newRooms
+        if (::btnJoinCode.isInitialized) btnJoinCode.isEnabled = newRooms
         if (::btnRecoverRoom.isInitialized) btnRecoverRoom.isEnabled = enabled
-        findViewById<Button>(R.id.btnSearch)?.isEnabled = enabled
+        findViewById<Button>(R.id.btnSearch)?.isEnabled = newRooms
     }
 
     private fun showCreateRoomDialog() {
@@ -475,6 +506,16 @@ class OnlineModeActivity : BaseActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         )
+        if (!BuildConfig.SERVER_ONLINE_V3) {
+            // The host-authority online runs on the creator's phone.
+            content.addView(TextView(this).apply {
+                text = getString(R.string.online_create_host_stability)
+                setTextColor(resources.getColor(R.color.text_secondary, theme))
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, dp(2))
+            })
+        }
 
         fun refreshCount() {
             countLabel.text = "$expectedPlayers\nJUGADORES"
@@ -907,7 +948,7 @@ class OnlineModeActivity : BaseActivity() {
         room: DocumentSnapshot,
         onAvailable: () -> Unit
     ) {
-        if (room.getString("authorityMode") == "server") { onAvailable(); return }
+        if (room.getLong("protocolVersion") == 3L) { onAvailable(); return }
         FirebaseEmulatorConfig.database.getReference("salas/${room.id}/presencia")
             .get()
             .addOnSuccessListener { snapshot ->
@@ -964,6 +1005,11 @@ class OnlineModeActivity : BaseActivity() {
                             Toast.makeText(this, "La sala ya no existe.", Toast.LENGTH_LONG).show()
                             return@roomSnapshot
                         }
+                        if (!ServerRoomProtocol.compatible(snapshot.getLong("protocolVersion"), snapshot.getString("authorityMode"),
+                                snapshot.getLong("serverGeneration"), room.serverProtocol || BuildConfig.SERVER_ONLINE_V3)) {
+                            clearUnavailableRecoveredRoom("La sala perdió el protocolo del servidor. Elegí otra sala compatible.")
+                            return@roomSnapshot
+                        }
                         val state = snapshot.getString(OnlineRoomFirestore.FIELD_STATE).orEmpty()
                         val serverNowMs = recoveryServerClock.nowMs()
                         if (serverNowMs == null) {
@@ -1005,7 +1051,7 @@ class OnlineModeActivity : BaseActivity() {
             .document(uid)
             .get(Source.SERVER)
             .addOnSuccessListener { player ->
-                if (snapshot.getString("authorityMode") == "server" && snapshot.getLong("protocolVersion") == 3L) {
+                if (snapshot.getLong("protocolVersion") == 3L) {
                     if (player.exists() && player.getBoolean(OnlineRoomFirestore.FIELD_ACTIVE_IN_MATCH) != false) openRecoveredLobby(room, snapshot)
                     else clearUnavailableRecoveredRoom("Ya no formás parte de esa partida.")
                     return@addOnSuccessListener
@@ -1522,6 +1568,12 @@ class OnlineModeActivity : BaseActivity() {
             val freshRoom = transaction.get(roomReference)
             if (!freshRoom.exists()) {
                 throw IllegalStateException("La sala ya no existe.")
+            }
+            if (BuildConfig.SERVER_ONLINE_V3 && freshRoom.getLong("protocolVersion") != 3L) {
+                throw IllegalStateException("Esta sala usa una versión anterior. Elegí una sala V3.")
+            }
+            if (!BuildConfig.SERVER_ONLINE_V3 && freshRoom.getLong("protocolVersion") == 3L) {
+                throw IllegalStateException("Esta sala es de una versión de prueba. Elegí otra sala.")
             }
             if (freshRoom.getString("cleanupState") == "deleting" ||
                 freshRoom.getString(OnlineRoomFirestore.FIELD_STATE) != OnlineRoomFirestore.STATE_WAITING) {

@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {prepareOnlineMatch} = require("../src/onlineStartCore");
 const {createServerGame, acceptAction, leaveServerGame, expirePhase, deadlineToken, projectServerGame, winnerFor,
-  stableNoise, resolveKillVote, MAX_ACTIONS_PER_PHASE} = require("../src/onlineGameCore");
+  stableNoise, resolveKillVote, MAX_ACTIONS_PER_PHASE, assertPhaseProgress} = require("../src/onlineGameCore");
 const {recordsForFinishedRoom} = require("../src/accountHistoryService");
 let sequence = 0;
 const NOW = 1000000;
@@ -26,11 +26,36 @@ function act(state, uid, action, fields = {}, now = NOW + 1) {
     requestId: `request_${++sequence}`, action, ...fields}, now).state;
 }
 function close(state) { return expirePhase(state, deadlineToken(state), state.deadlineMs).state; }
+function resultWithTarget(state, uid, nowMs = NOW + 40000) {
+  phase(state, "RECUENTO_VOTOS", {eliminationUid: uid, tieCandidates: uid ? [uid] : [], voteRound: 1, afkEnabled: false});
+  return expirePhase(state, deadlineToken(state), Math.max(nowMs, state.deadlineMs)).state;
+}
 function rejects(state, uid, action, fields, code) {
   const before = structuredClone(state);
   assert.throws(() => act(state, uid, action, fields), (e) => e.code === code);
   assert.deepEqual(state, before);
 }
+test("investigation returns immediately in the investigator's private projection without a public change", () => {
+  const state = phase(fixture().state, "NOCHE", {afkEnabled: false});
+  const police = role(state, "policia"), target = role(state, "asesino");
+  const before = projectServerGame(state).public;
+  const next = act(state, police.uid, "investigar", {targetUid: target.uid});
+  const projected = projectServerGame(next);
+  assert.equal(next.phase, "NOCHE");
+  assert.deepEqual(projected.public, before);
+  assert.equal(projected.private[police.uid].investigaciones.length, 1);
+  assert.equal(projected.private[police.uid].investigaciones[0].traitor, true);
+  assert.ok(Object.entries(projected.private).every(([uid, p]) => uid === police.uid || p.investigaciones.length === 0));
+  const dawn = close(next);
+  assert.equal(dawn.investigations.filter(i => i.actorOrder === police.order && i.round === 1).length, 1);
+});
+test("immediate investigation still reports the Spy as innocent and rejects a second target", () => {
+  const state = phase(fixture().state, "NOCHE", {afkEnabled: false});
+  const police = role(state, "policia"), spy = role(state, "espia");
+  const next = act(state, police.uid, "investigar", {targetUid: spy.uid});
+  assert.equal(projectServerGame(next).private[police.uid].investigaciones[0].traitor, false);
+  rejects(next, police.uid, "investigar", {targetUid: role(next, "asesino").uid}, "night-action-already-submitted");
+});
 function deserterFinal() {
   const {state} = fixture();
   const keep = new Set(["desertor", "mercenario", "asesino"]);
@@ -286,12 +311,26 @@ test("silenced Desertor may keep or change once from round four, independent of 
   }
 });
 
-test("Desertor round-two fallback is stable and never changes an already selected side", () => {
-  let state = fixture().state; phase(state, "RESULTADO", {round: 1});
-  const first = close(state), second = close(state);
-  assert.equal(first.round, 2); assert.ok(["Pueblo", "Traidores"].includes(first.deserterTeam));
-  assert.equal(first.deserterTeam, second.deserterTeam);
-  state.deserterTeam = "Traidores"; assert.equal(close(state).deserterTeam, "Traidores");
+test("unchosen Desertor gets a private random side before night one, chosen side is preserved", () => {
+  for (const bit of [0, 1]) {
+    const original = fixture().state;
+    const next = expirePhase(original, deadlineToken(original), original.deadlineMs,
+      {chooseRandomInt: (max) => {assert.equal(max, 2); return bit;}}).state;
+    assert.equal(next.phase, "NOCHE"); assert.equal(next.round, 1);
+    assert.equal(next.deserterTeam, bit === 0 ? "Pueblo" : "Traidores");
+    assert.equal(original.deserterTeam, null);
+    const projections = projectServerGame(next);
+    assert.ok(!Object.hasOwn(projections.public, "desertorBando"));
+    for (const p of next.players) assert.equal(Object.hasOwn(projections.private[p.uid], "desertorBando"), p.role.key === "desertor");
+    assert.equal(expirePhase(next, deadlineToken(original), next.deadlineMs,
+      {chooseRandomInt() {throw new Error("duplicate must not draw");}}).changed, false);
+  }
+  for (const state of [fixture().state, fixture(5).state]) {
+    if (role(state, "desertor")) state.deserterTeam = "Traidores";
+    const next = expirePhase(state, deadlineToken(state), state.deadlineMs,
+      {chooseRandomInt() {throw new Error("no fallback needed");}}).state;
+    assert.equal(next.deserterTeam, state.deserterTeam);
+  }
 });
 
 test("AFK expels only required living actors on second miss and cancels only an entirely absent table", () => {
@@ -308,8 +347,9 @@ test("AFK expels only required living actors on second miss and cancels only an 
 });
 
 test("Jester wins only through a vote and server final matches history contract", () => {
-  let {state, prepared} = fixture(8, "medieval"); phase(state, "RESULTADO");
-  const jester = role(state, "bufon"); state.eliminationUid = jester.uid;
+  let {state, prepared} = fixture(8, "medieval");
+  const jester = role(state, "bufon");
+  phase(state, "RECUENTO_VOTOS", {eliminationUid: jester.uid});
   state = close(state); assert.equal(state.specialVictories.length, 1);
   state.players.filter((p) => ["asesino", "espia"].includes(p.role.key)).forEach((p) => { p.alive = false; });
   phase(state, "RESULTADO"); state = close(state);
@@ -319,6 +359,89 @@ test("Jester wins only through a vote and server final matches history contract"
   const cancelled = structuredClone(state); cancelled.winner = "Cancelada";
   assert.equal(recordsForFinishedRoom("room", {partidaInicial: prepared.payloads.initialMatch,
     estadoPartida: projectServerGame(cancelled).public}, NOW).length, 0);
+});
+
+test("result entry atomically publishes death, public role and event; dead chat waits for next phase", () => {
+  for (const reveal of [false, true]) {
+    let state = fixture(15).state; state.config.revelarRolesAlMorir = reveal;
+    const target = role(state, "aldeano"), alreadyDead = role(state, "medico");
+    alreadyDead.alive = false; alreadyDead.deathCause = "NIGHT";
+    const initial = projectServerGame(state).public;
+    assert.ok(initial.jugadores[target.order].vivo);
+    state = resultWithTarget(state, target.uid);
+    const projection = projectServerGame(state);
+    assert.equal(state.phase, "RESULTADO"); assert.equal(state.winner, null);
+    assert.equal(state.deadlineMs - state.phaseStartedAtMs, 8000);
+    assert.equal(projection.public.jugadores[target.order].vivo, false);
+    assert.equal(projection.public.jugadores[target.order].causaEliminacion, "VOTE");
+    assert.equal(!!projection.public.jugadores[target.order].rolKey, reveal);
+    assert.equal(projection.public.eventosPublicos.filter(e => e.codigo === "DAY_EXPULSION").length, 1);
+    assert.equal(projection.permissions[target.uid].deadChat, false);
+    assert.equal(projection.permissions[alreadyDead.uid].deadChat, true);
+    const token = deadlineToken(state);
+    const next = close(state);
+    assert.equal(next.phase, "NOCHE"); assert.equal(projectServerGame(next).permissions[target.uid].deadChat, true);
+    assert.equal(expirePhase(next, token, next.deadlineMs).changed, false);
+    assert.equal(next.events.filter(e => e.codigo === "DAY_EXPULSION").length, 1);
+  }
+});
+
+test("Jester is public only once expelled, gets twelve seconds and preserves a longer configured transition", () => {
+  for (const transitionSeconds of [4, 10, 15]) {
+    let state = fixture(8, "medieval").state;
+    state.timing.transitionSeconds = transitionSeconds; state.config.revelarRolesAlMorir = false;
+    const jester = role(state, "bufon");
+    assert.deepEqual(projectServerGame(state).public.victoriasEspeciales, []);
+    state = resultWithTarget(state, jester.uid);
+    assert.equal(state.deadlineMs - state.phaseStartedAtMs, Math.max(12, transitionSeconds) * 1000);
+    assert.equal(state.winner, null);
+    const projection = projectServerGame(state);
+    assert.equal(projection.public.jugadores[jester.order].rolKey, undefined);
+    assert.equal(projection.public.victoriasEspeciales[0].jugador, jester.name);
+    assert.equal(projection.permissions[jester.uid].deadChat, false);
+    state = close(state);
+    assert.equal(state.specialVictories.length, 1);
+  }
+  const none = resultWithTarget(fixture(8).state, null);
+  assert.equal(none.deadlineMs - none.phaseStartedAtMs, none.timing.transitionSeconds * 1000);
+  assert.equal(none.events.at(-1).codigo, "DAY_NO_EXPULSION");
+});
+
+test("last killer is expelled in RESULTADO before the victory is evaluated at its deadline", () => {
+  let state = fixture(5).state;
+  state = resultWithTarget(state, role(state, "asesino").uid);
+  assert.equal(state.phase, "RESULTADO"); assert.equal(state.winner, null);
+  assert.ok(projectServerGame(state).public.eventosPublicos.some(e => e.codigo === "DAY_EXPULSION"));
+  state = close(state);
+  assert.equal(state.winner, "Pueblo"); assert.equal(state.phase, "FINALIZADA");
+});
+
+test("in-flight result from an older deployment still eliminates its living target exactly once", () => {
+  let state = fixture(8, "medieval").state;
+  const jester = role(state, "bufon");
+  phase(state, "RESULTADO", {eliminationUid: jester.uid, afkEnabled: false});
+  const token = deadlineToken(state);
+  state = close(state);
+  assert.equal(playerAt(state, jester.uid).deathCause, "VOTE");
+  assert.equal(state.specialVictories.length, 1);
+  assert.equal(expirePhase(state, token, state.deadlineMs).changed, false);
+});
+
+test("departure during RESULTADO cannot skip a pending expulsion when Desertor parity opens and breaks", () => {
+  let state = fixture(15).state;
+  const towns = state.players.filter(p => p.role.team === "Pueblo").slice(0, 3);
+  const keep = new Set([...towns.map(p => p.uid), ...["desertor", "asesino", "espia", "mercenario"].map(key => role(state, key).uid)]);
+  state.players.forEach(p => {p.alive = keep.has(p.uid);});
+  state.round = 4; state.deserterTeam = "Pueblo";
+  state = resultWithTarget(state, towns[0].uid);
+  assert.equal(playerAt(state, towns[0].uid).deathCause, "VOTE");
+  state = leaveServerGame(state, role(state, "mercenario").uid, state.phaseStartedAtMs + 1).state;
+  assert.equal(state.phase, "DESERTOR_RECONSIDERACION");
+  assert.equal(state.deserterReturn.phase, "RESULTADO");
+  state = leaveServerGame(state, role(state, "espia").uid, state.phaseStartedAtMs + 1).state;
+  assert.equal(state.phase, "NOCHE"); assert.equal(state.round, 5); assert.equal(state.deserterUsed, false);
+  assert.equal(playerAt(state, towns[0].uid).deathCause, "VOTE");
+  assert.equal(state.events.filter(e => e.codigo === "DAY_EXPULSION").length, 1);
 });
 
 test("stable murder tie hash matches Kotlin UTF-16 vectors and ordering", () => {
@@ -336,4 +459,192 @@ test("stale, premature and repeated deadline tasks never resolve twice; no phone
   assert.equal(expirePhase(state, token, state.deadlineMs).changed, false);
   for (let i = 0; i < 50 && !state.winner; i++) state = close(state);
   assert.ok(state.winner); // Deadline-only execution, with zero client/host callbacks.
+});
+
+
+test("Desertor window resumes dawn/day or result/next night after parity breaks, without consuming choice", () => {
+  for (const origin of ["AMANECER", "RESULTADO"]) {
+    let state = deserterParity(); state.afkEnabled = false;
+    if (origin === "RESULTADO") { phase(state, "RESULTADO"); state = close(state); }
+    else {
+      phase(state, "NOCHE"); state = close(state);
+    }
+    assert.equal(state.phase, "DESERTOR_RECONSIDERACION");
+    assert.equal(state.deserterReturn.phase, origin);
+    const previousIndex = state.phaseIndex;
+    const oldToken = deadlineToken(state);
+    state = leaveServerGame(state, role(state, "mercenario").uid, state.phaseStartedAtMs + 1).state;
+    assert.equal(state.phase, origin === "AMANECER" ? "DIA_DEBATE" : "NOCHE");
+    assert.equal(state.round, origin === "AMANECER" ? 4 : 5);
+    assert.ok(state.phaseIndex > previousIndex); assert.equal(state.winner, null);
+    assert.equal(state.deserterUsed, false); assert.equal(state.deserterTeam, "Pueblo");
+    assert.equal(state.deserterReturn, null);
+    assert.equal(expirePhase(state, oldToken, oldToken.deadlineMs).changed, false);
+    state = close(state); assert.ok(state.phaseIndex > previousIndex + 1 || state.winner);
+  }
+});
+
+test("a still valid Desertor window keeps its deadline; a broken window times out or accepts an in-flight choice safely", () => {
+  for (const choice of [null, "Traidores", "mantener"]) {
+    let state = deserterParity(); phase(state, "RESULTADO"); state = close(state);
+    const token = deadlineToken(state), index = state.phaseIndex;
+    // Simulates a restored window after parity changed before it was resolved.
+    role(state, "mercenario").alive = false;
+    const desertor = role(state, "desertor");
+    state = choice ? act(state, desertor.uid, "desertor_rethink", {team: choice}, state.phaseStartedAtMs + 1) : close(state);
+    assert.equal(state.phase, "NOCHE"); assert.equal(state.deserterUsed, false);
+    assert.equal(state.deserterTeam, "Pueblo"); assert.ok(state.phaseIndex > index);
+    assert.equal(expirePhase(state, token, token.deadlineMs).changed, false);
+  }
+  let state = deserterParity(); phase(state, "RESULTADO"); state = close(state);
+  const token = deadlineToken(state);
+  state = leaveServerGame(state, state.players.find((p) => !p.alive).uid, state.phaseStartedAtMs + 1).state;
+  assert.deepEqual(deadlineToken(state), token); // Departure must not prolong the choice window.
+});
+
+test("a departure-created window resumes pending night intentions without replaying or restoring the leaver's action", () => {
+  let state = deserterParity(); phase(state, "NOCHE"); state.afkEnabled = false;
+  const killer = role(state, "asesino"), doctor = role(state, "medico"), target = role(state, "aldeano");
+  // Open from a night with Town just above parity, then a Town departure reaches parity.
+  doctor.alive = true;
+  state = act(state, killer.uid, "matar", {targetUid: target.uid});
+  state = act(state, doctor.uid, "salvar", {targetUid: target.uid});
+  state = leaveServerGame(state, doctor.uid, NOW + 2).state;
+  assert.equal(state.phase, "DESERTOR_RECONSIDERACION");
+  assert.equal(state.deserterReturn.phase, "NOCHE");
+  state = leaveServerGame(state, role(state, "mercenario").uid, NOW + 3).state;
+  assert.equal(state.phase, "NOCHE"); assert.equal(state.deserterUsed, false);
+  assert.equal(Object.values(state.actions).length, 1);
+  assert.equal(Object.values(state.actions)[0].actorOrder, killer.order);
+  state = close(state); assert.equal(playerAt(state, target.uid).deathCause, "NIGHT");
+});
+
+test("all expirable phases advance a phase index or finish and stuck state is rejected without mutation", () => {
+  const phases = ["REPARTO", "NOCHE", "AMANECER", "DIA_DEBATE", "CONTRAPUNTO", "VOTACION", "DESEMPATE_VOTACION",
+    "RECUENTO_VOTOS", "ALCALDE_DESEMPATE", "RESULTADO"];
+  for (const value of phases) {
+    const current = fixture(14).state; phase(current, value); current.afkEnabled = false; current.deserterTeam = "Pueblo";
+    const result = expirePhase(current, deadlineToken(current), current.deadlineMs);
+    assert.equal(result.changed, true); assertPhaseProgress(current, result.state, current.deadlineMs);
+  }
+  const state = deserterParity(); phase(state, "DESERTOR_RECONSIDERACION");
+  role(state, "mercenario").alive = false; const original = structuredClone(state);
+  assert.throws(() => close(state), (e) => e.code === "phase-stuck"); assert.deepEqual(state, original);
+  assert.throws(() => assertPhaseProgress(state, {...state, deadlineMs: state.deadlineMs + 10000}, state.deadlineMs),
+    (e) => e.code === "phase-stuck");
+});
+
+test("dead Villager and expelled Jester leaving before final always record a defeat", () => {
+  for (const key of ["aldeano", "bufon"]) {
+    let {state, prepared} = fixture(8, "medieval"); phase(state, "RESULTADO");
+    const p = role(state, key);
+    if (key === "bufon") { phase(state, "RECUENTO_VOTOS", {eliminationUid: p.uid}); state = close(state); }
+    else { p.alive = false; p.deathCause = "NIGHT"; }
+    assert.equal(playerAt(state, p.uid).alive, false);
+    state = leaveServerGame(state, p.uid, state.phaseStartedAtMs + 1).state;
+    state.players.filter((p) => ["asesino", "espia"].includes(p.role.key)).forEach((p) => {p.alive = false;});
+    phase(state, "RESULTADO"); state = close(state); assert.equal(state.winner, "Pueblo");
+    const records = recordsForFinishedRoom("room", {partidaInicial: prepared.payloads.initialMatch,
+      estadoPartida: projectServerGame(state).public}, state.phaseStartedAtMs);
+    assert.equal(records.find((r) => r.uid === p.uid).won, false);
+    assert.equal(playerAt(state, p.uid).deathCause, "ABANDONO");
+  }
+});
+
+test("event identifiers survive clipping, retries and rounds without secret-action increments", () => {
+  let state = fixture(15).state; state.afkEnabled = false; state.deserterTeam = "Pueblo";
+  // Repeated rounds without attacks generate enough real public events to clip the ring.
+  for (let i = 0; i < 120; i++) state = close(state);
+  assert.equal(state.events.length, 60); assert.ok(state.events[0].seq > 1);
+  assert.ok(state.events.every((e, i, all) => e.codigo !== "INFO" && (!i || e.seq === all[i - 1].seq + 1)));
+  const before = state.eventSeq; phase(state, "NOCHE");
+  const doctor = role(state, "medico"); state = act(state, doctor.uid, "salvar", {targetUid: doctor.uid});
+  assert.equal(state.eventSeq, before);
+  const projection = projectServerGame(state).public;
+  assert.ok(projection.eventosPublicos.every((e) => e.ronda === state.round));
+  assert.ok(projection.eventosPublicos.length < state.events.length);
+});
+
+function deserterParity() {
+  const state = deserterFinal();
+  state.players.find((p) => p.role.key === "aldeano" && !p.alive).alive = true;
+  return state;
+}
+
+test('public chat matches common debate/vote/counterpoint table; Oracle only during debate', () => {
+  const {state} = fixture();
+  const alive = state.players[0], muted = state.players[1], dead = state.players[2], guest = state.players[3];
+  muted.muted = true; dead.alive = false; guest.alive = false;
+  state.oracleGuestUid = guest.uid; state.counterpointPlayers = [alive.uid, muted.uid];
+  for (const current of ['REPARTO','NOCHE','AMANECER','DIA_DEBATE','CONTRAPUNTO','VOTACION','DESEMPATE_VOTACION','RECUENTO_VOTOS','ALCALDE_DESEMPATE','RESULTADO','DESERTOR_RECONSIDERACION']) {
+    state.phase = current;
+    const p = projectServerGame(state).permissions;
+    assert.equal(p[alive.uid].publicChat, ['DIA_DEBATE','CONTRAPUNTO','VOTACION','DESEMPATE_VOTACION'].includes(current), current);
+    assert.equal(p[muted.uid].publicChat, false, `muted ${current}`);
+    assert.equal(p[dead.uid].publicChat, false, `dead ${current}`);
+    assert.equal(p[guest.uid].publicChat, current === 'DIA_DEBATE', `guest ${current}`);
+  }
+  state.phase = 'VOTACION'; alive.left = true;
+  assert.equal(projectServerGame(state).permissions[alive.uid].publicChat, false);
+});
+
+test('reactions follow common public phases but mute blocks gestures (user 8/10)', () => {
+  const {state} = fixture();
+  for(const phase of ['REPARTO','NOCHE','AMANECER','DIA_DEBATE','CONTRAPUNTO','VOTACION','RECUENTO_VOTOS','DESEMPATE_VOTACION','ALCALDE_DESEMPATE','RESULTADO','DESERTOR_RECONSIDERACION']) {
+    state.phase=phase;
+    const allowed=['DIA_DEBATE','CONTRAPUNTO','VOTACION','RECUENTO_VOTOS','DESEMPATE_VOTACION','ALCALDE_DESEMPATE'].includes(phase);
+    assert.equal(projectServerGame(state).permissions.p0.reactions,allowed,phase);
+  }
+  state.phase='VOTACION';state.players[0].muted=true;
+  assert.equal(projectServerGame(state).permissions.p0.reactions,false);
+  state.players[0].muted=false;state.players[0].alive=false;
+  assert.equal(projectServerGame(state).permissions.p0.reactions,false);
+  state.players[0].alive=true;state.players[0].left=true;
+  assert.equal(projectServerGame(state).permissions.p0.reactions,false);
+});
+test("VOTAR ANTES: after ten seconds every living player (muted too) can mark; all marked opens the vote at once", () => {
+  let state = phase(fixture(5).state, "DIA_DEBATE", {afkEnabled: false, phaseStartedAtMs: NOW});
+  const living = state.players.filter((p) => p.alive);
+  const muted = living[1]; muted.muted = true;
+  rejects(state, living[0].uid, "listo_votar", {}, "ready-too-early");
+  const later = NOW + 10000;
+  state = act(state, living[0].uid, "listo_votar", {}, later);
+  assert.deepEqual({listos: 1, total: 5}, (({listos, total}) => ({listos, total}))(projectServerGame(state).public.listosVotar));
+  // Only aggregates are public; the own mark is in the private confirmed actions.
+  assert.ok(!JSON.stringify(projectServerGame(state).public.listosVotar).includes(living[0].uid));
+  assert.ok(projectServerGame(state).private[living[0].uid].accionesConfirmadas.some((a) => a.action === "listo_votar"));
+  state = act(state, living[0].uid, "cancelar_listo", {}, later + 1);
+  assert.equal(projectServerGame(state).public.listosVotar.listos, 0);
+  for (const p of living.slice(0, 4)) state = act(state, p.uid, "listo_votar", {}, later + 2);
+  assert.equal(state.phase, "DIA_DEBATE");
+  state = act(state, living[4].uid, "listo_votar", {}, later + 3);
+  assert.equal(state.phase, "VOTACION");
+  assert.equal(projectServerGame(state).public.listosVotar, null);
+});
+test("VOTAR ANTES: dead players cannot mark, other phases reject it, and a departure can complete the readiness", () => {
+  let state = phase(fixture(5).state, "DIA_DEBATE", {afkEnabled: false, phaseStartedAtMs: NOW});
+  const dead = state.players[0]; dead.alive = false; dead.deathCause = "NIGHT";
+  rejects(state, dead.uid, "listo_votar", {}, "voter-unavailable");
+  const living = state.players.filter((p) => p.alive);
+  for (const p of living.slice(0, 3)) state = act(state, p.uid, "listo_votar", {}, NOW + 10000);
+  const left = leaveServerGame(state, living[3].uid, NOW + 10001).state;
+  assert.equal(left.winner, null);
+  assert.equal(left.phase, "VOTACION");
+  const voting = phase(fixture(5).state, "VOTACION", {afkEnabled: false, phaseStartedAtMs: NOW});
+  rejects(voting, voting.players[0].uid, "listo_votar", {}, "wrong-phase");
+});
+test("individual ballots are published after the vote closes only when the room shows votes", () => {
+  let state = phase(fixture(5).state, "VOTACION", {afkEnabled: false});
+  const [a, b, c] = state.players;
+  state = act(state, a.uid, "votar", {targetUid: b.uid});
+  state = act(state, c.uid, "votar", {targetUid: b.uid});
+  assert.equal(projectServerGame(state).public.votosIndividuales, null); // secret while voting
+  const counted = close(state);
+  assert.equal(counted.phase, "RECUENTO_VOTOS");
+  assert.deepEqual(projectServerGame(counted).public.votosIndividuales,
+    [{votante: a.order, objetivo: b.order}, {votante: c.order, objetivo: b.order}]);
+  const hidden = structuredClone(counted); hidden.config.votosIndividuales = false;
+  assert.equal(projectServerGame(hidden).public.votosIndividuales, null);
+  const night = close(close(counted));
+  assert.equal(projectServerGame(night).public.votosIndividuales, null);
 });

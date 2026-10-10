@@ -31,6 +31,15 @@ enum FirebaseSmokeCheck {
         if FirebaseSetup.emulatorHost != nil, defaults.bool(forKey: "firebase-ui-reset-auth"), FirebaseSetup.configureIfNeeded() {
             try? Auth.auth().signOut()
         }
+        // `-firebase-emulator-email`/`-firebase-emulator-password`: start signed in to an Auth
+        // emulator account, so multi-device emulator runs do not depend on typing in the UI.
+        if FirebaseSetup.emulatorHost != nil, let email = defaults.string(forKey: "firebase-emulator-email"),
+           let password = defaults.string(forKey: "firebase-emulator-password"), FirebaseSetup.configureIfNeeded() {
+            Task {
+                do { _ = try await Auth.auth().signIn(withEmail: email, password: password) }
+                catch { print("FIREBASE EMULATOR SIGN-IN FAILED: \(error.localizedDescription)") }
+            }
+        }
         if FirebaseSetup.emulatorHost != nil, defaults.bool(forKey: "firebase-account-smoke") {
             Task { await accountCheck() }
             return

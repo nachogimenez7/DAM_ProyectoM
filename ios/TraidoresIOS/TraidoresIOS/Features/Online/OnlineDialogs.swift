@@ -470,11 +470,18 @@ struct CreateRoomDialog: View {
     private var playerCount: some View {
         HStack(spacing: 12) {
             stepButton("minus", label: "Menos jugadores", enabled: expected > 5) { expected -= 1 }
-            Text("\(expected)\nJUGADORES")
-                .font(TraidoresTheme.title(20)).foregroundStyle(TraidoresTheme.text)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier("create.expected")
+            // Number and caption as separate lines that always keep their height: inside the
+            // dialog a single two-line Text was clipped to one line ("5…").
+            VStack(spacing: 0) {
+                Text("\(expected)").font(TraidoresTheme.title(24))
+                Text("JUGADORES").font(.caption.bold()).tracking(1).foregroundStyle(TraidoresTheme.secondary)
+            }
+            .foregroundStyle(TraidoresTheme.text)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(expected) jugadores")
+            .accessibilityIdentifier("create.expected")
             stepButton("plus", label: "Más jugadores", enabled: expected < 15) { expected += 1 }
         }
     }

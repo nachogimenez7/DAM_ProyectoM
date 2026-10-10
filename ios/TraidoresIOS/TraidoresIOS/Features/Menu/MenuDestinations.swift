@@ -433,6 +433,7 @@ struct ProfileView: View {
                 .accessibilityShowsLargeContentViewer()
                 .accessibilityIdentifier("profile.edit")
         }
+        .onlineScrollEdges()
         .onSubmit { editingText = false }
         .onAppear {
             guard !initialized else { return }
@@ -634,12 +635,12 @@ struct ProfileView: View {
     private func stat(_ label: String) -> some View {
         let history = accountHistory
         let confirmed = history?.status == .ready
-        let value = !confirmed ? "—" : label == "Partidas" ? String(history?.matches ?? 0)
+        let value = !confirmed ? "Sin datos" : label == "Partidas" ? String(history?.matches ?? 0)
             : label == "Victorias" ? String(history?.wins ?? 0)
             : "\(Int((Double(history?.wins ?? 0) * 100 / Double(max(1, history?.matches ?? 0))).rounded()))%"
         return VStack(spacing: 6) {
             // Explicit colours: inherited ones could resolve to dark text on the dark card.
-            Text(value).font(.title2.bold()).foregroundStyle(style.text)
+            Text(value).font(confirmed ? .title2.bold() : .caption.bold()).foregroundStyle(style.text)
             Text(label).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
                 .foregroundStyle(TraidoresTheme.secondary)
         }
@@ -1034,22 +1035,30 @@ struct ProfilePortrait: View {
     }
 }
 
-/// Shared with the match: the animated «6 7» alternates its two frames.
+/// Shared with the match: the animated «6 7» swaps its two frames every 0.13 s with a pop and tilt on
+/// each swap, for as long as it is on screen. It is drawn from the clock (not from state changes or
+/// animations), so a table that disables animations cannot freeze it. With Reduce Motion it only
+/// swaps frames slowly, without the pop and tilt. UI tests keep it still.
 struct ProfileEmoteImage: View {
     let emote: ProfileEmoteContent
     @Environment(\.reduceAnimations) private var reduceMotion
-    @State private var frame = "a"
+
+    private static let stillForTests = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+
     var body: some View {
-        if emote.animated {
-            Image("\(emote.image)_\(frame)").resizable().scaledToFit()
-                .task(id: reduceMotion) {
-                    frame = "a"
-                    guard !reduceMotion else { return }
-                    for next in ["a", "b", "a", "b"] {
-                        frame = next
-                        do { try await Task.sleep(for: .milliseconds(110)) } catch { return }
-                    }
-                }.accessibilityHidden(true)
+        if emote.animated && !Self.stillForTests {
+            TimelineView(.periodic(from: .now, by: reduceMotion ? 0.5 : 0.065)) { context in
+                let tick = Int(context.date.timeIntervalSinceReferenceDate / (reduceMotion ? 0.5 : 0.065))
+                let swap = reduceMotion ? tick : tick / 2
+                let odd = swap % 2 == 1
+                let popped = !reduceMotion && tick % 2 == 0
+                Image("\(emote.image)_\(odd ? "b" : "a")").resizable().scaledToFit()
+                    .scaleEffect(popped ? 1.18 : 1)
+                    .rotationEffect(.degrees(reduceMotion ? 0 : (odd ? -8 : 8)))
+            }
+            .accessibilityHidden(true)
+        } else if emote.animated {
+            Image("\(emote.image)_a").resizable().scaledToFit().accessibilityHidden(true)
         } else {
             Image(emote.image).resizable().scaledToFit().accessibilityHidden(true)
         }

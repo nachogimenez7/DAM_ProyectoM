@@ -85,7 +85,7 @@ private data class TraitorRevealCardMetrics(
 class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var historyOwnerUid = ""
 
-    private val fullBleedModalOverlays = mutableListOf<FrameLayout>()
+    private val sharedWindowInsets = GameplayWindowInsets()
 
     private var isCardRevealed = false
     private var appliedGameplayTextScale = 1f
@@ -178,7 +178,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private var botReactionScheduleKey = ""
     private val feedbackState = GameplayFeedbackState()
     private val reactionLimiter = GameplayReactionLimiter()
-    private val activeReactionBubbles = mutableMapOf<String, View>()
     private val pendingOnlineReactions = linkedMapOf<String, ReactionSpec>()
     private var gameplayResumed = false
     private val defaultReactionSpecs = reactionSpecsForTheme(EmoteCatalog.THEME_GREEK)
@@ -196,42 +195,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         get() = appliedGameplayTextScale
 
     override fun onSystemBarInsetsChanged(safeArea: Insets) {
-        val content = findViewById<FrameLayout>(android.R.id.content) ?: return
-        val root = findViewById<RelativeLayout>(R.id.gameplayRoot) ?: return
-        val scrim = findViewById<View>(R.id.topSystemBarScrim) ?: return
-        if (scrim.parent === root) {
-            root.removeView(scrim)
-            content.addView(scrim, 1, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(120) + safeArea.top
-            ))
-        } else {
-            scrim.layoutParams = scrim.layoutParams.apply { height = dp(120) + safeArea.top }
-        }
-        scrim.translationY = 0f
-
-        // Full-screen transitions and dimmed dialogs need to cover the system bars as well.
-        // Their panels still lay out inside the safe area so controls remain reachable.
-        val overlays = (0 until root.childCount)
-            .map(root::getChildAt)
-            .filterIsInstance<FrameLayout>()
-            .filter { view ->
-                view.layoutParams.width == ViewGroup.LayoutParams.MATCH_PARENT &&
-                    view.layoutParams.height == ViewGroup.LayoutParams.MATCH_PARENT
-            }
-        overlays.forEach { overlay ->
-            root.removeView(overlay)
-            content.addView(overlay, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ))
-            if (overlay.id != R.id.dayNightTransitionOverlay) {
-                fullBleedModalOverlays.add(overlay)
-            }
-        }
-        fullBleedModalOverlays.forEach { overlay ->
-            overlay.setPadding(safeArea.left, safeArea.top, safeArea.right, safeArea.bottom)
-        }
+        sharedWindowInsets.apply(this, safeArea)
     }
     override val onlineRoomId: String
         get() = onlinePartidaId
@@ -659,55 +623,23 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     private val pendingDeathReveals = ArrayDeque<GamePlayer>()
     private val pendingSilenceReveals = ArrayDeque<GamePlayer>()
     private val playerCardViews = linkedMapOf<String, SidePlayerCardHolder>()
+    private val sharedPlayerColumns by lazy {
+        GameplayPlayerColumns(this, playerCardViews, ::bindSidePlayerCard) { lastCompanionCardMetrics = it }
+    }
+    private fun renderPlayerColumns(newlyDeadPlayers: Set<String> = emptySet()) {
+        if (!isAwaitingOnlinePublication()) sharedPlayerColumns.render(session.players, newlyDeadPlayers)
+    }
     private val tieVoteCardViews = linkedMapOf<String, TieVoteCardHolder>()
     private lateinit var winnerRevealAnimator: WinnerRevealAnimator
     private lateinit var winnerResultsRenderer: WinnerResultsRenderer
 
-    private data class SidePlayerCardHolder(
-        val root: LinearLayout,
-        val cardFace: FrameLayout,
-        val cardBack: ImageView,
-        val roleFace: ImageView,
-        val deathCauseOverlay: ImageView,
-        val actionMarkPrimary: ImageView,
-        val actionMarkSecondary: ImageView,
-        val actionMarkTertiary: ImageView,
-        val actionMarkPrimaryLabel: TextView,
-        val actionMarkSecondaryLabel: TextView,
-        val actionMarkTertiaryLabel: TextView,
-        val avatar: GameplayAvatarView,
-        val mutedBadge: TextView,
-        val reconnectingBadge: TextView,
-        val actionBadge: TextView,
-        val name: TextView,
-        var selected: Boolean = false,
-        var actionPulseKey: String? = null,
-        var actionBadgeAnimator: AnimatorSet? = null,
-        var actionMarkAnimator: AnimatorSet? = null,
-        var actionMarkKey: String? = null,
-        var hasBound: Boolean = false,
-        var publicRoleVisible: Boolean = false,
-        var renderKey: String? = null
-    )
+
 
     private data class TieVoteCardHolder(
         val root: LinearLayout,
         val name: TextView,
         val status: TextView
     )
-
-    private data class ReactionSpec(
-        val id: String,
-        val key: String,
-        val imageRes: Int,
-        val label: String,
-        val toneHex: String,
-        val description: String = ""
-    ) {
-        fun tooltipText(): String {
-            return if (description.isBlank()) label else "$label\n$description"
-        }
-    }
 
     private data class OnlineChatEntry(
         val id: String,
@@ -6179,71 +6111,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
 
     private fun showReactionPalette() {
         dismissReactionPalette()
-        val specs = reactionSpecsFor(GameEngine.humanPlayer(session))
-
-        val palette = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(7), dp(7), dp(7), dp(7))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.parseColor("#E8211710"))
-                setStroke(dp(1), getColor(R.color.accent_gold))
-            }
-        }
-
-        specs.forEachIndexed { index, spec ->
-            val option = ImageButton(this).apply {
-                setEmoteImageResource(spec.imageRes)
-                background = reactionOptionBackground(spec)
-                contentDescription = spec.tooltipText()
-                androidx.appcompat.widget.TooltipCompat.setTooltipText(this, spec.tooltipText())
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setPadding(dp(4), dp(4), dp(4), dp(4))
-                setOnClickListener { trySendHumanReaction(spec) }
-            }
-            palette.addView(
-                option,
-                LinearLayout.LayoutParams(dp(58), dp(58)).apply {
-                    if (index > 0) leftMargin = dp(7)
-                }
-            )
-        }
-
-        palette.measure(
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        reactionPalette = PopupWindow(
-            palette,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true
-        ).apply {
-            isOutsideTouchable = true
-            elevation = dp(10).toFloat()
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            showAsDropDown(
-                btnToggleEmotes,
-                btnToggleEmotes.width - palette.measuredWidth,
-                dp(6)
-            )
-        }
-        GameplayEffects.play(this, GameplayEffect.PANEL)
-    }
-
-    private fun reactionOptionBackground(spec: ReactionSpec): Drawable {
-        val cosmeticTheme = CosmeticPilot.selectedTheme(this)
-        if (CosmeticPilot.isDecoratedTheme(cosmeticTheme)) {
-            return CosmeticPilot.emoteFrame(this, theme = cosmeticTheme)
-        }
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(10).toFloat()
-            setColor(Color.parseColor("#2A2318"))
-            setStroke(dp(2), Color.parseColor(spec.toneHex))
-        }
+        reactionPalette = sharedReactions.palette(btnToggleEmotes,
+            reactionSpecsFor(GameEngine.humanPlayer(session)), GameEngine.humanPlayer(session).name, ::trySendHumanReaction)
     }
 
     private fun trySendHumanReaction(spec: ReactionSpec) {
@@ -6284,6 +6153,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 "La partida ya terminó."
             session.phase == GamePhase.REPARTO -> "Primero empieza la partida."
             !GameEngine.isAlive(player) -> "No puedes tirar emotes eliminado."
+            player.muted -> "Estás silenciado. No podés enviar emotes."
             !isPublicReactionPhase(session.phase) ->
                 "Los emotes se usan durante el debate y la votación."
             reactionUiBlocked() -> "Espera a que termine el evento."
@@ -6353,195 +6223,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun clearReactionBubbles() {
-        activeReactionBubbles.values.toList().forEach { bubble ->
-            bubble.animate().cancel()
-            stopEmoteAnimations(bubble)
-            (bubble.parent as? ViewGroup)?.removeView(bubble)
-        }
-        activeReactionBubbles.clear()
+    private val sharedReactions by lazy {
+        GameplayReactionUi(this, gameplayRoot, ::reactionAnchorFor,
+            { it == GameEngine.humanPlayer(session).name }, ::cosmeticThemeForPlayer, ::dp)
     }
-
-    private fun showReactionBubble(playerName: String, spec: ReactionSpec) {
-        val anchor = reactionAnchorFor(playerName) ?: return
-        if (anchor.width <= 0 || anchor.height <= 0 || gameplayRoot.width <= 0) {
-            anchor.post { showReactionBubble(playerName, spec) }
-            return
-        }
-
-        // Sonido del emote (humano y bots): canal único con "el último gana" + throttle.
-        EmoteSoundEffects.play(this, spec.key)
-
-        activeReactionBubbles.remove(playerName)?.let { oldBubble ->
-            oldBubble.animate().cancel()
-            stopEmoteAnimations(oldBubble)
-            (oldBubble.parent as? ViewGroup)?.removeView(oldBubble)
-        }
-
-        val humanName = GameEngine.humanPlayer(session).name
-        val isHuman = playerName == humanName
-        val bubbleSize = dp(if (isHuman) 66 else 52)
-        val tailSize = dp(if (isHuman) 12 else 9)
-        val bubbleWidth = bubbleSize
-        val bubbleHeight = bubbleSize + tailSize / 2
-        val cosmeticTheme = cosmeticThemeForPlayer(playerName)
-        val usesDecoratedCosmetic = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
-
-        val bubble = FrameLayout(this).apply {
-            clipChildren = false
-            clipToPadding = false
-            alpha = 0f
-            scaleX = 0.78f
-            scaleY = 0.78f
-            translationY = dp(6).toFloat()
-        }
-
-        val shell = FrameLayout(this).apply {
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = if (usesDecoratedCosmetic) {
-                CosmeticPilot.bubbleShell(this@GameplayMockActivity, cosmeticTheme)
-            } else {
-                GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dp(13).toFloat()
-                    setColor(Color.parseColor("#2A2318"))
-                    setStroke(dp(2), Color.parseColor(spec.toneHex))
-                }
-            }
-            elevation = dp(8).toFloat()
-        }
-        val icon = ImageView(this).apply {
-            if (
-                spec.key == "premium_six_seven" &&
-                VisualEffectsPreferences.isReduced(this@GameplayMockActivity)
-            ) {
-                setImageResource(R.drawable.reaction_premium_six_seven_a)
-            } else {
-                setEmoteImageResource(
-                    spec.imageRes,
-                    loop = spec.key == "premium_six_seven"
-                )
-            }
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = spec.label
-        }
-        shell.addView(
-            icon,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
-        bubble.addView(
-            shell,
-            FrameLayout.LayoutParams(bubbleSize, bubbleSize, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        )
-
-        if (usesDecoratedCosmetic) {
-            listOf(Gravity.TOP or Gravity.START, Gravity.TOP or Gravity.END).forEach { starGravity ->
-                bubble.addView(
-                    TextView(this).apply {
-                        text = when (cosmeticTheme) {
-                            CosmeticPilot.THEME_SEA -> "◦"
-                            CosmeticPilot.THEME_FIRE -> "◆"
-                            else -> "✦"
-                        }
-                        includeFontPadding = false
-                        gravity = Gravity.CENTER
-                        setTextColor(CosmeticPilot.accentColor(cosmeticTheme))
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                        setShadowLayer(
-                            dp(4).toFloat(),
-                            0f,
-                            0f,
-                            CosmeticPilot.textColor(cosmeticTheme)
-                        )
-                        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                    },
-                    FrameLayout.LayoutParams(dp(16), dp(16), starGravity).apply {
-                        topMargin = -dp(3)
-                        if (starGravity and Gravity.START == Gravity.START) {
-                            leftMargin = -dp(3)
-                        } else {
-                            rightMargin = -dp(3)
-                        }
-                    }
-                )
-            }
-        }
-
-        val tail = View(this).apply {
-            rotation = 45f
-            background = if (usesDecoratedCosmetic) {
-                CosmeticPilot.bubbleTail(this@GameplayMockActivity, cosmeticTheme)
-            } else {
-                GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dp(2).toFloat()
-                    setColor(Color.parseColor("#2A2318"))
-                    setStroke(dp(1), Color.parseColor(spec.toneHex))
-                }
-            }
-        }
-        bubble.addView(
-            tail,
-            FrameLayout.LayoutParams(tailSize, tailSize, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-        )
-
-        val rootLocation = IntArray(2)
-        val anchorLocation = IntArray(2)
-        gameplayRoot.getLocationOnScreen(rootLocation)
-        anchor.getLocationOnScreen(anchorLocation)
-        val anchorCenterX = anchorLocation[0] - rootLocation[0] + anchor.width / 2
-        val anchorTop = anchorLocation[1] - rootLocation[1]
-        val left = (anchorCenterX - bubbleWidth / 2)
-            .coerceIn(dp(4), (gameplayRoot.width - bubbleWidth - dp(4)).coerceAtLeast(dp(4)))
-        val top = (anchorTop - bubbleHeight + dp(if (isHuman) 6 else 2))
-            .coerceIn(dp(6), (gameplayRoot.height - bubbleHeight - dp(6)).coerceAtLeast(dp(6)))
-
-        gameplayRoot.addView(
-            bubble,
-            RelativeLayout.LayoutParams(bubbleWidth, bubbleHeight).apply {
-                leftMargin = left
-                topMargin = top
-            }
-        )
-        activeReactionBubbles[playerName] = bubble
-
-        bubble.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .translationY(0f)
-            .setDuration(180L)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                bubble.animate()
-                    .alpha(0f)
-                    .translationY(-dp(10).toFloat())
-                    .setStartDelay(3_650L)
-                    .setDuration(240L)
-                    .setInterpolator(AccelerateInterpolator())
-                    .withEndAction {
-                        if (activeReactionBubbles[playerName] === bubble) {
-                            activeReactionBubbles.remove(playerName)
-                        }
-                        stopEmoteAnimations(bubble)
-                        (bubble.parent as? ViewGroup)?.removeView(bubble)
-                    }
-                    .start()
-            }
-            .start()
-    }
-
-    private fun stopEmoteAnimations(view: View) {
-        (view as? ImageView)?.drawable?.let { drawable ->
-            (drawable as? Animatable)?.stop()
-        }
-        (view as? ViewGroup)?.let { group ->
-            repeat(group.childCount) { index -> stopEmoteAnimations(group.getChildAt(index)) }
-        }
-    }
+    private fun clearReactionBubbles() = sharedReactions.clear()
+    private fun showReactionBubble(playerName: String, spec: ReactionSpec) = sharedReactions.show(playerName, spec)
 
     private fun reactionAnchorFor(playerName: String): View? {
         val humanName = GameEngine.humanPlayer(session).name
@@ -7213,24 +6900,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun applyPrimaryActionVisual(label: String, emphasized: Boolean) {
-        val tone = if (emphasized) {
-            GameplayTableUi.actionToneFor(label)
-        } else {
-            GameplayActionTone.DEFAULT
-        }
-        // El boton de accion es el CTA principal de la mesa: borde dorado siempre y, en
-        // reposo, un relleno bronce calido (en vez del casi-negro DEFAULT) para que pese
-        // mas que el boton secundario de "ver carta" que quedo a su izquierda.
-        val fillHex = if (emphasized) tone.colorHex else PRIMARY_ACTION_RESTING_FILL
-        btnAction.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor(fillHex))
-            setStroke(dp(1), getColor(R.color.accent_gold))
-            cornerRadius = dp(6).toFloat()
-        }
-        btnAction.setTextColor(
-            getColor(if (emphasized && tone.darkText) R.color.bg_dark else R.color.text_primary)
-        )
+        sharedPlayerColumns.bindPrimaryAction(btnAction, label, emphasized)
     }
 
     private fun renderDebateAbilityButton() {
@@ -7395,110 +7065,11 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun renderPlayerColumns(newlyDeadPlayers: Set<String> = emptySet()) {
-        if (isAwaitingOnlinePublication()) return
-        val (leftPlayers, rightPlayers) = GameplayTableUi.splitCompanions(
-            session.players,
-            includeEliminated = true,
-            putOddExtraOnLeft = true
-        )
-        val displayedPlayers = leftPlayers.size + rightPlayers.size + 1
-        val totalPlayers = displayedPlayers.coerceAtLeast(LocalGameFactory.MIN_PLAYERS)
-        val measuredHeightPx = listOf(leftPlayersScroll.height, rightPlayersScroll.height)
-            .filter { it > 0 }
-            .minOrNull()
-        val bottomPanelInsetDp = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
-        val availableHeightDp = measuredHeightPx
-            ?.let { (pxToDp(it) - bottomPanelInsetDp).coerceAtLeast(1) }
-            ?: (resources.configuration.screenHeightDp - 16 - bottomPanelInsetDp)
-                .coerceAtLeast(240)
-        val metrics = GameplayTableUi.companionCardMetrics(
-            totalPlayers,
-            availableHeightDp,
-            availableWidthDp = availableSideColumnWidthDp()
-        )
-        if (lastCompanionCardMetrics != metrics) {
-            lastCompanionCardMetrics = metrics
-            applyAdaptiveGameplayLayout(metrics)
-        }
 
-        val desiredNames = (leftPlayers + rightPlayers).map { it.name }.toSet()
-        playerCardViews.keys.toList()
-            .filterNot { it in desiredNames }
-            .forEach { name ->
-                playerCardViews.remove(name)?.root?.let { root ->
-                    (root.parent as? ViewGroup)?.removeView(root)
-                }
-            }
 
-        syncPlayerContainer(leftPlayersContainer, leftPlayers, metrics, newlyDeadPlayers)
-        syncPlayerContainer(rightPlayersContainer, rightPlayers, metrics, newlyDeadPlayers)
-    }
 
-    private fun applyAdaptiveGameplayLayout(metrics: CompanionCardMetrics) {
-        leftPlayersScroll.layoutParams = (leftPlayersScroll.layoutParams as LinearLayout.LayoutParams).apply {
-            width = dp(metrics.columnWidthDp)
-        }
-        rightColumn.layoutParams = (rightColumn.layoutParams as LinearLayout.LayoutParams).apply {
-            width = dp(metrics.columnWidthDp)
-        }
 
-        leftPlayersScroll.isVerticalScrollBarEnabled = metrics.scrollEnabled
-        rightPlayersScroll.isVerticalScrollBarEnabled = metrics.scrollEnabled
-        leftPlayersScroll.overScrollMode = if (metrics.scrollEnabled) {
-            View.OVER_SCROLL_IF_CONTENT_SCROLLS
-        } else {
-            View.OVER_SCROLL_NEVER
-        }
-        rightPlayersScroll.overScrollMode = leftPlayersScroll.overScrollMode
-        val verticalGravity = if (metrics.scrollEnabled) {
-            Gravity.TOP
-        } else {
-            Gravity.CENTER_VERTICAL
-        }
-        leftPlayersContainer.gravity = verticalGravity or Gravity.START
-        rightPlayersContainer.gravity = verticalGravity or Gravity.END
-        leftPlayersContainer.setPadding(dp(2), 0, 0, 0)
-        rightPlayersContainer.setPadding(0, 0, dp(2), 0)
-        val bottomScrollInset = BOTTOM_PLAYER_PANEL_HEIGHT_DP + 12
-        leftPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
-        rightPlayersScroll.setPadding(0, 0, 0, dp(bottomScrollInset))
-        bottomPlayerPanel.layoutParams = (bottomPlayerPanel.layoutParams as FrameLayout.LayoutParams).apply {
-            width = dp((resources.configuration.screenWidthDp - 24).coerceIn(244, 372))
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        }
-        applyAdaptiveHudSizing()
 
-        gameplayBody.requestLayout()
-    }
-
-    private fun applyAdaptiveHudSizing() {
-        val playerCount = session.players.size
-        val roomy = playerCount <= 8
-        val relaxed = playerCount <= 10
-        val topHeightDp = when {
-            roomy -> 90
-            relaxed -> 82
-            else -> 76
-        }
-        val headerHeightDp = if (roomy) 44 else 38
-        val subtitleHeightDp = topHeightDp - headerHeightDp - 4
-        topStatus.layoutParams = (topStatus.layoutParams as FrameLayout.LayoutParams).apply {
-            height = dp(topHeightDp)
-        }
-        (topStatus.getChildAt(0).layoutParams as LinearLayout.LayoutParams).height = dp(headerHeightDp)
-        phaseSubtitle.layoutParams = (phaseSubtitle.layoutParams as LinearLayout.LayoutParams).apply {
-            height = dp(subtitleHeightDp)
-        }
-        phaseTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (roomy) 18f else 16f)
-        phaseSubtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (roomy) 11.5f else 10.5f)
-        eventLogPanel.layoutParams = (eventLogPanel.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = dp(topHeightDp + 4)
-        }
-        eventLogHeader.layoutParams = (eventLogHeader.layoutParams as LinearLayout.LayoutParams).apply {
-            height = dp(eventLogCollapsedHeightDp())
-        }
-    }
 
     private fun eventLogCollapsedHeightDp(): Int {
         return if (::session.isInitialized && session.players.size <= 8) 40 else 32
@@ -7516,320 +7087,17 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         }
     }
 
-    private fun availableSideColumnWidthDp(): Int {
-        val totalWidthDp = resources.configuration.screenWidthDp
-        val gameplayBodyHorizontalMarginsDp = 8
-        val centerColumnHorizontalMarginsDp = 8
-        val centerColumnPreferredWidthDp = 220
-        val combinedSideWidth = (
-            totalWidthDp -
-                gameplayBodyHorizontalMarginsDp -
-                centerColumnHorizontalMarginsDp -
-                centerColumnPreferredWidthDp
-            ).coerceAtLeast(108)
-        return (combinedSideWidth / 2).coerceIn(54, 78)
-    }
 
-    private fun syncPlayerContainer(
-        container: LinearLayout,
-        players: List<GamePlayer>,
-        metrics: CompanionCardMetrics,
-        newlyDeadPlayers: Set<String>
-    ) {
-        val containerNames = players.map { it.name }.toSet()
-        for (index in container.childCount - 1 downTo 0) {
-            val child = container.getChildAt(index)
-            if (child.tag !in containerNames) {
-                container.removeViewAt(index)
-            }
-        }
 
-        players.forEachIndexed { index, player ->
-            val holder = playerCardViews.getOrPut(player.name) {
-                createSidePlayerCard(metrics).also { created ->
-                    created.root.tag = player.name
-                    created.root.alpha = 0f
-                    created.root.translationY = dp(6).toFloat()
-                    created.root.animate()
-                        .alpha(1f)
-                        .translationY(0f)
-                        .setDuration(200L)
-                        .start()
-                }
-            }
-            val currentParent = holder.root.parent as? ViewGroup
-            if (currentParent !== container) {
-                currentParent?.removeView(holder.root)
-                container.addView(holder.root, index.coerceAtMost(container.childCount))
-            } else if (container.indexOfChild(holder.root) != index) {
-                container.removeView(holder.root)
-                container.addView(holder.root, index.coerceAtMost(container.childCount))
-            }
-            holder.root.gravity = Gravity.CENTER_VERTICAL or if (container === rightPlayersContainer) {
-                Gravity.END
-            } else {
-                Gravity.START
-            }
-            bindSidePlayerCard(holder, player, metrics)
-            if (player.name in newlyDeadPlayers) {
-                animatePlayerDeath(holder.root)
-            }
-        }
-    }
 
-    private fun animatePlayerDeath(view: View) {
-        view.alpha = 1f
-        view.background = ColorDrawable(Color.argb(92, 150, 24, 24))
 
-        val shake = ObjectAnimator.ofFloat(
-            view,
-            View.TRANSLATION_X,
-            0f,
-            -dp(7).toFloat(),
-            dp(7).toFloat(),
-            -dp(4).toFloat(),
-            dp(4).toFloat(),
-            0f
-        ).apply {
-            duration = 320L
-        }
-        val fade = ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0.48f, 1f).apply {
-            startDelay = 150L
-            duration = 650L
-            interpolator = AccelerateInterpolator()
-        }
-        AnimatorSet().apply {
-            playTogether(shake, fade)
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    view.background = null
-                    view.translationX = 0f
-                    // El estado eliminado se representa dentro de la carta. Mantener todo el
-                    // contenedor al 40 % hacía desaparecer también el marco, el nombre y el
-                    // indicador de muerte contra los fondos claros del mapa.
-                    view.alpha = 1f
-                }
-            })
-            start()
-        }
-    }
 
-    private fun createSidePlayerCard(metrics: CompanionCardMetrics): SidePlayerCardHolder {
-        val item = LinearLayout(this)
-        item.orientation = LinearLayout.VERTICAL
-        item.gravity = Gravity.CENTER
-        item.clipChildren = false
-        item.clipToPadding = false
-        item.minimumWidth = dp(metrics.minCardWidthDp)
 
-        val cardFace = FrameLayout(this)
-        cardFace.clipChildren = false
-        cardFace.clipToPadding = false
-        val cardBack = ImageView(this)
-        cardBack.setImageResource(R.drawable.card_back_traidores)
-        cardBack.scaleType = ImageView.ScaleType.FIT_CENTER
-        cardFace.addView(
-            cardBack,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
 
-        val roleFace = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = View.GONE
-        }
-        cardFace.addView(
-            roleFace,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
 
-        val deathCauseOverlay = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = View.GONE
-            contentDescription = null
-            elevation = dp(8).toFloat()
-        }
-        cardFace.addView(
-            deathCauseOverlay,
-            FrameLayout.LayoutParams(
-                dp(22),
-                dp(22),
-                Gravity.BOTTOM or Gravity.END
-            ).apply {
-                rightMargin = dp(1)
-                bottomMargin = dp(1)
-            }
-        )
 
-        val actionMarkPrimary = createCardActionMarkView()
-        val actionMarkSecondary = createCardActionMarkView()
-        val actionMarkTertiary = createCardActionMarkView()
-        cardFace.addView(actionMarkPrimary)
-        cardFace.addView(actionMarkSecondary)
-        cardFace.addView(actionMarkTertiary)
-        val actionMarkPrimaryLabel = createCardActionMarkLabel()
-        val actionMarkSecondaryLabel = createCardActionMarkLabel()
-        val actionMarkTertiaryLabel = createCardActionMarkLabel()
-        cardFace.addView(actionMarkPrimaryLabel)
-        cardFace.addView(actionMarkSecondaryLabel)
-        cardFace.addView(actionMarkTertiaryLabel)
 
-        val avatar = GameplayAvatarView(this)
-        cardFace.addView(
-            avatar,
-            FrameLayout.LayoutParams(
-                dp(metrics.avatarSizeDp),
-                dp(metrics.avatarSizeDp),
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            )
-        )
 
-        val mutedBadge = TextView(this)
-        mutedBadge.text = "MUDO"
-        mutedBadge.gravity = Gravity.CENTER
-        mutedBadge.includeFontPadding = false
-        mutedBadge.setTextColor(getColor(R.color.text_primary))
-        mutedBadge.setBackgroundResource(R.drawable.bg_player_chip)
-        mutedBadge.textSize = 6.5f
-        mutedBadge.setTypeface(null, Typeface.BOLD)
-        mutedBadge.setPadding(dp(2), 0, dp(2), 0)
-        cardFace.addView(
-            mutedBadge,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(13),
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            )
-        )
-
-        val reconnectingBadge = TextView(this).apply {
-            text = "\u21BB RECONECTANDO\u2026"
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
-            textSize = 5.5f
-            setPadding(dp(3), 0, dp(3), 0)
-            visibility = View.GONE
-            elevation = dp(10).toFloat()
-            isClickable = false
-            isFocusable = false
-        }
-        cardFace.addView(
-            reconnectingBadge,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(14),
-                Gravity.CENTER
-            ).apply {
-                leftMargin = dp(1)
-                rightMargin = dp(1)
-            }
-        )
-
-        val actionBadge = TextView(this)
-        actionBadge.gravity = Gravity.CENTER
-        actionBadge.includeFontPadding = false
-        actionBadge.maxLines = 1
-        actionBadge.ellipsize = TextUtils.TruncateAt.END
-        actionBadge.setTypeface(null, Typeface.BOLD)
-        actionBadge.setPadding(dp(4), dp(1), dp(4), dp(1))
-        actionBadge.visibility = View.GONE
-        cardFace.addView(
-            actionBadge,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                dp(13),
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                bottomMargin = dp(2)
-            }
-        )
-
-        val cardParams = LinearLayout.LayoutParams(
-            dp(metrics.cardWidthDp),
-            dp(metrics.cardHeightDp)
-        )
-        item.addView(cardFace, cardParams)
-
-        val name = TextView(this)
-        name.gravity = Gravity.CENTER
-        name.ellipsize = TextUtils.TruncateAt.END
-        name.includeFontPadding = false
-        name.maxLines = 1
-        name.setSingleLine(true)
-        name.typeface = Typeface.DEFAULT_BOLD
-        item.addView(
-            name,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(metrics.nameHeightDp)
-            )
-        )
-
-        return SidePlayerCardHolder(
-            item,
-            cardFace,
-            cardBack,
-            roleFace,
-            deathCauseOverlay,
-            actionMarkPrimary,
-            actionMarkSecondary,
-            actionMarkTertiary,
-            actionMarkPrimaryLabel,
-            actionMarkSecondaryLabel,
-            actionMarkTertiaryLabel,
-            avatar,
-            mutedBadge,
-            reconnectingBadge,
-            actionBadge,
-            name
-        )
-    }
-
-    private fun createCardActionMarkView(): ImageView {
-        return ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = View.GONE
-            alpha = 0f
-            contentDescription = null
-            isClickable = false
-            isFocusable = false
-            elevation = dp(7).toFloat()
-        }
-    }
-
-    private fun createCardActionMarkLabel(): TextView {
-        return TextView(this).apply {
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            textSize = 6f
-            setPadding(dp(2), 0, dp(2), 0)
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                this,
-                4,
-                7,
-                1,
-                TypedValue.COMPLEX_UNIT_SP
-            )
-            visibility = View.GONE
-            alpha = 0f
-            elevation = dp(9).toFloat()
-            isClickable = false
-            isFocusable = false
-        }
-    }
 
     private fun visibleCardActionMarks(): List<CardActionMark> {
         if (!isOnlineGameplay() || !::session.isInitialized) return emptyList()
@@ -8217,50 +7485,12 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         } else {
             null
         }
-        holder.actionBadge.layoutParams = (holder.actionBadge.layoutParams as FrameLayout.LayoutParams).apply {
-            height = dp(
-                if (isDirectVoteSelection) 20
-                else (metrics.nameHeightDp - 2).coerceIn(12, 16)
-            )
-            bottomMargin = dp(2)
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        }
-        holder.actionBadge.maxWidth = dp(
-            if (isDirectVoteSelection) (metrics.cardWidthDp - 4).coerceAtLeast(44)
-            else (metrics.minCardWidthDp - 6).coerceAtLeast(44)
-        )
-        // Verbos completos (MATAR/INVESTIGAR/SILENCIAR...) pueden ser largos: autosize para
-        // que se achiquen en vez de cortarse en mesas de 8+ con cartas chicas.
-        val badgeMaxSp = ceil((metrics.nameTextSp - 1f).coerceIn(5.5f, 8.5f).toDouble())
-            .toInt().coerceAtLeast(6)
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            holder.actionBadge,
-            5,
-            badgeMaxSp,
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
-        holder.actionBadge.visibility = if (isActionable || showConfirmedVote) View.VISIBLE else View.GONE
+        sharedPlayerColumns.bindActionBadge(holder, metrics, isDirectVoteSelection,
+            isActionable || showConfirmedVote, actionLabel,
+            if (isDirectVote && isSelected && directVoteConfirmed) "TU VOTO ✓"
+            else compactTargetActionLabel(actionLabel))
         if (isActionable || showConfirmedVote) {
             val tone = GameplayTableUi.actionToneFor(actionLabel)
-            val isDirectVote = DirectVotePolicy.isEnabled(session.phase)
-            holder.actionBadge.text = when {
-                isDirectVote && isSelected && directVoteConfirmed -> "TU VOTO ✓"
-                else -> compactTargetActionLabel(actionLabel)
-            }
-            holder.actionBadge.background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(3).toFloat()
-                setColor(Color.parseColor(tone.colorHex))
-                when (tone) {
-                    GameplayActionTone.KILL -> setStroke(dp(1), Color.parseColor("#F1C36A"))
-                    GameplayActionTone.SILENCE -> setStroke(dp(1), Color.parseColor("#B46A72"))
-                    else -> Unit
-                }
-            }
-            holder.actionBadge.setTextColor(
-                getColor(if (tone.darkText) R.color.bg_dark else R.color.text_primary)
-            )
             updateSideActionBadgePulse(holder, player, actionLabel, tone)
             holder.actionBadge.isClickable = false
             holder.actionBadge.isFocusable = false
@@ -8279,101 +7509,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
             holder.actionBadge.setOnClickListener(null)
         }
 
-        holder.name.layoutParams = (holder.name.layoutParams as LinearLayout.LayoutParams).apply {
-            width = dp(metrics.cardWidthDp)
-            height = dp(metrics.nameHeightDp)
-        }
-        holder.name.text = player.name
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-            holder.name,
-            7,
-            ceil(metrics.nameTextSp.toDouble()).toInt().coerceAtLeast(8),
-            1,
-            TypedValue.COMPLEX_UNIT_SP
-        )
-        holder.name.setTextColor(
-            when {
-                isOracleGuest -> getColor(R.color.accent_gold)
-                !isAlive -> getColor(R.color.text_muted)
-                isSelected -> getColor(R.color.accent_gold)
-                else -> PlayerChatColor.colorFor(player.name, session)
-            }
-        )
-        holder.name.alpha = if (isAlive || isOracleGuest) 1f else 0.86f
-        holder.name.setShadowLayer(
-            if (isActionable || isSelected) 3f else 1.8f,
-            0f,
-            1f,
-            Color.BLACK
-        )
-        holder.name.paintFlags = if (isAlive) {
-            holder.name.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
-        } else {
-            holder.name.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-        }
-
-        val eliminatedBorderColor = when (player.deathCause) {
-            DeathCause.NIGHT -> Color.parseColor("#C75A54")
-            DeathCause.VOTE,
-            DeathCause.AFK -> Color.parseColor("#B8924E")
-            DeathCause.NONE -> Color.parseColor("#8C7652")
-        }
-        val outlineWidthDp = when {
-            isSelected -> 3
-            isActionable || !isAlive -> 2
-            else -> 0
-        }
-        holder.cardFace.setPadding(
-            dp(outlineWidthDp),
-            dp(outlineWidthDp),
-            dp(outlineWidthDp),
-            dp(outlineWidthDp)
-        )
-        holder.cardFace.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(
-                if (isAlive || isOracleGuest) {
-                    Color.TRANSPARENT
-                } else {
-                    Color.parseColor(if (showPublicRole) "#D91A120D" else "#C916110D")
-                }
-            )
-            cornerRadius = dp(4).toFloat()
-            when {
-                isSelected -> setStroke(dp(3), getColor(R.color.accent_gold))
-                isActionable -> {
-                    val tone = GameplayTableUi.actionToneFor(actionLabel)
-                    setStroke(
-                        dp(2),
-                        when (tone) {
-                            GameplayActionTone.KILL -> Color.parseColor("#D12A1E")
-                            GameplayActionTone.SILENCE -> Color.parseColor("#7C2A37")
-                            else -> getColor(R.color.accent_gold)
-                        }
-                    )
-                }
-                !isAlive -> setStroke(dp(2), eliminatedBorderColor)
-            }
-        }
-        holder.cardFace.elevation = if (isDirectVoteSelection) dp(10).toFloat() else 0f
-        if (holder.selected != isSelected) {
-            holder.root.animate()
-                .scaleX(if (isSelected) 1.055f else 1f)
-                .scaleY(if (isSelected) 1.055f else 1f)
-                .setDuration(180L)
-                .start()
-            holder.selected = isSelected
-        }
-
-        val eliminatedContentAlpha = if (isAlive || isActionable || isOracleGuest) 1f else 0.72f
-        holder.cardBack.alpha = eliminatedContentAlpha
-        holder.roleFace.alpha = when {
-            isAlive || isOracleGuest -> 1f
-            showPublicRole -> 0.58f
-            else -> eliminatedContentAlpha
-        }
-        holder.avatar.alpha = eliminatedContentAlpha
-        holder.root.alpha = 1f
+        sharedPlayerColumns.bindAppearance(holder, player, metrics, session, isOracleGuest,
+            showPublicRole, isSelected, isActionable, actionLabel, isDirectVoteSelection)
         holder.root.setOnClickListener {
             val canSelectNow = if (isOnlineGameplay()) {
                 actionLabel.isNotBlank() && !transitionLocked
@@ -8454,44 +7591,8 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         return legacy.state == PLAYER_STATE_DISCONNECTED
     }
 
-    private fun updatePublicRoleCard(
-        holder: SidePlayerCardHolder,
-        player: GamePlayer,
-        showPublicRole: Boolean,
-        isAlive: Boolean
-    ) {
-        val applyFace = {
-            holder.cardBack.visibility = if (showPublicRole) View.GONE else View.VISIBLE
-            holder.roleFace.visibility = if (showPublicRole) View.VISIBLE else View.GONE
-            if (showPublicRole) {
-                holder.roleFace.setImageResource(roleImageFor(player.role))
-                holder.roleFace.alpha = if (isAlive) 1f else 0.58f
-            }
-        }
-        val animateReveal = holder.hasBound && showPublicRole && !holder.publicRoleVisible
-        holder.hasBound = true
-        holder.publicRoleVisible = showPublicRole
-        if (!animateReveal) {
-            holder.cardFace.animate().cancel()
-            holder.cardFace.rotationY = 0f
-            applyFace()
-            return
-        }
-        holder.cardFace.cameraDistance = dp(900).toFloat()
-        holder.cardFace.animate()
-            .rotationY(90f)
-            .setDuration(150L)
-            .setInterpolator(AccelerateInterpolator())
-            .withEndAction {
-                applyFace()
-                holder.cardFace.rotationY = -90f
-                holder.cardFace.animate()
-                    .rotationY(0f)
-                    .setDuration(190L)
-                    .setInterpolator(DecelerateInterpolator())
-                    .start()
-            }
-            .start()
+    private fun updatePublicRoleCard(holder: SidePlayerCardHolder, player: GamePlayer, showPublicRole: Boolean, isAlive: Boolean) {
+        sharedPlayerColumns.updatePublicRoleCard(holder, player, showPublicRole, isAlive)
     }
 
     private fun applyDeathCauseIconStyle(icon: ImageView, cause: DeathCause) {
@@ -8564,133 +7665,13 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
                 }
             }
         }
-        PlayerProfileDialog.showMini(this, profile, actions)
+        // Una sola tarjeta con todo el perfil, como en iOS (antes: mini + "PERFIL COMPLETO").
+        PlayerProfileDialog.showFull(this, profile, canEdit = false, actions = actions)
     }
 
     private fun showEliminatedPlayerCard(player: GamePlayer) {
         if (reactionUiBlocked()) return
-        val role = player.role ?: return
-        GameplayEffects.play(this, GameplayEffect.PANEL)
-
-        val statusText = when (player.deathCause) {
-            DeathCause.NIGHT -> "ASESINADO DURANTE LA NOCHE"
-            DeathCause.VOTE -> "EXPULSADO POR EL PUEBLO"
-            DeathCause.AFK -> "EXPULSADO POR INACTIVIDAD"
-            DeathCause.NONE -> "JUGADOR ELIMINADO"
-        }
-        val statusColor = when (player.deathCause) {
-            DeathCause.NIGHT -> Color.parseColor("#D56B65")
-            DeathCause.VOTE,
-            DeathCause.AFK -> Color.parseColor("#D0A45A")
-            DeathCause.NONE -> getColor(R.color.text_secondary)
-        }
-        val deathIcon = when (player.deathCause) {
-            DeathCause.NIGHT -> R.drawable.death_blood_splatter_art
-            DeathCause.VOTE,
-            DeathCause.AFK -> R.drawable.ic_kicking_boot
-            DeathCause.NONE -> 0
-        }
-        val teamColor = when (role.team) {
-            GameRules.TRAITOR_WINNER -> Color.parseColor("#C75A54")
-            GameRules.TOWN_WINNER -> Color.parseColor("#659B68")
-            "Neutral" -> Color.parseColor("#C8A04E")
-            else -> getColor(R.color.accent_gold)
-        }
-
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(8), dp(2), dp(8), dp(4))
-        }
-        content.addView(TextView(this).apply {
-            text = player.name.uppercase()
-            gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.accent_gold))
-            textSize = 22f
-            typeface = Typeface.DEFAULT_BOLD
-            includeFontPadding = false
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(3) })
-        content.addView(TextView(this).apply {
-            text = statusText
-            gravity = Gravity.CENTER
-            setTextColor(statusColor)
-            textSize = 11f
-            typeface = Typeface.DEFAULT_BOLD
-            includeFontPadding = false
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(10) })
-
-        val card = FrameLayout(this).apply {
-            setPadding(dp(3), dp(3), dp(3), dp(3))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#F01A120D"))
-                setStroke(dp(3), statusColor)
-                cornerRadius = dp(9).toFloat()
-            }
-            elevation = dp(5).toFloat()
-        }
-        card.addView(ImageView(this).apply {
-            setImageResource(roleImageFor(role))
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            alpha = 0.82f
-            contentDescription = "Carta ${role.name} de ${player.name}"
-        }, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        if (deathIcon != 0) {
-            card.addView(ImageView(this).apply {
-                setImageResource(deathIcon)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                applyDeathCauseIconStyle(this, player.deathCause)
-                elevation = dp(8).toFloat()
-                contentDescription = statusText.lowercase()
-            }, FrameLayout.LayoutParams(
-                dp(if (player.deathCause == DeathCause.NIGHT) 126 else 82),
-                dp(if (player.deathCause == DeathCause.NIGHT) 126 else 82),
-                if (player.deathCause == DeathCause.NIGHT) {
-                    Gravity.CENTER
-                } else {
-                    Gravity.BOTTOM or Gravity.END
-                }
-            ).apply {
-                rightMargin = dp(3)
-                bottomMargin = dp(3)
-            })
-        }
-        content.addView(card, LinearLayout.LayoutParams(dp(174), dp(232)).apply {
-            bottomMargin = dp(10)
-        })
-        content.addView(TextView(this).apply {
-            text = role.name.uppercase()
-            gravity = Gravity.CENTER
-            setTextColor(getColor(R.color.text_primary))
-            textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            includeFontPadding = false
-        })
-        content.addView(TextView(this).apply {
-            text = role.team.uppercase()
-            gravity = Gravity.CENTER
-            setTextColor(teamColor)
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-            includeFontPadding = false
-        })
-
-        GameDialog.custom(
-            activity = this,
-            contentView = content,
-            widthDp = 350,
-            negativeLabel = null,
-            positiveLabel = "CERRAR"
-        )
+        GameplayEliminatedPlayerCard.show(this, player, ::roleImageFor)
     }
 
     private fun updateSideActionBadgePulse(
@@ -8811,6 +7792,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun scheduleAutoAdvanceIfNeeded() {
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("extra_debug_parity_hold", false)) return
         autoAdvanceHandler.removeCallbacks(autoAdvanceRunnable)
         if (
             isDayNightTransitionRunning ||
@@ -10786,6 +9768,16 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun resumeGameFlowAfterBlockingUi() {
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("extra_debug_parity_hold", false) &&
+            session.phase == GamePhase.RESULTADO && session.winner.isBlank()) {
+            if (!isVoteResultVisible) {
+                isVoteResultVisible = true
+                if (session.dayEliminationTarget.isBlank()) { voteResultAnimator.show(session); voteResultAnimator.showNoExpulsion() }
+                else { voteResultAnimator.show(session); voteResultAnimator.playExpulsion(session) {} }
+            }
+            return
+        }
+
         if (isAwaitingOnlinePublication()) return
         if (
             isDayNightTransitionRunning ||
@@ -11410,6 +10402,7 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
     }
 
     private fun scheduleVoteResultAutoContinue() {
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("extra_debug_parity_hold", false)) return
         autoAdvanceHandler.removeCallbacks(voteResultAutoContinueRunnable)
         if (isOnlineGameplay()) {
             refreshOnlinePresentationGate()
@@ -13371,7 +12364,6 @@ class GameplayMockActivity : BaseActivity(), GameplayChatController.ChatHost {
         private const val MAX_PENDING_ONLINE_REACTIONS = 12
         private const val CENTRAL_EVENT_DANGER_HEX = "#A83232"
         private const val CENTRAL_EVENT_VOTE_HEX = "#D4A24E"
-        private const val PRIMARY_ACTION_RESTING_FILL = "#4A3A1E"
         private const val PREF_ROLE_READING_SECONDS = "role_reading_seconds"
         private const val DEFAULT_ROLE_READING_SECONDS = 0
         private const val FIELD_PRESENTATION_ACK_KEY = "presentacionConfirmada"

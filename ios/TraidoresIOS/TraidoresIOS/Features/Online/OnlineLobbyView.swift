@@ -13,6 +13,11 @@ struct OnlineLobbyView: View {
     @State private var working = false
     @State private var confirmingLeave = false
     @State private var copied = false
+    // Profile window of the player whose row was tapped (public lobby data; yours adds your profile).
+    @State private var profileShown: PlayerProfileSnapshot?
+    @AppStorage("menu.localProfile.v1") private var storedProfile = Data()
+    @AppStorage("menu.profileTheme") private var profileTheme = "classic"
+    @AppStorage("menu.profileEmotes") private var profileEmoteIDs = "griego_enojado,griego_triste,griego_contento,griego_sospechoso"
 
     private var room: RoomSnapshot? { services.room.snapshot }
     private var myUid: String? {
@@ -21,7 +26,45 @@ struct OnlineLobbyView: View {
     private var me: RoomPlayer? { room?.players.first { $0.id == myUid } }
     private var isHost: Bool { room != nil && room?.hostId == myUid }
 
+    // The match stays on screen until the player leaves it, even after the room is finished.
+    @State private var activeMatch: String?
+
+    // Roster and map captured when the match starts: the room document keeps changing after.
+    @State private var matchRoster: [String: RoomPlayer] = [:]
+    @State private var matchMap = "pampa"
+    @State private var matchCreatorId = ""
+    @State private var completedMatch: String?
+
     var body: some View {
+        Group {
+            if let matchId = activeMatch, let myUid {
+                OnlineMatchView(roomId: roomId, matchId: matchId, mapKey: matchMap, uid: myUid, creatorId: matchCreatorId,
+                                roster: matchRoster, close: { activeMatch = nil; dismiss() },
+                                returnToLobby: {
+                                    completedMatch = activeMatch
+                                    activeMatch = nil
+                                    matchRoster = [:]
+                                    enterMatchIfStarted(room?.phase)
+                                })
+            } else {
+                lobby
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .task { await attach() }
+        .onDisappear { services.room.detach() }
+        .onChange(of: room?.phase) { _, phase in enterMatchIfStarted(phase) }
+    }
+
+    private func enterMatchIfStarted(_ phase: RoomPhase?) {
+        guard activeMatch == nil, case .inGame(let matchId)? = phase, matchId != completedMatch, let room else { return }
+        matchRoster = Dictionary(room.players.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        matchMap = room.mapKey
+        matchCreatorId = room.hostId
+        activeMatch = matchId
+    }
+
+    private var lobby: some View {
         ZStack {
             GeometryReader { geometry in
                 Image(GameMap(onlineKey: room?.mapKey ?? "pampa").dayBackgroundAsset)
@@ -41,12 +84,18 @@ struct OnlineLobbyView: View {
                         .frame(maxWidth: 560)
                         .frame(maxWidth: .infinity)
                 }
+                .onlineScrollEdges()
+            }
+            if let profileShown {
+                PlayerProfileCard(profile: profileShown) {
+                    withAnimation(.easeOut(duration: 0.15)) { self.profileShown = nil }
+                }
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
         .foregroundStyle(TraidoresTheme.text)
         .toolbar(.hidden, for: .navigationBar)
-        .task { await attach() }
-        .onDisappear { services.room.detach() }
         .gameDialog(isPresented: $confirmingLeave) {
             GameDialogCard(title: "¿Salir de la sala?",
                            message: isHost ? "Sos el anfitrión: la sala pasa a otro jugador con cuenta." : "Vas a dejar tu lugar en la sala.",
@@ -64,12 +113,14 @@ struct OnlineLobbyView: View {
         } else if let room {
             if case .closed = room.phase {
                 closedCard
+            } else if case .inGame = room.phase {
+                inGameCard
             } else {
                 startPanel(room)
                 invitePanel(room)
                 playersPanel(room)
                 rulesPanel(room)
-                mapVotePanel(room)
+                mapPanel(room)
             }
         } else {
             OnlineStatusCard(status: .loading("Entrando a la sala…"))
@@ -133,8 +184,11 @@ struct OnlineLobbyView: View {
         VStack(alignment: .leading, spacing: 10) {
             if isHost {
                 if services.room.startAvailability == .ready {
-                    Button("INICIAR PARTIDA") {}
+                    Button("INICIAR PARTIDA") {
+                        perform { _ = try await services.room.start(hostTieBreakChoice: nil) }
+                    }
                         .buttonStyle(TraidoresButtonStyle(prominent: true))
+                        .disabled(working)
                         .accessibilityIdentifier("lobby.online.start")
                 } else {
                     // Locked, not faded: the reason below explains it and the label stays readable.
@@ -241,8 +295,26 @@ struct OnlineLobbyView: View {
         .frame(minHeight: 58)
         .background(TraidoresTheme.ink.opacity(isMe ? 0.92 : 0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay { if isMe { RoundedRectangle(cornerRadius: 10).stroke(TraidoresTheme.gold.opacity(0.6)) } }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture { showProfile(of: player, isMe: isMe) }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Abre su perfil")
         .accessibilityIdentifier("lobby.online.player.\(player.id)")
+    }
+
+    private func showProfile(of player: RoomPlayer, isMe: Bool) {
+        var snapshot = PlayerProfileSnapshot(
+            id: player.id, name: player.nombreSala, kind: isMe ? .me : .player, publicId: player.publicId,
+            bio: player.bioPerfil, avatarKey: AnimalAvatarCatalog.normalize(player.avatarPerfil),
+            photoURL: player.avatarURL, bannerKey: player.bannerPerfil, favoriteRoleKey: player.rolFavoritoPerfil,
+            emoteIDs: player.emotesPerfil, matches: player.estadisticas?.matches, wins: player.estadisticas?.wins,
+            styleRaw: player.temaCosmeticoPerfil)
+        if isMe {
+            snapshot = .own(name: player.nombreSala, storedProfile: storedProfile, theme: profileTheme,
+                            emoteIDs: profileEmoteIDs, publicId: player.publicId)
+        }
+        withAnimation(.easeOut(duration: 0.15)) { profileShown = snapshot }
     }
 
     private func rulesPanel(_ room: RoomSnapshot) -> some View {
@@ -276,13 +348,14 @@ struct OnlineLobbyView: View {
         .accessibilityIdentifier("lobby.online.rule.\(id)")
     }
 
-    private func mapVotePanel(_ room: RoomSnapshot) -> some View {
+    /// The host picks the map, as on Android; the server ignores votes (`resolveMap`).
+    /// Changing it clears everyone's «listo».
+    private func mapPanel(_ room: RoomSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            OnlineSectionLabel("VOTACIÓN DE MAPA")
+            OnlineSectionLabel("MAPA")
             HStack(spacing: 8) {
                 ForEach(GameMap.allCases, id: \.rawValue) { map in
-                    let votes = room.players.filter { $0.mapVote == map.rawValue }.count
-                    let mine = me?.mapVote == map.rawValue
+                    let selected = map.rawValue == room.mapKey
                     Button { perform { try await services.room.voteMap(map.rawValue) } } label: {
                         VStack(spacing: 4) {
                             Image(map.landscapeAsset).resizable().scaledToFill()
@@ -290,24 +363,37 @@ struct OnlineLobbyView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 9))
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 9)
-                                        .stroke(mine ? TraidoresTheme.gold : TraidoresTheme.border, lineWidth: mine ? 2 : 1)
+                                        .stroke(selected ? TraidoresTheme.gold : TraidoresTheme.border, lineWidth: selected ? 2 : 1)
                                 }
-                            Text(map.title).font(.caption.bold())
-                            Text(votes == 1 ? "1 voto" : "\(votes) votos").font(.caption)
-                                .foregroundStyle(TraidoresTheme.secondary)
+                                .opacity(selected || isHost ? 1 : 0.55)
+                            Text(map.title).font(.caption.bold()).foregroundStyle(TraidoresTheme.text)
                         }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(working)
-                    .accessibilityLabel("\(map.title), \(votes == 1 ? "1 voto" : "\(votes) votos")\(map.rawValue == room.mapKey ? ", mapa de la sala" : "")")
-                    .accessibilityAddTraits(mine ? .isSelected : [])
-                    .accessibilityIdentifier("lobby.online.vote.\(map.rawValue)")
+                    .buttonStyle(OnlineMapChoiceStyle())
+                    .disabled(working || !isHost)
+                    .accessibilityLabel(selected ? "\(map.title), mapa de la sala" : map.title)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("lobby.online.map.\(map.rawValue)")
                 }
             }
-            Text("Mapa de la sala: \(GameMap(onlineKey: room.mapKey).title). Tocá un mapa para votar.")
+            Text(isHost ? "Tocá un mapa para cambiarlo. Todos vuelven a marcar LISTO." :
+                    "El anfitrión elige el mapa: \(GameMap(onlineKey: room.mapKey).title).")
                 .font(.caption).foregroundStyle(TraidoresTheme.secondary)
         }
         .onlinePanel()
+    }
+
+    private var inGameCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PARTIDA EN CURSO").font(TraidoresTheme.title(21)).foregroundStyle(TraidoresTheme.gold)
+            Text("El servidor ya repartió los roles. Sincronizando la mesa online…")
+                .font(.body)
+            Button("SALIR DE LA PARTIDA") { confirmingLeave = true }
+                .buttonStyle(TraidoresButtonStyle())
+                .accessibilityIdentifier("lobby.online.abandon")
+        }
+        .onlinePanel()
+        .accessibilityIdentifier("lobby.online.inGame")
     }
 
     private var closedCard: some View {
@@ -344,6 +430,13 @@ struct OnlineLobbyView: View {
             defer { working = false }
             do { try await operation() } catch { actionError = error as? OnlineError ?? .server(nil) }
         }
+    }
+}
+
+/// Disabled map choices remain readable; only the preview image is dimmed explicitly.
+private struct OnlineMapChoiceStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
 

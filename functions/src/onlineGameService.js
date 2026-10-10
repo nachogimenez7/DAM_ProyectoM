@@ -4,12 +4,18 @@ const {randomUUID, randomInt, createHash} = require("node:crypto");
 const {isDeepStrictEqual} = require("node:util");
 const {FieldValue} = require("firebase-admin/firestore");
 const {archiveFinishedRoom} = require("./accountHistoryService");
+const {readServerDelivery} = require("./onlineGameDelivery");
 const {prepareOnlineMatch, playerFromDocument} = require("./onlineStartCore");
 const {validRoomId} = require("./onlineStartService");
-const {createServerGame, acceptAction, leaveServerGame, expirePhase, deadlineToken, projectServerGame, GameActionError} = require("./onlineGameCore");
+const {createServerGame, acceptAction, leaveServerGame, expirePhase, deadlineToken, projectServerGame, GameActionError,
+  assertPhaseProgress} = require("./onlineGameCore");
 const AUTHORITY_GATE = "onlineMaintenance/serverAuthority";
 const RECOVERY_GRACE_MS = 5000;
-const DEADLINE_MARGIN_MS = 1500;
+// Small scheduling margin: an early delivery waits inline in the worker (EARLY_DEADLINE_WAIT_MS)
+// instead of being rejected into the queue's 1-10 s retry backoff.
+const DEADLINE_MARGIN_MS = 250;
+const EARLY_DEADLINE_WAIT_MS = 3000;
+const SERVER_RECOVERY_GRACE_MS = 30000;
 
 function references(firestore, roomId) {
   if (!validRoomId(roomId) || /[.#$\[\]\u0000-\u001f\u007f]/.test(roomId)) throw new GameActionError("invalid-room-id");
@@ -20,6 +26,7 @@ function writeState(tx, refs, state) {
   tx.set(refs.state, state);
   tx.set(refs.outbox, {generation: state.generation, revision: state.revision,
     projection: projectServerGame(state), token: deadlineToken(state),
+    recoveryAtMs: (state.deadlineMs ?? state.phaseStartedAtMs) + SERVER_RECOVERY_GRACE_MS,
     deliveredRevision: 0, updatedAt: FieldValue.serverTimestamp()});
   if (state.winner) tx.update(refs.room, {estado: "finalizada", estadoPartida: projectServerGame(state).public,
     actualizadaEn: FieldValue.serverTimestamp()});
@@ -32,7 +39,7 @@ async function startServerMatch({firestore, roomId, requesterId, nowMs = Date.no
   let transactionAttempts = 0;
   const result = await firestore.runTransaction(async (tx) => {
     transactionAttempts++;
-    const [roomSnap, stateSnap] = await Promise.all([tx.get(refs.room), tx.get(refs.state)]);
+    const roomSnap = await tx.get(refs.room), stateSnap = await tx.get(refs.state);
     if (!roomSnap.exists) throw new GameActionError("room-not-found");
     const room = roomSnap.data();
     if (room.cleanupState === "deleting") throw new GameActionError("room-cleaning");
@@ -45,6 +52,11 @@ async function startServerMatch({firestore, roomId, requesterId, nowMs = Date.no
     // Admin-only rollout switch. Disabling new starts never stops an existing match.
     const gate = await tx.get(firestore.doc(AUTHORITY_GATE));
     if (gate.data()?.enabled !== true) throw new GameActionError("server-mode-unavailable");
+    const rollout = gate.data();
+    if (rollout.allowedHostUids !== undefined && (!Array.isArray(rollout.allowedHostUids) ||
+        !rollout.allowedHostUids.includes(requesterId))) throw new GameActionError("server-mode-unavailable");
+    if (rollout.allowedRoomIds !== undefined && (!Array.isArray(rollout.allowedRoomIds) ||
+        !rollout.allowedRoomIds.includes(roomId))) throw new GameActionError("server-mode-unavailable");
     const roster = await tx.get(refs.room.collection("jugadores"));
     if (roster.docs.some((p) => p.data().activoEnPartida !== false && p.data().protocolVersion !== 3)) {
       throw new GameActionError("incompatible-client");
@@ -73,7 +85,9 @@ async function submitServerAction({firestore, roomId, requesterId, action, nowMs
   let transactionAttempts = 0;
   const result = await firestore.runTransaction(async (tx) => {
     transactionAttempts++;
-    const [room, snapshot] = await Promise.all([tx.get(refs.room), tx.get(refs.state)]);
+    // Consistent lock order across actions, deadlines and recovery. Concurrent
+    // reads of room/state can acquire them in opposite orders and force retries.
+    const room = await tx.get(refs.room), snapshot = await tx.get(refs.state);
     if (!snapshot.exists || !room.exists) throw new GameActionError("room-not-found");
     if (room.data().cleanupState === "deleting") throw new GameActionError("room-cleaning");
     if (room.data().authorityMode !== "server") throw new GameActionError("incompatible-client");
@@ -97,7 +111,7 @@ async function prepareServerRematch({firestore, roomId, requesterId, matchId, no
     await archiveResult({firestore, roomId, room, finishedAtMs: room.actualizadaEn?.toMillis?.() || nowMs});
   }
   return firestore.runTransaction(async (tx) => {
-    const [current, stateSnap, outbox] = await Promise.all([tx.get(refs.room), tx.get(refs.state), tx.get(refs.outbox)]);
+    const current = await tx.get(refs.room), stateSnap = await tx.get(refs.state), outbox = await tx.get(refs.outbox);
     if (!current.exists) throw new GameActionError("room-not-found");
     const latest = current.data();
     if (latest.hostId !== requesterId) throw new GameActionError("host-required");
@@ -115,6 +129,7 @@ async function prepareServerRematch({firestore, roomId, requesterId, matchId, no
       phaseIndex: 0, revision: 1, winner: null, deadlineMs: null, players});
     tx.set(refs.outbox, {generation, revision: 1, deliveredRevision: 0,
       token: {matchId: nextMatchId, phaseIndex: 0, deadlineMs: null}, updatedAt: FieldValue.serverTimestamp(),
+      recoveryAtMs: nowMs + SERVER_RECOVERY_GRACE_MS,
       projection: {public: {protocolVersion: 3, authorityMode: "lobby", matchId: nextMatchId,
         phaseIndex: 0, revision: 1, fase: "LOBBY"}, private: {},
       permissions: Object.fromEntries(players.map((p) => [p.uid, {member: true, matchId: nextMatchId, phaseIndex: 0,
@@ -133,8 +148,8 @@ async function prepareServerRematch({firestore, roomId, requesterId, matchId, no
 async function leaveServerMatch({firestore, roomId, requesterId, matchId, nowMs = Date.now()}) {
   const refs = references(firestore, roomId), memberRef = refs.room.collection("jugadores").doc(requesterId);
   return firestore.runTransaction(async (tx) => {
-    const [roomSnap, stateSnap, memberSnap, outboxSnap] = await Promise.all([
-      tx.get(refs.room), tx.get(refs.state), tx.get(memberRef), tx.get(refs.outbox)]);
+    const roomSnap = await tx.get(refs.room), stateSnap = await tx.get(refs.state),
+      outboxSnap = await tx.get(refs.outbox), memberSnap = await tx.get(memberRef);
     if (!roomSnap.exists || !stateSnap.exists) throw new GameActionError("room-not-found");
     if (roomSnap.data().cleanupState === "deleting") throw new GameActionError("room-cleaning");
     const current = stateSnap.data();
@@ -150,6 +165,7 @@ async function leaveServerMatch({firestore, roomId, requesterId, matchId, nowMs 
       tx.set(refs.state, {...current, revision: current.revision + 1,
         players: current.players.filter((p) => p.uid !== requesterId)});
       tx.set(refs.outbox, {...outbox, revision: current.revision + 1, deliveredRevision: 0,
+        recoveryAtMs: nowMs + SERVER_RECOVERY_GRACE_MS,
         updatedAt: FieldValue.serverTimestamp()});
     } else {
       const decision = leaveServerGame(current, requesterId, nowMs);
@@ -160,16 +176,27 @@ async function leaveServerMatch({firestore, roomId, requesterId, matchId, nowMs 
     return {status: "left"};
   });
 }
-async function expireServerPhase({firestore, roomId, token, nowMs = Date.now()}) {
+// Firestore may execute a transaction body again. Draw only if REPARTO needs it,
+// and reuse that private draw for every attempt of this operation.
+function retrySafeRandom(chooseRandomInt) {
+  let choice;
+  return (max) => { if (choice === undefined) choice = chooseRandomInt(max); return choice; };
+}
+async function expireServerPhase({firestore, roomId, token, nowMs = Date.now(), chooseRandomInt = randomInt}) {
   const refs = references(firestore, roomId);
+  const chooseOnce = retrySafeRandom(chooseRandomInt);
   let transactionAttempts = 0;
   const result = await firestore.runTransaction(async (tx) => {
     transactionAttempts++;
-    const [room, snapshot] = await Promise.all([tx.get(refs.room), tx.get(refs.state)]);
+    const room = await tx.get(refs.room), snapshot = await tx.get(refs.state);
     if (!room.exists || !snapshot.exists || room.data().cleanupState === "deleting" ||
         room.data().authorityMode !== "server") return {changed: false};
-    const decision = expirePhase(snapshot.data(), token, nowMs);
-    if (decision.changed) writeState(tx, refs, decision.state);
+    const currentState = snapshot.data();
+    const decision = expirePhase(currentState, token, nowMs, {chooseRandomInt: chooseOnce});
+    if (decision.changed) {
+      assertPhaseProgress(currentState, decision.state, nowMs);
+      writeState(tx, refs, decision.state);
+    }
     const current = decision.state;
     const early = !decision.changed && current.deadlineMs !== null &&
       token?.matchId === current.matchId && token.phaseIndex === current.phaseIndex &&
@@ -181,12 +208,13 @@ async function expireServerPhase({firestore, roomId, token, nowMs = Date.now()})
 }
 
 // Recovery is an authenticated nudge, not client authority. It uses the persisted deadline.
-async function recoverServerPhase({firestore, roomId, requesterId, matchId, phaseIndex, nowMs = Date.now()}) {
+async function recoverServerPhase({firestore, roomId, requesterId, matchId, phaseIndex, nowMs = Date.now(), chooseRandomInt = randomInt}) {
   const refs = references(firestore, roomId);
+  const chooseOnce = retrySafeRandom(chooseRandomInt);
   let transactionAttempts = 0;
   const result = await firestore.runTransaction(async (tx) => {
     transactionAttempts++;
-    const [room, snapshot] = await Promise.all([tx.get(refs.room), tx.get(refs.state)]);
+    const room = await tx.get(refs.room), snapshot = await tx.get(refs.state);
     if (!snapshot.exists || !room.exists) throw new GameActionError("room-not-found");
     if (room.data().cleanupState === "deleting") throw new GameActionError("room-cleaning");
     if (room.data().authorityMode !== "server") throw new GameActionError("incompatible-client");
@@ -199,9 +227,12 @@ async function recoverServerPhase({firestore, roomId, requesterId, matchId, phas
       return {status: "waiting", matchId, phaseIndex, retryAfterMs: current.deadlineMs + RECOVERY_GRACE_MS - nowMs};
     }
     // A retry after advancing still repairs the latest outbox if publication failed.
-    const decision = phaseIndex === current.phaseIndex ? expirePhase(current, deadlineToken(current), nowMs) :
+    const decision = phaseIndex === current.phaseIndex ? expirePhase(current, deadlineToken(current), nowMs, {chooseRandomInt: chooseOnce}) :
       {state: current, changed: false};
-    if (decision.changed) writeState(tx, refs, decision.state);
+    if (decision.changed) {
+      assertPhaseProgress(current, decision.state, nowMs);
+      writeState(tx, refs, decision.state);
+    }
     return {status: decision.changed ? "advanced" : "current", matchId,
       phaseIndex: decision.state.phaseIndex};
   });
@@ -224,17 +255,45 @@ function realtimeShape(value) {
   }
   return value === undefined ? null : value;
 }
-async function publishServerOutbox({firestore, database, roomId, enqueueDeadline}) {
+async function publishServerOutbox({firestore, database, roomId, enqueueDeadline, readDelivery = readServerDelivery}) {
   const refs = references(firestore, roomId);
   // Always load the latest durable projection, never trust an old event snapshot.
-  const [snapshot, room] = await Promise.all([refs.outbox.get(), refs.room.get()]);
-  if (!snapshot.exists || !room.exists || room.data().authorityMode !== "server" ||
-      room.data().cleanupState === "deleting") return {published: false};
+  const snapshot = await refs.outbox.get();
+  if (!snapshot.exists) return {published: false};
   const outbox = snapshot.data();
   if (outbox.deliveredRevision === outbox.revision) return {published: false};
+  // A duplicate event needs only one read. Pending publications still check the room
+  // before accessing RTDB/Tasks, preserving cleanup and authority safeguards.
+  const room = await refs.room.get();
+  if (!room.exists || room.data().authorityMode !== "server" ||
+      room.data().cleanupState === "deleting") return {published: false};
   const realtime = database.ref(`onlineV3/${roomId}/snapshot`);
-  const queuedTaskId = (await realtime.child("queuedTaskId").get()).val();
   const key = outbox.token.deadlineMs === null ? null : taskId(roomId, outbox.generation, outbox.token);
+  const sameDelivery = (delivery) => delivery?.matchId === outbox.token.matchId && delivery.generation === outbox.generation &&
+    delivery.revision === outbox.revision && (delivery.queuedTaskId ?? null) === key;
+  const acknowledge = () => firestore.runTransaction(async (tx) => {
+    const roomSnap = outbox.projection.public.fase === "LOBBY" ? await tx.get(refs.room) : null;
+    const latest = await tx.get(refs.outbox);
+    if (latest.data()?.generation === outbox.generation && latest.data()?.revision === outbox.revision) {
+      tx.update(refs.outbox, {deliveredRevision: outbox.revision,
+        recoveryAtMs: outbox.token.deadlineMs === null ? null : outbox.token.deadlineMs + SERVER_RECOVERY_GRACE_MS});
+      if (roomSnap?.data()?.preparedMatchId === outbox.token.matchId && roomSnap.data().cleanupState !== "deleting") {
+        tx.update(refs.room, {authorityMode: "lobby"});
+      }
+    }
+  });
+  // This checkpoint was committed atomically with the entire authorized snapshot.
+  // A crash after RTDB commit only needs its Firestore acknowledgement repaired.
+  const delivery = await readDelivery({database, realtime});
+  if (delivery?.generation > outbox.generation || delivery?.generation === outbox.generation && delivery.revision > outbox.revision) {
+    return {published: false, stale: true};
+  }
+  if (sameDelivery(delivery)) {
+    await acknowledge();
+    return {published: false, reusedDelivery: true};
+  }
+  // Older deployed snapshots have no checkpoint yet. Preserve their queued task.
+  const queuedTaskId = delivery ? delivery.queuedTaskId : (await realtime.child("queuedTaskId").get()).val();
   if (key && queuedTaskId !== key) {
     // Crash after enqueue is safe: deterministic ID suppresses another task.
     try { await enqueueDeadline({id: key, roomId, token: outbox.token,
@@ -243,14 +302,19 @@ async function publishServerOutbox({firestore, database, roomId, enqueueDeadline
       if (![6, "already-exists", "functions/task-already-exists"].includes(error.code)) throw error;
     }
   }
-  let changedPublic = false, changedPrivate = 0;
+  let changedPublic = false, changedPrivate = 0, observedSameDelivery = false, realtimeAttempts = 0;
+  const projection = realtimeShape(outbox.projection);
   const mergeSnapshot = (current) => {
-    changedPublic = false; changedPrivate = 0;
+    realtimeAttempts++;
+    changedPublic = false; changedPrivate = 0; observedSameDelivery = false;
     if (current?.cleanupState === "deleting") return;
     if ((current?.generation || 0) > outbox.generation ||
         current?.generation === outbox.generation && (current?.syncRevision || 0) > outbox.revision) return;
-    const projection = realtimeShape(outbox.projection);
-    const next = {...(current || {}), generation: outbox.generation, syncRevision: outbox.revision, queuedTaskId: key};
+    if (current?.generation === outbox.generation && current?.syncRevision === outbox.revision && sameDelivery(current.delivery)) {
+      observedSameDelivery = true; return; // A concurrent publisher already supplied this version.
+    }
+    const next = {...(current || {}), generation: outbox.generation, syncRevision: outbox.revision, queuedTaskId: key,
+      delivery: {matchId: outbox.token.matchId, generation: outbox.generation, revision: outbox.revision, queuedTaskId: key}};
     changedPublic = !isDeepStrictEqual(withoutRevision(current?.public), withoutRevision(projection.public));
     if (changedPublic) next.public = projection.public;
     next.private = {...(current?.private || {})};
@@ -275,22 +339,29 @@ async function publishServerOutbox({firestore, database, roomId, enqueueDeadline
     const nextRoom = {...(currentRoom || {}), snapshot: next};
     if (currentRoom?.snapshot?.public?.matchId !== outbox.token.matchId) {
       delete nextRoom.chat; delete nextRoom.chatRate; delete nextRoom.presence;
+      delete nextRoom.reactions; delete nextRoom.reactionRate;
     }
     return nextRoom;
   }, undefined, false) : await realtime.transaction(mergeSnapshot, undefined, false);
-  if (!result.committed) return {published: false, stale: true};
-  await firestore.runTransaction(async (tx) => {
-    const latest = await tx.get(refs.outbox);
-    const roomSnap = outbox.projection.public.fase === "LOBBY" ? await tx.get(refs.room) : null;
-    if (latest.data()?.generation === outbox.generation && latest.data()?.revision === outbox.revision) {
-      tx.update(refs.outbox, {deliveredRevision: outbox.revision});
-      if (roomSnap?.data()?.preparedMatchId === outbox.token.matchId && roomSnap.data().cleanupState !== "deleting") {
-        tx.update(refs.room, {authorityMode: "lobby"});
+  const projectionBytes = Buffer.byteLength(JSON.stringify(
+    changesMembership ? result.snapshot.child("snapshot").val() : result.snapshot.val()));
+  if (!result.committed) {
+    if (!observedSameDelivery) return {published: false, stale: true, realtimeAttempts, projectionBytes};
+    // An aborted transaction can expose another transaction's optimistic local
+    // value. Confirm the committed server checkpoint before acknowledging it.
+    const confirmed = await readDelivery({database, realtime});
+    if (!sameDelivery(confirmed)) {
+      if (confirmed?.generation > outbox.generation || confirmed?.generation === outbox.generation && confirmed.revision > outbox.revision) {
+        return {published: false, stale: true, realtimeAttempts, projectionBytes};
       }
+      const error = new Error("publication-pending"); error.code = "publication-pending";
+      throw error; // Eventarc/Tasks retry; keep the durable outbox pending.
     }
-  });
-  return {published: true, changedPublic, changedPrivate,
-    projectionBytes: Buffer.byteLength(JSON.stringify(changesMembership ? result.snapshot.child("snapshot").val() : result.snapshot.val()))};
+    await acknowledge();
+    return {published: false, reusedDelivery: true, realtimeAttempts, projectionBytes};
+  }
+  await acknowledge();
+  return {published: true, changedPublic, changedPrivate, realtimeAttempts, projectionBytes};
 }
 module.exports = {startServerMatch, submitServerAction, expireServerPhase, recoverServerPhase, prepareServerRematch, leaveServerMatch,
-  publishServerOutbox, taskId, AUTHORITY_GATE, RECOVERY_GRACE_MS, DEADLINE_MARGIN_MS};
+  publishServerOutbox, taskId, AUTHORITY_GATE, RECOVERY_GRACE_MS, DEADLINE_MARGIN_MS, EARLY_DEADLINE_WAIT_MS, SERVER_RECOVERY_GRACE_MS};

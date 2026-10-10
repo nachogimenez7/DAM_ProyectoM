@@ -73,7 +73,50 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "partidas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "estado",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibilidad",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "protocolVersion",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "actualizadaEn",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "servidor",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "serverOutbox",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "serverOutbox",
+      "fieldPath": "recoveryAtMs",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
 }

@@ -66,8 +66,33 @@ enum OnlineContract {
             fotoPerfil: photoURL(data["fotoPerfil"] as? String, emulatorOrigin: emulatorOrigin),
             fotoPlayGames: photoURL(data["fotoPlayGames"] as? String, emulatorOrigin: emulatorOrigin),
             emotesPerfil: data["emotesPerfil"] as? [String] ?? [],
-            temaCosmeticoPerfil: data["temaCosmeticoPerfil"] as? String ?? "classic"
+            temaCosmeticoPerfil: data["temaCosmeticoPerfil"] as? String ?? "classic",
+            estadisticas: profileStats(data["estadisticasPerfil"])
         )
+    }
+
+    /// Emote ids the room documents accept (`validProfileEmotes` in firestore.rules).
+    static let publishableEmoteIDs: Set<String> = [
+        "griego_enojado", "griego_triste", "griego_contento", "griego_sospechoso",
+        "medieval_enojado", "medieval_triste", "medieval_contento", "medieval_sospechoso",
+        "gaucho_enojado", "gaucho_triste", "gaucho_contento", "gaucho_sospechoso",
+        "premium_hermosa_manana", "premium_mate", "premium_dormida", "premium_genio",
+        "premium_medico_timido", "premium_desertor_lengua", "premium_oraculo_mmm_nie", "premium_six_seven"
+    ]
+
+    /// At most four known emotes, in the player's order and without repeats.
+    static func publishableEmotes(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return Array(ids.filter { publishableEmoteIDs.contains($0) && seen.insert($0).inserted }.prefix(4))
+    }
+
+    /// `estadisticasPerfil` as the rules accept it: both counters present, wins never above matches.
+    static func profileStats(_ raw: Any?) -> ProfileStats? {
+        guard let map = raw as? [String: Any],
+              let matches = (map["partidas"] as? NSNumber)?.intValue,
+              let wins = (map["victorias"] as? NSNumber)?.intValue,
+              (0...1_000_000).contains(matches), (0...matches).contains(wins) else { return nil }
+        return ProfileStats(matches: matches, wins: wins)
     }
 
     static func lobbyConfig(_ data: [String: Any]) throws -> LobbyConfig {

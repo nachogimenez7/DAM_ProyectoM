@@ -1,7 +1,7 @@
 "use strict";
 
 // Pure server engine. No client clocks, Firebase calls or host authority.
-const {createHash} = require("node:crypto");
+const {createHash, randomInt} = require("node:crypto");
 const {isDeepStrictEqual} = require("node:util");
 const {TRAITOR_TEAM, MAPS} = require("./onlineStartCore");
 const TOWN = "Pueblo";
@@ -11,10 +11,12 @@ const KILLERS = new Set(["asesino", "espia"]);
 const NEUTRALS = new Set(["desertor", "bufon"]);
 const MAX_ACTIONS_PER_PHASE = 12;
 const MAX_RECEIPTS = 180;
+// Usual table's "VOTAR ANTES": available after ten seconds of debate (READY_VOTE_MINIMUM_DEBATE_MS).
+const READY_VOTE_MINIMUM_MS = 10000;
 const ACTION_FIELDS = new Set(["matchId", "phaseIndex", "requestId", "action", "targetUid", "team"]);
 const ACTIONS = new Set(["role_ack", "desertor_initial", "matar", "silenciar", "investigar", "salvar",
   "invitar_muerto", "guardar_poder", "votar", "revelar_alcalde", "decidir_empate", "contrapunto",
-  "senalar_contrapunto", "desertor_rethink"]);
+  "senalar_contrapunto", "desertor_rethink", "listo_votar", "cancelar_listo"]);
 
 class GameActionError extends Error {
   constructor(code) { super(code); this.name = "GameActionError"; this.code = code; }
@@ -36,9 +38,11 @@ function transition(state, phase, nowMs, seconds) {
   state.actions = {};
   state.phaseActionCounts = {};
 }
-function notice(state, text, code = "INFO", players = []) {
+function notice(state, text, code, players = []) {
+  if (!code) reject("missing-event-code");
   state.announcement = text;
-  state.events.push({codigo: code, ronda: state.round, jugadores: players, texto: text});
+  state.eventSeq = (state.eventSeq || 0) + 1;
+  state.events.push({seq: state.eventSeq, codigo: code, ronda: state.round, jugadores: [...players], texto: text});
   state.events = state.events.slice(-60);
 }
 function stableNoise(value, seed = 0) {
@@ -72,23 +76,64 @@ function canReconsider(state) {
 }
 function evaluateWinner(state, nowMs) {
   const candidate = winnerFor(state);
+  if (state.phase === "DESERTOR_RECONSIDERACION") {
+    if (!candidate) { resumeAfterDeserterWindow(state, nowMs); return false; }
+    // A departure cannot reopen the same window and extend its deadline.
+    if (candidate === TRAITOR_TEAM && canReconsider(state)) return true;
+  }
   if (candidate === TRAITOR_TEAM && canReconsider(state)) {
+    state.deserterReturn = {phase: state.phase,
+      remainingMs: Math.max(1000, state.deadlineMs - nowMs),
+      actions: state.actions, phaseActionCounts: state.phaseActionCounts};
     transition(state, "DESERTOR_RECONSIDERACION", nowMs, state.timing.votingSeconds);
-    notice(state, "El Desertor puede reconsiderar su bando antes de resolver la partida.");
+    notice(state, "El Desertor puede reconsiderar su bando antes de resolver la partida.", "DESERTER_WINDOW");
   } else if (candidate) {
     state.winner = candidate;
+    state.deserterReturn = null;
     transition(state, "FINALIZADA", nowMs, 0);
-    notice(state, `Victoria de ${candidate}.`);
+    notice(state, `Victoria de ${candidate}.`, "VICTORY");
   }
-  return state.phase === "DESERTOR_RECONSIDERACION" || state.phase === "FINALIZADA";
+  return !!candidate;
 }
-function autoDeserterTeam(state) {
-  if (state.round < 2 || state.deserterTeam || !alive(state).some((p) => p.role.key === "desertor")) return;
-  const seed = stableNoise(`${state.code}|${state.players.map((p) => p.name).join("|")}|desertor-auto`, 17);
-  state.deserterTeam = ((seed >>> 1) & 1) === 0 ? TOWN : TRAITOR_TEAM;
+function resumeAfterDeserterWindow(state, nowMs) {
+  const saved = state.deserterReturn;
+  if (!saved || !["REPARTO", "NOCHE", "AMANECER", "DIA_DEBATE", "CONTRAPUNTO", "VOTACION",
+    "DESEMPATE_VOTACION", "RECUENTO_VOTOS", "ALCALDE_DESEMPATE", "RESULTADO"].includes(saved.phase) ||
+      !Number.isSafeInteger(saved.remainingMs) || saved.remainingMs <= 0 || !saved.actions || !saved.phaseActionCounts) reject("phase-stuck");
+  state.deserterReturn = null;
+  if (saved.phase === "RESULTADO") { state.round++; startNight(state, nowMs); }
+  else if (saved.phase === "AMANECER") {
+    transition(state, "DIA_DEBATE", nowMs, state.timing.discussionSeconds);
+    notice(state, "La partida continúa. Se abre el debate.", "DESERTER_WINDOW_CLOSED");
+  } else {
+    // A departure can interrupt any other phase. Resume its remaining time and
+    // intentions, without repeating the already resolved dawn/vote effects.
+    transition(state, saved.phase, nowMs, 0);
+    state.deadlineMs = nowMs + saved.remainingMs;
+    state.actions = saved.actions;
+    state.phaseActionCounts = saved.phaseActionCounts;
+    notice(state, "La partida continúa. Se retoma la fase anterior.", "DESERTER_WINDOW_CLOSED");
+  }
+}
+function closeDeserterWindow(state, nowMs, team = "mantener") {
+  if (!winnerFor(state)) { resumeAfterDeserterWindow(state, nowMs); return; }
+  if (winnerFor(state) === TRAITOR_TEAM) {
+    if (team !== "mantener") state.deserterTeam = team;
+    state.deserterUsed = true;
+  }
+  evaluateWinner(state, nowMs);
+}
+function readyToVote(state) {
+  const living = alive(state);
+  return {listos: living.filter((p) => state.actions[`${p.order}:listo_votar`]).length, total: living.length};
+}
+function maybeOpenVoteEarly(state, nowMs) {
+  // Every living player (muted ones too, as on the usual table) marked ready: the debate ends now.
+  if (state.phase !== "DIA_DEBATE" || state.winner) return;
+  const {listos, total} = readyToVote(state);
+  if (total > 0 && listos === total) beginVote(state, nowMs, false);
 }
 function startNight(state, nowMs) {
-  autoDeserterTeam(state);
   state.players.forEach((p) => { p.muted = false; });
   state.oracleGuestUid = null;
   state.counterpointPlayers = [];
@@ -97,9 +142,10 @@ function startNight(state, nowMs) {
   state.eliminationUid = null;
   state.voteRound = 0;
   state.voteTotals = {};
+  state.voteBallots = [];
   state.mayorCorruption = false;
   transition(state, "NOCHE", nowMs, state.timing.nightSeconds);
-  notice(state, `Noche ${state.round}.`);
+  notice(state, `Noche ${state.round}.`, "NIGHT_START");
 }
 
 function createServerGame({roomId, prepared, nowMs}) {
@@ -115,11 +161,11 @@ function createServerGame({roomId, prepared, nowMs}) {
     phase: "REPARTO", phaseIndex: 0, revision: 1, publicRevision: 1, round: 1,
     phaseStartedAtMs: nowMs, deadlineMs: nowMs + 30000, assignmentMinimumMs: nowMs + 10000,
     actions: {}, phaseActionCounts: {}, receipts: [],
-    winner: null, mayorUid: null, mayorCorruption: false, deserterTeam: null, deserterUsed: false,
+    winner: null, mayorUid: null, mayorCorruption: false, deserterTeam: null, deserterUsed: false, deserterReturn: null,
     payadorUsed: false, counterpointPlayers: [], counterpointPointed: null,
     oracleUsed: false, oracleGuestUid: null, specialVictories: [],
-    investigations: [], tieCandidates: [], eliminationUid: null, voteTotals: {}, voteRound: 0,
-    announcement: prepared.payloads.matchState.anuncioPublico.replace("partida local", "partida online"), events: [],
+    investigations: [], tieCandidates: [], eliminationUid: null, voteTotals: {}, voteBallots: [], voteRound: 0,
+    announcement: prepared.payloads.matchState.anuncioPublico.replace("partida local", "partida online"), events: [], eventSeq: 0,
   };
 }
 function canSilence(state, actor, target) {
@@ -153,12 +199,13 @@ function applyAfk(state, kind, required, acted, nowMs) {
     state.winner = CANCELLED;
     state.specialVictories = [];
     transition(state, "FINALIZADA", nowMs, 0);
-    notice(state, "Partida cancelada por inactividad. Ningún jugador respondió.");
+    notice(state, "Partida cancelada por inactividad. Ningún jugador respondió.", "MATCH_CANCELLED");
     return;
   }
   for (const p of active.filter((p) => requiredSet.has(p.uid))) {
     p[field] = actedSet.has(p.uid) ? 0 : p[field] + 1;
-    if (p[field] >= 2) { p.alive = false; p.muted = false; p.deathCause = "AFK"; notice(state, `${p.name} fue expulsado por inactividad.`); }
+    if (p[field] >= 2) { p.alive = false; p.muted = false; p.deathCause = "AFK";
+      notice(state, `${p.name} fue expulsado por inactividad.`, "AFK_EXPULSION", [p.uid]); }
   }
 }
 function roleMayAct(actor, roles) { if (!actor.alive || !roles.includes(actor.role.key)) reject("role-not-allowed"); }
@@ -176,6 +223,12 @@ function validateNight(state, actor, target, input) {
     case "guardar_poder": if (!oracleEligible(state, actor) || input.targetUid) reject("oracle-unavailable"); break;
   }
 }
+function rememberInvestigation(state, actorOrder, targetUid) {
+  if (state.investigations.some(r => r.actorOrder === actorOrder && r.round === state.round)) return;
+  const target = player(state, targetUid);
+  state.investigations.push({actorOrder, targetUid, round: state.round,
+    traitor: target.role.key === "asesino" || target.role.key === "mercenario"}); // Spy reads innocent.
+}
 function performAction(state, actor, input, nowMs) {
   const target = player(state, input.targetUid);
   switch (input.action) {
@@ -190,7 +243,9 @@ function performAction(state, actor, input, nowMs) {
     case "matar": case "silenciar": case "investigar": case "salvar": case "invitar_muerto": case "guardar_poder":
       validateNight(state, actor, target, input);
       if (actionFor(state, actor, input.action)) reject("night-action-already-submitted");
-      record(state, actor, input); break;
+      record(state, actor, input);
+      if (input.action === "investigar") rememberInvestigation(state, actor.order, input.targetUid);
+      break;
     case "votar":
       phaseIs(state, ["VOTACION", "DESEMPATE_VOTACION"]);
       if (!actor.alive || actor.muted) reject("voter-unavailable");
@@ -206,8 +261,8 @@ function performAction(state, actor, input, nowMs) {
       phaseIs(state, ["ALCALDE_DESEMPATE"]); roleMayAct(actor, ["alcalde"]);
       if (actor.muted || state.mayorUid !== actor.uid || !target?.alive || !state.tieCandidates.includes(target.uid)) reject("mayor-unavailable");
       state.eliminationUid = target.uid; state.voteRound = state.mayorCorruption ? 4 : 3;
-      transition(state, "RESULTADO", nowMs, state.timing.transitionSeconds);
-      notice(state, `El Alcalde decidió expulsar a ${target.name}.`, "MAYOR_DECISION", [actor.uid, target.uid]); break;
+      notice(state, `El Alcalde decidió expulsar a ${target.name}.`, "MAYOR_DECISION", [actor.uid, target.uid]);
+      enterResult(state, nowMs); break;
     case "contrapunto":
       phaseIs(state, ["DIA_DEBATE"]); roleMayAct(actor, ["payador"]);
       if (actor.muted || state.payadorUsed || state.mapKey !== "pampa" || !target?.alive ||
@@ -216,7 +271,7 @@ function performAction(state, actor, input, nowMs) {
       if (state.counterpointPlayers.length === 2) {
         state.payadorUsed = true;
         transition(state, "CONTRAPUNTO", nowMs, state.timing.discussionSeconds);
-        notice(state, "Se abre un Contrapunto. Solo sus dos participantes pueden hablar.");
+        notice(state, "Se abre un Contrapunto. Solo sus dos participantes pueden hablar.", "COUNTERPOINT_OPEN", state.counterpointPlayers);
       }
       break;
     case "senalar_contrapunto":
@@ -224,15 +279,27 @@ function performAction(state, actor, input, nowMs) {
       if (actor.muted || !target?.alive || !state.counterpointPlayers.includes(target.uid)) reject("invalid-counterpoint");
       state.counterpointPointed = target.uid;
       beginVote(state, nowMs, false); break;
+    case "listo_votar":
+      phaseIs(state, ["DIA_DEBATE"]);
+      if (!actor.alive) reject("voter-unavailable");
+      if (nowMs < state.phaseStartedAtMs + READY_VOTE_MINIMUM_MS) reject("ready-too-early");
+      record(state, actor, input);
+      maybeOpenVoteEarly(state, nowMs);
+      break;
+    case "cancelar_listo":
+      phaseIs(state, ["DIA_DEBATE"]);
+      if (!actor.alive) reject("voter-unavailable");
+      delete state.actions[`${actor.order}:listo_votar`];
+      break;
     case "desertor_rethink":
       roleMayAct(actor, ["desertor"]);
       phaseIs(state, ["DESERTOR_RECONSIDERACION", "DIA_DEBATE"]);
       if (!canReconsider(state) || ![TOWN, TRAITOR_TEAM, "mantener"].includes(input.team)) reject("reconsideration-unavailable");
-      if (input.team !== "mantener") state.deserterTeam = input.team;
-      state.deserterUsed = true;
-      // During debate this is optional; at the terminal window it must resolve now.
       if (state.phase === "DESERTOR_RECONSIDERACION") {
-        if (!evaluateWinner(state, nowMs)) reject("invalid-reconsideration-state");
+        closeDeserterWindow(state, nowMs, input.team);
+      } else {
+        if (input.team !== "mantener") state.deserterTeam = input.team;
+        state.deserterUsed = true;
       }
       break;
     default: reject("unknown-action");
@@ -287,13 +354,16 @@ function leaveServerGame(current, uid, nowMs) {
   if (!next.winner) {
     leaving.alive = false; leaving.muted = false; leaving.deathCause = "ABANDONO";
     for (const [key, action] of Object.entries(next.actions)) if (action.actorOrder === leaving.order) delete next.actions[key];
+    for (const [key, action] of Object.entries(next.deserterReturn?.actions || {})) {
+      if (action.actorOrder === leaving.order) delete next.deserterReturn.actions[key];
+    }
     if (next.oracleGuestUid === uid) next.oracleGuestUid = null;
     notice(next, `${leaving.name} abandonó la partida.`, "PLAYER_LEFT", [uid]);
     if (!alive(next).length) {
       next.winner = CANCELLED; next.specialVictories = [];
       transition(next, "FINALIZADA", nowMs, 0);
       notice(next, "Partida cancelada: no quedan jugadores.", "MATCH_CANCELLED");
-    } else evaluateWinner(next, nowMs);
+    } else if (!evaluateWinner(next, nowMs)) maybeOpenVoteEarly(next, nowMs);
   }
   next.revision++; next.publicRevision = (current.publicRevision || 1) + 1;
   return {state: next, changed: true};
@@ -308,9 +378,7 @@ function resolveNight(state, nowMs) {
   const oracle = submitted.find((a) => a.action === "invitar_muerto");
   if (oracle) { state.oracleUsed = true; state.oracleGuestUid = player(state, oracle.targetUid)?.left ? null : oracle.targetUid; }
   for (const a of submitted.filter((a) => a.action === "investigar")) {
-    const target = player(state, a.targetUid);
-    state.investigations.push({actorOrder: a.actorOrder, targetUid: target.uid, round: state.round,
-      traitor: target.role.key === "asesino" || target.role.key === "mercenario"}); // Spy reads innocent.
+    rememberInvestigation(state, a.actorOrder, a.targetUid);
   }
   if (victim && !protectedUids.has(victim)) {
     const p = player(state, victim); p.alive = false; p.muted = false; p.deathCause = "NIGHT";
@@ -349,11 +417,19 @@ function resolveVotes(state, nowMs) {
     totals[order] = (totals[order] || 0) + 1;
   }
   state.voteTotals = totals;
+  // Who voted for whom; published only after the vote closes and only if the room shows votes.
+  state.voteBallots = votes.filter((a) => player(state, a.targetUid)?.alive)
+    .map((a) => ({votante: a.actorOrder, objetivo: player(state, a.targetUid).order}));
   const max = Math.max(0, ...Object.values(totals));
   state.tieCandidates = state.players.filter((p) => max > 0 && totals[p.order] === max).map((p) => p.uid);
   state.eliminationUid = state.tieCandidates.length === 1 ? state.tieCandidates[0] : null;
   const acted = votes.map((a) => state.players.find((p) => p.order === a.actorOrder).uid);
-  transition(state, "RECUENTO_VOTOS", nowMs, state.timing.transitionSeconds);
+  // With visible ballots the usual table places one seal per vote (about 0.45 s each, plus the
+  // Mayor's second seal and the Payador's pointing); give that ceremony its time before the result.
+  const seals = state.voteBallots.length + (state.mayorUid ? 1 : 0) + (state.counterpointPointed ? 1 : 0);
+  const recountSeconds = state.config?.votosIndividuales !== false && state.voteBallots.length ?
+    Math.max(state.timing.transitionSeconds, Math.min(12, Math.ceil(2 + 0.45 * seals))) : state.timing.transitionSeconds;
+  transition(state, "RECUENTO_VOTOS", nowMs, recountSeconds);
   if (state.eliminationUid) notice(state, `${player(state, state.eliminationUid).name} recibió la mayoría de los votos.`,
     "VOTE_MAJORITY", [state.eliminationUid]);
   else if (state.tieCandidates.length > 1) notice(state,
@@ -366,7 +442,7 @@ function afterVoteCount(state, nowMs) {
   state.tieCandidates = state.tieCandidates.filter((uid) => player(state, uid)?.alive);
   if (!player(state, state.eliminationUid)?.alive) state.eliminationUid = null;
   if (state.eliminationUid || state.tieCandidates.length < 2) {
-    transition(state, "RESULTADO", nowMs, state.timing.transitionSeconds);
+    enterResult(state, nowMs);
   } else if (state.voteRound === 1) {
     beginVote(state, nowMs, true);
   } else {
@@ -374,8 +450,8 @@ function afterVoteCount(state, nowMs) {
     const incapacityPublic = mayor && ((!mayor.alive && (state.config.revelarRolesAlMorir || state.mayorUid === mayor.uid)) ||
       (mayor.muted && state.mayorUid === mayor.uid));
     if (!mayor || incapacityPublic) {
-      transition(state, "RESULTADO", nowMs, state.timing.transitionSeconds);
       notice(state, "El empate se repitió. Nadie será expulsado esta jornada.", "TIE_NO_EXPULSION");
+      enterResult(state, nowMs);
     } else if (!mayor.alive || mayor.muted) {
       // Same public window as a capable hidden Mayor; inability must not disclose his role.
       transition(state, "ALCALDE_DESEMPATE", nowMs, state.timing.votingSeconds);
@@ -387,9 +463,9 @@ function afterVoteCount(state, nowMs) {
       state.tieCandidates = state.tieCandidates.filter((u) => u !== mayor.uid);
       if (state.tieCandidates.length === 1) {
         state.voteRound = 4; state.eliminationUid = state.tieCandidates[0];
-        transition(state, "RESULTADO", nowMs, state.timing.transitionSeconds);
         notice(state, "Corrupción en el pueblo: el Alcalde evitó su expulsión y el otro empatado será expulsado.",
           "MAYOR_CORRUPTION_EXPULSION", [mayor.uid, state.eliminationUid]);
+        enterResult(state, nowMs);
       } else {
         transition(state, "ALCALDE_DESEMPATE", nowMs, state.timing.votingSeconds);
         notice(state, "Corrupción en el pueblo: el Alcalde evitó su expulsión y debe decidir entre los otros empatados.",
@@ -401,25 +477,53 @@ function afterVoteCount(state, nowMs) {
     }
   }
 }
-function resolveResult(state, nowMs) {
+function enterResult(state, nowMs) {
+  const expelled = player(state, state.eliminationUid);
+  const seconds = expelled?.alive ? Math.max(state.timing.transitionSeconds, expelled.role.key === "bufon" ? 12 : 8) :
+    state.timing.transitionSeconds;
+  transition(state, "RESULTADO", nowMs, seconds);
+  // Death, its event and special victory are committed in the same projection.
+  // Waiting until the next night loses this round's event and can skip the death
+  // altogether when a departure opens the Desertor window during RESULTADO.
+  applyResultElimination(state);
+}
+function applyResultElimination(state) {
   const expelled = player(state, state.eliminationUid);
   if (expelled?.alive) {
     expelled.alive = false; expelled.muted = false; expelled.deathCause = "VOTE";
     notice(state, `${expelled.name} fue expulsado por el pueblo.`, "DAY_EXPULSION", [expelled.uid]);
     if (expelled.role.key === "bufon") state.specialVictories.push({uid: expelled.uid, round: state.round, reason: "bufon_expulsado"});
-  } else notice(state, `Día ${state.round}: nadie fue expulsado.`, "DAY_NO_EXPULSION");
+  } else {
+    state.eliminationUid = null;
+    notice(state, `Día ${state.round}: nadie fue expulsado.`, "DAY_NO_EXPULSION");
+  }
+}
+function resolveResult(state, nowMs) {
+  // An in-flight RESULTADO created by the previous deployment still has a living
+  // target. Finish it safely; new matches already applied this at phase entry.
+  if (player(state, state.eliminationUid)?.alive) applyResultElimination(state);
   if (!evaluateWinner(state, nowMs)) { state.round++; startNight(state, nowMs); }
 }
 function deadlineToken(state) {
   return {matchId: state.matchId, phaseIndex: state.phaseIndex, deadlineMs: state.deadlineMs};
 }
-function expirePhase(current, token, nowMs) {
+function assertPhaseProgress(current, next, nowMs) {
+  if (!(next.phaseIndex > current.phaseIndex || next.winner) ||
+      (!next.winner && (!Number.isSafeInteger(next.deadlineMs) || next.deadlineMs <= nowMs))) reject("phase-stuck");
+}
+function expirePhase(current, token, nowMs, {chooseRandomInt = randomInt} = {}) {
   if (!Number.isSafeInteger(nowMs) || nowMs <= 0) reject("invalid-server-time");
   if (current.deadlineMs === null || !token || token.matchId !== current.matchId || token.phaseIndex !== current.phaseIndex ||
       token.deadlineMs !== current.deadlineMs || current.winner || nowMs < current.deadlineMs) return {state: current, changed: false};
   const next = structuredClone(current);
   switch (next.phase) {
-    case "REPARTO": startNight(next, nowMs); break;
+    case "REPARTO":
+      if (!next.deserterTeam && alive(next).some((p) => p.role.key === "desertor")) {
+        const choice = chooseRandomInt(2);
+        if (choice !== 0 && choice !== 1) reject("invalid-random-choice");
+        next.deserterTeam = choice === 0 ? TOWN : TRAITOR_TEAM;
+      }
+      startNight(next, nowMs); break;
     case "NOCHE": resolveNight(next, nowMs); break;
     case "AMANECER": transition(next, "DIA_DEBATE", nowMs, next.timing.discussionSeconds); break;
     case "DIA_DEBATE": case "CONTRAPUNTO": beginVote(next, nowMs, false); break;
@@ -427,12 +531,13 @@ function expirePhase(current, token, nowMs) {
     case "RECUENTO_VOTOS": afterVoteCount(next, nowMs); break;
     case "ALCALDE_DESEMPATE":
       next.eliminationUid = null;
-      transition(next, "RESULTADO", nowMs, next.timing.transitionSeconds);
-      notice(next, "El Alcalde no decidió el empate. Nadie será expulsado."); break;
+      notice(next, "El Alcalde no decidió el empate. Nadie será expulsado.", "MAYOR_NO_DECISION");
+      enterResult(next, nowMs); break;
     case "RESULTADO": resolveResult(next, nowMs); break;
-    case "DESERTOR_RECONSIDERACION": next.deserterUsed = true; evaluateWinner(next, nowMs); break;
+    case "DESERTOR_RECONSIDERACION": closeDeserterWindow(next, nowMs); break;
     default: reject("unknown-phase");
   }
+  assertPhaseProgress(current, next, nowMs);
   next.revision++;
   next.publicRevision = (current.publicRevision || 1) + 1;
   return {state: next, changed: true};
@@ -447,18 +552,23 @@ function projectServerGame(state) {
     protocolVersion: 3, authorityMode: "server", versionEstado: 3, matchId: state.matchId,
     revision: state.publicRevision || 1, fase: state.phase, phaseIndex: state.phaseIndex, ronda: state.round,
     limiteFaseEpochMs: state.deadlineMs, anuncioPublico: state.announcement, ganador: state.winner,
-    eventosPublicos: state.events,
+    eventosPublicos: state.events.filter((event) => event.ronda === state.round),
     alcaldeRevelado: state.mayorUid, alcaldeCorrupcion: state.mayorCorruption,
     jugadoresContrapunto: state.counterpointPlayers,
     sospechaContrapunto: state.counterpointPointed, invitadoOraculo: state.oracleGuestUid,
     rondaVoto: state.voteRound, empateVoto: state.tieCandidates, expulsadoDia: state.eliminationUid,
     // Votes and tally stay hidden until the voting window closes.
     votosTotales: isVoting(state) ? null : state.voteTotals,
+    votosIndividuales: !isVoting(state) && state.config?.votosIndividuales !== false && state.voteBallots?.length ?
+      state.voteBallots : null,
+    listosVotar: state.phase === "DIA_DEBATE" && !state.winner ? {...readyToVote(state),
+      desdeEpochMs: state.phaseStartedAtMs + READY_VOTE_MINIMUM_MS} : null,
     desertorReconsideracion: state.phase === "DESERTOR_RECONSIDERACION" ? {abierta: true, limiteEpochMs: state.deadlineMs} : null,
-    ...(terminal ? {desertorBando: state.deserterTeam, victoriasEspeciales: state.specialVictories.map((v) => ({
+    ...(terminal ? {desertorBando: state.deserterTeam} : {}),
+    victoriasEspeciales: state.specialVictories.map((v) => ({
       key: `${state.matchId}:${v.uid}:bufon`, jugador: player(state, v.uid).name,
       rol: "bufon", ronda: v.round,
-    }))} : {}),
+    })),
     jugadores: state.players.map((p) => ({uidTemporal: p.uid, orden: p.order, nombre: p.name,
       publicId: p.publicId, vivo: p.alive, muteado: p.muted, causaEliminacion: p.deathCause,
       ...(terminal || (!p.alive && state.config.revelarRolesAlMorir) || state.mayorUid === p.uid ? roleView(p) : {})})),
@@ -478,12 +588,15 @@ function projectServerGame(state) {
   const permissions = Object.fromEntries(state.players.map((p) => [p.uid, {
     member: !p.left, matchId: state.matchId, phaseIndex: state.phaseIndex, name: p.name, alive: p.alive,
     traitor: p.alive && TRAITORS.has(p.role.key),
-    publicChat: !p.left && !state.winner && (state.phase === "DIA_DEBATE" && ((p.alive && !p.muted) || state.oracleGuestUid === p.uid) ||
+    publicChat: !p.left && !state.winner && (["DIA_DEBATE", "VOTACION", "DESEMPATE_VOTACION"].includes(state.phase) && p.alive && !p.muted ||
+      state.phase === "DIA_DEBATE" && state.oracleGuestUid === p.uid ||
       state.phase === "CONTRAPUNTO" && p.alive && !p.muted && state.counterpointPlayers.includes(p.uid)),
     traitorChat: !state.winner && p.alive && TRAITORS.has(p.role.key) && state.phase === "NOCHE",
-    deadChat: !p.left && !state.winner && !p.alive,
+    reactions: !p.left && !state.winner && p.alive && !p.muted &&
+      ["DIA_DEBATE", "CONTRAPUNTO", "VOTACION", "RECUENTO_VOTOS", "DESEMPATE_VOTACION", "ALCALDE_DESEMPATE"].includes(state.phase),
+    deadChat: !p.left && !state.winner && !p.alive && !(state.phase === "RESULTADO" && p.uid === state.eliminationUid),
   }]));
   return {public: publicState, private: privateState, permissions};
 }
-module.exports = {GameActionError, MAX_ACTIONS_PER_PHASE, createServerGame, acceptAction, leaveServerGame, expirePhase,
-  deadlineToken, projectServerGame, winnerFor, stableNoise, resolveKillVote, canReconsider, requiredNight};
+module.exports = {GameActionError, MAX_ACTIONS_PER_PHASE, READY_VOTE_MINIMUM_MS, createServerGame, acceptAction, leaveServerGame, expirePhase,
+  deadlineToken, projectServerGame, winnerFor, stableNoise, resolveKillVote, canReconsider, requiredNight, assertPhaseProgress};

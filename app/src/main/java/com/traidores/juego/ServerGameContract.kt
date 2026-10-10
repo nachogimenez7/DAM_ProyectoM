@@ -15,14 +15,23 @@ internal data class ServerGamePlayer(
     val uid: String, val order: Int, val name: String, val publicId: String,
     val alive: Boolean, val muted: Boolean, val deathCause: String, val publicRoleKey: String?
 ) : Serializable
-internal data class ServerGameEvent(val code: String, val round: Int, val players: List<String>, val text: String) : Serializable
+internal data class ServerGameEvent(val seq: Long, val code: String, val round: Int, val players: List<String>, val text: String) : Serializable
 internal data class ServerGamePublic(
     val matchId: String, val phase: ServerGamePhase, val phaseIndex: Int, val revision: Long,
     val round: Int, val deadlineMs: Long?, val announcement: String, val winner: String?,
     val players: List<ServerGamePlayer>, val events: List<ServerGameEvent>, val mayorUid: String?,
     val tieCandidates: List<String>, val counterpointPlayers: List<String>, val oracleGuestUid: String?,
-    val deserterTeam: String?, val specialWinners: List<String>
+    val deserterTeam: String?, val specialWinners: List<String>,
+    val voteTotals: Map<Int, Int> = emptyMap(), val dayEliminationUid: String? = null,
+    val voteRound: Int = 0, val mayorCorruption: Boolean = false,
+    val specialWinnerKeys: Set<String> = emptySet(),
+    /** Who voted for whom (voter order to target order), only after the vote closes and if the room shows votes. */
+    val ballots: List<Pair<Int, Int>> = emptyList(),
+    val counterpointPointedUid: String? = null,
+    val readyToVote: ServerReadyToVote? = null
 ) : Serializable
+/** Usual table's "VOTAR ANTES" aggregate: never identifies who marked. */
+internal data class ServerReadyToVote(val ready: Int, val total: Int, val fromEpochMs: Long) : Serializable
 internal data class ServerGameConfirmedAction(val action: String, val targetUid: String?, val team: String?) : Serializable
 internal data class ServerGamePrivate(
     val matchId: String, val phaseIndex: Int, val revision: Long, val visibleRoleKeys: Map<Int, String>,
@@ -32,7 +41,7 @@ internal data class ServerGamePrivate(
 ) : Serializable
 internal data class ServerGamePermissions(
     val matchId: String, val phaseIndex: Int, val member: Boolean,
-    val publicChat: Boolean, val traitorChat: Boolean, val deadChat: Boolean
+    val publicChat: Boolean, val traitorChat: Boolean, val deadChat: Boolean, val reactions: Boolean = false
 ) : Serializable
 internal data class ServerGameSnapshot(
     val publicState: ServerGamePublic, val privateState: ServerGamePrivate, val permissions: ServerGamePermissions,
@@ -74,6 +83,9 @@ internal object ServerGameParser {
         val data = objectMap(raw)
         require(integer(data, "protocolVersion") == 3L) { "La sala usa otro protocolo online." }
         val phase = ServerGamePhase.valueOf(string(data, "fase"))
+        require(data["authorityMode"] == if (phase == ServerGamePhase.LOBBY) "lobby" else "server") {
+            "La sala perdió la autoridad del servidor."
+        }
         val matchId = string(data, "matchId")
         val roster = entries(data["jugadores"]).map {
             val p = objectMap(it)
@@ -85,18 +97,55 @@ internal object ServerGameParser {
         require(roster.map { it.uid }.distinct().size == roster.size)
         require(roster.map { it.order } == roster.indices.toList())
         val events = entries(data["eventosPublicos"]).takeLast(60).map {
-            val e = objectMap(it); ServerGameEvent(string(e, "codigo"), integer(e, "ronda").toInt(),
+            val e = objectMap(it); ServerGameEvent(integer(e, "seq"), string(e, "codigo"), integer(e, "ronda").toInt(),
                 strings(e["jugadores"]), string(e, "texto"))
+        }
+        require(events.all { it.seq > 0 } && events.zipWithNext().all { (a, b) -> a.seq < b.seq }) {
+            "La secuencia de eventos online no es válida."
         }
         val winner = (data["ganador"] as? String)?.takeIf { it.isNotBlank() }
         require(winner == null || winner in setOf("Pueblo", "Traidores", "Cancelada"))
         val deadline = data["limiteFaseEpochMs"]?.let { integer(data, "limiteFaseEpochMs") }
         require(phase in setOf(ServerGamePhase.FINALIZADA, ServerGamePhase.LOBBY) || deadline != null)
+        val totals = when (val rawTotals = data["votosTotales"]) {
+            null -> emptyMap()
+            is List<*> -> rawTotals.mapIndexedNotNull { index, count -> count?.let { index to it } }.toMap()
+            is Map<*, *> -> rawTotals.entries.associate { entry ->
+                val order = (entry.key as? String)?.toIntOrNull()
+                requireNotNull(order) { "Orden del recuento inválido." } to entry.value
+            }
+            else -> error("Recuento online inválido.")
+        }.mapValues { (_, rawCount) ->
+            val count = rawCount as? Number ?: error("Cantidad de votos inválida.")
+            require(count.toDouble() == count.toInt().toDouble() && count.toInt() in 0..60)
+            count.toInt()
+        }
+        require(totals.keys.all { order -> roster.any { it.order == order } })
+        require(phase !in setOf(ServerGamePhase.VOTACION, ServerGamePhase.DESEMPATE_VOTACION) || totals.isEmpty()) {
+            "El recuento no puede publicarse durante una votación."
+        }
         return ServerGamePublic(matchId, phase, integer(data, "phaseIndex").toInt(), integer(data, "revision"),
             (data["ronda"] as? Number)?.toInt() ?: 1, deadline, data["anuncioPublico"] as? String ?: "", winner,
             roster, events, data["alcaldeRevelado"] as? String, strings(data["empateVoto"]),
             strings(data["jugadoresContrapunto"]), data["invitadoOraculo"] as? String,
-            data["desertorBando"] as? String, entries(data["victoriasEspeciales"]).map { string(objectMap(it), "jugador") })
+            data["desertorBando"] as? String, entries(data["victoriasEspeciales"]).map { string(objectMap(it), "jugador") },
+            totals, (data["expulsadoDia"] as? String)?.also { uid -> require(roster.any { it.uid == uid }) },
+            data["rondaVoto"]?.let { integer(data, "rondaVoto").toInt().also { require(it in 0..4) } } ?: 0,
+            data["alcaldeCorrupcion"] == true,
+            entries(data["victoriasEspeciales"]).mapNotNull { objectMap(it)["key"] as? String }.toSet(),
+            entries(data["votosIndividuales"]).map {
+                val b = objectMap(it); integer(b, "votante").toInt() to integer(b, "objetivo").toInt()
+            }.also { ballots ->
+                require(phase !in setOf(ServerGamePhase.VOTACION, ServerGamePhase.DESEMPATE_VOTACION) || ballots.isEmpty()) {
+                    "Los votos no pueden publicarse durante una votación."
+                }
+                require(ballots.all { (voter, target) -> roster.any { it.order == voter } && roster.any { it.order == target } })
+            },
+            (data["sospechaContrapunto"] as? String)?.takeIf { uid -> roster.any { it.uid == uid } },
+            (data["listosVotar"] as? Map<*, *>)?.let {
+                val r = objectMap(it)
+                ServerReadyToVote(integer(r, "listos").toInt(), integer(r, "total").toInt(), integer(r, "desdeEpochMs"))
+            })
     }
     fun parsePrivate(raw: Any?): ServerGamePrivate {
         val data = objectMap(raw)
@@ -114,7 +163,7 @@ internal object ServerGameParser {
     fun parsePermissions(raw: Any?): ServerGamePermissions {
         val data = objectMap(raw)
         return ServerGamePermissions(string(data, "matchId"), integer(data, "phaseIndex").toInt(), boolean(data, "member"),
-            data["publicChat"] == true, data["traitorChat"] == true, data["deadChat"] == true)
+            data["publicChat"] == true, data["traitorChat"] == true, data["deadChat"] == true, data["reactions"] == true)
     }
     private fun optionalRole(value: Any?): String? {
         if (value == null) return null
@@ -124,7 +173,7 @@ internal object ServerGameParser {
         val n = data[key] as? Number ?: error("Falta $key en el estado online.")
         val result = n.toLong()
         require(n.toDouble() == result.toDouble() && result in 0..Int.MAX_VALUE.toLong() ||
-            key in setOf("limiteFaseEpochMs", "revision") && n.toDouble() == result.toDouble() && result >= 0)
+            key in setOf("limiteFaseEpochMs", "revision", "desdeEpochMs") && n.toDouble() == result.toDouble() && result >= 0)
         return result
     }
     private fun string(data: Map<String, Any?>, key: String) = (data[key] as? String)
@@ -151,7 +200,7 @@ internal class ServerGameInbox(private val ownUid: String, private val matchId: 
     fun acceptPublic(value: ServerGamePublic) {
         require(value.matchId == matchId)
         val old = publicState
-        if (old == null || value.phaseIndex > old.phaseIndex || value.phaseIndex == old.phaseIndex && value.revision >= old.revision) publicState = value
+        if (old == null || value.phaseIndex > old.phaseIndex || value.phaseIndex == old.phaseIndex && value.revision > old.revision) publicState = value
     }
     fun acceptPrivate(value: ServerGamePrivate) {
         require(value.matchId == matchId)
@@ -168,6 +217,33 @@ internal class ServerGameInbox(private val ownUid: String, private val matchId: 
         val human = p.players.singleOrNull { it.uid == ownUid } ?: return null
         require(own.visibleRoleKeys.containsKey(human.order)) { "Falta tu rol privado." }
         return ServerGameSnapshot(p, own, access, ownUid)
+    }
+}
+
+/** Persist only presentation cursors. Their keys never depend on the moving array index. */
+internal data class ServerGamePresentationCursor(
+    val matchId: String, val phaseIndex: Int = -1, val revision: Long = -1, val eventSeq: Long = 0
+) : Serializable
+internal data class ServerGamePresentationUpdate(val phaseChanged: Boolean, val events: List<ServerGameEvent>)
+internal class ServerGamePresentationTracker(restored: ServerGamePresentationCursor? = null) {
+    var cursor: ServerGamePresentationCursor? = restored; private set
+    fun accept(state: ServerGamePublic): ServerGamePresentationUpdate {
+        val old = cursor?.takeIf { it.matchId == state.matchId }
+        if (old != null && (state.phaseIndex < old.phaseIndex ||
+                state.phaseIndex == old.phaseIndex && state.revision < old.revision)) {
+            return ServerGamePresentationUpdate(false, emptyList())
+        }
+        val unseen = state.events.filter { it.seq > (old?.eventSeq ?: 0) }
+        cursor = ServerGamePresentationCursor(state.matchId, state.phaseIndex, state.revision,
+            maxOf(old?.eventSeq ?: 0, state.events.maxOfOrNull { it.seq } ?: 0))
+        return ServerGamePresentationUpdate(old == null || state.phaseIndex > old.phaseIndex, unseen)
+    }
+}
+
+internal object ServerRoomProtocol {
+    fun compatible(version: Long?, authority: String?, generation: Long?, alreadyV3: Boolean): Boolean {
+        val expectsV3 = alreadyV3 || version == 3L || authority in setOf("server", "lobby") || generation != null
+        return !expectsV3 || version == 3L && authority in setOf(null, "server", "lobby")
     }
 }
 
@@ -204,6 +280,11 @@ internal object ServerGameActionPolicy {
             choices += ServerGameActionOption("desertor_rethink", "MANTENER BANDO", team = "mantener")
             choices += ServerGameActionOption("desertor_rethink", "CAMBIAR A ${if (own.deserterTeam == "Pueblo") "TRAIDORES" else "PUEBLO"}",
                 team = if (own.deserterTeam == "Pueblo") "Traidores" else "Pueblo")
+        }
+        // Usual table: every living player, muted ones too, can ask to vote early after ten seconds.
+        p.readyToVote?.takeIf { p.phase == ServerGamePhase.DIA_DEBATE && nowMs >= it.fromEpochMs }?.let {
+            choices += if (own.confirmed.any { it.action == "listo_votar" }) ServerGameActionOption("cancelar_listo", "CANCELAR")
+                else ServerGameActionOption("listo_votar", "LISTOS PARA VOTAR")
         }
         if (human.muted) return choices // Deserter's decision is private and remains permitted.
         if (p.phase in setOf(ServerGamePhase.VOTACION, ServerGamePhase.DESEMPATE_VOTACION))

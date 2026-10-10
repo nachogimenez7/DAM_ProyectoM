@@ -1,0 +1,193 @@
+{
+ "public": {
+  "protocolVersion": 3,
+  "authorityMode": "server",
+  "versionEstado": 3,
+  "matchId": "match-1",
+  "revision": 4,
+  "fase": "DIA_DEBATE",
+  "phaseIndex": 3,
+  "ronda": 1,
+  "limiteFaseEpochMs": 1800000194000,
+  "anuncioPublico": "J0 murió durante la noche.",
+  "eventosPublicos": [
+   {
+    "seq": 1,
+    "codigo": "NIGHT_START",
+    "ronda": 1,
+    "texto": "Noche 1."
+   },
+   {
+    "seq": 2,
+    "codigo": "NIGHT_DEATH",
+    "ronda": 1,
+    "jugadores": [
+     "p0"
+    ],
+    "texto": "J0 murió durante la noche."
+   }
+  ],
+  "alcaldeCorrupcion": false,
+  "rondaVoto": 0,
+  "jugadores": [
+   {
+    "uidTemporal": "p0",
+    "orden": 0,
+    "nombre": "J0",
+    "publicId": "1",
+    "vivo": false,
+    "muteado": false,
+    "causaEliminacion": "NIGHT"
+   },
+   {
+    "uidTemporal": "p1",
+    "orden": 1,
+    "nombre": "J1",
+    "publicId": "2",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p2",
+    "orden": 2,
+    "nombre": "J2",
+    "publicId": "3",
+    "vivo": true,
+    "muteado": true,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p3",
+    "orden": 3,
+    "nombre": "J3",
+    "publicId": "4",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p4",
+    "orden": 4,
+    "nombre": "J4",
+    "publicId": "5",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p5",
+    "orden": 5,
+    "nombre": "J5",
+    "publicId": "6",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p6",
+    "orden": 6,
+    "nombre": "J6",
+    "publicId": "7",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   },
+   {
+    "uidTemporal": "p7",
+    "orden": 7,
+    "nombre": "J7",
+    "publicId": "8",
+    "vivo": true,
+    "muteado": false,
+    "causaEliminacion": "NONE"
+   }
+  ]
+ },
+ "private": {
+  "p3": {
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "rolesVisibles": [
+    {
+     "orden": 3,
+     "rolKey": "asesino",
+     "rolNombre": "Asesino",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_asesino_gaucho"
+    },
+    {
+     "orden": 4,
+     "rolKey": "mercenario",
+     "rolNombre": "Mercenario",
+     "rolEquipo": "Traidores",
+     "rolImagen": "rol_mercenario_gaucho"
+    }
+   ],
+   "revision": 1
+  },
+  "p2": {
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "rolesVisibles": [
+    {
+     "orden": 2,
+     "rolKey": "medico",
+     "rolNombre": "Médica",
+     "rolEquipo": "Pueblo",
+     "rolImagen": "rol_medico_gaucho"
+    }
+   ],
+   "revision": 1
+  },
+  "p0": {
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "rolesVisibles": [
+    {
+     "orden": 0,
+     "rolKey": "aldeano",
+     "rolNombre": "Aldeano",
+     "rolEquipo": "Pueblo",
+     "rolImagen": "rol_aldeano_gaucho"
+    }
+   ],
+   "revision": 1
+  }
+ },
+ "permissions": {
+  "p3": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "name": "J3",
+   "alive": true,
+   "traitor": true,
+   "publicChat": true,
+   "traitorChat": false,
+   "deadChat": false
+  },
+  "p2": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "name": "J2",
+   "alive": true,
+   "traitor": false,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": false
+  },
+  "p0": {
+   "member": true,
+   "matchId": "match-1",
+   "phaseIndex": 3,
+   "name": "J0",
+   "alive": false,
+   "traitor": false,
+   "publicChat": false,
+   "traitorChat": false,
+   "deadChat": true
+  }
+ }
+}

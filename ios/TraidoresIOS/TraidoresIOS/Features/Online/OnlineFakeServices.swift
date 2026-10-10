@@ -370,9 +370,19 @@ enum FakeOnlineScenario: String, CaseIterable {
         try await updateMe { $0.with(isReady: ready) }
     }
 
+    // Same as the Firebase adapter: the host picks the map and everyone marks «listo» again.
     func voteMap(_ key: String) async throws {
         guard OnlineContract.mapKeys.contains(key) else { throw OnlineError.invalidRoomConfiguration }
-        try await updateMe { $0.with(mapVote: key) }
+        guard let room = snapshot, room.activeHostId == world.identity?.uid else {
+            throw OnlineError.server("El mapa lo elige el anfitrión.")
+        }
+        await world.pause()
+        let updated = RoomSnapshot(id: room.id, code: room.code, name: room.name, mapKey: key,
+                                   expected: room.expected, isPublic: room.isPublic, accountsOnly: room.accountsOnly,
+                                   hostId: room.hostId, activeHostId: room.activeHostId, config: room.config,
+                                   players: room.players.map { $0.with(isReady: false) }, phase: room.phase)
+        world.rooms[room.id] = updated
+        snapshot = updated
     }
 
     func updateConfig(_ config: LobbyConfig) async throws {

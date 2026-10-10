@@ -101,6 +101,12 @@ struct LocalLobbyView: View {
     @State private var testOptions = LocalTestOptions.standard
     @State private var editingBot: Int?
     @State private var editedName = ""
+    // Profile window: tap a bot's avatar or your own row (the bot's name stays the rename button).
+    @State private var profileShown: PlayerProfileSnapshot?
+    @AppStorage("menu.profileTheme", store: .menuStore) private var profileTheme = "classic"
+    @AppStorage("menu.profileEmotes", store: .menuStore) private var profileEmoteIDs =
+        "griego_enojado,griego_triste,griego_contento,griego_sospechoso"
+    @Environment(OnlineServices.self) private var online: OnlineServices?
 
     init(difficulty: BotDifficulty) {
         self.difficulty = difficulty
@@ -141,6 +147,13 @@ struct LocalLobbyView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
+            }
+            if let profileShown, !playing {
+                PlayerProfileCard(profile: profileShown) {
+                    withAnimation(.easeOut(duration: 0.15)) { self.profileShown = nil }
+                }
+                .transition(.opacity)
+                .zIndex(2)
             }
         }
         .foregroundStyle(TraidoresTheme.text)
@@ -404,10 +417,21 @@ struct LocalLobbyView: View {
 
     private var playersPanel: some View {
         VStack(spacing: 8) {
-            playerRow(humanName, human: true)
+            Button { showOwnProfile() } label: { playerRow(humanName, human: true) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ver mi perfil, \(humanName)")
+                .accessibilityIdentifier("lobby.ownProfile")
             ForEach(Array(botNames.enumerated()), id: \.offset) { index, botName in
                 HStack(spacing: 10) {
-                    GamePlayerAvatar(name: botName, isHuman: false, size: 34, avatarKey: botAvatarKeys[index])
+                    Button { showBotProfile(index) } label: {
+                        // Same 34 pt avatar as your own row; only the touch area grows to 44 pt.
+                        GamePlayerAvatar(name: botName, isHuman: false, size: 34, avatarKey: botAvatarKeys[index])
+                            .padding(5).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(-5)
+                    .accessibilityLabel("Ver perfil de \(botName)")
+                    .accessibilityIdentifier("lobby.botProfile.\(index)")
                     Button {
                         editingBot = index
                         editedName = botName
@@ -443,7 +467,7 @@ struct LocalLobbyView: View {
                 .frame(minHeight: 56)
                 .background(TraidoresTheme.ink.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("Tocá el nombre de un bot para editarlo.")
+            Text("Tocá el avatar para ver su perfil y el nombre para editarlo.")
                 .font(.caption2)
                 .foregroundStyle(TraidoresTheme.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -451,6 +475,21 @@ struct LocalLobbyView: View {
         .padding(10)
         .background(TraidoresTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14))
         .overlay { RoundedRectangle(cornerRadius: 14).stroke(TraidoresTheme.border) }
+    }
+
+    private func showOwnProfile() {
+        var publicId: String?
+        if case .ready(let identity) = online?.account.access, identity.isRegistered { publicId = identity.publicId }
+        let snapshot = PlayerProfileSnapshot.own(name: humanName, storedProfile: storedProfile, theme: profileTheme,
+                                                 emoteIDs: profileEmoteIDs, publicId: publicId)
+        withAnimation(.easeOut(duration: 0.15)) { profileShown = snapshot }
+    }
+
+    private func showBotProfile(_ index: Int) {
+        guard botNames.indices.contains(index), botAvatarKeys.indices.contains(index) else { return }
+        let snapshot = BotProfileCatalog.profile(name: botNames[index], avatarKey: botAvatarKeys[index],
+                                                 seat: index + 1, id: "lobby-bot:\(index)")
+        withAnimation(.easeOut(duration: 0.15)) { profileShown = snapshot }
     }
 
     private func playerRow(_ playerName: String, human: Bool) -> some View {
@@ -1909,6 +1948,17 @@ private struct LocalTableView: View {
     // Android's ESPECTADORES channel: eliminated players talk among themselves.
     @State private var spectatorChannel = false
     @State private var spectatorMessages: [TableMessage] = []
+    // Android's spectator choice: once the human is out and the match goes on, offer to keep
+    // watching (with shortened timers) or to go back to the lobby.
+    // Profile window of a player (long press or tap on a card) or of the human (tap on the name).
+    @State private var profileShown: PlayerProfileSnapshot?
+    @State private var profileLongPressConsumedTap = false
+    @AppStorage("menu.localProfile.v1") private var storedProfile = Data()
+    @AppStorage("menu.profileTheme") private var profileTheme = "classic"
+    @Environment(OnlineServices.self) private var online: OnlineServices?
+    @State private var spectatorChoiceOffered = false
+    @State private var showingSpectatorChoice = false
+    @State private var spectatorFastForward = false
     // Android: by day a traitor can reopen the killers' night chat to review the plan.
     @State private var reviewingPlan = false
     @AppStorage("menu.profileEmotes") private var profileEmoteIDs =
@@ -2004,6 +2054,14 @@ private struct LocalTableView: View {
                         .zIndex(2.1)
                 }
 
+                if let profileShown {
+                    PlayerProfileCard(profile: profileShown) {
+                        withAnimation(.easeOut(duration: 0.15)) { self.profileShown = nil }
+                    }
+                    .transition(.opacity)
+                    .zIndex(2.6)
+                }
+
                 if showingRole {
                     roleOverlay(game.human.role)
                         .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -2079,6 +2137,7 @@ private struct LocalTableView: View {
                 showingEmotePalette = false
                 if store.game?.isNight == true { reviewingPlan = false }
                 votingChatOpen = false
+                profileShown = nil
                 if let current = store.game, !current.isNight, current.phase != .dawn { stampedMark = nil }
                 if !game.isNight && !isTalkPhase(game) && !isVotingChat(game) {
                     showingChat = false
@@ -2193,6 +2252,24 @@ private struct LocalTableView: View {
             .modifier(roleDialogs(game))
             .task(id: botEmoteKey(game)) { await runBotEmotes(for: game) }
             .onChange(of: game.human.alive) { _, alive in if !alive { spectatorChannel = true } }
+            .onChange(of: shouldOfferSpectatorChoice(game), initial: true) { _, offer in
+                guard offer else { return }
+                spectatorChoiceOffered = true
+                // Hold the clocks while the player reads, like Android's pauseCountdown().
+                nightCountdownTask?.cancel(); nightSkipTask?.cancel()
+                phaseCountdownTask?.cancel()
+                remainingNightSeconds = nil; remainingPhaseSeconds = nil
+                nightSkipReady = false
+                showingSpectatorChoice = true
+            }
+            .gameDialog(isPresented: $showingSpectatorChoice) {
+                GameDialogCard(title: "TE ELIMINARON",
+                               message: "Quedaste fuera de la partida. Podés quedarte a mirar cómo sigue o volver a la sala.",
+                               negative: "VOLVER A LA SALA", positive: "SEGUIR MIRANDO",
+                               onNegative: { showingSpectatorChoice = false; dismissMatch() },
+                               onPositive: { continueWatching() },
+                               identifier: "table.spectatorChoice") { EmptyView() }
+            }
             .animation(.easeInOut(duration: 0.18), value: showingRole)
             // Haptics follow Android's "Vibración al interactuar" (off by default): picking a
             // target, each new period, the last seconds of a timer and the end of the match.
@@ -2335,15 +2412,16 @@ private struct LocalTableView: View {
         nightSkipTask?.cancel()
         nightSkipReady = false
         let phaseIndex = game.phaseIndex
-        let duration = game.effectiveTiming.nightSeconds
+        let duration = spectatorFastForward ? min(game.effectiveTiming.nightSeconds, 5) : game.effectiveTiming.nightSeconds
         remainingNightSeconds = duration
+        let skipsAutomatically = game.testOptions.quickMatch || spectatorFastForward
         if game.legalTargets(for: 0).isEmpty {
             nightSkipTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(game.testOptions.quickMatch ? 1_200 : 3_500))
+                try? await Task.sleep(for: .milliseconds(skipsAutomatically ? 1_200 : 3_500))
                 guard !Task.isCancelled, let current = store.game,
                       current.phaseIndex == phaseIndex, current.isNight,
                       current.legalTargets(for: 0).isEmpty else { return }
-                if current.testOptions.quickMatch {
+                if skipsAutomatically {
                     transitionCurtain = true
                     store.skipPassiveNight(revision: phaseIndex)
                     clearCurtainIfPeriodUnchanged(from: current)
@@ -2368,7 +2446,7 @@ private struct LocalTableView: View {
 
     private func armNightPhaseIfReady(_ game: ClassicGame) {
         guard game.isNight, activeTransition == nil, pendingTransition == nil,
-              privateFeedback == nil,
+              privateFeedback == nil, !showingSpectatorChoice,
               lastTransitionKey == transitionSpec(for: game).key,
               remainingNightSeconds == nil else { return }
         startNightCountdown(for: game)
@@ -2377,17 +2455,18 @@ private struct LocalTableView: View {
     private func armTimedPhaseIfReady(_ game: ClassicGame) {
         guard isTalkPhase(game) || game.phase == .voting || game.phase == .tieVote || game.phase == .mayorTieBreak,
               activeTransition == nil, pendingTransition == nil,
-              privateFeedback == nil, dawnAnnouncements.isEmpty,
+              privateFeedback == nil, dawnAnnouncements.isEmpty, !showingSpectatorChoice,
               lastTransitionKey == transitionSpec(for: game).key,
               remainingPhaseSeconds == nil else { return }
         let phaseIndex = game.phaseIndex
         let phase = game.phase
         // The Contrapunto is a short duel inside the day: half the debate, at least 15 s.
-        let duration = phase == .discussion ? game.effectiveTiming.discussionSeconds
+        let fullDuration = phase == .discussion ? game.effectiveTiming.discussionSeconds
             : phase == .counterpoint ? max(15, game.effectiveTiming.discussionSeconds / 2)
             // The tie-break gets more time to argue between the tied players.
             : phase == .tieVote ? max(30, game.effectiveTiming.votingSeconds)
             : game.effectiveTiming.votingSeconds
+        let duration = spectatorFastForward ? min(fullDuration, 8) : fullDuration
         remainingPhaseSeconds = duration
         phaseCountdownTask?.cancel()
         phaseCountdownTask = Task { @MainActor in
@@ -2582,10 +2661,12 @@ private struct LocalTableView: View {
         let silenceCooldown = game.phase == .mercenaryNight && game.human.role == .mercenary &&
             player.alive && player.id != 0 && game.isSilenceOnCooldown(player.id)
         return Button {
+            // A long press that opened the profile must not also act when the finger lifts.
+            if profileLongPressConsumedTap { profileLongPressConsumedTap = false; return }
             if dismissChatKeyboard() { return }
             if ability != nil { completeAbilityPick(player, game: game); return }
             if pickable { completeQuickPick(player, game: game); return }
-            guard actionable else { return }
+            guard actionable else { showProfile(of: player, game: game); return }
             if game.phase == .voting || game.phase == .tieVote {
                 castVote(for: player.id, in: game)
             } else {
@@ -2716,14 +2797,37 @@ private struct LocalTableView: View {
         // A disabled Button dims its entire label in SwiftUI. Living players
         // must remain fully visible even when this phase has no target action.
         .buttonStyle(.plain).disabled(silenceCooldown)
-        .allowsHitTesting(actionable || pickable || chatInputFocused)
+        .simultaneousGesture(LongPressGesture(minimumDuration: 0.4).onEnded { _ in
+            profileLongPressConsumedTap = true
+            showProfile(of: player, game: game)
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(700))
+                profileLongPressConsumedTap = false
+            }
+        })
         .opacity(silenceCooldown ? 0.45 : !player.alive ? 0.72 : quickPick != nil && !pickable ? 0.5 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(cardLabel)
         .accessibilityValue(silenceCooldown ? "No podés silenciarlo dos noches seguidas" :
                             pickable ? "Elegir para el mensaje" : actionable ? "Objetivo disponible" : "")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: "Ver perfil") { showProfile(of: player, game: game) }
         .accessibilityIdentifier("table.player.\(player.id)")
+    }
+
+    /// Profile window of a table player; the human opens their own. Never includes the dealt role.
+    private func showProfile(of player: ClassicPlayer, game: ClassicGame) {
+        guard game.phase != .assignment else { return }
+        chatInputFocused = false
+        let snapshot = player.id == game.human.id ? ownProfileSnapshot(game) : BotProfileCatalog.profile(for: player)
+        withAnimation(.easeOut(duration: 0.15)) { profileShown = snapshot }
+    }
+
+    private func ownProfileSnapshot(_ game: ClassicGame) -> PlayerProfileSnapshot {
+        var publicId: String?
+        if case .ready(let identity) = online?.account.access, identity.isRegistered { publicId = identity.publicId }
+        return .own(name: game.human.name, storedProfile: storedProfile, theme: profileTheme,
+                    emoteIDs: profileEmoteIDs, publicId: publicId)
     }
 
     private func publicCardImage(_ player: ClassicPlayer, game: ClassicGame) -> String {
@@ -3156,11 +3260,19 @@ private struct LocalTableView: View {
                 .accessibilityIdentifier("table.player.0")
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            GamePlayerAvatar(name: game.human.name, isHuman: true, size: 28)
-                            Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
-                                .lineLimit(1)
+                        Button {
+                            if !dismissChatKeyboard() { showProfile(of: game.human, game: game) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                GamePlayerAvatar(name: game.human.name, isHuman: true, size: 28)
+                                Text(game.human.name).font(.subheadline.bold()).foregroundStyle(TraidoresTheme.gold)
+                                    .lineLimit(1)
+                            }
+                            .frame(minHeight: 32).contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ver mi perfil, \(game.human.name)")
+                        .accessibilityIdentifier("table.ownProfile")
                         Text(humanCardRevealed || game.revealedMayorID == 0
                              ? game.human.role.classicTitle(on: game.map).uppercased() : "CARTA OCULTA")
                             .font(.caption2.bold()).foregroundStyle(TraidoresTheme.secondary)
@@ -3525,6 +3637,30 @@ private struct LocalTableView: View {
         case .jester(let id):
             JesterVictoryView(name: game.players[id].name, roleTitle: RoleKey.jester.classicTitle(on: game.map),
                               humanWon: id == 0, onContinue: dismissDawnAnnouncement, onLeave: dismissMatch)
+        }
+    }
+
+    /// Android's maybeOfferSpectatorChoice: only once, never over a reveal, a transition, the
+    /// vote ceremony or the result, and not for the Jester who already got his own choice.
+    private func shouldOfferSpectatorChoice(_ game: ClassicGame) -> Bool {
+        !spectatorChoiceOffered && !showingSpectatorChoice
+            && !game.human.alive && game.winner == nil
+            && game.phase != .assignment && game.phase != .dawn
+            && game.phase != .voteCount && game.phase != .result
+            && !game.specialVictories.contains(where: { $0.playerID == 0 })
+            && dawnAnnouncements.isEmpty && privateFeedback == nil
+            && activeTransition == nil && pendingTransition == nil && !transitionCurtain
+    }
+
+    /// Android's enterSpectatorFastForward: the phases run on short clocks from now on.
+    private func continueWatching() {
+        showingSpectatorChoice = false
+        spectatorFastForward = true
+        guard let current = store.game else { return }
+        if current.isNight {
+            armNightPhaseIfReady(current)
+        } else {
+            armTimedPhaseIfReady(current)
         }
     }
 

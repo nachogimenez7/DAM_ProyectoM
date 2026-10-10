@@ -184,7 +184,7 @@ object BotProfileFactory {
     private val roster = mapOf(
         bot(
             "Thiago",
-            "Siempre habla primero y despues revisa si tenia razon.",
+            "Siempre habla primero y después revisa si tenía razón.",
             "pampa_policia",
             "pampa",
             "pampa_policia",
@@ -193,7 +193,7 @@ object BotProfileFactory {
         ),
         bot(
             "Mora",
-            "Escucha mas de lo que dice. Si te mira raro, algo vio.",
+            "Escucha más de lo que dice. Si te mira raro, algo vio.",
             "grecia_oraculo",
             "grecia",
             "grecia_oraculo",
@@ -210,23 +210,23 @@ object BotProfileFactory {
             listOf("gaucho_enojado", "gaucho_sospechoso", "premium_mate", "griego_contento")
         ),
         bot("Valen", "Suele votar tarde, pero pocas veces vota sin motivo.", "grecia_medico", "grecia", "grecia_medico"),
-        bot("Rami", "Tiene cara de inocente y estadisticas que no ayudan a creerle.", "medieval_espia", "medieval", "medieval_espia"),
-        bot("Juli", "Defiende al que nadie defiende y despues pregunta por que sospechan.", "grecia_alcalde", "grecia", "grecia_alcalde"),
-        bot("Santi", "Cuando todos gritan, el cuenta votos.", "medieval_policia", "medieval", "medieval_policia"),
-        bot("Mili", "Le gusta cambiar de opinion justo antes de votar.", "pampa_mercenario", "pampa", "pampa_mercenario"),
+        bot("Rami", "Tiene cara de inocente y estadísticas que no ayudan a creerle.", "medieval_espia", "medieval", "medieval_espia"),
+        bot("Juli", "Defiende al que nadie defiende y después pregunta por qué sospechan.", "grecia_alcalde", "grecia", "grecia_alcalde"),
+        bot("Santi", "Cuando todos gritan, él cuenta votos.", "medieval_policia", "medieval", "medieval_policia"),
+        bot("Mili", "Le gusta cambiar de opinión justo antes de votar.", "pampa_mercenario", "pampa", "pampa_mercenario"),
         bot("Toto", "Juega como si supiera algo. A veces es verdad.", "pampa_payador", "pampa", "pampa_payador"),
-        bot("Agus", "Se rie en los momentos equivocados.", "medieval_bufon", "medieval", "medieval_bufon"),
+        bot("Agus", "Se ríe en los momentos equivocados.", "medieval_bufon", "medieval", "medieval_bufon"),
         bot("Bruno", "Pide pruebas, recibe pruebas y pide pruebas mejores.", "medieval_aldeano", "medieval", "medieval_aldeano"),
         bot("Lola", "Nunca parece apurada, ni cuando la acusan tres a la vez.", "grecia_desertor", "grecia", "grecia_desertor"),
         bot("Fede", "Vota con seguridad incluso cuando no tiene ninguna.", "medieval_asesino", "medieval", "medieval_asesino"),
-        bot("Cata", "Tiene memoria para cada contradiccion del pueblo.", "pampa_alcalde", "pampa", "pampa_alcalde")
+        bot("Cata", "Tiene memoria para cada contradicción del pueblo.", "pampa_alcalde", "pampa", "pampa_alcalde")
     )
 
     private val bios = listOf(
         "Dice que vino a jugar tranquilo, pero anota todo.",
         "No levanta la voz: espera que otro se equivoque.",
-        "Tiene una teoria distinta para cada ronda.",
-        "Si sobrevive dos dias, empieza a dar miedo.",
+        "Tiene una teoría distinta para cada ronda.",
+        "Si sobrevive dos días, empieza a dar miedo.",
         "Nunca admite estar perdido, solo estar observando."
     )
     private val avatarKeys = ProfileAvatarCatalog.keys

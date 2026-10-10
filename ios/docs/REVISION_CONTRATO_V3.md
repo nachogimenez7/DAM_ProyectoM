@@ -122,3 +122,60 @@ a la ronda actual o publicarlo como nodo de solo agregado, y medir los bytes por
 
 Emuladores, Tasks e IAM reales, clientes V3 y partidas entre dispositivos. Las constantes de
 ronda 4 de Android/iOS local las leí; no corrí sus pruebas.
+
+## 5. Tercera vuelta (6/10/2026): recuperación y medición
+
+Sonda sin cambios: N-1, N-3, N-4 y la decisión B (bando aleatorio del servidor al vencer
+REPARTO) siguen abiertos en el árbol actual; la decisión A (abandono = derrota) ya es el
+comportamiento, falta escribirla en el contrato. 55/55 unitarias.
+
+- **N-1 empeora con `repararPartidasV3` (lectura de código).** En la ventana trabada,
+  `expirePhase` devuelve `changed: true` sin avanzar; `writeState` vuelve a poner
+  `recoveryAtMs = deadline viejo + 30 s` (ya vencido) y la publicación entregada lo deja igual.
+  La sala entra en cada corrida del scheduler para siempre: 1 transacción de estado + outbox +
+  publicación por minuto (~1.440 por día) hasta que se borre. Arreglar N-1 antes de desplegar el
+  cron, y agregar una salvaguarda: si `expirePhase` no sube `phaseIndex` ni fija `winner`, no
+  escribir y loguear `online_v3_recovery_stuck`.
+- **N-7 · Eventos sin identificador estable.** `eventosPublicos` es una ventana deslizante de 60
+  sin `seq`; al reconectar el cliente no puede saber cuáles ya animó/sonó (el índice se corre al
+  recortar). Agregar `seq` monótono por partida a cada evento. Clave de única vez en el cliente:
+  `matchId + seq`; las fases, `matchId + phaseIndex`.
+- **Latencia con contención (abierto, de acuerdo con Codex).** p95 local de 7,5–11,6 s con 15
+  jugadores. El servidor toma `nowMs` al recibir la acción, así que un voto tocado a tiempo no se
+  vuelve tardío por reintentos; pero la UI debe mostrar «enviando…» y no dar el voto por
+  confirmado hasta el recibo. Medir en Cloud el costo del limitador (una transacción más por toque).
+
+### Respuesta a los cuatro puntos de presentación
+
+1. Doble empate: iOS local ya tiene ventana de desempate (commit `4f804a3`). En V3 la mesa sigue
+   `fase` + eventos (`TIE_VOTE`, `MAYOR_TIE_WINDOW`, `TIE_NO_EXPULSION`); la ventana del Alcalde
+   se muestra igual para todos, con el mismo texto al vencer, sin consultar el rol.
+2. Cero sin publicación: «Resolviendo…», entradas bloqueadas, `recuperarFaseV3` tras 5 s con la
+   dispersión indicada. `ClassicGame` no se instancia como árbitro en salas V3.
+3. Reconexión: aplicar solo la proyección con mismo `matchId` y `phaseIndex`/`revision` mayor;
+   reproducir animaciones solo de eventos con `seq` no visto (requiere N-7).
+4. Revancha: `matchId` nuevo = partida nueva; se descarta todo el estado local de la anterior
+   (marcas, sellos, chat, sonidos pendientes).
+
+## 6. Cuarta vuelta (7/10/2026): verificación de N-1, N-3, N-4, N-7, A y B
+
+Todo verificado sobre el árbol actual. 61/61 unitarias; sonda sin cambios: la ventana rota por
+un abandono vuelve a `DIA_DEBATE` y los vencimientos siguientes avanzan (`VOTACION`, `RECUENTO_VOTOS`).
+No corrí emuladores ni reglas; para N-3 leí `serverRoomFieldsUnchanged` y la restricción de alta.
+
+| ID | Estado | Comprobación |
+|---|---|---|
+| N-1 | Cerrado | `deserterReturn`, `resumeAfterDeserterWindow`, `assertPhaseProgress` → `phase-stuck`; el cron registra `online_v3_recovery_stuck` sin escribir |
+| N-3 | Cerrado (lectura) | marcadores V3 inmutables en todas las ramas de update, no se pueden crear ni borrar en `lobby` |
+| N-4 | Cerrado | sin valor por defecto; la sonda ve `AFK_EXPULSION`, `NIGHT_START`, `VICTORY` |
+| N-7 | Cerrado | `seq` por partida; solo se publica la ronda actual |
+| A | Cerrado | prueba «dead Villager and expelled Jester…» |
+| B | Cerrado | `randomInt(2)` al vencer REPARTO; igual entre reintentos (`retrySafeRandom`) |
+
+Notas menores, no bloquean:
+- Como `eventosPublicos` trae solo la ronda actual, quien reconecta después de un cambio de ronda
+  no ve los eventos anteriores. El adaptador iOS reconstruye la mesa desde el estado (`jugadores`,
+  `fase`) y usa los eventos solo para presentar; no anima lo que no vio.
+- En el lobby, un jugador puede borrar su `protocolVersion` y bloquear el inicio
+  (`incompatible-client`). Es una molestia, no una fuga; el creador lo puede expulsar. Si se
+  quiere evitar, que la regla de jugador en una sala V3 exija `protocolVersion == 3`.

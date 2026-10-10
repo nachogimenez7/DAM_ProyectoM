@@ -70,7 +70,9 @@ object PlayerProfileDialog {
                     .coerceAtMost(dp(activity, 760))
                 val height = (activity.resources.displayMetrics.heightPixels - dp(activity, 24))
                     .coerceAtMost(dp(activity, 640))
-                setLayout(width, height)
+                // Una tarjeta que solo muestra el perfil se ajusta a su contenido; la propia
+                // (con EDITAR) conserva la altura fija.
+                setLayout(width, if (canEdit) height else ViewGroup.LayoutParams.WRAP_CONTENT)
                 setDimAmount(0.62f)
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
@@ -126,7 +128,7 @@ object PlayerProfileDialog {
             ?: CosmeticPilot.THEME_CLASSIC
         val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         val rootScroll = ScrollView(activity).apply {
-            isFillViewport = !compact
+            isFillViewport = !compact && canEdit
             background = if (decorated) {
                 CosmeticPilot.profilePanelOverlay(activity, cosmeticTheme)
             } else {
@@ -145,9 +147,9 @@ object PlayerProfileDialog {
             )
         )
 
-        // El mini lleva el CERRAR abajo (mas al alcance del pulgar en partida); el completo
-        // lo mantiene arriba a la derecha.
-        if (!compact) {
+        // El mini y la tarjeta de otro jugador llevan el CERRAR abajo (mas al alcance del pulgar
+        // en partida); el perfil propio, con EDITAR, lo mantiene arriba a la derecha.
+        if (!compact && canEdit) {
             root.addView(topBar(activity, cosmeticTheme))
         }
         root.addView(bannerView(activity, profile, compact))
@@ -157,7 +159,9 @@ object PlayerProfileDialog {
                 setPadding(0, dp(activity, 2), 0, dp(activity, 6))
             })
         }
-        root.addView(statsRow(activity, profile.stats, compact, cosmeticTheme))
+        if (compact) {
+            root.addView(statsRow(activity, profile.stats, compact, cosmeticTheme))
+        }
 
         if (profile.bio.isNotBlank()) {
             root.addView(sectionTitle(activity, "DESCRIPCIÓN", cosmeticTheme))
@@ -181,18 +185,23 @@ object PlayerProfileDialog {
             if (actions.isNotEmpty()) root.addView(moderationButtons(activity, actions, cosmeticTheme))
             root.addView(miniButtons(activity, cosmeticTheme))
         } else {
+            // Mismo orden que la tarjeta de iOS: rol favorito, logros, emotes y estadisticas.
             root.addView(sectionTitle(activity, "ROL FAVORITO", cosmeticTheme))
             root.addView(roleRow(activity, profile.favoriteRoleKey, cosmeticTheme))
-            root.addView(sectionTitle(activity, "EMOTES", cosmeticTheme))
-            root.addView(emoteRow(activity, profile.emoteIds, cosmeticTheme))
             root.addView(sectionTitle(activity, "LOGROS DESTACADOS", cosmeticTheme))
             root.addView(achievementRow(activity, profile.featuredAchievementIds, cosmeticTheme))
+            root.addView(sectionTitle(activity, "EMOTES", cosmeticTheme))
+            root.addView(emoteRow(activity, profile.emoteIds, cosmeticTheme))
+            root.addView(sectionTitle(activity, "ESTADÍSTICAS", cosmeticTheme))
+            root.addView(statsRow(activity, profile.stats, compact, cosmeticTheme))
             if (actions.isNotEmpty()) {
                 root.addView(sectionTitle(activity, "ACCIONES SOBRE ESTE JUGADOR", cosmeticTheme))
                 root.addView(moderationButtons(activity, actions, cosmeticTheme))
             }
             if (canEdit) {
                 root.addView(editButton(activity, cosmeticTheme))
+            } else {
+                root.addView(bottomCloseButton(activity, cosmeticTheme))
             }
         }
 
@@ -750,6 +759,32 @@ object PlayerProfileDialog {
         }
     }
 
+    private fun bottomCloseButton(activity: Activity, cosmeticTheme: String): View {
+        val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
+        return Button(activity).apply {
+            tag = "close"
+            text = "CERRAR"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            minHeight = 0
+            minWidth = 0
+            setTextColor(Color.parseColor("#211407"))
+            background = if (decorated) {
+                CosmeticPilot.primaryButton(activity, cosmeticTheme)
+            } else {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(activity, 10).toFloat()
+                    setColor(activity.getColor(R.color.accent_gold))
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(activity, 46)
+            ).apply { topMargin = dp(activity, 14) }
+        }
+    }
+
     private fun editButton(activity: Activity, cosmeticTheme: String): View {
         val decorated = CosmeticPilot.isDecoratedTheme(cosmeticTheme)
         return Button(activity).apply {
@@ -918,7 +953,7 @@ object PlayerProfileDialog {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(activity, 12).toFloat()
-            setColor(Color.parseColor("#F0140F08"))
+            setColor(Color.parseColor("#FF140F08"))
             setStroke(dp(activity, 1), activity.getColor(R.color.accent_gold))
         }
     }

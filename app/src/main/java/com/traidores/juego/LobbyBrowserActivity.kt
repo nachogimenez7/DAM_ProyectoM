@@ -160,11 +160,15 @@ class LobbyBrowserActivity : BaseActivity() {
                 FIELD_UPDATED_AT,
                 Date(serverNowMs - OnlineRoomRetentionPolicy.BROWSER_FRESH_FOR_MS)
             )
+            .let { if (BuildConfig.SERVER_ONLINE_V3) it.whereEqualTo("protocolVersion", 3) else it }
             .orderBy(FIELD_UPDATED_AT, Query.Direction.DESCENDING)
             .limit(roomLimit)
 
     private fun applyRoomsSnapshot(snapshot: QuerySnapshot) {
-        lobbies = snapshot.documents.mapNotNull(::parseLobby)
+        // The normal build plays host-authority rooms only; V3 rooms belong to the QA app.
+        lobbies = snapshot.documents
+            .filter { BuildConfig.SERVER_ONLINE_V3 || it.getLong("protocolVersion") != 3L }
+            .mapNotNull(::parseLobby)
             .sortedWith(compareByDescending<OnlineLobby> { it.players }.thenBy { it.name })
         hasMoreRooms = snapshot.size().toLong() >= roomLimit
         OnlineDebugLog.i("lobby_browser_snapshot rooms=${lobbies.size}")
@@ -382,6 +386,12 @@ class LobbyBrowserActivity : BaseActivity() {
             if (roomSnapshot.getString("cleanupState") == "deleting" ||
                 roomSnapshot.getString(FIELD_STATE) != ONLINE_ROOM_STATE_WAITING) {
                 throw IllegalStateException("La sala ya no esta disponible.")
+            }
+            if (BuildConfig.SERVER_ONLINE_V3 && roomSnapshot.getLong("protocolVersion") != 3L) {
+                throw IllegalStateException("Esta sala usa una versión anterior. Elegí una sala V3.")
+            }
+            if (!BuildConfig.SERVER_ONLINE_V3 && roomSnapshot.getLong("protocolVersion") == 3L) {
+                throw IllegalStateException("Esta sala es de una versión de prueba. Elegí otra sala.")
             }
             val playerSnapshot = transaction.get(playerReference)
             val alreadyJoined = playerSnapshot.exists()

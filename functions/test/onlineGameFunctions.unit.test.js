@@ -7,16 +7,19 @@ const logger = {info() {}, warn() {}};
 const endpoints = createServerEndpoints({getFirestore: () => {throw new Error("must-not-read-database");},
   getDatabase: () => {throw new Error("must-not-read-database");}, enqueueDeadline: async () => {}, logger});
 
-test("V3 endpoints have bounded instances, no idle instances and a private regional task queue", () => {
+test("V3 endpoints reserve no idle instances and retain bounded concurrency and a private task queue", () => {
   for (const name of ["iniciarPartidaV3", "accionPartidaV3", "recuperarFaseV3", "prepararRevanchaV3", "abandonarPartidaV3"]) {
     assert.deepEqual(endpoints[name].__endpoint.region, ["southamerica-west1"]);
     assert.equal(endpoints[name].__endpoint.minInstances, 0);
     assert.ok(endpoints[name].__endpoint.maxInstances <= 4);
     assert.ok(endpoints[name].__endpoint.callableTrigger);
   }
+  const action = endpoints.accionPartidaV3.__endpoint;
+  assert.equal(action.availableMemoryMb, 256); assert.equal(action.cpu, 1); assert.equal(action.concurrency, 20);
   const task = endpoints.resolverFaseV3.__endpoint;
+  assert.equal(task.minInstances, 0);
   assert.deepEqual(task.region, ["southamerica-east1"]);
-  assert.deepEqual(task.taskQueueTrigger.invoker, ["private"]);
+  assert.deepEqual(task.taskQueueTrigger.invoker, ["99323018581-compute@developer.gserviceaccount.com"]);
   assert.equal(task.taskQueueTrigger.retryConfig.maxAttempts, 8);
   assert.equal(task.taskQueueTrigger.rateLimits.maxConcurrentDispatches, 20);
   assert.equal(endpoints.publicarPartidaV3.__endpoint.eventTrigger.retry, true);

@@ -1837,7 +1837,7 @@ object GameEngine {
         return advanceNight(session, nextPhase, message)
     }
 
-    private fun nightStartMessage(session: GameSession): String {
+    internal fun nightStartMessage(session: GameSession): String {
         return when (session.mapKey) {
             "medieval" ->
                 "Noche ${session.round}: el pueblo atranca sus puertas. Afuera, nadie espera misericordia."
@@ -1864,7 +1864,7 @@ object GameEngine {
         }
     }
 
-    private fun dawnNoDeathMessage(session: GameSession): String {
+    internal fun dawnNoDeathMessage(session: GameSession): String {
         return when (session.mapKey) {
             "medieval" ->
                 "Amanecer: no murió nadie. Las puertas se abren despacio, entre el alivio y la desconfianza."
@@ -1875,7 +1875,7 @@ object GameEngine {
         }
     }
 
-    private fun dawnDeathMessage(session: GameSession, victim: String): String {
+    internal fun dawnDeathMessage(session: GameSession, victim: String): String {
         return when (session.mapKey) {
             "medieval" ->
                 "Amanecer: murió $victim. El pueblo se reúne en silencio alrededor del cuerpo."
@@ -1902,7 +1902,7 @@ object GameEngine {
         }
     }
 
-    private fun expulsionMessage(session: GameSession, target: String): String {
+    internal fun expulsionMessage(session: GameSession, target: String): String {
         return when (session.mapKey) {
             "medieval" ->
                 "Día ${session.round}: $target fue expulsado. Cruza las puertas del feudo para no volver."

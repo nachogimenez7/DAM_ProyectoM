@@ -55,10 +55,13 @@ internal class ServerGameRealtimeClient(
     private var inbox = ServerGameInbox(uid, matchId)
     private var lastSnapshot: ServerGameSnapshot? = null
     private var presenceArmed = false
+    private val accessRetry = ServerGameInitialAccessRetry()
+    private val accessRetryHandler = Handler(Looper.getMainLooper())
     fun start() {
         if (started) return
         started = true; generation++; val currentGeneration = generation
-        inbox = ServerGameInbox(uid, matchId); lastSnapshot = null; presenceArmed = false
+        // Keep the inbox's phase/revision floor across reconnects and manual retries.
+        lastSnapshot = null; presenceArmed = false
         fun listen(path: DatabaseReference, receive: (DataSnapshot) -> Unit) {
             val listener = object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
@@ -67,7 +70,22 @@ internal class ServerGameRealtimeClient(
                     try { receive(snapshot) } catch (error: Exception) { fail(error) }
                 }
                 override fun onCancelled(error: DatabaseError) {
-                    if (started && generation == currentGeneration) fail(if (error.code == DatabaseError.PERMISSION_DENIED)
+                    if (!started || generation != currentGeneration) return
+                    if (error.code == DatabaseError.PERMISSION_DENIED && FirebaseAuth.getInstance().currentUser?.uid == uid) {
+                        val delay = accessRetry.nextDelay()
+                        if (delay != null) {
+                            // Reattach cancelled SDK listeners; never relax membership rules.
+                            stop(resetInitialAccessRetry = false)
+                            val retryGeneration = generation
+                            onConnection(false); onSynchronizing()
+                            OnlineNetworkMetrics.count("v3_espera_publicacion_inicial")
+                            accessRetryHandler.postDelayed({
+                                if (generation == retryGeneration && FirebaseAuth.getInstance().currentUser?.uid == uid) start()
+                            }, delay)
+                            return
+                        }
+                    }
+                    fail(if (error.code == DatabaseError.PERMISSION_DENIED)
                         ServerGameAccessLost("Ya no tenés acceso a esta partida.") else error.toException())
                 }
             }
@@ -107,6 +125,7 @@ internal class ServerGameRealtimeClient(
     private fun deliver() {
         val next = inbox.snapshot()
         if (next == null) { onSynchronizing(); return }
+        accessRetry.confirmed()
         if (next != lastSnapshot) { lastSnapshot = next; onSnapshot(next) }
     }
     private fun armPresence(currentGeneration: Int) {
@@ -120,7 +139,9 @@ internal class ServerGameRealtimeClient(
                         .addOnFailureListener { if (started && generation == currentGeneration) onError(it) }
             }.addOnFailureListener { if (started && generation == currentGeneration) { presenceArmed = false; onError(it) } }
     }
-    fun stop() {
+    fun stop(resetInitialAccessRetry: Boolean = true) {
+        accessRetryHandler.removeCallbacksAndMessages(null)
+        if (resetInitialAccessRetry) accessRetry.resetAttempts()
         if (!started) return
         started = false; generation++; connected = false
         bindings.forEach { (ref, listener) -> ref.removeEventListener(listener) }; bindings.clear()

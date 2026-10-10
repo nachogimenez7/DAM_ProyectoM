@@ -17,7 +17,7 @@ function capture(name,state) {
 }
 for (const [count,map] of [[5,'pampa'],[10,'pampa'],[15,'pampa'],[15,'medieval'],[15,'grecia']]) {
   let state=make(count,map); capture(`${map}-${count}-deal`,state);
-  state=expirePhase(state,deadlineToken(state),state.deadlineMs).state;
+  state=expirePhase(state,deadlineToken(state),state.deadlineMs,{chooseRandomInt:()=>0}).state;
   capture(`${map}-${count}-night`,state);
   const merc=state.players.find(p=>p.role.key==='mercenario'), town=state.players.find(p=>p.role.key==='aldeano');
   if (merc && town) {
@@ -40,5 +40,24 @@ const dead=state.players.find(p=>p.role.key==='aldeano');dead.alive=false;dead.d
 const left=state.players.filter(p=>p.role.key==='aldeano')[1];left.alive=false;left.left=true;left.deathCause='ABANDONO';
 capture('oracle-dead-and-departed-target',state);
 state.phase='FINALIZADA';state.phaseIndex=10;state.winner='Pueblo';state.deadlineMs=null;capture('final-roles-and-abandonment',state);
+state=make(15,'pampa'); state.phase='VOTACION'; state.phaseIndex=12; state.round=2;
+const mayor=state.players.find(p=>p.role.key==='alcalde'), voter=state.players.find(p=>p.role.key==='aldeano');
+const voted=state.players.filter(p=>p.role.key==='aldeano')[1]; state.mayorUid=mayor.uid;
+for (const actor of [mayor,voter]) state=acceptAction(state,actor.uid,{matchId:state.matchId,phaseIndex:state.phaseIndex,
+  requestId:`fixture_vote_${actor.order}`,action:'votar',targetUid:voted.uid},state.phaseStartedAtMs+1).state;
+capture('votes-still-secret',state);
+state=expirePhase(state,deadlineToken(state),state.deadlineMs).state;capture('aggregate-recount',state);
+state.afkEnabled=false;
+state=expirePhase(state,deadlineToken(state),state.deadlineMs).state;capture('expulsion-public-result',state);
+for (const reveal of [false,true]) {
+  let result=make(15,'pampa'); result.phase='RECUENTO_VOTOS'; result.phaseIndex=14; result.afkEnabled=false;
+  result.config.revelarRolesAlMorir=reveal;
+  result.eliminationUid=result.players.find(p=>p.role.key==='policia').uid;
+  result=expirePhase(result,deadlineToken(result),result.deadlineMs).state;
+  capture(`expulsion-role-${reveal}`,result);
+}
+state=make(8,'medieval');state.phase='RECUENTO_VOTOS';state.phaseIndex=16;state.afkEnabled=false;
+state.config.revelarRolesAlMorir=false;state.eliminationUid=state.players.find(p=>p.role.key==='bufon').uid;
+state=expirePhase(state,deadlineToken(state),state.deadlineMs).state;capture('jester-public-result',state);
 fs.writeFileSync('app/src/test/resources/server_game_v3.json',JSON.stringify(frames));
 console.log(`Generated ${frames.length} projections from the server engine.`);
